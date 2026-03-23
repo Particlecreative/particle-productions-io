@@ -1,0 +1,486 @@
+import { useState } from 'react';
+import { createPortal } from 'react-dom';
+import { X, MessageCircle, Mail, Send, Printer } from 'lucide-react';
+import { getLineItems, getProduction, getSuppliers, createInvoice, updateLineItem, generateId, createReceipt } from '../../lib/dataService';
+import { useNotifications } from '../../context/NotificationsContext';
+import { nowISOString } from '../../lib/timezone';
+
+const DEALER_BADGE = {
+  osek_patur:  { label: 'Osek Patur', color: '#6b7280' },
+  osek_murshe: { label: 'Osek Murshe', color: '#2563eb' },
+  ltd:         { label: 'Ltd.', color: '#7c3aed' },
+  foreign:     { label: 'Foreign', color: '#d97706' },
+};
+
+const INV_TYPE_LABELS = {
+  cheshbon_iska:        'חשבון עסקה (Business Invoice)',
+  receipt:              'קבלה (Receipt)',
+  tax_invoice:          'חשבונית מס (Tax Invoice)',
+  tax_invoice_receipt:  'חשבונית מס/קבלה (Combined)',
+  sachar_omanim:        'שכר אומנים (Artist Fee)',
+  American:             'American Invoice',
+  proforma:             'Proforma',
+  Other:                'Other',
+};
+
+const INVOICE_TEMPLATE = (prodName, amount, itemId, brandName) =>
+`Dear Team,
+
+We hope this message finds you well.
+
+Please send us a formal invoice for services rendered on the following production:
+
+Production: ${prodName}
+Reference: ${itemId}
+Amount: $${amount ? amount.toLocaleString() : 'as agreed'}
+Payment Terms: Net 30 days from invoice date
+
+Please send the invoice at your earliest convenience to ensure timely processing.
+
+Thank you,
+${brandName}
+Production Team`;
+
+/**
+ * InvoiceModal
+ * Props:
+ *  lineItemId    — ID of the line item
+ *  productionId  — ID of the production
+ *  initialStep   — 'send' | 'receive'  (default: 'send')
+ *  onClose       — callback
+ */
+export default function InvoiceModal({ lineItemId, productionId, initialStep = 'send', onClose }) {
+  const { addNotification } = useNotifications();
+
+  const brandName = document.documentElement.getAttribute('data-brand') === 'blurr'
+    ? 'Blurr Creative' : 'Particle For Men';
+
+  const [method, setMethod] = useState('email');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [invoiceUrl, setInvoiceUrl] = useState('');
+  const [step, setStep] = useState(initialStep);
+  const [sent, setSent] = useState(false);
+  const [showPrint, setShowPrint] = useState(false);
+  const [netDays, setNetDays] = useState(30);
+  const [invoiceType, setInvoiceType] = useState(() => {
+    const initItems = getLineItems(productionId);
+    const initItem = initItems.find(i => i.id === lineItemId);
+    const dt = initItem?.dealer_type || null;
+    if (dt === 'osek_patur') return 'receipt';
+    if (dt === 'osek_murshe' || dt === 'ltd') return 'tax_invoice_receipt';
+    return 'Israeli';
+  });
+
+  const [messageText, setMessageText] = useState(() => {
+    const initItems = getLineItems(productionId);
+    const initItem = initItems.find(i => i.id === lineItemId);
+    return INVOICE_TEMPLATE(
+      productionId,
+      initItem?.actual_spent || initItem?.planned_budget,
+      lineItemId,
+      brandName
+    );
+  });
+
+  const items = getLineItems(productionId);
+  const item = items.find(i => i.id === lineItemId);
+  const production = getProduction(productionId);
+  if (!item) return null;
+
+  // Look up supplier dealer_type
+  const allSuppliers = getSuppliers();
+  const supplier = allSuppliers.find(s => s.full_name && s.full_name === item.full_name);
+  const dealerType = supplier?.dealer_type || item.dealer_type || null;
+
+  function handleWhatsApp() {
+    if (!phone) { alert('Enter phone number first'); return; }
+    const cleanPhone = phone.replace(/\D/g, '');
+    window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(messageText)}`, '_blank');
+    setSent(true);
+  }
+
+  function handleEmail() {
+    const subject = encodeURIComponent(`Invoice Request — ${productionId} (Ref: ${lineItemId})`);
+    const mailtoLink = `mailto:${email}?subject=${subject}&body=${encodeURIComponent(messageText)}`;
+    window.open(mailtoLink, '_blank');
+    setSent(true);
+  }
+
+  function handleReceived() {
+    const dueDate = new Date(); dueDate.setDate(dueDate.getDate() + netDays);
+    const paymentDue = dueDate.toISOString();
+    const resolvedType = dealerType === 'osek_patur' ? 'receipt' : invoiceType;
+    const invoice = {
+      id: generateId('inv'),
+      line_item_id: lineItemId,
+      production_id: productionId,
+      file_url: invoiceUrl,
+      amount: item.actual_spent || item.planned_budget,
+      date_received: nowISOString(),
+      payment_due: paymentDue,
+      net_days: netDays,
+      invoice_type: resolvedType,
+      dealer_type: dealerType,
+      status: 'received',
+      mismatch: false,
+    };
+    createInvoice(invoice);
+    updateLineItem(lineItemId, {
+      invoice_status: 'Received',
+      invoice_url: invoiceUrl,
+      payment_due: paymentDue,
+      net_days: netDays,
+      invoice_type: resolvedType,
+      dealer_type: dealerType,
+    });
+    addNotification('invoice_received', `Invoice received for ${item.item || 'line item'}`, productionId);
+    onClose();
+  }
+
+  // Called externally (from Accounting / LedgerTab) when payment is confirmed for cheshbon_iska items
+  // This is a standalone helper — not tied to modal state
+  // (actual usage: Accounting.jsx + LedgerTab.jsx call createReceipt directly)
+
+  const TABS = [
+    { id: 'send',    label: '📤 Request Invoice' },
+    { id: 'receive', label: '📥 Log Invoice' },
+  ];
+
+  return (
+    <>
+      <div className="modal-overlay" onClick={onClose}>
+        <div className="modal-panel" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-lg font-black" style={{ color: 'var(--brand-primary)' }}>
+              Invoice
+            </h2>
+            <button onClick={onClose}><X size={18} className="text-gray-400" /></button>
+          </div>
+
+          <div className="flex items-center gap-2 mb-4 flex-wrap">
+            <span className="text-sm font-semibold text-gray-600">
+              {item.item || 'Line Item'} — {item.full_name || ''}
+            </span>
+            {dealerType && DEALER_BADGE[dealerType] && (
+              <span
+                className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                style={{ background: DEALER_BADGE[dealerType].color + '18', color: DEALER_BADGE[dealerType].color, border: `1px solid ${DEALER_BADGE[dealerType].color}40` }}
+              >
+                {DEALER_BADGE[dealerType].label}
+              </span>
+            )}
+          </div>
+
+          {/* Step Toggle */}
+          <div className="flex gap-2 mb-5">
+            {TABS.map(t => (
+              <button
+                key={t.id}
+                onClick={() => setStep(t.id)}
+                className={`flex-1 py-2 rounded-lg text-sm font-semibold border transition-all ${
+                  step === t.id
+                    ? 'border-transparent text-white'
+                    : 'border-gray-200 text-gray-500 bg-white'
+                }`}
+                style={step === t.id ? { background: 'var(--brand-accent)' } : {}}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* ── REQUEST TAB ── */}
+          {step === 'send' && (
+            <div>
+              {/* Method Selector */}
+              <div className="flex gap-2 mb-4">
+                {['whatsapp', 'email', 'both'].map(m => (
+                  <button
+                    key={m}
+                    onClick={() => setMethod(m)}
+                    className={`flex-1 py-2 rounded-lg text-xs font-bold uppercase border transition-all ${
+                      method === m ? 'border-transparent text-white' : 'border-gray-200 text-gray-500'
+                    }`}
+                    style={method === m ? { background: 'var(--brand-accent)' } : {}}
+                  >
+                    {m === 'whatsapp' ? '📱 WhatsApp' : m === 'email' ? '✉️ Email' : '⚡ Both'}
+                  </button>
+                ))}
+              </div>
+
+              {(method === 'whatsapp' || method === 'both') && (
+                <div className="mb-3">
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Phone (with country code)</label>
+                  <input
+                    className="brand-input"
+                    value={phone}
+                    onChange={e => setPhone(e.target.value)}
+                    placeholder="+972501234567"
+                  />
+                </div>
+              )}
+
+              {(method === 'email' || method === 'both') && (
+                <div className="mb-3">
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Email</label>
+                  <input
+                    type="email"
+                    className="brand-input"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    placeholder="supplier@example.com"
+                  />
+                </div>
+              )}
+
+              {/* Editable message textarea */}
+              <textarea
+                className="brand-input text-xs mb-4 resize-y"
+                rows={8}
+                value={messageText}
+                onChange={e => setMessageText(e.target.value)}
+                style={{ fontFamily: 'inherit', lineHeight: 1.5 }}
+              />
+
+              {sent && (
+                <div className="text-xs text-green-600 bg-green-50 border border-green-200 rounded-lg p-2 mb-3">
+                  Request sent! ✓
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                {(method === 'whatsapp' || method === 'both') && (
+                  <button onClick={handleWhatsApp} className="btn-cta flex-1 flex items-center justify-center gap-1">
+                    <MessageCircle size={13} /> WhatsApp
+                  </button>
+                )}
+                {(method === 'email' || method === 'both') && (
+                  <button onClick={handleEmail} className="btn-cta flex-1 flex items-center justify-center gap-1">
+                    <Mail size={13} /> Email
+                  </button>
+                )}
+              </div>
+
+              {sent && (
+                <button
+                  onClick={() => setStep('receive')}
+                  className="btn-secondary w-full mt-3 text-sm"
+                >
+                  Request sent? → Log the Invoice now
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* ── LOG INVOICE TAB ── */}
+          {step === 'receive' && (
+            <div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1.5">
+                  Invoice Link
+                </label>
+                <input
+                  className="brand-input text-sm"
+                  value={invoiceUrl}
+                  onChange={e => setInvoiceUrl(e.target.value)}
+                  placeholder="Paste Google Drive or Dropbox link…"
+                  autoFocus
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  Google Drive or Dropbox links will get a download button automatically.
+                </p>
+              </div>
+
+              <div className="bg-gray-50 rounded-xl p-3 mt-3 text-xs text-gray-500">
+                <div><strong>Amount on record:</strong> ${(item.actual_spent || item.planned_budget || 0).toLocaleString()}</div>
+              </div>
+
+              {/* Net+ days + Invoice type */}
+              <div className="grid grid-cols-2 gap-3 mt-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Net + Days</label>
+                  <input
+                    type="number"
+                    min={0}
+                    className="brand-input"
+                    value={netDays}
+                    onChange={e => setNetDays(Math.max(0, +e.target.value))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Invoice Type</label>
+                  {dealerType === 'osek_patur' ? (
+                    <div className="brand-input text-xs bg-gray-50 text-gray-500 flex items-center">
+                      קבלה (Receipt only)
+                    </div>
+                  ) : (dealerType === 'osek_murshe' || dealerType === 'ltd') ? (
+                    <select className="brand-input" value={invoiceType} onChange={e => setInvoiceType(e.target.value)}>
+                      <option value="cheshbon_iska">חשבון עסקה</option>
+                      <option value="tax_invoice_receipt">חשבונית מס/קבלה (Immediate)</option>
+                      <option value="tax_invoice">חשבונית מס (Deferred)</option>
+                    </select>
+                  ) : (
+                    <select className="brand-input" value={invoiceType} onChange={e => setInvoiceType(e.target.value)}>
+                      <option value="cheshbon_iska">חשבון עסקה</option>
+                      <option value="tax_invoice_receipt">חשבונית מס/קבלה</option>
+                      <option value="sachar_omanim">שכר אומנים</option>
+                      <option value="American">American Invoice</option>
+                      <option value="receipt">קבלה (Receipt)</option>
+                      <option value="proforma">Proforma</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  )}
+                </div>
+              </div>
+
+              {(invoiceType === 'cheshbon_iska' || (dealerType === 'osek_murshe' && invoiceType !== 'tax_invoice_receipt')) && invoiceType === 'cheshbon_iska' && (
+                <p className="text-xs text-orange-600 bg-orange-50 border border-orange-200 rounded-lg p-2 mt-2">
+                  ⚠️ חשבון עסקה — a חשבונית מס/קבלה receipt will be required once payment is made.
+                </p>
+              )}
+
+              <div className="text-xs text-gray-400 mt-2">
+                Payment due:{' '}
+                <strong className="text-gray-600">
+                  {(() => { const d = new Date(); d.setDate(d.getDate() + netDays); return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }); })()}
+                </strong>
+              </div>
+
+              <button
+                onClick={handleReceived}
+                className="btn-cta w-full mt-4 flex items-center justify-center gap-2"
+              >
+                <Send size={13} /> Save — Mark Invoice Received
+              </button>
+
+              <button
+                onClick={() => setShowPrint(true)}
+                className="btn-secondary w-full mt-2 flex items-center justify-center gap-2"
+              >
+                <Printer size={14} /> Print / Save as PDF
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {showPrint && createPortal(
+        <PrintInvoiceModal
+          item={item}
+          production={production}
+          productionId={productionId}
+          brandName={brandName}
+          onClose={() => setShowPrint(false)}
+        />,
+        document.body
+      )}
+    </>
+  );
+}
+
+/* ─── Print Invoice Modal ─────────────────────────────────────────── */
+
+function PrintInvoiceModal({ item, production, productionId, brandName, onClose }) {
+  const today = new Date();
+  const dateIssued = today.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  const dateDue = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000)
+    .toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  const amount = (item.actual_spent || item.planned_budget || 0).toLocaleString();
+
+  return (
+    <div className="print-invoice-root" style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ background: '#fff', width: '100%', maxWidth: 680, borderRadius: 12, boxShadow: '0 20px 60px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
+
+        {/* Toolbar — hidden on print */}
+        <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 20px', borderBottom: '1px solid #e5e7eb', background: '#f9fafb' }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Invoice Request Document</span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => window.print()}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', background: 'var(--brand-accent, #0808f8)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+            >
+              <Printer size={14} /> Print / Save as PDF
+            </button>
+            <button
+              onClick={onClose}
+              style={{ padding: '7px 12px', background: '#fff', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 13, color: '#6b7280', cursor: 'pointer' }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+
+        {/* Invoice Document */}
+        <div style={{ padding: '36px 48px', fontFamily: 'Georgia, serif', color: '#1a1a1a' }}>
+
+          {/* Brand Header */}
+          <div style={{ borderBottom: '3px solid var(--brand-primary, #0808f8)', paddingBottom: 16, marginBottom: 24 }}>
+            <div style={{ fontSize: 26, fontWeight: 900, letterSpacing: '-0.5px', color: 'var(--brand-primary, #0808f8)', fontFamily: 'Arial, sans-serif' }}>
+              {brandName}
+            </div>
+            <div style={{ fontSize: 11, letterSpacing: 3, textTransform: 'uppercase', color: '#6b7280', marginTop: 4, fontFamily: 'Arial, sans-serif' }}>
+              Invoice Request
+            </div>
+          </div>
+
+          {/* Ref / Dates */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 28, fontFamily: 'Arial, sans-serif' }}>
+            <div>
+              <div style={{ fontSize: 11, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Reference No.</div>
+              <div style={{ fontSize: 14, fontWeight: 700, fontFamily: 'monospace', color: '#111' }}>{item.id}</div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 2 }}>Date Issued: <strong style={{ color: '#374151' }}>{dateIssued}</strong></div>
+              <div style={{ fontSize: 11, color: '#9ca3af' }}>Payment Due: <strong style={{ color: '#374151' }}>{dateDue}</strong></div>
+            </div>
+          </div>
+
+          {/* Bill To / Production */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 28, fontFamily: 'Arial, sans-serif' }}>
+            <div style={{ background: '#f9fafb', borderRadius: 8, padding: '14px 16px' }}>
+              <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 1.5, color: '#9ca3af', marginBottom: 8 }}>Bill To</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#111', marginBottom: 4 }}>{item.full_name || '—'}</div>
+              {item.item && <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 2 }}>{item.item}</div>}
+              {item.business_type && <div style={{ fontSize: 11, color: '#9ca3af' }}>{item.business_type}</div>}
+            </div>
+            <div style={{ background: '#f9fafb', borderRadius: 8, padding: '14px 16px' }}>
+              <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 1.5, color: '#9ca3af', marginBottom: 8 }}>Production</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#111', marginBottom: 4 }}>{production?.project_name || '—'}</div>
+              <div style={{ fontSize: 12, color: '#6b7280', fontFamily: 'monospace' }}>{productionId}</div>
+            </div>
+          </div>
+
+          {/* Amount Table */}
+          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 24, fontFamily: 'Arial, sans-serif' }}>
+            <thead>
+              <tr style={{ background: 'var(--brand-primary, #0808f8)' }}>
+                <th style={{ padding: '10px 14px', textAlign: 'left', color: '#fff', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1 }}>Description</th>
+                <th style={{ padding: '10px 14px', textAlign: 'right', color: '#fff', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1 }}>Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style={{ background: '#f9fafb' }}>
+                <td style={{ padding: '12px 14px', fontSize: 13, color: '#374151' }}>
+                  {item.item || 'Professional Services'} — {item.type || 'Production'}
+                  {item.notes ? <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>{item.notes}</div> : null}
+                </td>
+                <td style={{ padding: '12px 14px', textAlign: 'right', fontSize: 13, color: '#374151' }}>${amount}</td>
+              </tr>
+              <tr style={{ borderTop: '2px solid #e5e7eb' }}>
+                <td style={{ padding: '12px 14px', fontWeight: 800, fontSize: 14, fontFamily: 'Arial, sans-serif' }}>Total Due</td>
+                <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 800, fontSize: 16, color: 'var(--brand-primary, #0808f8)' }}>${amount}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          {/* Footer */}
+          <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 16, fontSize: 11, color: '#9ca3af', fontFamily: 'Arial, sans-serif', lineHeight: 1.7 }}>
+            <strong style={{ color: '#6b7280' }}>Payment Terms:</strong> Net 30 days from invoice date. Please reference <strong style={{ fontFamily: 'monospace', color: '#374151' }}>{item.id}</strong> on your invoice to ensure timely processing.
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
+}

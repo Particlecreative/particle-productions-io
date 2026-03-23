@@ -1,0 +1,4 @@
+services:
+  app:
+    volumes:
+      - ./dist:/usr/share/nginx/html:ro   # serve built dist directly (replaces named volume)
