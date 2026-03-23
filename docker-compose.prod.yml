@@ -1,0 +1,48 @@
+version: '3.9'
+
+volumes:
+  pgdata:
+
+services:
+  # ── nginx: serves the React SPA and proxies /api → backend ──
+  app:
+    image: nginx:alpine
+    ports:
+      - "127.0.0.1:8080:80"    # bind to localhost only — host nginx proxies here
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./dist:/usr/share/nginx/html:ro    # pre-built frontend from git
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  # ── Node.js / Express API ──
+  api:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgres://${DB_USER:-cpanel}:${DB_PASSWORD}@db:5432/${DB_NAME:-cpanel}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      PORT: 3001
+      NODE_ENV: production
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── PostgreSQL ──
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER:-cpanel}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME:-cpanel}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-cpanel} -d ${DB_NAME:-cpanel}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
