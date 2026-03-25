@@ -241,14 +241,14 @@ export default function CrewBar({ production, onRefresh }) {
               }}
             />
             <button
-              onClick={handleAdd}
+              onMouseDown={e => { e.preventDefault(); handleAdd(); }}
               className="text-green-500 hover:text-green-700 transition-colors"
               title="Save"
             >
               <Check size={16} />
             </button>
             <button
-              onClick={cancelAdd}
+              onMouseDown={e => { e.preventDefault(); cancelAdd(); }}
               className="text-gray-400 hover:text-gray-600 transition-colors"
               title="Cancel"
             >
@@ -348,19 +348,35 @@ function CrewChip({ id, role, name, editing, editRole, editName, onEditRole, onE
       {/* Edit mode */}
       {editing ? (
         <div className="flex flex-col gap-1">
-          <input
-            className="brand-input"
-            style={{ width: 120, fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' }}
-            value={editRole}
-            onChange={e => onEditRole(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter') onSave();
-              if (e.key === 'Escape') onCancel();
-            }}
-            placeholder="Type or pick role…"
-            autoFocus
-            list="crew-roles-datalist"
-          />
+          <div className="flex items-center gap-1">
+            <input
+              className="brand-input"
+              style={{ width: 120, fontSize: 10, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase' }}
+              value={editRole}
+              onChange={e => onEditRole(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') onSave();
+                if (e.key === 'Escape') onCancel();
+              }}
+              placeholder="Type or pick role…"
+              autoFocus
+              list="crew-roles-datalist"
+            />
+            <button
+              onMouseDown={e => { e.preventDefault(); onSave(); }}
+              className="text-green-500 hover:text-green-700 transition-colors flex-shrink-0"
+              title="Save"
+            >
+              <Check size={14} />
+            </button>
+            <button
+              onMouseDown={e => { e.preventDefault(); onCancel(); }}
+              className="text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0"
+              title="Cancel"
+            >
+              <X size={14} />
+            </button>
+          </div>
           <input
             className="brand-input text-sm font-bold"
             style={{ width: 120 }}

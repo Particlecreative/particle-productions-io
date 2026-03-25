@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Upload } from 'lucide-react';
+import {
+  ArrowLeft, Upload, Calendar, DollarSign, Clock, Film, Tag, MapPin,
+  Truck, Clapperboard, ChevronDown, Pencil,
+} from 'lucide-react';
 import { useBrand } from '../context/BrandContext';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency } from '../context/CurrencyContext';
@@ -26,6 +29,23 @@ import clsx from 'clsx';
 
 const SHOOT_TYPES = ['Shoot', 'Remote Shoot'];
 
+function fmtDate(d) {
+  if (!d) return '—';
+  try { return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }); }
+  catch { return d; }
+}
+
+function InfoPill({ icon: Icon, label, value, className = '' }) {
+  if (!value || value === '—') return null;
+  return (
+    <div className={`flex items-center gap-1.5 text-xs ${className}`}>
+      <Icon size={12} className="text-gray-400 shrink-0" />
+      <span className="text-gray-400">{label}</span>
+      <span className="font-semibold text-gray-700 dark:text-gray-200">{value}</span>
+    </div>
+  );
+}
+
 export default function ProductionBoard() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -33,7 +53,7 @@ export default function ProductionBoard() {
   const { user, isEditor, isAdmin } = useAuth();
 
   const { lists } = useLists();
-  const { rate: globalRate } = useCurrency();
+  const { fmt, rate: globalRate } = useCurrency();
   const [production, setProduction] = useState(null);
   const [activeTab, setActiveTab] = useState('Budget Table');
   const [editingName, setEditingName] = useState(false);
@@ -41,6 +61,7 @@ export default function ProductionBoard() {
   const [showContract, setShowContract] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [prodRate, setProdRate] = useState(null);
+  const [showBudget, setShowBudget] = useState(false);
 
   // Build tab list based on production type
   const isShootType = production && SHOOT_TYPES.includes(production.production_type);
@@ -49,11 +70,11 @@ export default function ProductionBoard() {
     : ['Budget Table', 'Credit Card', 'Accounting', 'Financial', 'Links', 'Updates', 'History', 'Gantt'];
 
   useEffect(() => {
-    const p = getProduction(id);
-    if (p) {
-      setProduction(p);
-      setNameValue(p.project_name);
+    async function load() {
+      const p = await Promise.resolve(getProduction(id));
+      if (p) { setProduction(p); setNameValue(p.project_name); }
     }
+    load();
   }, [id]);
 
   // Fetch historical USD→ILS rate for the delivery date
@@ -71,8 +92,8 @@ export default function ProductionBoard() {
     });
   }, [production?.planned_end]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function refresh() {
-    const p = getProduction(id);
+  async function refresh() {
+    const p = await Promise.resolve(getProduction(id));
     if (p) setProduction(p);
   }
 
@@ -98,90 +119,141 @@ export default function ProductionBoard() {
     );
   }
 
+  const planned = parseFloat(production.planned_budget_2026) || 0;
+  const estimated = parseFloat(production.estimated_budget) || 0;
+  const spent = parseFloat(production.actual_spent) || 0;
+  const remaining = planned - spent;
+  const pct = planned > 0 ? Math.round((spent / planned) * 100) : 0;
+  const productTypes = Array.isArray(production.product_type) ? production.product_type : [];
+  const timeline = production.planned_start && production.planned_end
+    ? `${fmtDate(production.planned_start)} → ${fmtDate(production.planned_end)}`
+    : null;
+
   return (
-    <div>
-      {/* Header */}
+    <div className="animate-fade-in">
+
+      {/* ── Hero Header Card ─────────────────────────────────────────── */}
       <div
-        className="flex items-start gap-4 mb-6 flex-wrap"
-        style={{ borderBottom: '1px solid var(--brand-border)', paddingBottom: 20 }}
+        className="brand-card mb-5 overflow-hidden"
+        style={{ borderLeft: '4px solid var(--brand-accent)', borderTop: 'none' }}
       >
-        <button
-          onClick={() => navigate('/')}
-          className="flex items-center gap-1 text-sm text-white/60 hover:text-white mt-1 flex-shrink-0 transition-colors"
-        >
-          <ArrowLeft size={14} />
-          Productions
-        </button>
-
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap justify-between">
-            {editingName && isEditor ? (
-              <input
-                className="brand-input text-xl font-black"
-                style={{ color: 'var(--brand-primary)' }}
-                value={nameValue}
-                onChange={e => setNameValue(e.target.value)}
-                onBlur={handleNameSave}
-                onKeyDown={e => { if (e.key === 'Enter') handleNameSave(); if (e.key === 'Escape') setEditingName(false); }}
-                autoFocus
-              />
-            ) : (
-              <h1
-                className="text-2xl font-black brand-title cursor-pointer hover:opacity-70 transition-opacity"
-                style={{ color: 'var(--brand-primary)' }}
-                onClick={() => isEditor && setEditingName(true)}
-                title={isEditor ? 'Click to edit' : ''}
-              >
-                {production.project_name}
-              </h1>
-            )}
-            <span className="text-sm text-white/50 font-mono">{production.id}</span>
-            {prodRate && (
-              <span className="text-xs text-gray-400 ml-1">
-                Rate {production.planned_end}: ₪{prodRate.toFixed(2)}/$1
-                {Math.abs(prodRate - (globalRate || 3.7)) > 0.1 && (
-                  <span className="ml-1 text-orange-400">(live: ₪{(globalRate || 3.7).toFixed(2)})</span>
-                )}
-              </span>
-            )}
-            {/* Stage badge/dropdown next to PRD number */}
-            <span className="ml-1">
-              {isEditor ? (
-                <select
-                  value={production.stage}
-                  onChange={e => handleStageChange(e.target.value)}
-                  className="text-xs font-semibold border rounded-lg px-2 py-1 outline-none cursor-pointer"
-                  style={{
-                    borderColor: 'var(--brand-border)',
-                    color: production.stage === 'Completed' ? '#2E7D32' : 'inherit',
-                    background: production.stage === 'Completed' ? '#E8F5E9' : undefined,
-                  }}
-                >
-                  {lists.stages.map(s => <option key={s}>{s}</option>)}
-                </select>
-              ) : (
-                <StageBadge stage={production.stage} />
-              )}
-            </span>
-
-            {isEditor && (
-              <button
-                onClick={() => setShowImport(true)}
-                className="btn-secondary text-xs flex items-center gap-1.5 px-3 py-1.5 flex-shrink-0"
-              >
-                <Upload size={13} /> Import
-              </button>
-            )}
-          </div>
-
+        {/* Top row: back + actions */}
+        <div className="flex items-center justify-between mb-3">
+          <button
+            onClick={() => navigate('/')}
+            className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700 transition-colors"
+          >
+            <ArrowLeft size={13} />
+            Back to Productions
+          </button>
         </div>
 
+        {/* Project name + ID + Stage — single row */}
+        <div className="flex items-start gap-3 mb-2">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              {editingName && isEditor ? (
+                <input
+                  className="brand-input text-xl font-black w-full"
+                  style={{ color: 'var(--brand-primary)' }}
+                  value={nameValue}
+                  onChange={e => setNameValue(e.target.value)}
+                  onBlur={handleNameSave}
+                  onKeyDown={e => { if (e.key === 'Enter') handleNameSave(); if (e.key === 'Escape') setEditingName(false); }}
+                  autoFocus
+                />
+              ) : (
+                <h1
+                  className="text-xl font-black brand-title leading-tight cursor-pointer hover:opacity-70 transition-opacity"
+                  style={{ color: 'var(--brand-primary)' }}
+                  onClick={() => isEditor && setEditingName(true)}
+                  title={isEditor ? 'Click to edit' : ''}
+                >
+                  {production.project_name}
+                </h1>
+              )}
+              <span className="text-[10px] font-mono text-gray-400 bg-gray-50 dark:bg-gray-800 px-1.5 py-0.5 rounded">
+                {production.id}
+              </span>
+              {productTypes.map(pt => (
+                <span key={pt} className="px-1.5 py-0.5 text-[10px] font-semibold rounded-full border"
+                  style={{ borderColor: 'var(--brand-accent)', color: 'var(--brand-accent)' }}>
+                  {pt}
+                </span>
+              ))}
+            </div>
+          </div>
+          {/* Stage */}
+          {isEditor ? (
+            <select
+              value={production.stage}
+              onChange={e => handleStageChange(e.target.value)}
+              className="text-xs font-bold border rounded-lg px-2.5 py-1 outline-none cursor-pointer shrink-0"
+              style={{
+                borderColor: 'var(--brand-border)',
+                color: production.stage === 'Completed' ? '#16a34a' : 'var(--brand-primary)',
+                background: production.stage === 'Completed' ? '#dcfce7' : 'transparent',
+              }}
+            >
+              {lists.stages.map(s => <option key={s}>{s}</option>)}
+            </select>
+          ) : (
+            <StageBadge stage={production.stage} />
+          )}
+        </div>
+
+        {/* Info pills — compact single row */}
+        <div className="flex items-center gap-4 flex-wrap text-xs">
+          <InfoPill icon={Film} label="Type" value={production.production_type} />
+          <InfoPill icon={Calendar} label="" value={timeline} />
+          <InfoPill icon={Tag} label="" value={production.producer} />
+          {production.shoot_dates?.length > 0 && (
+            <InfoPill icon={Clapperboard} label="Shoot" value={
+              Array.isArray(production.shoot_dates) ? production.shoot_dates.map(fmtDate).join(', ') : fmtDate(production.shoot_dates)
+            } />
+          )}
+          <InfoPill icon={Truck} label="Delivery" value={fmtDate(production.delivery_date)} />
+          <InfoPill icon={MapPin} label="Air" value={fmtDate(production.air_date)} />
+
+          {/* Budget toggle — inline compact */}
+          <button
+            onClick={() => setShowBudget(!showBudget)}
+            className="flex items-center gap-1.5 ml-auto text-xs text-gray-400 hover:text-gray-700 transition-colors"
+          >
+            <DollarSign size={12} />
+            <span className="font-semibold" style={{ color: 'var(--brand-primary)' }}>{fmt(planned)}</span>
+            <span className="text-green-600 font-medium">→ {fmt(spent)}</span>
+            <ChevronDown size={12} className={clsx('transition-transform', showBudget && 'rotate-180')} />
+          </button>
+        </div>
+
+        {/* Collapsible budget detail */}
+        {showBudget && (
+          <div className="mt-3 pt-3 border-t flex items-center gap-6 flex-wrap text-xs" style={{ borderColor: 'var(--brand-border)' }}>
+            <div><span className="text-gray-400">Planned</span> <span className="font-bold ml-1" style={{ color: 'var(--brand-primary)' }}>{fmt(planned)}</span></div>
+            <div><span className="text-gray-400">Estimated</span> <span className="font-semibold ml-1">{fmt(estimated)}</span></div>
+            <div><span className="text-gray-400">Spent</span> <span className="font-semibold text-green-600 ml-1">{fmt(spent)}</span></div>
+            <div><span className="text-gray-400">Remaining</span> <span className={clsx('font-black ml-1', remaining >= 0 ? 'text-green-600' : 'text-red-500')}>{remaining >= 0 ? '+' : ''}{fmt(remaining)}</span></div>
+            {planned > 0 && (
+              <div className="flex items-center gap-2 flex-1 min-w-[120px]">
+                <span className="text-gray-400">{pct}%</span>
+                <div className="flex-1 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                  <div className="h-full rounded-full transition-all duration-700"
+                    style={{ width: `${Math.min(pct, 100)}%`, background: pct > 100 ? '#ef4444' : pct > 80 ? '#f59e0b' : 'var(--brand-accent)' }} />
+                </div>
+              </div>
+            )}
+            {prodRate && (
+              <span className="text-[10px] text-gray-400">Rate: ₪{prodRate.toFixed(2)}/$1</span>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Crew Bar — Producer + crew from budget table */}
+      {/* ── Crew Bar ─────────────────────────────────────────── */}
       <CrewBar production={production} onRefresh={refresh} />
 
-      {/* Tabs */}
+      {/* ── Tabs ─────────────────────────────────────────────── */}
       <div className="brand-tabs mb-6">
         {tabs.map(tab => (
           <button
@@ -194,9 +266,9 @@ export default function ProductionBoard() {
         ))}
       </div>
 
-      {/* Tab Content */}
+      {/* ── Tab Content ──────────────────────────────────────── */}
       {activeTab === 'Budget Table' && (
-        <BudgetTable productionId={id} production={production} onRefresh={refresh} />
+        <BudgetTable productionId={id} production={production} onRefresh={refresh} prodRate={prodRate} onImport={() => setShowImport(true)} />
       )}
       {activeTab === 'People on Set' && (
         <PeopleOnSet production={production} />

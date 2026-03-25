@@ -64,19 +64,31 @@ const STATUS_CLASSES = {
 
 const BUDGET_TOGGLE_KEYS = ['full_name','planned_budget','type','status','timeline','actual_spent','difference','invoice','contract'];
 
-export default function BudgetTable({ productionId, production, onRefresh }) {
+export default function BudgetTable({ productionId, production, onRefresh, prodRate, onImport }) {
   const { isEditor, user } = useAuth();
   const { fmt, currency, rate } = useCurrency();
+
+  // Use production-specific delivery date rate, fallback to live rate
+  const effectiveRate = prodRate || rate || 3.7;
 
   // Per-row currency helpers (parseFloat handles PostgreSQL NUMERIC→string)
   function fmtRow(amount, code) {
     const n = parseFloat(amount) || 0;
     return code === 'ILS' ? `₪${n.toLocaleString()}` : `$${n.toLocaleString()}`;
   }
+  // Convert any amount to the current display currency (USD or ILS)
   function toDisplay(amount, code) {
     const num = parseFloat(amount) || 0;
-    const ils = code === 'ILS' ? num : num * (rate || 3.7);
-    return currency === 'ILS' ? ils : ils / (rate || 3.7);
+    if (code === 'ILS' && currency === 'ILS') return num;           // ILS→ILS: no conversion
+    if (code === 'ILS' && currency === 'USD') return num / effectiveRate; // ILS→USD
+    if (code === 'USD' && currency === 'ILS') return num * effectiveRate; // USD→ILS
+    return num;                                                      // USD→USD: no conversion
+  }
+  // Format a number already in display currency (no re-conversion)
+  function fmtDisplay(n) {
+    const num = parseFloat(n) || 0;
+    const symbol = currency === 'ILS' ? '₪' : '$';
+    return `${symbol}${Math.round(num).toLocaleString()}`;
   }
   const { addNotification } = useNotifications();
   const { lists } = useLists();
@@ -249,6 +261,14 @@ export default function BudgetTable({ productionId, production, onRefresh }) {
     }
   }
 
+  // Separate subtotals by original currency
+  const usdPlanned = items.filter(i => (i.currency_code || 'USD') === 'USD').reduce((s, i) => s + (parseFloat(i.planned_budget) || 0), 0);
+  const ilsPlanned = items.filter(i => i.currency_code === 'ILS').reduce((s, i) => s + (parseFloat(i.planned_budget) || 0), 0);
+  const usdActual  = items.filter(i => (i.currency_code || 'USD') === 'USD').reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0);
+  const ilsActual  = items.filter(i => i.currency_code === 'ILS').reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0);
+  const hasMixed   = usdPlanned > 0 && ilsPlanned > 0;
+
+  // Combined totals converted to display currency
   const totalPlanned = items.reduce((s, i) => s + toDisplay(i.planned_budget || 0, i.currency_code || 'USD'), 0);
   const totalActual  = items.reduce((s, i) => s + toDisplay(i.actual_spent  || 0, i.currency_code || 'USD'), 0);
   const totalDiff    = totalPlanned - totalActual;
@@ -270,14 +290,23 @@ export default function BudgetTable({ productionId, production, onRefresh }) {
         <div className="mb-3 flex items-center gap-2 px-4 py-2.5 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
           <AlertTriangle size={13} className="shrink-0 text-red-500" />
           <span>
-            Line items total <strong>{fmt(totalPlanned)}</strong> exceeds the production planned budget of{' '}
-            <strong>{fmt(capBudget)}</strong> — over by <strong className="text-red-800">{fmt(overAmount)}</strong>.
+            Line items total <strong>{fmtDisplay(totalPlanned)}</strong> exceeds the production planned budget of{' '}
+            <strong>{fmtDisplay(capBudget)}</strong> — over by <strong className="text-red-800">{fmtDisplay(overAmount)}</strong>.
           </span>
         </div>
       )}
 
-      {/* Toolbar: Columns toggle */}
-      <div className="flex justify-end mb-2">
+      {/* Toolbar: Import + Columns */}
+      <div className="flex justify-end gap-2 mb-2">
+        {isEditor && onImport && (
+          <button
+            onClick={onImport}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-200 bg-white text-gray-500 hover:text-gray-700 hover:border-gray-400 transition-all"
+          >
+            <Upload size={12} />
+            Import
+          </button>
+        )}
         <div className="relative">
           {showColPanel && <div className="fixed inset-0 z-10" onClick={() => setShowColPanel(false)} />}
           <button
@@ -295,7 +324,7 @@ export default function BudgetTable({ productionId, production, onRefresh }) {
               {/* Fixed columns */}
               {[
                 { key: 'full_name',      label: 'Full Name' },
-                { key: 'planned_budget', label: 'Planned Budget' },
+                { key: 'planned_budget', label: 'Est. Budget' },
                 { key: 'type',           label: 'Type' },
                 { key: 'status',         label: 'Status' },
                 { key: 'timeline',       label: 'Timeline' },
@@ -361,7 +390,7 @@ export default function BudgetTable({ productionId, production, onRefresh }) {
               <tr>
                 <BudgetTh label="Item"           colKey="item"           sortState={sortState} onSort={handleBudgetSort} minWidth={120} />
                 {vis('full_name') && <BudgetTh label="Full Name"     colKey="full_name"      sortState={sortState} onSort={handleBudgetSort} minWidth={150} />}
-                {vis('planned_budget') && <BudgetTh label="Planned Budget" colKey="planned_budget" sortState={sortState} onSort={handleBudgetSort} />}
+                {vis('planned_budget') && <BudgetTh label="Est. Budget" colKey="planned_budget" sortState={sortState} onSort={handleBudgetSort} />}
                 {vis('type') && <BudgetTh label="Type"           colKey="type"           sortState={sortState} onSort={handleBudgetSort} minWidth={130} />}
                 {vis('status') && <BudgetTh label="Status"         colKey="status"         sortState={sortState} onSort={handleBudgetSort} minWidth={130} />}
                 {vis('timeline') && <th style={{ minWidth: 200 }}>Timeline</th>}
@@ -419,12 +448,30 @@ export default function BudgetTable({ productionId, production, onRefresh }) {
             <tfoot>
               <tr style={{ background: 'var(--brand-bg)', borderTop: '2px solid var(--brand-border)' }}>
                 <td colSpan={colsBefore} className="font-bold text-sm py-3 px-3">Totals</td>
-                {vis('planned_budget') && <td className={clsx('font-bold px-3', isOverCap && 'text-red-600')}>{fmt(totalPlanned)}</td>}
+                {vis('planned_budget') && (
+                  <td className={clsx('font-bold px-3', isOverCap && 'text-red-600')}>
+                    <div>{fmtDisplay(totalPlanned)}</div>
+                    {hasMixed && (
+                      <div className="text-[10px] font-normal text-gray-400 mt-0.5">
+                        ${usdPlanned.toLocaleString()} + ₪{ilsPlanned.toLocaleString()}
+                      </div>
+                    )}
+                  </td>
+                )}
                 {colsMid > 0 && <td colSpan={colsMid} />}
-                {vis('actual_spent') && <td className="font-bold px-3">{fmt(totalActual)}</td>}
+                {vis('actual_spent') && (
+                  <td className="font-bold px-3">
+                    <div>{fmtDisplay(totalActual)}</div>
+                    {hasMixed && (usdActual > 0 || ilsActual > 0) && (
+                      <div className="text-[10px] font-normal text-gray-400 mt-0.5">
+                        ${usdActual.toLocaleString()} + ₪{ilsActual.toLocaleString()}
+                      </div>
+                    )}
+                  </td>
+                )}
                 {vis('difference') && (
                   <td className={clsx('font-bold px-3', totalDiff >= 0 ? 'diff-positive' : 'diff-negative')}>
-                    {fmt(Math.abs(totalDiff))} {totalDiff >= 0 ? '▲' : '▼'}
+                    {fmtDisplay(Math.abs(totalDiff))} {totalDiff >= 0 ? '▲' : '▼'}
                   </td>
                 )}
                 {colsTail > 0 && <td colSpan={colsTail} />}
@@ -437,17 +484,17 @@ export default function BudgetTable({ productionId, production, onRefresh }) {
       {/* Currency Breakdown */}
       <div className="mt-4 flex gap-4 text-sm flex-wrap">
         <div className="brand-card flex-1" style={{ minWidth: 160 }}>
-          <div className="text-xs text-gray-400 mb-1">Total Planned</div>
-          <div className="font-bold text-gray-800">{fmt(totalPlanned)}</div>
+          <div className="text-xs text-gray-400 mb-1">Total Estimated</div>
+          <div className="font-bold text-gray-800">{fmtDisplay(totalPlanned)}</div>
         </div>
         <div className="brand-card flex-1" style={{ minWidth: 160 }}>
           <div className="text-xs text-gray-400 mb-1">Total Actual</div>
-          <div className="font-bold text-gray-800">{fmt(totalActual)}</div>
+          <div className="font-bold text-gray-800">{fmtDisplay(totalActual)}</div>
         </div>
         <div className="brand-card flex-1" style={{ minWidth: 160 }}>
           <div className="text-xs text-gray-400 mb-1">Budget Remaining</div>
           <div className={clsx('font-bold', totalDiff >= 0 ? 'diff-positive' : 'diff-negative')}>
-            {totalDiff >= 0 ? '+' : ''}{fmt(totalDiff)}
+            {totalDiff >= 0 ? '+' : ''}{fmtDisplay(totalDiff)}
           </div>
         </div>
       </div>
@@ -848,7 +895,7 @@ function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEd
 
       {/* Difference */}
       {vis('difference') && <td className={clsx('font-semibold', diff >= 0 ? 'diff-positive' : 'diff-negative')}>
-        {diff >= 0 ? '+' : ''}{fmt(diff)}
+        {diff >= 0 ? '+' : ''}{fmtRow(Math.abs(diff), item.currency_code || 'USD')}
       </td>}
 
       {/* Invoice — state driven */}

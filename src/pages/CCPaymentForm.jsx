@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { CheckCircle, CreditCard } from 'lucide-react';
-import { getProductions, getLineItems, createCCPurchase, createLineItem, generateId } from '../lib/dataService';
+import { generateId } from '../lib/dataService';
 
 const VAT_RATE = 1.18; // Israeli VAT 18%
 
@@ -9,27 +9,37 @@ const STANDALONE_CATEGORIES = [
   'Wardrobe', 'Props', 'Catering', 'Transport', 'Equipment', 'Office', 'Other',
 ];
 
+// Public API calls (no auth required)
+async function publicGet(path) {
+  const res = await fetch(`/api/public${path}`);
+  if (!res.ok) return null;
+  return res.json();
+}
+async function publicPost(path, body) {
+  const res = await fetch(`/api/public${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error('Submit failed');
+  return res.json();
+}
+
 export default function CCPaymentForm() {
   const { productionId: prodIdParam } = useParams();
   const [production, setProduction] = useState(null);
   const [lineItems, setLineItems]   = useState([]);
+  const [loadError, setLoadError]   = useState(false);
 
   useEffect(() => {
     async function load() {
-      const [particle, blurr] = await Promise.all([
-        Promise.resolve(getProductions('particle')),
-        Promise.resolve(getProductions('blurr')),
-      ]);
-      const all = [
-        ...(Array.isArray(particle) ? particle : []),
-        ...(Array.isArray(blurr) ? blurr : []),
-      ];
-      const found = all.find(p => p.production_id === prodIdParam || p.id === prodIdParam) || null;
-      setProduction(found);
-      if (found) {
-        const items = await Promise.resolve(getLineItems(found.id));
+      try {
+        const prod = await publicGet(`/production/${prodIdParam}`);
+        if (!prod) { setLoadError(true); return; }
+        setProduction(prod);
+        const items = await publicGet(`/line-items/${prod.id}`);
         setLineItems(Array.isArray(items) ? items : []);
-      }
+      } catch { setLoadError(true); }
     }
     load();
   }, [prodIdParam]);
@@ -77,9 +87,8 @@ export default function CCPaymentForm() {
     const totalAmount      = parseFloat(form.total_amount)       || 0;
     const ccId = generateId('cc');
 
-    // 1. Save CC purchase record
-    await Promise.resolve(createCCPurchase({
-      id: ccId,
+    // 1. Save CC purchase record via public API
+    await publicPost('/cc-purchase', {
       store_name:           form.store_name,
       description:          form.description,
       amount_without_vat:   amountWithoutVat,
@@ -87,35 +96,11 @@ export default function CCPaymentForm() {
       purchase_date:        form.purchase_date,
       purchaser_name:       form.purchaser_name,
       receipt_url:          form.receipt_url,
-      parent_line_item_id:  form.parent_line_item_id,
+      parent_line_item_id:  form.parent_line_item_id || null,
       notes:                form.notes,
       production_id:        production?.id || prodIdParam,
-      approval_status:      'Pending',
-      approved_by:          '',
-    }));
-
-    // 2. Create standalone budget line item ONLY when NOT linked to an existing budget row.
-    //    When parent_line_item_id is set, the CC purchase record itself is the transaction detail
-    //    and the BudgetTable's CCSubRow handles display — no duplicate line item needed.
-    if (!form.parent_line_item_id) {
-      await Promise.resolve(createLineItem({
-        id:                   generateId('li'),
-        production_id:        production?.id || prodIdParam,
-        item:                 form.store_name,
-        full_name:            form.purchaser_name,
-        description:          form.description,
-        type:                 form.category || 'Office',
-        planned_budget:       0,
-        actual_spent:         amountWithoutVat,
-        payment_method:       'Credit Card',
-        payment_status:       'Not Paid',
-        status:               'Not Started',
-        currency_code:        'ILS',
-        cc_purchase_id:       ccId,
-        parent_line_item_id:  '',
-        notes:                form.notes,
-      }));
-    }
+      category:             form.category || 'Office',
+    });
 
     setSubmitted(true);
   }

@@ -52,6 +52,9 @@ app.use('/api/cc-purchases',   require('./routes/ccPurchases'));
 app.use('/api/weekly-reports', require('./routes/weeklyReports'));
 app.use('/api/admin',          require('./routes/admin'));
 
+// ── Public form endpoints (no auth required) ─────────
+app.use('/api/public',           require('./routes/publicForms'));
+
 // ── Health check ─────────────────────────────────────
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 
