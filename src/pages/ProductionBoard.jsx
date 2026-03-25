@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Upload, Calendar, DollarSign, Clock, Film, Tag, MapPin,
-  Truck, Clapperboard, ChevronDown, Pencil,
+  Truck, Clapperboard, ChevronDown, Pencil, FileSpreadsheet,
 } from 'lucide-react';
 import { useBrand } from '../context/BrandContext';
 import { useAuth } from '../context/AuthContext';
@@ -23,6 +23,7 @@ import PeopleOnSet from '../components/production/PeopleOnSet';
 import GanttTab from '../components/production/GanttTab';
 import ImportModal from '../components/production/ImportModal';
 import CCPaymentsTab from '../components/production/CCPaymentsTab';
+import ImportAccountingModal from '../components/production/ImportAccountingModal';
 import CastTab from '../components/production/CastTab';
 import CallSheetTab from '../components/production/CallSheetTab';
 import clsx from 'clsx';
@@ -60,6 +61,7 @@ export default function ProductionBoard() {
   const [nameValue, setNameValue] = useState('');
   const [showContract, setShowContract] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showAccountingImport, setShowAccountingImport] = useState(false);
   const [prodRate, setProdRate] = useState(null);
   const [showBudget, setShowBudget] = useState(false);
 
@@ -268,7 +270,7 @@ export default function ProductionBoard() {
 
       {/* ── Tab Content ──────────────────────────────────────── */}
       {activeTab === 'Budget Table' && (
-        <BudgetTable productionId={id} production={production} onRefresh={refresh} prodRate={prodRate} onImport={() => setShowImport(true)} />
+        <BudgetTable productionId={id} production={production} onRefresh={refresh} prodRate={prodRate} onImport={() => setShowImport(true)} onAccountingImport={() => setShowAccountingImport(true)} />
       )}
       {activeTab === 'People on Set' && (
         <PeopleOnSet production={production} />
@@ -309,6 +311,15 @@ export default function ProductionBoard() {
           productionId={id}
           onClose={() => setShowImport(false)}
           onImported={() => { setShowImport(false); refresh(); }}
+        />
+      )}
+
+      {/* Accounting Import Modal */}
+      {showAccountingImport && (
+        <ImportAccountingModal
+          productionId={id}
+          onClose={() => setShowAccountingImport(false)}
+          onImported={() => { setShowAccountingImport(false); refresh(); }}
         />
       )}
 

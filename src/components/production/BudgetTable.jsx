@@ -64,7 +64,7 @@ const STATUS_CLASSES = {
 
 const BUDGET_TOGGLE_KEYS = ['full_name','planned_budget','type','status','timeline','actual_spent','difference','invoice','contract'];
 
-export default function BudgetTable({ productionId, production, onRefresh, prodRate, onImport }) {
+export default function BudgetTable({ productionId, production, onRefresh, prodRate, onImport, onAccountingImport }) {
   const { isEditor, user } = useAuth();
   const { fmt, currency, rate } = useCurrency();
 
@@ -305,6 +305,15 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
           >
             <Upload size={12} />
             Import
+          </button>
+        )}
+        {isEditor && onAccountingImport && (
+          <button
+            onClick={onAccountingImport}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-green-200 bg-white text-green-600 hover:text-green-700 hover:border-green-400 transition-all"
+          >
+            <Upload size={12} />
+            PRD Sheet
           </button>
         )}
         <div className="relative">

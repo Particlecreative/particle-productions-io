@@ -25,6 +25,7 @@ const AUTO_MAP = {
   'item':            'project_name',
   'budget':          'planned_budget_2026',
   'planned budget':  'planned_budget_2026',
+  'planned budget $':'planned_budget_2026',
   'numbers':         'planned_budget_2026',
   'status':          'stage',
   'stage':           'stage',
@@ -33,8 +34,10 @@ const AUTO_MAP = {
   'producer':        'producer',
   'start date':      'planned_start',
   'start':           'planned_start',
+  'timeline - start':'planned_start',
   'end date':        'planned_end',
   'end':             'planned_end',
+  'timeline - end':  'planned_end',
   'timeline':        'planned_start',
   'type':            'production_type',
   'production type': 'production_type',
@@ -75,7 +78,8 @@ function downloadTemplate() {
 
 export default function ImportProductionsModal({ brandId, selectedYear = 2026, onClose, onImported }) {
   const { isEditor } = useAuth();
-  const [step, setStep] = useState(1); // 1=upload, 2=map, 3=preview
+  const [step, setStep] = useState(1); // 1=upload, 2=map, 2.5=currency, 3=preview
+  const [importCurrency, setImportCurrency] = useState('USD'); // USD or ILS
   const [headers, setHeaders] = useState([]);
   const [rows, setRows] = useState([]);
   const [mapping, setMapping] = useState({});
@@ -98,8 +102,20 @@ export default function ImportProductionsModal({ brandId, selectedYear = 2026, o
     const ws = wb.Sheets[wb.SheetNames[0]];
     const json = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
     if (json.length < 2) return;
-    const hdrs = json[0].map(h => String(h));
-    const dataRows = json.slice(1).filter(r => r.some(c => c !== ''));
+    // Find header row (first row with multiple non-empty cells that look like headers)
+    let headerIdx = 0;
+    for (let i = 0; i < Math.min(json.length, 5); i++) {
+      const nonEmpty = json[i].filter(c => c !== '' && c != null).length;
+      if (nonEmpty >= 3) { headerIdx = i; break; }
+    }
+    const hdrs = json[headerIdx].map(h => String(h).trim());
+    // Filter: skip empty rows, totals rows, section headers (Monday.com)
+    const SKIP_PATTERNS = /^(production budget|production tasks|production timeline|subitems|$)/i;
+    const dataRows = json.slice(headerIdx + 1).filter(r => {
+      const firstCell = String(r[0] || '').trim();
+      if (SKIP_PATTERNS.test(firstCell) && !r.slice(1).some(c => c !== '' && c != null)) return false;
+      return r.some(c => c !== '' && c != null);
+    });
     const autoMapping = {};
     hdrs.forEach(h => { autoMapping[h] = guessMapping(h); });
     setHeaders(hdrs);
@@ -129,6 +145,13 @@ export default function ImportProductionsModal({ brandId, selectedYear = 2026, o
     obj.estimated_budget = parseFloat(obj.planned_budget_2026) || 0;
     obj.actual_spent = 0;
     return obj;
+  }
+
+  function goToCurrency() {
+    // Check if any budget columns are mapped — if so, ask about currency
+    const hasBudget = Object.values(mapping).includes('planned_budget_2026');
+    if (hasBudget) setStep(2.5);
+    else setStep(3);
   }
 
   function preview() {
@@ -169,17 +192,17 @@ export default function ImportProductionsModal({ brandId, selectedYear = 2026, o
 
         {/* Step indicator */}
         <div className="flex items-center gap-2 mb-6">
-          {['Upload file', 'Map columns', 'Preview & confirm'].map((label, i) => (
+          {['Upload file', 'Map columns', 'Currency', 'Preview & confirm'].map((label, i) => (
             <div key={i} className="flex items-center gap-2">
               <div className={clsx(
                 'w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold',
-                step > i + 1 ? 'bg-green-500 text-white' :
-                step === i + 1 ? 'text-white' : 'bg-gray-200 text-gray-500'
-              )} style={step === i + 1 ? { background: 'var(--brand-accent)' } : {}}>
-                {step > i + 1 ? <Check size={12} /> : i + 1}
+                step > [1,2,2.5,3][i] ? 'bg-green-500 text-white' :
+                step === [1,2,2.5,3][i] ? 'text-white' : 'bg-gray-200 text-gray-500'
+              )} style={step === [1,2,2.5,3][i] ? { background: 'var(--brand-accent)' } : {}}>
+                {step > [1,2,2.5,3][i] ? <Check size={12} /> : i + 1}
               </div>
               <span className={clsx('text-xs font-semibold', step === i + 1 ? 'text-gray-700' : 'text-gray-400')}>{label}</span>
-              {i < 2 && <ChevronRight size={14} className="text-gray-300" />}
+              {i < 3 && <ChevronRight size={14} className="text-gray-300" />}
             </div>
           ))}
         </div>
@@ -261,11 +284,11 @@ export default function ImportProductionsModal({ brandId, selectedYear = 2026, o
             <div className="flex gap-3 mt-5">
               <button onClick={() => setStep(1)} className="btn-secondary flex-1">Back</button>
               <button
-                onClick={preview}
+                onClick={goToCurrency}
                 disabled={!Object.values(mapping).includes('project_name')}
                 className="btn-cta flex-1 disabled:opacity-40"
               >
-                Preview {rows.length} Productions
+                Next
               </button>
             </div>
             {!Object.values(mapping).includes('project_name') && (
@@ -273,6 +296,44 @@ export default function ImportProductionsModal({ brandId, selectedYear = 2026, o
                 <AlertTriangle size={11} /> Map at least one column to "Project Name" to continue.
               </p>
             )}
+          </div>
+        )}
+
+        {/* Step 2.5 — Currency */}
+        {step === 2.5 && (
+          <div>
+            <div className="text-center py-6">
+              <p className="text-sm font-semibold text-gray-700 mb-4">
+                What currency are the budget values in?
+              </p>
+              <div className="flex justify-center gap-4">
+                <button
+                  onClick={() => { setImportCurrency('USD'); preview(); }}
+                  className={clsx(
+                    'flex flex-col items-center gap-2 px-6 py-4 rounded-xl border-2 transition-all hover:shadow-md',
+                    importCurrency === 'USD' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300'
+                  )}
+                >
+                  <span className="text-3xl">🇺🇸</span>
+                  <span className="text-sm font-bold">USD ($)</span>
+                  <span className="text-[10px] text-gray-400">Values are in US Dollars</span>
+                </button>
+                <button
+                  onClick={() => { setImportCurrency('ILS'); preview(); }}
+                  className={clsx(
+                    'flex flex-col items-center gap-2 px-6 py-4 rounded-xl border-2 transition-all hover:shadow-md',
+                    importCurrency === 'ILS' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300'
+                  )}
+                >
+                  <span className="text-3xl">🇮🇱</span>
+                  <span className="text-sm font-bold">ILS (₪)</span>
+                  <span className="text-[10px] text-gray-400">Values are in Israeli Shekels</span>
+                </button>
+              </div>
+            </div>
+            <div className="flex gap-3 mt-5">
+              <button onClick={() => setStep(2)} className="btn-secondary flex-1">Back</button>
+            </div>
           </div>
         )}
 

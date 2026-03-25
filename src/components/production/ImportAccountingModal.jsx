@@ -1,0 +1,320 @@
+import { useState, useRef } from 'react';
+import { X, Upload, FileSpreadsheet, Check, AlertTriangle } from 'lucide-react';
+import { createLineItem, generateId } from '../../lib/dataService';
+import { nowISOString } from '../../lib/timezone';
+import clsx from 'clsx';
+
+// Auto-detect currency from cell value prefix
+function detectCurrency(val) {
+  const str = String(val || '').trim();
+  if (str.startsWith('₪') || str.startsWith('NIS') || str.includes('₪')) return 'ILS';
+  if (str.startsWith('$') || str.startsWith('USD')) return 'USD';
+  return null;
+}
+
+function parseAmount(val) {
+  const str = String(val || '').replace(/[₪$,\s]/g, '');
+  return parseFloat(str) || 0;
+}
+
+function parseStatus(val) {
+  const str = String(val || '').toLowerCase().trim();
+  if (str.includes('paid') && !str.includes('not')) return 'Paid';
+  if (str.includes('not') || str.includes('לא')) return 'Not Paid';
+  if (str.includes('pending') || str.includes('ממתין')) return 'Pending';
+  if (str.includes('שולם') || str.includes('paid')) return 'Paid';
+  return 'Not Paid';
+}
+
+const COL_MAP_OPTIONS = [
+  { key: '', label: '— Skip —' },
+  { key: 'supplier', label: 'Supplier / Name' },
+  { key: 'item', label: 'Job / Role' },
+  { key: 'amount', label: 'Amount (Price)' },
+  { key: 'invoice_url', label: 'Invoice / Receipt Link' },
+  { key: 'payment_status', label: 'Payment Status' },
+  { key: 'payment_method', label: 'Payment Method / Bank' },
+];
+
+const AUTO_MAP_PRD = {
+  'name': 'supplier',
+  'supplier': 'supplier',
+  'full name': 'supplier',
+  'job': 'item',
+  'role': 'item',
+  'price': 'amount',
+  'amount': 'amount',
+  'price (ils, discluding vat)': 'amount',
+  'invoice': 'invoice_url',
+  'invoice/recipt': 'invoice_url',
+  'invoice/receipt': 'invoice_url',
+  'receipt': 'invoice_url',
+  'status': 'payment_status',
+  'payment status': 'payment_status',
+  'payment method': 'payment_method',
+  'bank': 'payment_method',
+  'routing': 'payment_method',
+};
+
+export default function ImportAccountingModal({ productionId, onClose, onImported }) {
+  const [step, setStep] = useState(1);
+  const [headers, setHeaders] = useState([]);
+  const [rows, setRows] = useState([]);
+  const [mapping, setMapping] = useState({});
+  const [parsedRows, setParsedRows] = useState([]);
+  const [selected, setSelected] = useState({});
+  const [importing, setImporting] = useState(false);
+  const fileRef = useRef();
+
+  async function handleFile(file) {
+    if (!file) return;
+    const XLSX = await import('xlsx');
+    const data = await file.arrayBuffer();
+    const wb = XLSX.read(data);
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const json = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+    if (json.length < 2) return;
+
+    // Find header row
+    let headerIdx = 0;
+    for (let i = 0; i < Math.min(json.length, 5); i++) {
+      if (json[i].filter(c => c !== '' && c != null).length >= 3) { headerIdx = i; break; }
+    }
+
+    const hdrs = json[headerIdx].map(h => String(h).trim());
+    const dataRows = json.slice(headerIdx + 1).filter(r => r.some(c => c !== '' && c != null));
+
+    const autoMapping = {};
+    hdrs.forEach(h => { autoMapping[h] = AUTO_MAP_PRD[h.toLowerCase().trim()] || ''; });
+
+    setHeaders(hdrs);
+    setRows(dataRows);
+    setMapping(autoMapping);
+    setStep(2);
+  }
+
+  function buildParsedRows() {
+    return rows.map((row, idx) => {
+      const obj = { _idx: idx, _include: true };
+      headers.forEach((h, hi) => {
+        const field = mapping[h];
+        if (!field) return;
+        const val = row[hi];
+        if (field === 'amount') {
+          obj.amount = parseAmount(val);
+          obj.currency = detectCurrency(val) || 'USD';
+        } else if (field === 'payment_status') {
+          obj.payment_status = parseStatus(val);
+        } else {
+          obj[field] = String(val || '').trim();
+        }
+      });
+      // Skip rows with no supplier and no amount
+      if (!obj.supplier && !obj.amount) obj._include = false;
+      return obj;
+    }).filter(r => r._include);
+  }
+
+  function goToPreview() {
+    const parsed = buildParsedRows();
+    setParsedRows(parsed);
+    const sel = {};
+    parsed.forEach((_, i) => { sel[i] = true; });
+    setSelected(sel);
+    setStep(3);
+  }
+
+  async function handleImport() {
+    setImporting(true);
+    const toImport = parsedRows.filter((_, i) => selected[i]);
+
+    for (const row of toImport) {
+      await Promise.resolve(createLineItem({
+        id: generateId('li'),
+        production_id: productionId,
+        item: row.item || '',
+        full_name: row.supplier || '',
+        type: guessType(row.item),
+        status: row.payment_status === 'Paid' ? 'Done' : 'Not Started',
+        planned_budget: row.amount || 0,
+        actual_spent: row.payment_status === 'Paid' ? (row.amount || 0) : 0,
+        payment_status: row.payment_status || 'Not Paid',
+        payment_method: row.payment_method || '',
+        invoice_url: row.invoice_url || '',
+        invoice_status: row.invoice_url ? 'Received' : '',
+        currency_code: row.currency || 'USD',
+        notes: '',
+        created_at: nowISOString(),
+      }));
+    }
+
+    setImporting(false);
+    onImported?.();
+    onClose();
+  }
+
+  function guessType(item) {
+    const s = (item || '').toLowerCase();
+    if (/director|editor|photographer|dop|grip|gaffer|stylist|makeup|sound|coordinator|assistant/i.test(s)) return 'Crew';
+    if (/equipment|camera|gear|rental|lighting/i.test(s)) return 'Equipment';
+    if (/catering|transport|taxi|parking|food/i.test(s)) return 'Catering & Transport';
+    if (/offline|online|mix|color|vfx|vo|voice/i.test(s)) return 'Post';
+    if (/office|unexpected|insurance/i.test(s)) return 'Office';
+    return 'Crew';
+  }
+
+  const selectedCount = Object.values(selected).filter(Boolean).length;
+  const paidCount = parsedRows.filter((r, i) => selected[i] && r.payment_status === 'Paid').length;
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-panel" style={{ maxWidth: 700 }} onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <h2 className="text-lg font-black" style={{ color: 'var(--brand-primary)' }}>
+              Import from PRD Sheet
+            </h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Import accounting data from your Production Budget Google Sheet
+            </p>
+          </div>
+          <button onClick={onClose}><X size={18} className="text-gray-400" /></button>
+        </div>
+
+        {/* Step 1: Upload */}
+        {step === 1 && (
+          <div>
+            <div
+              onDragOver={e => e.preventDefault()}
+              onDrop={e => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}
+              onClick={() => fileRef.current?.click()}
+              className="border-2 border-dashed border-gray-300 rounded-xl p-10 text-center cursor-pointer hover:border-gray-400 hover:bg-gray-50 transition-all"
+            >
+              <FileSpreadsheet size={36} className="mx-auto mb-3 text-gray-300" />
+              <p className="text-sm font-semibold text-gray-600 mb-1">
+                Drop your PRD Google Sheet export (.xlsx)
+              </p>
+              <p className="text-xs text-gray-400">
+                Export from Google Sheets: File → Download → .xlsx
+              </p>
+              <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden"
+                onChange={e => handleFile(e.target.files[0])} />
+            </div>
+          </div>
+        )}
+
+        {/* Step 2: Map columns */}
+        {step === 2 && (
+          <div>
+            <p className="text-xs text-gray-500 mb-3">
+              Map columns from your PRD sheet to accounting fields.
+            </p>
+            <div className="overflow-auto max-h-72 rounded-xl border border-gray-200">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-gray-50 border-b">
+                    <th className="px-3 py-2 text-left">Your column</th>
+                    <th className="px-3 py-2 text-left">Sample</th>
+                    <th className="px-3 py-2 text-left">Maps to</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {headers.map((h, hi) => (
+                    <tr key={h} className="border-b border-gray-100 hover:bg-gray-50">
+                      <td className="px-3 py-2 font-medium">{h}</td>
+                      <td className="px-3 py-2 text-gray-400 truncate max-w-[140px]">
+                        {String(rows[0]?.[hi] ?? '').slice(0, 30)}
+                      </td>
+                      <td className="px-3 py-2">
+                        <select value={mapping[h] || ''} onChange={e => setMapping(m => ({ ...m, [h]: e.target.value }))}
+                          className="brand-input py-1 text-xs">
+                          {COL_MAP_OPTIONS.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
+                        </select>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex gap-3 mt-5">
+              <button onClick={() => setStep(1)} className="btn-secondary flex-1">Back</button>
+              <button onClick={goToPreview} className="btn-cta flex-1">Preview</button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 3: Preview */}
+        {step === 3 && (
+          <div>
+            <p className="text-xs text-gray-500 mb-2">
+              {parsedRows.length} line items found.
+              <span className="text-green-600 font-semibold ml-1">{paidCount} paid</span> — will be imported with full accounting data.
+            </p>
+            <div className="overflow-auto max-h-64 rounded-xl border border-gray-200">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-gray-50 border-b sticky top-0">
+                    <th className="px-2 py-2 w-8"><input type="checkbox"
+                      checked={selectedCount === parsedRows.length}
+                      onChange={e => { const n = {}; parsedRows.forEach((_, i) => { n[i] = e.target.checked; }); setSelected(n); }}
+                      className="rounded" /></th>
+                    <th className="px-2 py-2 text-left">Supplier</th>
+                    <th className="px-2 py-2 text-left">Job</th>
+                    <th className="px-2 py-2 text-right">Amount</th>
+                    <th className="px-2 py-2 text-center">Invoice</th>
+                    <th className="px-2 py-2 text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {parsedRows.map((r, i) => (
+                    <tr key={i} className={clsx(
+                      'border-b border-gray-100',
+                      !selected[i] && 'opacity-40',
+                      r.payment_status === 'Paid' && selected[i] && 'bg-green-50',
+                    )}>
+                      <td className="px-2 py-2">
+                        <input type="checkbox" checked={!!selected[i]}
+                          onChange={e => setSelected(s => ({ ...s, [i]: e.target.checked }))} className="rounded" />
+                      </td>
+                      <td className="px-2 py-2 font-medium max-w-[120px] truncate">{r.supplier || '—'}</td>
+                      <td className="px-2 py-2 text-gray-500 max-w-[100px] truncate">{r.item || '—'}</td>
+                      <td className="px-2 py-2 text-right font-semibold">
+                        {r.currency === 'ILS' ? '₪' : '$'}{r.amount?.toLocaleString() || '0'}
+                      </td>
+                      <td className="px-2 py-2 text-center">
+                        {r.invoice_url ? <span className="text-green-500">✓</span> : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="px-2 py-2 text-center">
+                        <span className={clsx(
+                          'px-1.5 py-0.5 rounded text-[10px] font-bold',
+                          r.payment_status === 'Paid' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-600'
+                        )}>
+                          {r.payment_status || 'Not Paid'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {paidCount > 0 && (
+              <div className="mt-3 flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-xs text-green-700">
+                <Check size={12} />
+                {paidCount} items marked as Paid will import with invoice data into Accounting.
+              </div>
+            )}
+
+            <div className="flex gap-3 mt-5">
+              <button onClick={() => setStep(2)} className="btn-secondary flex-1">Back</button>
+              <button onClick={handleImport} disabled={importing || selectedCount === 0}
+                className="btn-cta flex-1 disabled:opacity-40">
+                {importing ? 'Importing…' : `Import ${selectedCount} Items`}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
