@@ -23,7 +23,7 @@ const INV_TYPE_LABELS = {
   Other:                'Other',
 };
 
-const INVOICE_TEMPLATE = (prodName, amount, itemId, brandName) =>
+const INVOICE_TEMPLATE_EN = (prodName, amount, itemId, brandName) =>
 `Dear Team,
 
 We hope this message finds you well.
@@ -40,6 +40,27 @@ Please send the invoice at your earliest convenience to ensure timely processing
 Thank you,
 ${brandName}
 Production Team`;
+
+const INVOICE_TEMPLATE_HE = (prodName, amount, itemId, brandName) =>
+`שלום רב,
+
+נבקש להפיק חשבונית עבור השירותים שניתנו בהפקה הבאה:
+
+הפקה: ${prodName}
+מספר הפניה: ${itemId}
+סכום: ₪${amount ? amount.toLocaleString() : 'לפי הסכם'}
+תנאי תשלום: שוטף + 30 מיום החשבונית
+
+נודה לשליחת החשבונית בהקדם לצורך עיבוד התשלום.
+
+תודה רבה,
+${brandName}
+צוות הפקה`;
+
+const INVOICE_TEMPLATE = (prodName, amount, itemId, brandName, locale = 'en') =>
+  locale === 'he'
+    ? INVOICE_TEMPLATE_HE(prodName, amount, itemId, brandName)
+    : INVOICE_TEMPLATE_EN(prodName, amount, itemId, brandName);
 
 /**
  * InvoiceModal
@@ -65,6 +86,7 @@ export default function InvoiceModal({ lineItemId, productionId, initialStep = '
   const [netDays, setNetDays] = useState(30);
   const [invoiceType, setInvoiceType] = useState('Israeli');
   const [messageText, setMessageText] = useState('');
+  const [invoiceLocale, setInvoiceLocale] = useState('en'); // 'en' | 'he'
   const [item, setItem] = useState(null);
   const [production, setProduction] = useState(null);
   const [dealerType, setDealerType] = useState(null);
@@ -96,7 +118,8 @@ export default function InvoiceModal({ lineItemId, productionId, initialStep = '
           productionId,
           found.actual_spent || found.planned_budget,
           lineItemId,
-          brandName
+          brandName,
+          'en'
         ));
       }
       setLoaded(true);
@@ -249,13 +272,38 @@ export default function InvoiceModal({ lineItemId, productionId, initialStep = '
                 </div>
               )}
 
+              {/* Language toggle */}
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs text-gray-500">Template language:</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setInvoiceLocale('en');
+                    setMessageText(INVOICE_TEMPLATE(productionId, item?.actual_spent || item?.planned_budget, lineItemId, brandName, 'en'));
+                  }}
+                  className={`px-2 py-1 rounded text-xs font-semibold border transition-colors ${invoiceLocale === 'en' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300'}`}
+                >
+                  🇺🇸 English
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setInvoiceLocale('he');
+                    setMessageText(INVOICE_TEMPLATE(productionId, item?.actual_spent || item?.planned_budget, lineItemId, brandName, 'he'));
+                  }}
+                  className={`px-2 py-1 rounded text-xs font-semibold border transition-colors ${invoiceLocale === 'he' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300'}`}
+                >
+                  🇮🇱 עברית
+                </button>
+              </div>
+
               {/* Editable message textarea */}
               <textarea
                 className="brand-input text-xs mb-4 resize-y"
                 rows={8}
                 value={messageText}
                 onChange={e => setMessageText(e.target.value)}
-                style={{ fontFamily: 'inherit', lineHeight: 1.5 }}
+                style={{ fontFamily: 'inherit', lineHeight: 1.5, direction: invoiceLocale === 'he' ? 'rtl' : 'ltr' }}
               />
 
               {sent && (
