@@ -104,4 +104,40 @@ router.post('/change-password', verifyJWT, async (req, res) => {
   }
 });
 
+// POST /api/auth/forgot-password — reset with master key (no auth required)
+router.post('/forgot-password', async (req, res) => {
+  const { email, master_key, new_password } = req.body || {};
+  if (!email || !master_key || !new_password) {
+    return res.status(400).json({ error: 'Email, master key, and new password required' });
+  }
+  if (new_password.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  }
+
+  // Validate master key from env
+  const serverKey = process.env.MASTER_KEY;
+  if (!serverKey || master_key !== serverKey) {
+    return res.status(403).json({ error: 'Incorrect master key. Please ask your admin.' });
+  }
+
+  try {
+    const { rows } = await db.query(
+      'SELECT id FROM users WHERE lower(email) = lower($1)',
+      [email]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'User not found' });
+
+    const hash = await bcrypt.hash(new_password, 10);
+    await db.query(
+      'UPDATE users SET password_hash = $1, must_change_password = false, updated_at = NOW() WHERE id = $2',
+      [hash, rows[0].id]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Forgot password error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;

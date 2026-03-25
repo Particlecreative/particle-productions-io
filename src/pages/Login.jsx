@@ -4,13 +4,19 @@ import { useAuth } from '../context/AuthContext';
 import { useBrand } from '../context/BrandContext';
 import BrandSwitcher from '../components/layout/BrandSwitcher';
 
-const MASTER_KEY = 'Particle2026@@';
+// Master key is now validated server-side via /api/auth/forgot-password
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Force change password flow (after login with must_change_password)
+  const [forceChange, setForceChange] = useState(false);
+  const [newPw, setNewPw] = useState('');
+  const [confirmPw, setConfirmPw] = useState('');
+  const [changingPw, setChangingPw] = useState(false);
 
   // Forgot password flow: null | 'masterKey' | 'setPassword'
   const [fpStep, setFpStep] = useState(null);
@@ -30,8 +36,31 @@ export default function Login() {
     setLoading(true);
     const result = await login(email, password);
     setLoading(false);
-    if (result.success) navigate('/');
-    else setError(result.error);
+    if (result.success) {
+      if (result.user?.must_change_password) {
+        setForceChange(true);
+      } else {
+        navigate('/');
+      }
+    } else {
+      setError(result.error);
+    }
+  }
+
+  async function handleForceChange(e) {
+    e.preventDefault();
+    if (newPw.length < 6) { setError('Password must be at least 6 characters.'); return; }
+    if (newPw !== confirmPw) { setError('Passwords do not match.'); return; }
+    setChangingPw(true);
+    setError('');
+    try {
+      await resetPassword(email, newPw);
+      setForceChange(false);
+      navigate('/');
+    } catch (err) {
+      setError(err.message || 'Failed to change password');
+    }
+    setChangingPw(false);
   }
 
   function handleForgotStart() {
@@ -46,22 +75,29 @@ export default function Login() {
 
   function handleMasterKeySubmit(e) {
     e.preventDefault();
-    if (fpMasterKey !== MASTER_KEY) {
-      setError('Incorrect master key. Please ask your admin.');
-      return;
-    }
+    // Master key validated when setting password (server-side)
     setError('');
     setFpStep('setPassword');
   }
 
-  function handleSetPassword(e) {
+  async function handleSetPassword(e) {
     e.preventDefault();
     if (!fpEmail.trim()) { setError('Please enter your email.'); return; }
-    if (fpNewPassword.length < 4) { setError('Password must be at least 4 characters.'); return; }
+    if (fpNewPassword.length < 6) { setError('Password must be at least 6 characters.'); return; }
     if (fpNewPassword !== fpConfirm) { setError('Passwords do not match.'); return; }
-    resetPassword(fpEmail.trim(), fpNewPassword);
-    setFpDone(true);
     setError('');
+    try {
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: fpEmail.trim(), master_key: fpMasterKey, new_password: fpNewPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || 'Failed'); return; }
+      setFpDone(true);
+    } catch (err) {
+      setError(err.message || 'Failed to reset password');
+    }
   }
 
   const isBlurr = brandId === 'blurr';
@@ -115,8 +151,63 @@ export default function Login() {
         {/* Card */}
         <div className="rounded-2xl p-8 shadow-xl" style={{ background: 'white' }}>
 
+          {/* ---- Force Change Password (after first login with temp password) ---- */}
+          {forceChange && (
+            <>
+              <div className="text-center mb-4">
+                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-amber-100 text-amber-600 text-xl mb-3">🔑</div>
+                <h2 className="text-lg font-bold text-gray-800">Choose Your Password</h2>
+                <p className="text-xs text-gray-400 mt-1">You're logged in with a temporary password. Please set your own.</p>
+              </div>
+              <form onSubmit={handleForceChange} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                    New Password
+                  </label>
+                  <input
+                    type="password"
+                    value={newPw}
+                    onChange={e => setNewPw(e.target.value)}
+                    className="brand-input"
+                    placeholder="At least 6 characters"
+                    required
+                    autoFocus
+                    minLength={6}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                    Confirm Password
+                  </label>
+                  <input
+                    type="password"
+                    value={confirmPw}
+                    onChange={e => setConfirmPw(e.target.value)}
+                    className="brand-input"
+                    placeholder="Type it again"
+                    required
+                    minLength={6}
+                  />
+                </div>
+                {error && (
+                  <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">
+                    {error}
+                  </div>
+                )}
+                <button
+                  type="submit"
+                  disabled={changingPw}
+                  className="btn-cta w-full py-3 text-sm rounded-xl"
+                  style={{ opacity: changingPw ? 0.7 : 1 }}
+                >
+                  {changingPw ? 'Saving…' : 'Set Password & Continue'}
+                </button>
+              </form>
+            </>
+          )}
+
           {/* ---- Normal Login ---- */}
-          {fpStep === null && (
+          {fpStep === null && !forceChange && (
             <>
               <h2 className="text-lg font-bold text-gray-800 mb-6">Sign in</h2>
               <form onSubmit={handleSubmit} className="space-y-4">
