@@ -116,8 +116,9 @@ export default function InvoiceModal({ lineItemId, productionId, initialStep = '
 
   function handleEmail() {
     const subject = encodeURIComponent(`Invoice Request — ${productionId} (Ref: ${lineItemId})`);
-    const mailtoLink = `mailto:${email}?subject=${subject}&body=${encodeURIComponent(messageText)}`;
-    window.open(mailtoLink, '_blank');
+    // Open Gmail compose directly instead of default mail client
+    const gmailUrl = `https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(email)}&su=${subject}&body=${encodeURIComponent(messageText)}`;
+    window.open(gmailUrl, '_blank');
     setSent(true);
   }
 

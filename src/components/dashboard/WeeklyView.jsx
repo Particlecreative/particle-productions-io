@@ -14,13 +14,16 @@ import clsx from 'clsx';
 
 // ─── date helpers ─────────────────────────────────────────────────────────────
 
-function getMondayOf(d) {
+// Israeli work week: Sunday = start of week
+function getSundayOf(d) {
   const date = new Date(d);
-  const day = date.getDay();
-  date.setDate(date.getDate() - (day === 0 ? 6 : day - 1));
+  const day = date.getDay(); // 0=Sun, 6=Sat
+  date.setDate(date.getDate() - day);
   date.setHours(0, 0, 0, 0);
   return date;
 }
+// Keep alias for backward compat
+function getMondayOf(d) { return getSundayOf(d); }
 
 function addDays(date, n) {
   const d = new Date(date);
@@ -32,10 +35,10 @@ function toDateStr(date) {
   return date.toISOString().slice(0, 10);
 }
 
-function fmtWeekLabel(monday) {
-  const sunday = addDays(monday, 6);
-  const lo = monday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  const hi = sunday.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+function fmtWeekLabel(sunday) {
+  const saturday = addDays(sunday, 6);
+  const lo = sunday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const hi = saturday.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   return `${lo} – ${hi}`;
 }
 

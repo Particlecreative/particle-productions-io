@@ -57,6 +57,7 @@ app.use('/api/admin',          require('./routes/admin'));
 
 // ── Public form endpoints (no auth required) ─────────
 app.use('/api/public',           require('./routes/publicForms'));
+app.use('/api/calendar',         require('./routes/calendar'));
 
 // ── Health check ─────────────────────────────────────
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));

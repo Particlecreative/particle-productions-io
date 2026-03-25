@@ -7,7 +7,14 @@ import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationsContext';
 import clsx from 'clsx';
 
-const HELLOSIGN_URL = 'https://app.hellosign.com/prep-and-send/44f0c1414f6625107cbbac60216e67837006df8d/recipients';
+const HELLOSIGN_URL = 'https://app.hellosign.com/prep-and-send/0046a5d88cefaf98f1aa8ad6c9b100569e016979/recipients';
+
+// Pre-defined signer roles for Particle contracts
+const SIGNER_ROLES = {
+  creative_producer: { role: 'Creative Producer', defaultName: '', defaultEmail: '' },
+  service_provider: { role: 'Service Provider', defaultName: '', defaultEmail: '' },
+  particle_hocp: { role: 'Particle HOCP', defaultName: 'Omer Barak', defaultEmail: 'omer@particleformen.com' },
+};
 
 const STATUS_STEPS = [
   { id: 'pending', label: 'Pending', icon: Clock },
@@ -222,10 +229,32 @@ export default function ContractModal({ production, lineItem, onClose }) {
           )}
         </div>
 
-        {/* HelloSign instruction (after send) */}
-        {(isSent || isSigned) && (
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-5 text-sm text-blue-700">
-            <strong>HelloSign:</strong> Particle CP and Particle fields are pre-filled. Fill in provider details in the form.
+        {/* HelloSign signer details — copyable for easy fill */}
+        {(isSent || isPending) && !isSigned && (
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-5 text-sm">
+            <div className="font-bold text-blue-800 mb-3">📋 Copy these into HelloSign:</div>
+            <div className="grid grid-cols-1 gap-2.5">
+              {[
+                { label: 'Creative Producer', name: production?.producer || 'Omer Barak', email: 'omer@particleformen.com' },
+                { label: 'Service Provider', name: providerName || '—', email: providerEmail || '—' },
+                { label: 'Particle HOCP', name: 'Omer Barak', email: 'omer@particleformen.com' },
+              ].map(s => (
+                <div key={s.label} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-blue-100">
+                  <div>
+                    <div className="text-[10px] font-bold text-blue-500 uppercase">{s.label}</div>
+                    <div className="text-sm font-semibold text-gray-800">{s.name}</div>
+                    <div className="text-xs text-gray-500">{s.email}</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { navigator.clipboard.writeText(`${s.name}\n${s.email}`); }}
+                    className="text-xs text-blue-500 hover:text-blue-700 px-2 py-1 rounded border border-blue-200 hover:bg-blue-50"
+                  >
+                    Copy
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
