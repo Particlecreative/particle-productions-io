@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend,
@@ -14,7 +14,14 @@ export default function ProductionFinancialTab({ productionId, production }) {
   const { fmt } = useCurrency();
   const { lists } = useLists();
 
-  const items = useMemo(() => getLineItems(productionId), [productionId]);
+  const [items, setItems] = useState([]);
+  useEffect(() => {
+    async function load() {
+      const li = await Promise.resolve(getLineItems(productionId));
+      setItems(Array.isArray(li) ? li : []);
+    }
+    load();
+  }, [productionId]);
 
   const totalPlanned = parseFloat(production?.planned_budget_2026) || 0;
 

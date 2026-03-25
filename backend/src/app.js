@@ -5,6 +5,9 @@ const rateLimit  = require('express-rate-limit');
 
 const app = express();
 
+// Trust nginx reverse proxy (required for rate-limit + X-Forwarded-For)
+app.set('trust proxy', 1);
+
 // ── Security & parsing ──────────────────────────────
 app.use(helmet({ crossOriginResourcePolicy: false }));
 
