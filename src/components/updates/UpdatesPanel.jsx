@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Send, AtSign, Trash2, Pencil, Check, Link2, Bold, Italic, List, Palette, ExternalLink } from 'lucide-react';
+import { X, Send, AtSign, Trash2, Pencil, Check, Link2, Bold, Italic, List, ListOrdered, Strikethrough, Code, Heading2, Quote, Minus, Highlighter, ExternalLink } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationsContext';
 import {
@@ -15,40 +15,98 @@ import { SAMPLE_USERS } from '../../lib/mockData';
 import { formatIST, nowISOString } from '../../lib/timezone';
 import clsx from 'clsx';
 
-// ─── Simple markdown-like rendering ─────────────────────────────────────────
+// ─── Rich text rendering (markdown-like) ────────────────────────────────────
 function renderBody(text) {
   if (!text) return null;
-  return text.split('\n').map((line, li) => {
-    const isBullet = line.match(/^[\-\*•]\s/);
-    const content = isBullet ? line.replace(/^[\-\*•]\s/, '') : line;
-    const parts = formatInline(content);
-    if (isBullet) return <li key={li} className="ml-4 list-disc">{parts}</li>;
-    return <div key={li}>{parts}</div>;
-  });
+  const lines = text.split('\n');
+  const elements = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // Horizontal rule
+    if (/^---+$/.test(line.trim())) {
+      elements.push(<hr key={i} className="my-2 border-t" style={{ borderColor: 'var(--brand-border)' }} />);
+      i++; continue;
+    }
+    // Heading ## text
+    if (line.match(/^##\s/)) {
+      elements.push(<div key={i} className="text-sm font-bold mt-2 mb-1" style={{ color: 'var(--brand-primary)' }}>{formatInline(line.replace(/^##\s/, ''))}</div>);
+      i++; continue;
+    }
+    // Blockquote > text
+    if (line.match(/^>\s/)) {
+      elements.push(
+        <div key={i} className="border-l-3 pl-3 my-1 text-gray-500 italic" style={{ borderLeftWidth: 3, borderLeftColor: 'var(--brand-accent)' }}>
+          {formatInline(line.replace(/^>\s/, ''))}
+        </div>
+      );
+      i++; continue;
+    }
+    // Numbered list 1. text
+    if (line.match(/^\d+\.\s/)) {
+      const num = line.match(/^(\d+)\.\s/)[1];
+      elements.push(
+        <div key={i} className="flex gap-2 ml-2">
+          <span className="text-gray-400 font-mono text-xs mt-0.5 w-4 text-right shrink-0">{num}.</span>
+          <span>{formatInline(line.replace(/^\d+\.\s/, ''))}</span>
+        </div>
+      );
+      i++; continue;
+    }
+    // Bullet list - text or * text
+    if (line.match(/^[\-\*•]\s/)) {
+      elements.push(<li key={i} className="ml-4 list-disc">{formatInline(line.replace(/^[\-\*•]\s/, ''))}</li>);
+      i++; continue;
+    }
+    // Code block ```
+    if (line.trim() === '```') {
+      const codeLines = [];
+      i++;
+      while (i < lines.length && lines[i].trim() !== '```') {
+        codeLines.push(lines[i]);
+        i++;
+      }
+      elements.push(
+        <pre key={`code-${i}`} className="bg-gray-100 dark:bg-gray-800 rounded-lg px-3 py-2 my-1 text-xs font-mono overflow-x-auto" style={{ borderColor: 'var(--brand-border)', border: '1px solid var(--brand-border)' }}>
+          {codeLines.join('\n')}
+        </pre>
+      );
+      i++; continue;
+    }
+    // Regular line
+    elements.push(<div key={i}>{line ? formatInline(line) : <br />}</div>);
+    i++;
+  }
+  return elements;
 }
 
 function formatInline(text) {
-  // Bold **text**, Italic *text*, @mentions, links [text](url)
+  if (!text) return '';
   const parts = [];
-  let remaining = text;
   let key = 0;
-  const regex = /(\*\*(.+?)\*\*|\*(.+?)\*|@([\w\s]+?)(?=\s|$|@)|\[(.+?)\]\((.+?)\))/g;
+  // Order matters: longer patterns first
+  const regex = /(~~(.+?)~~|\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`|==(.+?)==|@([\w\s]+?)(?=\s|$|@)|\[(.+?)\]\((.+?)\))/g;
   let lastIndex = 0;
   let match;
-  while ((match = regex.exec(remaining)) !== null) {
-    if (match.index > lastIndex) parts.push(<span key={key++}>{remaining.slice(lastIndex, match.index)}</span>);
-    if (match[2]) parts.push(<strong key={key++} className="font-bold">{match[2]}</strong>);
-    else if (match[3]) parts.push(<em key={key++} className="italic">{match[3]}</em>);
-    else if (match[4]) parts.push(<span key={key++} className="text-blue-500 font-medium bg-blue-50 rounded px-0.5">@{match[4]}</span>);
-    else if (match[5] && match[6]) parts.push(
-      <a key={key++} href={match[6]} target="_blank" rel="noopener noreferrer"
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) parts.push(<span key={key++}>{text.slice(lastIndex, match.index)}</span>);
+    if (match[2]) parts.push(<span key={key++} className="line-through text-gray-400">{match[2]}</span>); // ~~strikethrough~~
+    else if (match[3]) parts.push(<strong key={key++} className="font-bold">{match[3]}</strong>); // **bold**
+    else if (match[4]) parts.push(<em key={key++} className="italic">{match[4]}</em>); // *italic*
+    else if (match[5]) parts.push(<code key={key++} className="bg-gray-100 dark:bg-gray-700 text-pink-600 dark:text-pink-400 px-1 py-0.5 rounded text-xs font-mono">{match[5]}</code>); // `code`
+    else if (match[6]) parts.push(<mark key={key++} className="bg-yellow-200 dark:bg-yellow-800/40 px-0.5 rounded">{match[6]}</mark>); // ==highlight==
+    else if (match[7]) parts.push(<span key={key++} className="text-blue-500 font-medium bg-blue-50 dark:bg-blue-900/30 rounded px-0.5">@{match[7]}</span>); // @mention
+    else if (match[8] && match[9]) parts.push(
+      <a key={key++} href={match[9]} target="_blank" rel="noopener noreferrer"
         className="text-blue-600 hover:underline inline-flex items-center gap-0.5">
-        {match[5]} <ExternalLink size={10} />
+        {match[8]} <ExternalLink size={10} />
       </a>
-    );
+    ); // [link](url)
     lastIndex = match.index + match[0].length;
   }
-  if (lastIndex < remaining.length) parts.push(<span key={key++}>{remaining.slice(lastIndex)}</span>);
+  if (lastIndex < text.length) parts.push(<span key={key++}>{text.slice(lastIndex)}</span>);
   return parts.length ? parts : text;
 }
 
@@ -152,12 +210,33 @@ function FormatBar({ onInsert, textareaRef }) {
     onInsert(newText, start + before.length, start + before.length + selected.length);
   }
 
-  const btnClass = "p-1.5 rounded hover:bg-gray-100 text-gray-500 hover:text-gray-800 transition-colors";
+  function insertLine(prefix) {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const start = ta.selectionStart;
+    const text = ta.value;
+    const beforeCursor = text.slice(0, start);
+    const needsNewline = beforeCursor.length > 0 && !beforeCursor.endsWith('\n') ? '\n' : '';
+    const newText = beforeCursor + needsNewline + prefix + text.slice(start);
+    onInsert(newText, start + needsNewline.length + prefix.length, start + needsNewline.length + prefix.length);
+  }
+
+  const btnClass = "p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors";
+  const sep = <div className="w-px h-4 bg-gray-200 dark:bg-gray-600 mx-0.5" />;
+
   return (
-    <div className="flex items-center gap-0.5 px-1 py-1 border-b" style={{ borderColor: 'var(--brand-border)' }}>
-      <button type="button" onClick={() => wrap('**')} className={btnClass} title="Bold"><Bold size={13} /></button>
-      <button type="button" onClick={() => wrap('*')} className={btnClass} title="Italic"><Italic size={13} /></button>
-      <button type="button" onClick={() => wrap('\n- ', '')} className={btnClass} title="Bullet"><List size={13} /></button>
+    <div className="flex items-center gap-0 px-1 py-1 border-b flex-wrap" style={{ borderColor: 'var(--brand-border)' }}>
+      <button type="button" onClick={() => wrap('**')} className={btnClass} title="Bold (Ctrl+B)"><Bold size={13} /></button>
+      <button type="button" onClick={() => wrap('*')} className={btnClass} title="Italic (Ctrl+I)"><Italic size={13} /></button>
+      <button type="button" onClick={() => wrap('~~')} className={btnClass} title="Strikethrough"><Strikethrough size={13} /></button>
+      <button type="button" onClick={() => wrap('`')} className={btnClass} title="Inline Code"><Code size={13} /></button>
+      <button type="button" onClick={() => wrap('==')} className={btnClass} title="Highlight"><Highlighter size={13} /></button>
+      {sep}
+      <button type="button" onClick={() => insertLine('## ')} className={btnClass} title="Heading"><Heading2 size={13} /></button>
+      <button type="button" onClick={() => insertLine('- ')} className={btnClass} title="Bullet List"><List size={13} /></button>
+      <button type="button" onClick={() => insertLine('1. ')} className={btnClass} title="Numbered List"><ListOrdered size={13} /></button>
+      <button type="button" onClick={() => insertLine('> ')} className={btnClass} title="Quote"><Quote size={13} /></button>
+      <button type="button" onClick={() => insertLine('---')} className={btnClass} title="Divider"><Minus size={13} /></button>
     </div>
   );
 }
@@ -352,10 +431,25 @@ export default function UpdatesPanel({ productionId, onClose, inline = false }) 
                 onKeyDown={e => {
                   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(e); }
                   if (e.key === '@') setShowMentions(true);
+                  // Keyboard shortcuts for formatting
+                  if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
+                    e.preventDefault();
+                    const ta = e.target;
+                    const s = ta.selectionStart, end = ta.selectionEnd;
+                    const sel = body.slice(s, end) || 'text';
+                    setBody(body.slice(0, s) + '**' + sel + '**' + body.slice(end));
+                  }
+                  if ((e.metaKey || e.ctrlKey) && e.key === 'i') {
+                    e.preventDefault();
+                    const ta = e.target;
+                    const s = ta.selectionStart, end = ta.selectionEnd;
+                    const sel = body.slice(s, end) || 'text';
+                    setBody(body.slice(0, s) + '*' + sel + '*' + body.slice(end));
+                  }
                 }}
-                placeholder="Leave an update… **bold** *italic* - bullet @mention [link](url)"
-                rows={2}
-                className="brand-input text-sm resize-none"
+                placeholder="Type an update… Ctrl+B bold, Ctrl+I italic, Shift+Enter new line"
+                rows={3}
+                className="brand-input text-sm resize-y"
               />
 
               {/* Mention Dropdown */}
