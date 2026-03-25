@@ -68,13 +68,14 @@ export default function BudgetTable({ productionId, production, onRefresh }) {
   const { isEditor, user } = useAuth();
   const { fmt, currency, rate } = useCurrency();
 
-  // Per-row currency helpers
+  // Per-row currency helpers (parseFloat handles PostgreSQL NUMERIC→string)
   function fmtRow(amount, code) {
-    const n = amount || 0;
+    const n = parseFloat(amount) || 0;
     return code === 'ILS' ? `₪${n.toLocaleString()}` : `$${n.toLocaleString()}`;
   }
   function toDisplay(amount, code) {
-    const ils = code === 'ILS' ? amount : (amount || 0) * (rate || 3.7);
+    const num = parseFloat(amount) || 0;
+    const ils = code === 'ILS' ? num : num * (rate || 3.7);
     return currency === 'ILS' ? ils : ils / (rate || 3.7);
   }
   const { addNotification } = useNotifications();
@@ -192,7 +193,7 @@ export default function BudgetTable({ productionId, production, onRefresh }) {
     });
   }, [items, sortState]);
 
-  function addRow() {
+  async function addRow() {
     if (!isEditor) return;
     const item = {
       id: generateId('li'),
@@ -206,30 +207,30 @@ export default function BudgetTable({ productionId, production, onRefresh }) {
       timeline_end: '',
       actual_spent: 0,
     };
-    createLineItem(item);
+    await Promise.resolve(createLineItem(item));
     addNotification('edit', `${user?.name || 'Someone'} added a line item to ${production?.project_name || productionId}`, productionId);
-    refresh();
+    await refresh();
   }
 
-  function handleUpdate(id, field, value) {
+  async function handleUpdate(id, field, value) {
     if (!isEditor) return;
     const item = items.find(i => i.id === id);
     const oldVal = item ? item[field] : undefined;
-    updateLineItem(id, { [field]: value });
+    await Promise.resolve(updateLineItem(id, { [field]: value }));
     if (String(oldVal ?? '') !== String(value ?? '')) {
       addNotification('edit', `${user?.name || 'Someone'} updated ${field} in ${production?.project_name || productionId}${item ? ` (${item.item || item.full_name || id})` : ''}`, productionId);
     }
-    refresh();
+    await refresh();
     setEditingCell(null);
   }
 
-  function handleDelete(id) {
+  async function handleDelete(id) {
     if (!isEditor) return;
     if (!confirm('Delete this line item?')) return;
     const item = items.find(i => i.id === id);
-    deleteLineItem(id);
+    await Promise.resolve(deleteLineItem(id));
     addNotification('edit', `${user?.name || 'Someone'} deleted line item${item ? ` "${item.item || item.full_name}"` : ''} from ${production?.project_name || productionId}`, productionId);
-    refresh();
+    await refresh();
   }
 
   /**
@@ -237,11 +238,11 @@ export default function BudgetTable({ productionId, production, onRefresh }) {
    *  step = 'request' → mark Pending + open modal on send tab
    *  step = 'receive' → open modal on receive tab directly
    */
-  function handleInvoiceAction(itemId, step) {
+  async function handleInvoiceAction(itemId, step) {
     if (step === 'request') {
       // Immediately mark as Pending so the UI updates
-      updateLineItem(itemId, { invoice_status: 'Pending' });
-      refresh();
+      await Promise.resolve(updateLineItem(itemId, { invoice_status: 'Pending' }));
+      await refresh();
       setInvoiceFor({ id: itemId, step: 'send' });
     } else {
       setInvoiceFor({ id: itemId, step: 'receive' });
@@ -615,7 +616,7 @@ export default function BudgetTable({ productionId, production, onRefresh }) {
 
 function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEditingCell, onUpdate, onDelete, onInvoice, onContract, lineItemTypes, lineItemStatuses, hiddenCols = [], customCols = [], onOpenCastModal, onPhotoFullscreen, ccChildren = [], isExpanded, onToggleExpand }) {
   const vis = key => !hiddenCols.includes(key);
-  const diff = (item.planned_budget || 0) - (item.actual_spent || 0);
+  const diff = (parseFloat(item.planned_budget) || 0) - (parseFloat(item.actual_spent) || 0);
   const isEditing = (field) => editingCell?.itemId === item.id && editingCell?.field === field;
   const contractKey = production ? `${production.id}_li_${item.id}` : null;
   const contract = contractKey ? getContract(contractKey) : null;

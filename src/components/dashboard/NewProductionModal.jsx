@@ -101,7 +101,7 @@ export default function NewProductionModal({ brandId, onClose, onCreate, existin
           production_id: prod.id,
           item: t.item,
           type: t.type,
-          planned_budget: t.planned_budget || 0,
+          planned_budget: parseFloat(t.planned_budget) || 0,
           currency_code: t.currency_code || 'ILS',
           actual_spent: 0,
           payment_status: 'Not Paid',

@@ -102,8 +102,8 @@ export default function Invoices() {
   // Summary stats
   const pendingItems  = useMemo(() => allItems.filter(i => !i.invoice_status || i.invoice_status === 'Pending'), [allItems]);
   const receivedItems = useMemo(() => allItems.filter(i => i.invoice_status === 'Received'), [allItems]);
-  const pendingTotal  = useMemo(() => pendingItems.reduce((s, i) => s + (i.actual_spent || 0), 0), [pendingItems]);
-  const receivedTotal = useMemo(() => receivedItems.reduce((s, i) => s + (i.actual_spent || 0), 0), [receivedItems]);
+  const pendingTotal  = useMemo(() => pendingItems.reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0), [pendingItems]);
+  const receivedTotal = useMemo(() => receivedItems.reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0), [receivedItems]);
 
   // Filtered items
   const filteredItems = useMemo(() => {
@@ -357,7 +357,7 @@ export default function Invoices() {
 
 function InvoiceProductionGroup({ data, fmt, isEditor, receipts = [], onStatusChange, onInvoiceUrlUpdate, onAction }) {
   const [expanded, setExpanded] = useState(true);
-  const total = data.items.reduce((s, i) => s + (i.actual_spent || 0), 0);
+  const total = data.items.reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0);
   const invoicedCount = data.items.filter(i => i.invoice_url || i.invoice_status).length;
 
   return (

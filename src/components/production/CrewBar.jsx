@@ -75,18 +75,18 @@ export default function CrewBar({ production, onRefresh }) {
     setAdding(false);
   }
 
-  function saveEdit() {
+  async function saveEdit() {
     if (!editingId) return;
     if (editingId === 'producer') {
-      updateProduction(production.id, { producer: editName.trim() }, user?.id, user?.name);
+      await Promise.resolve(updateProduction(production.id, { producer: editName.trim() }, user?.id, user?.name));
       onRefresh?.();
     } else {
-      updateLineItem(editingId, { item: editRole.trim(), full_name: editName.trim() });
+      await Promise.resolve(updateLineItem(editingId, { item: editRole.trim(), full_name: editName.trim() }));
       const role = editRole.trim();
       if (role && !lists.crewRoles.some(r => r.toLowerCase() === role.toLowerCase())) {
         updateList('crewRoles', [...lists.crewRoles, role]);
       }
-      loadCrew();
+      await loadCrew();
       onRefresh?.();
     }
     setEditingId(null);
@@ -95,16 +95,16 @@ export default function CrewBar({ production, onRefresh }) {
   function cancelEdit() { setEditingId(null); }
 
   /* ── delete ───────────────────────────────────────── */
-  function handleDelete(id) {
-    deleteLineItem(id);
-    loadCrew();
+  async function handleDelete(id) {
+    await Promise.resolve(deleteLineItem(id));
+    await loadCrew();
     onRefresh?.();
   }
 
   /* ── add new ──────────────────────────────────────── */
-  function handleAdd() {
+  async function handleAdd() {
     if (!newRole.trim()) return;
-    createLineItem({
+    await Promise.resolve(createLineItem({
       id: generateId('li'),
       production_id: production.id,
       item: newRole.trim(),
@@ -119,7 +119,7 @@ export default function CrewBar({ production, onRefresh }) {
       invoice_status: '',
       payment_status: 'Not Paid',
       created_at: new Date().toISOString(),
-    });
+    }));
     const role = newRole.trim();
     if (role && !lists.crewRoles.some(r => r.toLowerCase() === role.toLowerCase())) {
       updateList('crewRoles', [...lists.crewRoles, role]);
@@ -127,7 +127,7 @@ export default function CrewBar({ production, onRefresh }) {
     setNewRole('');
     setNewName('');
     setAdding(false);
-    loadCrew();
+    await loadCrew();
     onRefresh?.();
   }
 

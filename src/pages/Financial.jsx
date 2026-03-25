@@ -49,8 +49,8 @@ export default function Financial() {
     setPendingBudget(null);
   }
 
-  const totalPlanned = useMemo(() => productions.reduce((s, p) => s + (p.planned_budget_2026 || 0), 0), [productions]);
-  const totalActual = useMemo(() => productions.reduce((s, p) => s + (p.actual_spent || 0), 0), [productions]);
+  const totalPlanned = useMemo(() => productions.reduce((s, p) => s + (parseFloat(p.planned_budget_2026) || 0), 0), [productions]);
+  const totalActual = useMemo(() => productions.reduce((s, p) => s + (parseFloat(p.actual_spent) || 0), 0), [productions]);
   const pctSpent = yearlyBudget > 0 ? Math.round((totalActual / yearlyBudget) * 100) : 0;
 
   // Category breakdown (from line item types → mapped to expense categories)
@@ -61,8 +61,8 @@ export default function Financial() {
     lineItems.forEach(li => {
       const cat = mapTypeToCategory(li.type);
       if (map[cat]) {
-        map[cat].planned += li.planned_budget || 0;
-        map[cat].actual += li.actual_spent || 0;
+        map[cat].planned += parseFloat(li.planned_budget) || 0;
+        map[cat].actual += parseFloat(li.actual_spent) || 0;
       }
     });
 
@@ -100,7 +100,7 @@ export default function Financial() {
         month,
         label: month === 'Unknown' ? 'Unknown' : new Date(month + '-01').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }),
         prods,
-        total: prods.reduce((s, p) => s + (p.planned_budget_2026 || 0), 0),
+        total: prods.reduce((s, p) => s + (parseFloat(p.planned_budget_2026) || 0), 0),
       }));
   }, [productions]);
 
@@ -295,7 +295,7 @@ export default function Financial() {
                   </thead>
                   <tbody>
                     {completedProds.map(p => {
-                      const diff = (p.planned_budget_2026 || 0) - (p.actual_spent || 0);
+                      const diff = (parseFloat(p.planned_budget_2026) || 0) - (parseFloat(p.actual_spent) || 0);
                       return (
                         <tr key={p.id}>
                           <td className="font-mono text-xs font-semibold" style={{ color: 'var(--brand-secondary)' }}>{p.id}</td>
@@ -327,8 +327,8 @@ export default function Financial() {
 function totalByStage(productions, stage) {
   const prods = productions.filter(p => p.stage === stage);
   return {
-    planned: prods.reduce((s, p) => s + (p.planned_budget_2026 || 0), 0),
-    actual: prods.reduce((s, p) => s + (p.actual_spent || 0), 0),
+    planned: prods.reduce((s, p) => s + (parseFloat(p.planned_budget_2026) || 0), 0),
+    actual: prods.reduce((s, p) => s + (parseFloat(p.actual_spent) || 0), 0),
   };
 }
 
@@ -384,17 +384,17 @@ function KPICard({ label, value, editable, onEdit, positive }) {
 // AllItemsView moved to /accounting page
 function _DEAD_AllItemsView({ items, productions, fmt, stageFilter, setStageFilter, statusFilter, setStatusFilter }) {
   const [ledgerTab, setLedgerTab] = useState('summary');
-  const totalUSD = items.reduce((s, i) => s + (i.actual_spent || 0), 0);
+  const totalUSD = items.reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0);
 
   // Summary stats
   const paid = items.filter(i => i.payment_status === 'Paid');
   const notPaid = items.filter(i => i.payment_status === 'Not Paid' || !i.payment_status);
   const pending = items.filter(i => i.payment_status === 'Pending');
-  const mismatches = items.filter(i => i.invoice && Math.abs((i.invoice.amount || 0) - (i.actual_spent || 0)) > 0.01);
+  const mismatches = items.filter(i => i.invoice && Math.abs((parseFloat(i.invoice.amount) || 0) - (parseFloat(i.actual_spent) || 0)) > 0.01);
 
-  const paidTotal = paid.reduce((s, i) => s + (i.actual_spent || 0), 0);
-  const notPaidTotal = notPaid.reduce((s, i) => s + (i.actual_spent || 0), 0);
-  const pendingTotal = pending.reduce((s, i) => s + (i.actual_spent || 0), 0);
+  const paidTotal = paid.reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0);
+  const notPaidTotal = notPaid.reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0);
+  const pendingTotal = pending.reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0);
 
   // By payment method
   const byMethod = {};
@@ -402,7 +402,7 @@ function _DEAD_AllItemsView({ items, productions, fmt, stageFilter, setStageFilt
     const m = i.payment_method || 'Unspecified';
     if (!byMethod[m]) byMethod[m] = { count: 0, total: 0 };
     byMethod[m].count++;
-    byMethod[m].total += i.actual_spent || 0;
+    byMethod[m].total += parseFloat(i.actual_spent) || 0;
   });
 
   // By production
@@ -416,7 +416,7 @@ function _DEAD_AllItemsView({ items, productions, fmt, stageFilter, setStageFilt
       };
     }
     byProduction[i.production_id].items.push(i);
-    byProduction[i.production_id].total += i.actual_spent || 0;
+    byProduction[i.production_id].total += parseFloat(i.actual_spent) || 0;
   });
 
   // Filters bar (shared across sub-tabs)
@@ -579,7 +579,7 @@ function _DEAD_AllItemsView({ items, productions, fmt, stageFilter, setStageFilt
                 {items.length === 0 ? (
                   <tr><td colSpan={10} className="text-center py-10 text-gray-400 text-sm">No items found</td></tr>
                 ) : items.map(item => {
-                  const mismatch = item.invoice && Math.abs((item.invoice.amount || 0) - (item.actual_spent || 0)) > 0.01;
+                  const mismatch = item.invoice && Math.abs((parseFloat(item.invoice.amount) || 0) - (parseFloat(item.actual_spent) || 0)) > 0.01;
                   return (
                     <tr key={item.id}>
                       <td className="font-mono text-xs" style={{ color: 'var(--brand-secondary)' }}>
@@ -621,8 +621,8 @@ function _DEAD_AllItemsView({ items, productions, fmt, stageFilter, setStageFilt
 
 function ProductionLedgerGroup({ prodId, data, fmt }) {
   const [expanded, setExpanded] = useState(true);
-  const paidTotal = data.items.filter(i => i.payment_status === 'Paid').reduce((s, i) => s + (i.actual_spent || 0), 0);
-  const notPaidTotal = data.items.filter(i => i.payment_status !== 'Paid').reduce((s, i) => s + (i.actual_spent || 0), 0);
+  const paidTotal = data.items.filter(i => i.payment_status === 'Paid').reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0);
+  const notPaidTotal = data.items.filter(i => i.payment_status !== 'Paid').reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0);
 
   return (
     <div className="brand-card">

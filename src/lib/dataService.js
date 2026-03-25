@@ -955,8 +955,8 @@ export function generateId(prefix = 'id') {
 export function syncProductionTotals(productionId) {
   if (!IS_DEV) return; // server-side in prod
   const lineItems = getLineItems(productionId);
-  const estimatedBudget = (lineItems || []).reduce((s, li) => s + (li.planned_budget || 0), 0);
-  const actualSpent     = (lineItems || []).reduce((s, li) => s + (li.actual_spent  || 0), 0);
+  const estimatedBudget = (lineItems || []).reduce((s, li) => s + (parseFloat(li.planned_budget) || 0), 0);
+  const actualSpent     = (lineItems || []).reduce((s, li) => s + (parseFloat(li.actual_spent)  || 0), 0);
   const all = read('cp_productions', PARTICLE_PRODUCTIONS);
   const idx = all.findIndex(p => p.id === productionId);
   if (idx !== -1) {

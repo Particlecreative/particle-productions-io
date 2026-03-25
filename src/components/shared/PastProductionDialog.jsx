@@ -44,12 +44,13 @@ export default function PastProductionDialog({ production, onClose }) {
     setLoading(true);
     let totalItems = 0;
     for (const prod of unCheckedProds) {
-      updateProduction(prod.id, { stage: 'Completed', accounting_status: 'Completed' }, user?.id, user?.name);
-      const items = getLineItems(prod.id) || [];
+      await Promise.resolve(updateProduction(prod.id, { stage: 'Completed', accounting_status: 'Completed' }, user?.id, user?.name));
+      const rawItems = await Promise.resolve(getLineItems(prod.id));
+      const items = Array.isArray(rawItems) ? rawItems : [];
       const unpaid = items.filter(li => li.payment_status !== 'Paid');
-      unpaid.forEach(li => {
-        updateLineItem(li.id, { payment_status: 'Paid', invoice_status: 'Received' });
-      });
+      for (const li of unpaid) {
+        await Promise.resolve(updateLineItem(li.id, { payment_status: 'Paid', invoice_status: 'Received' }));
+      }
       totalItems += unpaid.length;
       localStorage.setItem(`cp_past_checked_${prod.id}`, '1');
     }

@@ -134,7 +134,7 @@ export default function Accounting() {
         line_item_id: item.id,
         production_id: item.production_id,
         supplier_name: item.full_name || item.item || '',
-        amount: item.actual_spent || item.planned_budget || 0,
+        amount: parseFloat(item.actual_spent) || parseFloat(item.planned_budget) || 0,
         paid_at: paidAt,
         receipt_url: null,
         reminder_sent: false,
@@ -174,9 +174,9 @@ export default function Accounting() {
   const paid = useMemo(() => allItems.filter(i => i.payment_status === 'Paid'), [allItems]);
   const notPaid = useMemo(() => allItems.filter(i => !i.payment_status || i.payment_status === 'Not Paid'), [allItems]);
   const pending = useMemo(() => allItems.filter(i => i.payment_status === 'Pending'), [allItems]);
-  const paidTotal = useMemo(() => paid.reduce((s, i) => s + (i.actual_spent || 0), 0), [paid]);
-  const notPaidTotal = useMemo(() => notPaid.reduce((s, i) => s + (i.actual_spent || 0), 0), [notPaid]);
-  const pendingTotal = useMemo(() => pending.reduce((s, i) => s + (i.actual_spent || 0), 0), [pending]);
+  const paidTotal = useMemo(() => paid.reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0), [paid]);
+  const notPaidTotal = useMemo(() => notPaid.reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0), [notPaid]);
+  const pendingTotal = useMemo(() => pending.reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0), [pending]);
 
   // Filtered items
   const filteredItems = useMemo(() => {
@@ -490,8 +490,8 @@ export default function Accounting() {
 
 function AccountingProductionGroup({ prodId, data, fmt, isEditor, onUpdate, onPaymentStatusChange, paymentBlockedId, receipts = [], onReceiptUpdate }) {
   const [expanded, setExpanded] = useState(true);
-  const total = data.items.reduce((s, i) => s + (i.actual_spent || 0), 0);
-  const paidTotal = data.items.filter(i => i.payment_status === 'Paid').reduce((s, i) => s + (i.actual_spent || 0), 0);
+  const total = data.items.reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0);
+  const paidTotal = data.items.filter(i => i.payment_status === 'Paid').reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0);
   const notPaidTotal = total - paidTotal;
 
   return (

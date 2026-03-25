@@ -341,8 +341,8 @@ export default function Dashboard() {
     setDragOverColKey(null);
   }
 
-  const totalBudget = productions.reduce((s, p) => s + (p.planned_budget_2026 || 0), 0);
-  const totalSpent = productions.reduce((s, p) => s + (p.actual_spent || 0), 0);
+  const totalBudget = productions.reduce((s, p) => s + (parseFloat(p.planned_budget_2026) || 0), 0);
+  const totalSpent = productions.reduce((s, p) => s + (parseFloat(p.actual_spent) || 0), 0);
   const canSaveForAll = isAdmin || isEditor;
 
   return (

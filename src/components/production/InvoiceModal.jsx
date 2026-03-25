@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, MessageCircle, Mail, Send, Printer } from 'lucide-react';
 import { getLineItems, getProduction, getSuppliers, createInvoice, updateLineItem, generateId, createReceipt } from '../../lib/dataService';
@@ -63,35 +63,49 @@ export default function InvoiceModal({ lineItemId, productionId, initialStep = '
   const [sent, setSent] = useState(false);
   const [showPrint, setShowPrint] = useState(false);
   const [netDays, setNetDays] = useState(30);
-  const [invoiceType, setInvoiceType] = useState(() => {
-    const initItems = getLineItems(productionId);
-    const initItem = initItems.find(i => i.id === lineItemId);
-    const dt = initItem?.dealer_type || null;
-    if (dt === 'osek_patur') return 'receipt';
-    if (dt === 'osek_murshe' || dt === 'ltd') return 'tax_invoice_receipt';
-    return 'Israeli';
-  });
+  const [invoiceType, setInvoiceType] = useState('Israeli');
+  const [messageText, setMessageText] = useState('');
+  const [item, setItem] = useState(null);
+  const [production, setProduction] = useState(null);
+  const [dealerType, setDealerType] = useState(null);
+  const [loaded, setLoaded] = useState(false);
 
-  const [messageText, setMessageText] = useState(() => {
-    const initItems = getLineItems(productionId);
-    const initItem = initItems.find(i => i.id === lineItemId);
-    return INVOICE_TEMPLATE(
-      productionId,
-      initItem?.actual_spent || initItem?.planned_budget,
-      lineItemId,
-      brandName
-    );
-  });
+  useEffect(() => {
+    async function load() {
+      const [items, prod, allSuppliers] = await Promise.all([
+        Promise.resolve(getLineItems(productionId)),
+        Promise.resolve(getProduction(productionId)),
+        Promise.resolve(getSuppliers()),
+      ]);
+      const safeItems = Array.isArray(items) ? items : [];
+      const found = safeItems.find(i => i.id === lineItemId) || null;
+      setItem(found);
+      setProduction(prod || null);
 
-  const items = getLineItems(productionId);
-  const item = items.find(i => i.id === lineItemId);
-  const production = getProduction(productionId);
+      if (found) {
+        const supplier = (Array.isArray(allSuppliers) ? allSuppliers : []).find(s => s.full_name && s.full_name === found.full_name);
+        const dt = supplier?.dealer_type || found.dealer_type || null;
+        setDealerType(dt);
+
+        // Set invoice type based on dealer type
+        if (dt === 'osek_patur') setInvoiceType('receipt');
+        else if (dt === 'osek_murshe' || dt === 'ltd') setInvoiceType('tax_invoice_receipt');
+        else setInvoiceType('Israeli');
+
+        setMessageText(INVOICE_TEMPLATE(
+          productionId,
+          found.actual_spent || found.planned_budget,
+          lineItemId,
+          brandName
+        ));
+      }
+      setLoaded(true);
+    }
+    load();
+  }, [lineItemId, productionId, brandName]);
+
+  if (!loaded) return null;
   if (!item) return null;
-
-  // Look up supplier dealer_type
-  const allSuppliers = getSuppliers();
-  const supplier = allSuppliers.find(s => s.full_name && s.full_name === item.full_name);
-  const dealerType = supplier?.dealer_type || item.dealer_type || null;
 
   function handleWhatsApp() {
     if (!phone) { alert('Enter phone number first'); return; }
@@ -107,7 +121,7 @@ export default function InvoiceModal({ lineItemId, productionId, initialStep = '
     setSent(true);
   }
 
-  function handleReceived() {
+  async function handleReceived() {
     const dueDate = new Date(); dueDate.setDate(dueDate.getDate() + netDays);
     const paymentDue = dueDate.toISOString();
     const resolvedType = dealerType === 'osek_patur' ? 'receipt' : invoiceType;
@@ -125,15 +139,15 @@ export default function InvoiceModal({ lineItemId, productionId, initialStep = '
       status: 'received',
       mismatch: false,
     };
-    createInvoice(invoice);
-    updateLineItem(lineItemId, {
+    await Promise.resolve(createInvoice(invoice));
+    await Promise.resolve(updateLineItem(lineItemId, {
       invoice_status: 'Received',
       invoice_url: invoiceUrl,
       payment_due: paymentDue,
       net_days: netDays,
       invoice_type: resolvedType,
       dealer_type: dealerType,
-    });
+    }));
     addNotification('invoice_received', `Invoice received for ${item.item || 'line item'}`, productionId);
     onClose();
   }
@@ -293,7 +307,7 @@ export default function InvoiceModal({ lineItemId, productionId, initialStep = '
               </div>
 
               <div className="bg-gray-50 rounded-xl p-3 mt-3 text-xs text-gray-500">
-                <div><strong>Amount on record:</strong> ${(item.actual_spent || item.planned_budget || 0).toLocaleString()}</div>
+                <div><strong>Amount on record:</strong> ${(parseFloat(item.actual_spent) || parseFloat(item.planned_budget) || 0).toLocaleString()}</div>
               </div>
 
               {/* Net+ days + Invoice type */}
@@ -386,7 +400,7 @@ function PrintInvoiceModal({ item, production, productionId, brandName, onClose 
   const dateIssued = today.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
   const dateDue = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000)
     .toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-  const amount = (item.actual_spent || item.planned_budget || 0).toLocaleString();
+  const amount = (parseFloat(item.actual_spent) || parseFloat(item.planned_budget) || 0).toLocaleString();
 
   return (
     <div className="print-invoice-root" style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

@@ -64,18 +64,18 @@ export default function LedgerTab({ productionId, production }) {
     setInvoices(Array.isArray(allInvoices) ? allInvoices : []);
   }
 
-  function handleUpdate(id, field, value) {
+  async function handleUpdate(id, field, value) {
     // B2: skip notification if value hasn't changed
     const item = items.find(i => i.id === id);
     const oldVal = item ? item[field] : undefined;
-    updateLineItem(id, { [field]: value });
+    await Promise.resolve(updateLineItem(id, { [field]: value }));
     if (String(oldVal ?? '') !== String(value ?? '')) {
       addNotification('edit', `${user?.name || 'Someone'} updated ${field} in ledger for ${production?.project_name || productionId}${item ? ` (${item.item || item.full_name || id})` : ''}`, productionId);
     }
-    refresh();
+    await refresh();
   }
 
-  function handlePaymentStatusChange(itemId, newStatus) {
+  async function handlePaymentStatusChange(itemId, newStatus) {
     if (newStatus === 'Paid') {
       // Invoice guard: must have received invoice with a link
       const item = items.find(i => i.id === itemId);
@@ -93,13 +93,13 @@ export default function LedgerTab({ productionId, production }) {
       setPendingPayment({ itemId });
     } else {
       const item = items.find(i => i.id === itemId);
-      updateLineItem(itemId, { payment_status: newStatus, payment_note: null });
+      await Promise.resolve(updateLineItem(itemId, { payment_status: newStatus, payment_note: null }));
       addNotification('edit', `${user?.name || 'Someone'} set payment status to "${newStatus}" for ${item?.item || item?.full_name || itemId} in ${production?.project_name || productionId}`, productionId);
-      refresh();
+      await refresh();
     }
   }
 
-  function confirmPayment() {
+  async function confirmPayment() {
     if (!pendingPayment) return;
     const note = `Paid by ${payerName} on ${payDate} at ${payTime}`;
     const item = items.find(i => i.id === pendingPayment.itemId);
@@ -109,21 +109,21 @@ export default function LedgerTab({ productionId, production }) {
     if (item?.invoice_type === 'cheshbon_iska') {
       updates.receipt_required = true;
       updates.paid_at = paidAt;
-      createReceipt({
+      await Promise.resolve(createReceipt({
         id: generateId('rcpt'),
         line_item_id: item.id,
         production_id: productionId,
         supplier_name: item.full_name || item.item || '',
-        amount: item.actual_spent || item.planned_budget || 0,
+        amount: parseFloat(item.actual_spent) || parseFloat(item.planned_budget) || 0,
         paid_at: paidAt,
         receipt_url: null,
         reminder_sent: false,
-      });
+      }));
     }
-    updateLineItem(pendingPayment.itemId, updates);
+    await Promise.resolve(updateLineItem(pendingPayment.itemId, updates));
     addNotification('edit', `${user?.name || 'Someone'} marked "${item?.item || item?.full_name || pendingPayment.itemId}" as Paid (by ${payerName}) in ${production?.project_name || productionId}`, productionId);
     setPendingPayment(null);
-    refresh();
+    await refresh();
   }
 
   function addPayer() {
@@ -142,7 +142,7 @@ export default function LedgerTab({ productionId, production }) {
     if (payerName === name) setPayerName(updated[0] || '');
   }
 
-  const totalUSD = items.reduce((s, i) => s + (i.actual_spent || 0), 0);
+  const totalUSD = items.reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0);
   const invoice = (itemId) => invoices.find(inv => inv.line_item_id === itemId);
 
   return (
@@ -174,7 +174,7 @@ export default function LedgerTab({ productionId, production }) {
                 </tr>
               ) : [...items].sort((a, b) => (a.payment_status === 'Paid' ? 1 : 0) - (b.payment_status === 'Paid' ? 1 : 0)).map(item => {
                 const inv = invoice(item.id);
-                const mismatch = inv && Math.abs((inv.amount || 0) - (item.actual_spent || 0)) > 0.01;
+                const mismatch = inv && Math.abs((parseFloat(inv.amount) || 0) - (parseFloat(item.actual_spent) || 0)) > 0.01;
                 return (
                   <LedgerRow
                     key={item.id}
@@ -367,7 +367,7 @@ function LedgerRow({ item, invoice, mismatch, fmt, isEditor, onUpdate, onPayment
               className="badge invoice-mismatch text-xs cursor-help"
               title={`Invoice: ${fmt(invoice.amount)} vs recorded: ${fmt(item.actual_spent)}`}
             >
-              ⚠ {fmt(Math.abs((invoice?.amount || 0) - (item.actual_spent || 0)))} diff
+              ⚠ {fmt(Math.abs((parseFloat(invoice?.amount) || 0) - (parseFloat(item.actual_spent) || 0)))} diff
             </span>
           )}
 

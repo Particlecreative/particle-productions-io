@@ -77,39 +77,39 @@ export default function CastTab({ productionId, production }) {
   function openEdit(m) { setEditing({ ...m }); }
   function closeModal(){ setEditing(null); }
 
-  function handleSave(data) {
+  async function handleSave(data) {
     if (data.id) {
-      updateCastMember(data.id, data);
+      await Promise.resolve(updateCastMember(data.id, data));
     } else {
       const newId = generateId('cm');
-      createCastMember({
+      await Promise.resolve(createCastMember({
         ...data,
         id: newId,
         production_id: productionId,
         project_name:  production?.project_name || '',
         brand_id:      production?.brand_id || 'particle',
         created_at:    new Date().toISOString(),
-      });
+      }));
       // Create Gantt warning event if non-Perpetually
       if (data.warning_date && data.period !== 'Perpetually') {
-        createGanttEvent({
+        await Promise.resolve(createGanttEvent({
           production_id: productionId,
           phase: 'post_production',
           name: `⚠️ Rights renewal: ${data.name} (${(data.usage || []).join(', ')}) — 1 month remaining`,
           start_date: data.warning_date,
           end_date: data.warning_date,
           color: '#f97316',
-        });
+        }));
       }
     }
-    refresh();
+    await refresh();
     closeModal();
   }
 
-  function handleDelete(id) {
-    deleteCastMember(id);
+  async function handleDelete(id) {
+    await Promise.resolve(deleteCastMember(id));
     setDelConfirm(null);
-    refresh();
+    await refresh();
   }
 
   const filtered = useMemo(() => {
@@ -356,11 +356,12 @@ function RenewRightsModal({ member, productionId, production, onClose, onOpenCon
   const newEnd = calcEndDate(newStart, period);
   const newWarning = calcWarningDate(newEnd);
 
-  function handleSave() {
+  async function handleSave() {
     const liCost = parseFloat(cost) || 0;
-    const castLineItem = getLineItems(productionId).find(li => li.cast_member_id === member.id);
+    const allItems = await Promise.resolve(getLineItems(productionId));
+    const castLineItem = (Array.isArray(allItems) ? allItems : []).find(li => li.cast_member_id === member.id);
     const newLiId = generateId('li');
-    createLineItem({
+    await Promise.resolve(createLineItem({
       id: newLiId,
       production_id: productionId,
       item: `Rights Renewal – ${member.name}`,
@@ -373,27 +374,27 @@ function RenewRightsModal({ member, productionId, production, onClose, onOpenCon
       status: 'Not Started',
       parent_line_item_id: castLineItem?.id || '',
       cast_member_id: member.id,
-    });
-    updateCastMember(member.id, { period, start_date: newStart, end_date: newEnd, warning_date: newWarning });
+    }));
+    await Promise.resolve(updateCastMember(member.id, { period, start_date: newStart, end_date: newEnd, warning_date: newWarning }));
     if (newWarning) {
-      createGanttEvent({
+      await Promise.resolve(createGanttEvent({
         production_id: productionId,
         phase: 'post_production',
         name: `⚠️ Rights renewal: ${member.name} — 1 month remaining`,
         start_date: newWarning,
         end_date: newWarning,
         color: '#f97316',
-      });
+      }));
     }
     if (newEnd) {
-      createGanttEvent({
+      await Promise.resolve(createGanttEvent({
         production_id: productionId,
         phase: 'post_production',
         name: `🔄 Rights end: ${member.name}`,
         start_date: newEnd,
         end_date: newEnd,
         color: '#ef4444',
-      });
+      }));
     }
     onRefresh();
     setSavedLi({ id: newLiId, production_id: productionId, item: `Rights Renewal – ${member.name}` });

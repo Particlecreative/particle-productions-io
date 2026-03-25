@@ -8,8 +8,11 @@ router.use(verifyJWT);
 // GET /api/users
 router.get('/', async (req, res) => {
   try {
+    const includeDeleted = req.query.include_deleted === 'true';
     const { rows } = await db.query(
-      'SELECT id, email, name, role, brand_id, active, avatar_url, super_admin, must_change_password, created_at FROM users ORDER BY name'
+      includeDeleted
+        ? 'SELECT id, email, name, role, brand_id, active, avatar_url, super_admin, must_change_password, created_at, deleted_at FROM users ORDER BY name'
+        : 'SELECT id, email, name, role, brand_id, active, avatar_url, super_admin, must_change_password, created_at FROM users WHERE deleted_at IS NULL ORDER BY name'
     );
 
     // Attach brand access to each user
@@ -60,6 +63,22 @@ router.patch('/:id', async (req, res) => {
   const isSelf  = req.user.id === req.params.id;
 
   if (!isAdmin && !isSelf) return res.status(403).json({ error: 'Forbidden' });
+
+  // Handle restore (admin only)
+  if (isAdmin && req.body.restore === true) {
+    try {
+      const { rows } = await db.query(
+        'UPDATE users SET deleted_at = NULL, updated_at = NOW() WHERE id = $1 RETURNING id, email, name, role, brand_id, active, super_admin, must_change_password',
+        [req.params.id]
+      );
+      if (!rows.length) return res.status(404).json({ error: 'User not found' });
+      const access = await db.query('SELECT brand_ids FROM user_brand_access WHERE user_id = $1', [req.params.id]);
+      return res.json({ ...rows[0], brand_ids: access.rows[0]?.brand_ids ?? ['particle'] });
+    } catch (err) {
+      console.error('PATCH /users restore error:', err);
+      return res.status(500).json({ error: 'Server error' });
+    }
+  }
 
   const adminFields   = ['role', 'active', 'super_admin', 'must_change_password'];
   const allowedFields = isAdmin
@@ -115,7 +134,11 @@ router.delete('/:id', requireAdmin, async (req, res) => {
     return res.status(400).json({ error: 'Cannot delete yourself' });
   }
   try {
-    await db.query('DELETE FROM users WHERE id = $1', [req.params.id]);
+    const { rowCount } = await db.query(
+      'UPDATE users SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL',
+      [req.params.id]
+    );
+    if (rowCount === 0) return res.status(404).json({ error: 'User not found or already deleted' });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { CheckCircle, CreditCard } from 'lucide-react';
 import { getProductions, getLineItems, createCCPurchase, createLineItem, generateId } from '../lib/dataService';
@@ -9,18 +9,30 @@ const STANDALONE_CATEGORIES = [
   'Wardrobe', 'Props', 'Catering', 'Transport', 'Equipment', 'Office', 'Other',
 ];
 
-function findProduction(prodIdParam) {
-  const all = [
-    ...getProductions('particle'),
-    ...getProductions('blurr'),
-  ];
-  return all.find(p => p.production_id === prodIdParam || p.id === prodIdParam) || null;
-}
-
 export default function CCPaymentForm() {
   const { productionId: prodIdParam } = useParams();
-  const production = useMemo(() => findProduction(prodIdParam), [prodIdParam]);
-  const lineItems  = useMemo(() => production ? getLineItems(production.id) : [], [production]);
+  const [production, setProduction] = useState(null);
+  const [lineItems, setLineItems]   = useState([]);
+
+  useEffect(() => {
+    async function load() {
+      const [particle, blurr] = await Promise.all([
+        Promise.resolve(getProductions('particle')),
+        Promise.resolve(getProductions('blurr')),
+      ]);
+      const all = [
+        ...(Array.isArray(particle) ? particle : []),
+        ...(Array.isArray(blurr) ? blurr : []),
+      ];
+      const found = all.find(p => p.production_id === prodIdParam || p.id === prodIdParam) || null;
+      setProduction(found);
+      if (found) {
+        const items = await Promise.resolve(getLineItems(found.id));
+        setLineItems(Array.isArray(items) ? items : []);
+      }
+    }
+    load();
+  }, [prodIdParam]);
 
   const [submitted, setSubmitted] = useState(false);
   const [form, setForm] = useState({
@@ -59,14 +71,14 @@ export default function CCPaymentForm() {
     [lineItems, form.parent_line_item_id]
   );
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
     const amountWithoutVat = parseFloat(form.amount_without_vat) || 0;
     const totalAmount      = parseFloat(form.total_amount)       || 0;
     const ccId = generateId('cc');
 
     // 1. Save CC purchase record
-    createCCPurchase({
+    await Promise.resolve(createCCPurchase({
       id: ccId,
       store_name:           form.store_name,
       description:          form.description,
@@ -80,13 +92,13 @@ export default function CCPaymentForm() {
       production_id:        production?.id || prodIdParam,
       approval_status:      'Pending',
       approved_by:          '',
-    });
+    }));
 
     // 2. Create standalone budget line item ONLY when NOT linked to an existing budget row.
     //    When parent_line_item_id is set, the CC purchase record itself is the transaction detail
     //    and the BudgetTable's CCSubRow handles display — no duplicate line item needed.
     if (!form.parent_line_item_id) {
-      createLineItem({
+      await Promise.resolve(createLineItem({
         id:                   generateId('li'),
         production_id:        production?.id || prodIdParam,
         item:                 form.store_name,
@@ -102,7 +114,7 @@ export default function CCPaymentForm() {
         cc_purchase_id:       ccId,
         parent_line_item_id:  '',
         notes:                form.notes,
-      });
+      }));
     }
 
     setSubmitted(true);

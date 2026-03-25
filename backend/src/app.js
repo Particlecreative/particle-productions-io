@@ -1,16 +1,32 @@
 const express    = require('express');
 const cors       = require('cors');
 const helmet     = require('helmet');
+const rateLimit  = require('express-rate-limit');
 
 const app = express();
 
 // ── Security & parsing ──────────────────────────────
 app.use(helmet({ crossOriginResourcePolicy: false }));
-app.use(cors({ origin: true, credentials: true }));
+
+// CORS — restrict to allowed origins (env var or allow all in dev)
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
+  : true;
+app.use(cors({ origin: allowedOrigins, credentials: true }));
+
 app.use(express.json({ limit: '10mb' }));
 
+// ── Rate limiting on auth ────────────────────────────
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 15,                   // 15 attempts per window
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many login attempts, please try again later' },
+});
+
 // ── Routes ──────────────────────────────────────────
-app.use('/api/auth',          require('./routes/auth'));
+app.use('/api/auth', authLimiter, require('./routes/auth'));
 app.use('/api/productions',   require('./routes/productions'));
 app.use('/api/line-items',    require('./routes/lineItems'));
 app.use('/api/comments',      require('./routes/comments'));

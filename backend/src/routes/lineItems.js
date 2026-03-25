@@ -30,7 +30,7 @@ router.post('/', async (req, res) => {
     planned_budget, actual_spent, payment_status, payment_method,
     bank_details, business_type, supplier_type, invoice_status, invoice_url,
     invoice_type, timeline_start, timeline_end, receipt_required,
-    paid_at, notes, supplier, id_number, custom_fields,
+    paid_at, notes, supplier, id_number, currency_code, custom_fields,
   } = req.body;
 
   if (!production_id) return res.status(400).json({ error: 'production_id required' });
@@ -42,8 +42,8 @@ router.post('/', async (req, res) => {
          planned_budget, actual_spent, payment_status, payment_method,
          bank_details, business_type, supplier_type, invoice_status, invoice_url,
          invoice_type, timeline_start, timeline_end, receipt_required,
-         paid_at, notes, supplier, id_number, custom_fields)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
+         paid_at, notes, supplier, id_number, currency_code, custom_fields)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
        RETURNING *`,
       [
         production_id,
@@ -55,6 +55,7 @@ router.post('/', async (req, res) => {
         invoice_type || null, timeline_start || null, timeline_end || null,
         receipt_required || false, paid_at || null,
         notes || null, supplier || null, id_number || null,
+        currency_code || 'USD',
         JSON.stringify(custom_fields || {}),
       ]
     );
@@ -76,7 +77,7 @@ router.patch('/:id', async (req, res) => {
     'payment_status','payment_method','bank_details','business_type',
     'supplier_type','invoice_status','invoice_url','invoice_type',
     'timeline_start','timeline_end','receipt_required','paid_at',
-    'notes','supplier','id_number','custom_fields','cc_purchase_id',
+    'notes','supplier','id_number','currency_code','custom_fields','cc_purchase_id',
   ];
 
   const updates = Object.entries(req.body).filter(([k]) => allowed.includes(k));
@@ -116,13 +117,25 @@ router.delete('/:id', async (req, res) => {
 });
 
 // Helper: recalculate and update production estimated_budget + actual_spent
+// Converts ILS amounts to USD using a default rate before summing
+const DEFAULT_ILS_RATE = 3.7;
 async function syncTotals(productionId) {
   try {
     await db.query(
       `UPDATE productions SET
-         estimated_budget = (SELECT COALESCE(SUM(planned_budget),0) FROM production_line_items WHERE production_id = $1),
-         actual_spent     = (SELECT COALESCE(SUM(actual_spent),0)   FROM production_line_items WHERE production_id = $1),
-         updated_at       = NOW()
+         estimated_budget = (
+           SELECT COALESCE(SUM(
+             CASE WHEN currency_code = 'ILS' THEN planned_budget / ${DEFAULT_ILS_RATE}
+                  ELSE planned_budget END
+           ), 0) FROM production_line_items WHERE production_id = $1
+         ),
+         actual_spent = (
+           SELECT COALESCE(SUM(
+             CASE WHEN currency_code = 'ILS' THEN actual_spent / ${DEFAULT_ILS_RATE}
+                  ELSE actual_spent END
+           ), 0) FROM production_line_items WHERE production_id = $1
+         ),
+         updated_at = NOW()
        WHERE id = $1`,
       [productionId]
     );

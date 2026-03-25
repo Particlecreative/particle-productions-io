@@ -16,10 +16,10 @@ export default function ProductionFinancialTab({ productionId, production }) {
 
   const items = useMemo(() => getLineItems(productionId), [productionId]);
 
-  const totalPlanned = production?.planned_budget_2026 || 0;
+  const totalPlanned = parseFloat(production?.planned_budget_2026) || 0;
 
   const totalActual = useMemo(
-    () => items.reduce((s, i) => s + (i.actual_spent || 0), 0),
+    () => items.reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0),
     [items]
   );
 
@@ -32,8 +32,8 @@ export default function ProductionFinancialTab({ productionId, production }) {
         const ti = items.filter(i => i.type === type);
         return {
           name: type,
-          planned: ti.reduce((s, i) => s + (i.planned_budget || 0), 0),
-          actual: ti.reduce((s, i) => s + (i.actual_spent || 0), 0),
+          planned: ti.reduce((s, i) => s + (parseFloat(i.planned_budget) || 0), 0),
+          actual: ti.reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0),
         };
       })
       .filter(t => t.planned > 0 || t.actual > 0);
@@ -49,9 +49,9 @@ export default function ProductionFinancialTab({ productionId, production }) {
     const pending = items.filter(i => i.payment_status === 'Pending');
     const notPaid = items.filter(i => !i.payment_status || i.payment_status === 'Not Paid');
     return {
-      paid,    paidTotal:    paid.reduce((s, i)    => s + (i.actual_spent || 0), 0),
-      pending, pendingTotal: pending.reduce((s, i) => s + (i.actual_spent || 0), 0),
-      notPaid, notPaidTotal: notPaid.reduce((s, i) => s + (i.actual_spent || 0), 0),
+      paid,    paidTotal:    paid.reduce((s, i)    => s + (parseFloat(i.actual_spent) || 0), 0),
+      pending, pendingTotal: pending.reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0),
+      notPaid, notPaidTotal: notPaid.reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0),
     };
   }, [items]);
 

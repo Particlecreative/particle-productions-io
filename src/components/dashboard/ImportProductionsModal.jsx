@@ -126,7 +126,7 @@ export default function ImportProductionsModal({ brandId, selectedYear = 2026, o
     if (!obj.project_name) obj.project_name = `Imported Production ${idx + 1}`;
     const yearSuffix = String(selectedYear).slice(2);
     obj.id = `PRD${yearSuffix}-IMP${String(idx + 1).padStart(2, '0')}`;
-    obj.estimated_budget = obj.planned_budget_2026 || 0;
+    obj.estimated_budget = parseFloat(obj.planned_budget_2026) || 0;
     obj.actual_spent = 0;
     return obj;
   }

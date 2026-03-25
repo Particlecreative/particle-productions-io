@@ -56,7 +56,8 @@ CREATE TABLE IF NOT EXISTS users (
   super_admin          BOOLEAN DEFAULT FALSE,
   password_hash        TEXT NOT NULL,
   created_at           TIMESTAMPTZ DEFAULT NOW(),
-  updated_at           TIMESTAMPTZ DEFAULT NOW()
+  updated_at           TIMESTAMPTZ DEFAULT NOW(),
+  deleted_at           TIMESTAMPTZ DEFAULT NULL
 );
 
 -- Demo users (password: demo1234 for all)
@@ -166,6 +167,7 @@ CREATE TABLE IF NOT EXISTS production_line_items (
   notes           TEXT,
   supplier        TEXT,
   id_number       TEXT,
+  currency_code   TEXT DEFAULT 'USD',                   -- USD | ILS — per-row currency for budget amounts
   custom_fields   JSONB DEFAULT '{}',                   -- admin-defined custom field values
   cc_purchase_id  TEXT NOT NULL DEFAULT '',              -- linked CC purchase if applicable
   created_at      TIMESTAMPTZ DEFAULT NOW()

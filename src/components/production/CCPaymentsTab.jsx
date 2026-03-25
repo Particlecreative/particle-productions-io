@@ -62,9 +62,9 @@ export default function CCPaymentsTab({ productionId, production }) {
     setTimeout(() => setCopied(false), 2000);
   }
 
-  function attachInvoice(purchase, targetItem) {
+  async function attachInvoice(purchase, targetItem) {
     if (purchase?.receipt_url && targetItem) {
-      createInvoice({
+      await Promise.resolve(createInvoice({
         id: generateId('inv'),
         line_item_id: targetItem.id,
         production_id: targetItem.production_id,
@@ -73,83 +73,83 @@ export default function CCPaymentsTab({ productionId, production }) {
         invoice_type: 'receipt',
         status: 'Received',
         date_received: new Date().toISOString().split('T')[0],
-      });
+      }));
     }
   }
 
-  function approve(id) {
+  async function approve(id) {
     const purchase = purchases.find(p => p.id === id);
     // Mark CC purchase as Approved immediately
-    updateCCPurchase(id, { approval_status: 'Approved', approved_by: user?.name || 'Admin' });
+    await Promise.resolve(updateCCPurchase(id, { approval_status: 'Approved', approved_by: user?.name || 'Admin' }));
 
     // Path A: standalone CC line item (no parent_line_item_id on purchase)
-    const linkedItem = getLineItemByCcPurchaseId(id);
+    const linkedItem = await Promise.resolve(getLineItemByCcPurchaseId(id));
     if (linkedItem) {
-      updateLineItem(linkedItem.id, {
+      await Promise.resolve(updateLineItem(linkedItem.id, {
         payment_status: 'Paid',
         payment_method: 'Credit Card',
         date_paid: new Date().toISOString().split('T')[0],
         payment_note: purchase ? `Paid by CC – ${purchase.store_name} (${purchase.purchaser_name})` : 'Paid by CC',
-      });
-      attachInvoice(purchase, linkedItem);
-      refresh();
+      }));
+      await attachInvoice(purchase, linkedItem);
+      await refresh();
       return;
     }
 
     // Path B: linked to existing parent budget row — show confirmation dialog
     if (purchase?.parent_line_item_id) {
-      const parentItem = getLineItem(purchase.parent_line_item_id);
+      const parentItem = await Promise.resolve(getLineItem(purchase.parent_line_item_id));
       if (parentItem) {
         setApproveDialog({
           purchase,
           parentItem,
           addedILS: purchase.amount_without_vat || 0,
         });
-        refresh(); // update approval badge immediately
+        await refresh(); // update approval badge immediately
         return;
       }
     }
 
-    refresh();
+    await refresh();
   }
 
-  function handleDialogYes() {
+  async function handleDialogYes() {
     if (!approveDialog) return;
     const { purchase, parentItem, addedILS } = approveDialog;
     const parentIsUSD = (parentItem.currency_code || 'USD') !== 'ILS';
     // Convert ILS amount to parent's currency for actual_spent update
     const converted = parentIsUSD ? addedILS / (rate || 3.7) : addedILS;
     const note = `CC: ₪${addedILS.toLocaleString()} (${purchase.store_name}, by ${purchase.purchaser_name})`;
-    updateLineItem(parentItem.id, {
-      actual_spent: (parentItem.actual_spent || 0) + converted,
+    await Promise.resolve(updateLineItem(parentItem.id, {
+      actual_spent: (parseFloat(parentItem.actual_spent) || 0) + converted,
       payment_note: parentItem.payment_note ? `${parentItem.payment_note} | ${note}` : note,
-    });
-    attachInvoice(purchase, parentItem);
+    }));
+    await attachInvoice(purchase, parentItem);
     setApproveDialog(null);
-    refresh();
+    await refresh();
   }
 
-  function handleDialogNo() {
+  async function handleDialogNo() {
     if (!approveDialog) return;
     const { purchase, parentItem, addedILS } = approveDialog;
     const note = `CC noted ₪${addedILS.toLocaleString()} (${purchase.store_name}) — not added to actual`;
-    updateLineItem(parentItem.id, {
+    await Promise.resolve(updateLineItem(parentItem.id, {
       payment_note: parentItem.payment_note ? `${parentItem.payment_note} | ${note}` : note,
-    });
-    attachInvoice(purchase, parentItem);
+    }));
+    await attachInvoice(purchase, parentItem);
     setApproveDialog(null);
-    refresh();
+    await refresh();
   }
 
-  function reject(id) {
-    updateCCPurchase(id, { approval_status: 'Rejected', approved_by: user?.name || 'Admin' });
-    refresh();
+  async function reject(id) {
+    await Promise.resolve(updateCCPurchase(id, { approval_status: 'Rejected', approved_by: user?.name || 'Admin' }));
+    await refresh();
   }
 
-  function remove(id) {
+  async function remove(id) {
     if (!confirm('Delete this purchase record?')) return;
-    deleteCCPurchase(id);
-    refresh();
+    await Promise.resolve(deleteCCPurchase(id));
+    await refresh();
   }
 
   const liMap = useMemo(() => {

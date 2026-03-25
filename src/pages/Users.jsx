@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { UserPlus, Check, X, Shield, Copy, Users2, Plus, Trash2, Pencil, Clock } from 'lucide-react';
+import { UserPlus, Check, X, Shield, Copy, Users2, Plus, Trash2, Pencil, Clock, KeyRound, RotateCcw, Eye, EyeOff } from 'lucide-react';
 import { SAMPLE_USERS } from '../lib/mockData';
 import { getGroups, createGroup, updateGroup, deleteGroup, getBrands } from '../lib/dataService';
 import { apiGet, apiPost, apiPatch, apiDelete } from '../lib/apiClient';
@@ -42,6 +42,12 @@ function UsersTab() {
   const [creating, setCreating] = useState(false);
   const [tempPassword, setTempPassword] = useState('');
   const [copiedPw, setCopiedPw] = useState(false);
+  const [resetPwUser, setResetPwUser] = useState(null);
+  const [resetPw, setResetPw] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [showDeleted, setShowDeleted] = useState(false);
+  const [deletedUsers, setDeletedUsers] = useState([]);
+  const [loadingDeleted, setLoadingDeleted] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -145,6 +151,59 @@ function UsersTab() {
     setCreateError('');
   }
 
+  async function handleResetPassword(user) {
+    const pw = generateTempPassword();
+    try {
+      if (!IS_DEV) {
+        await apiPatch(`/users/${user.id}`, { password: pw, must_change_password: true });
+      }
+      setUsers(us => us.map(u => u.id === user.id ? { ...u, must_change_password: true } : u));
+      setResetPwUser(user);
+      setResetPw(pw);
+    } catch (err) {
+      alert('Failed to reset password: ' + (err?.message || 'Unknown error'));
+    }
+  }
+
+  async function handleDeleteUser(user) {
+    try {
+      if (!IS_DEV) await apiDelete(`/users/${user.id}`);
+      setUsers(us => us.filter(u => u.id !== user.id));
+      setConfirmDelete(null);
+    } catch (err) {
+      alert('Failed to delete user: ' + (err?.message || 'Unknown error'));
+    }
+  }
+
+  async function handleToggleDeleted() {
+    if (showDeleted) {
+      setShowDeleted(false);
+      setDeletedUsers([]);
+      return;
+    }
+    setShowDeleted(true);
+    setLoadingDeleted(true);
+    try {
+      const all = IS_DEV ? [] : await apiGet('/users?include_deleted=true');
+      const deleted = (Array.isArray(all) ? all : []).filter(u => u.deleted_at);
+      setDeletedUsers(deleted);
+    } catch {
+      setDeletedUsers([]);
+    } finally {
+      setLoadingDeleted(false);
+    }
+  }
+
+  async function handleRestoreUser(user) {
+    try {
+      if (!IS_DEV) await apiPatch(`/users/${user.id}`, { restore: true });
+      setDeletedUsers(us => us.filter(u => u.id !== user.id));
+      setUsers(us => [...us, { ...user, deleted_at: null }]);
+    } catch (err) {
+      alert('Failed to restore user: ' + (err?.message || 'Unknown error'));
+    }
+  }
+
   return (
     <div>
       <div className="flex justify-end mb-4">
@@ -230,6 +289,58 @@ function UsersTab() {
             <button onClick={() => setTempPassword('')} className="p-1 rounded hover:bg-orange-100 text-orange-400 flex-shrink-0">
               <X size={16} />
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Reset Password Modal */}
+      {resetPwUser && (
+        <div className="modal-overlay" onClick={() => { setResetPwUser(null); setResetPw(''); }}>
+          <div className="modal-panel" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-lg font-black" style={{ color: 'var(--brand-primary)' }}>Password Reset</h2>
+              <button onClick={() => { setResetPwUser(null); setResetPw(''); }}><X size={18} className="text-gray-400" /></button>
+            </div>
+            <div className="text-sm text-gray-600 mb-2">
+              New temporary password for <span className="font-bold">{resetPwUser.name}</span>:
+            </div>
+            <div className="flex items-center gap-3 mb-4">
+              <code className="bg-white border border-orange-200 rounded-lg px-3 py-1.5 text-sm font-mono font-bold text-orange-900 tracking-widest">
+                {resetPw}
+              </code>
+              <button
+                onClick={() => { navigator.clipboard?.writeText(resetPw).catch(() => {}); }}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-orange-300 text-orange-700 hover:bg-orange-100 font-semibold transition-all"
+              >
+                <Copy size={12} /> Copy
+              </button>
+            </div>
+            <div className="text-xs text-gray-400">The user will be prompted to set a new password on next login.</div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {confirmDelete && (
+        <div className="modal-overlay" onClick={() => setConfirmDelete(null)}>
+          <div className="modal-panel" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-lg font-black text-red-600">Delete User</h2>
+              <button onClick={() => setConfirmDelete(null)}><X size={18} className="text-gray-400" /></button>
+            </div>
+            <div className="text-sm text-gray-600 mb-4">
+              Are you sure you want to delete <span className="font-bold">{confirmDelete.name}</span> ({confirmDelete.email})?
+              This can be undone via the "Show Deleted Users" section.
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmDelete(null)} className="btn-secondary flex-1">Cancel</button>
+              <button
+                onClick={() => handleDeleteUser(confirmDelete)}
+                className="flex-1 px-4 py-2 rounded-lg text-sm font-semibold bg-red-600 text-white hover:bg-red-700 transition-all"
+              >
+                Delete User
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -324,6 +435,22 @@ function UsersTab() {
                         {u.active ? 'Deactivate' : 'Reactivate'}
                       </button>
                       <button
+                        onClick={() => handleResetPassword(u)}
+                        title="Reset password"
+                        className="p-1.5 rounded text-gray-300 hover:text-orange-500 hover:bg-orange-50 transition-all"
+                      >
+                        <KeyRound size={13} />
+                      </button>
+                      {u.id !== currentUser?.id && (
+                        <button
+                          onClick={() => setConfirmDelete(u)}
+                          title="Delete user"
+                          className="p-1.5 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-all"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
+                      <button
                         onClick={() => navigate(`/history?user=${encodeURIComponent(u.name)}`)}
                         title="View change history"
                         className="p-1.5 rounded text-gray-300 hover:text-blue-500 hover:bg-blue-50 transition-all"
@@ -336,6 +463,71 @@ function UsersTab() {
               ))}
             </tbody>
           </table>
+        )}
+      </div>
+
+      {/* Show Deleted Users Toggle */}
+      <div className="mt-6">
+        <button
+          onClick={handleToggleDeleted}
+          className="flex items-center gap-2 text-sm font-semibold text-gray-400 hover:text-gray-600 transition-all"
+        >
+          {showDeleted ? <EyeOff size={14} /> : <Eye size={14} />}
+          {showDeleted ? 'Hide Deleted Users' : 'Show Deleted Users'}
+        </button>
+
+        {showDeleted && (
+          <div className="brand-card p-0 overflow-hidden mt-3 border border-red-100">
+            {loadingDeleted ? (
+              <div className="py-8 text-center text-sm text-gray-400">Loading deleted users...</div>
+            ) : deletedUsers.length === 0 ? (
+              <div className="py-8 text-center text-sm text-gray-400">No deleted users found.</div>
+            ) : (
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>User</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Deleted</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {deletedUsers.map(u => (
+                    <tr key={u.id} className="opacity-50">
+                      <td>
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 bg-gray-400"
+                          >
+                            {u.name?.[0] || '?'}
+                          </div>
+                          <div className="font-semibold text-sm">{u.name}</div>
+                        </div>
+                      </td>
+                      <td className="text-sm text-gray-500">{u.email}</td>
+                      <td>
+                        <span className={clsx('badge text-xs border font-semibold', ROLE_STYLES[u.role] ?? ROLE_STYLES.Viewer)}>
+                          {u.role}
+                        </span>
+                      </td>
+                      <td className="text-xs text-gray-400">{u.deleted_at ? new Date(u.deleted_at).toLocaleDateString() : ''}</td>
+                      <td>
+                        <button
+                          onClick={() => handleRestoreUser(u)}
+                          className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-green-200 text-green-600 hover:bg-green-50 font-semibold transition-all"
+                        >
+                          <RotateCcw size={12} />
+                          Restore
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
         )}
       </div>
     </div>
