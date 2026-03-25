@@ -12,10 +12,20 @@ app.set('trust proxy', 1);
 app.use(helmet({ crossOriginResourcePolicy: false }));
 
 // CORS — restrict to allowed origins (env var or allow all in dev)
-const allowedOrigins = process.env.ALLOWED_ORIGINS
+const allowedList = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
-  : true;
-app.use(cors({ origin: allowedOrigins, credentials: true }));
+  : null;
+app.use(cors({
+  origin: (origin, cb) => {
+    // Allow requests with no origin (server-to-server, curl, mobile)
+    if (!origin) return cb(null, true);
+    // If no allowlist configured, allow all (dev mode)
+    if (!allowedList) return cb(null, true);
+    if (allowedList.includes(origin)) return cb(null, true);
+    cb(new Error('CORS blocked'));
+  },
+  credentials: true,
+}));
 
 app.use(express.json({ limit: '10mb' }));
 
