@@ -4,16 +4,18 @@
 
 /* === BRAND CSS VARIABLES === */
 :root {
-  --brand-bg: #b7b7b7;
+  --brand-bg: #f0f2f5;
   --brand-primary: #030b2e;
   --brand-secondary: #0808f8;
   --brand-accent: #0808f8;
-  --brand-text: #000000;
+  --brand-text: #1a1a2e;
   --brand-surface: #ffffff;
-  --brand-border: rgba(3, 11, 46, 0.15);
+  --brand-border: rgba(3, 11, 46, 0.08);
   --brand-sidebar-bg: #030b2e;
   --brand-sidebar-text: #ffffff;
   --brand-sidebar-active: #0808f8;
+  --brand-glow: rgba(8, 8, 248, 0.12);
+  --brand-gradient: linear-gradient(135deg, #030b2e 0%, #0808f8 100%);
 }
 
 [data-brand="blurr"] {
@@ -152,10 +154,12 @@ html.dark .bg-orange-50 { background: rgba(249,115,22,0.1) !important; }
 body {
   background-color: var(--brand-bg);
   color: var(--brand-text);
-  font-family: 'Neue Haas Grotesk', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-family: 'Inter', 'Neue Haas Grotesk', 'Helvetica Neue', Helvetica, Arial, sans-serif;
   font-size: 14px;
   line-height: 1.5;
   transition: background-color 0.3s ease;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* === SCROLLBARS === */
@@ -173,26 +177,41 @@ body {
 
 /* === BRAND CTA BUTTON === */
 .btn-cta {
-  background-color: var(--brand-accent);
+  background: var(--brand-gradient);
   color: white;
   font-weight: 600;
-  padding: 8px 16px;
-  border-radius: 6px;
+  padding: 8px 18px;
+  border-radius: 10px;
   border: none;
   cursor: pointer;
-  transition: opacity 0.2s, transform 0.1s;
+  transition: all 0.2s ease;
   font-size: 13px;
+  letter-spacing: 0.01em;
+  position: relative;
+  overflow: hidden;
+}
+.btn-cta::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.15) 0%, transparent 50%);
+  pointer-events: none;
 }
 .btn-cta:hover {
-  opacity: 0.9;
+  box-shadow: 0 4px 16px var(--brand-glow);
   transform: translateY(-1px);
 }
 .btn-cta:active {
   transform: translateY(0);
+  box-shadow: none;
 }
 
 [data-brand="blurr"] .btn-cta {
   background: linear-gradient(135deg, #B842A9, #F86EE6);
+}
+[data-brand="blurr"] {
+  --brand-glow: rgba(184, 66, 169, 0.2);
+  --brand-gradient: linear-gradient(135deg, #B842A9 0%, #F86EE6 100%);
 }
 
 .btn-secondary {
@@ -200,44 +219,50 @@ body {
   color: var(--brand-primary);
   font-weight: 500;
   padding: 7px 15px;
-  border-radius: 6px;
+  border-radius: 10px;
   border: 1px solid var(--brand-border);
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: all 0.2s ease;
   font-size: 13px;
 }
 .btn-secondary:hover {
-  background-color: var(--brand-border);
+  background-color: rgba(0,0,0,0.03);
+  border-color: var(--brand-primary);
+  transform: translateY(-0.5px);
 }
 
-/* === TABLE STYLES === */
+/* === TABLE STYLES — hi-tech === */
 .data-table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: 13px;
 }
 .data-table th {
-  background-color: var(--brand-primary);
+  background: var(--brand-gradient);
   color: white;
-  padding: 10px 12px;
+  padding: 11px 14px;
   text-align: left;
   font-weight: 600;
   white-space: nowrap;
-  font-size: 12px;
-  letter-spacing: 0.03em;
+  font-size: 11px;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   position: sticky;
   top: 0;
   z-index: 10;
 }
+.data-table th:first-child { border-radius: 10px 0 0 0; }
+.data-table th:last-child  { border-radius: 0 10px 0 0; }
 .data-table td {
-  padding: 10px 12px;
+  padding: 11px 14px;
   border-bottom: 1px solid var(--brand-border);
   vertical-align: middle;
   background-color: var(--brand-surface);
+  transition: background 0.15s ease;
 }
 .data-table tr:hover td {
-  background-color: rgba(0,0,0,0.025);
+  background-color: rgba(8,8,248,0.02);
 }
 
 /* Paid rows — green tint, sinks to bottom */
@@ -245,9 +270,9 @@ body {
 .paid-row td { opacity: 0.72; }
 .paid-row:hover td { background-color: rgba(34,197,94,0.12) !important; }
 
-/* === STATUS BADGES === */
-.status-working { background: #FFF3CD; color: #856404; border: 1px solid #FFEEBA; }
-.status-done { background: #D4EDDA; color: #155724; border: 1px solid #C3E6CB; }
+/* === STATUS BADGES — modern pills === */
+.status-working { background: linear-gradient(135deg, #FFF7E0, #FFF3CD); color: #92610a; border: 1px solid #FFEEBA; font-weight: 600; }
+.status-done { background: linear-gradient(135deg, #E8F8EC, #D4EDDA); color: #1a6e34; border: 1px solid #C3E6CB; font-weight: 600; }
 .status-stuck { background: #F8D7DA; color: #721C24; border: 1px solid #F5C6CB; }
 .status-not-started { background: #E2E3E5; color: #383D41; border: 1px solid #D6D8DB; }
 
@@ -411,17 +436,34 @@ body {
   box-shadow: 0 0 0 2px rgba(184, 66, 169, 0.15);
 }
 
-/* === CARD === */
+/* === CARD — modern glass style === */
 .brand-card {
   background: var(--brand-surface);
-  border-radius: 12px;
+  border-radius: 14px;
   border: 1px solid var(--brand-border);
   padding: 20px;
-  transition: box-shadow 0.25s ease, transform 0.2s ease, border-color 0.2s;
+  transition: all 0.25s ease;
+  backdrop-filter: blur(8px);
 }
 .brand-card:hover {
-  box-shadow: 0 6px 24px rgba(0,0,0,0.1);
-  border-color: rgba(0,0,0,0.08);
+  box-shadow: 0 8px 30px rgba(0,0,0,0.08);
+  border-color: rgba(0,0,0,0.06);
+}
+
+/* Summary/KPI cards — gradient left accent */
+.kpi-card {
+  position: relative;
+  overflow: hidden;
+}
+.kpi-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--brand-gradient);
+  border-radius: 4px 0 0 4px;
 }
 
 /* === BUTTONS — micro-interactions === */
@@ -628,17 +670,23 @@ html.dark .skeleton {
   background: transparent;
   font-size: 13px;
   font-weight: 600;
-  color: rgba(0,0,0,0.65);
-  border-bottom: 2px solid transparent;
+  color: rgba(0,0,0,0.45);
+  border-bottom: 2.5px solid transparent;
   margin-bottom: -2px;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  letter-spacing: 0.01em;
 }
 .brand-tab:hover {
   color: var(--brand-primary);
+  background: rgba(0,0,0,0.02);
+  border-radius: 8px 8px 0 0;
 }
 .brand-tab.active {
   color: var(--brand-primary);
   border-bottom-color: var(--brand-accent);
+  background: rgba(8,8,248,0.03);
+  border-radius: 8px 8px 0 0;
 }
 
 /* === PRINT INVOICE === */

@@ -384,9 +384,9 @@ export default function Dashboard() {
           { label: 'Remaining', value: fmt(totalBudget - totalSpent), color: 'var(--brand-secondary)' },
           { label: '% Spent', value: `${totalBudget ? Math.round((totalSpent / totalBudget) * 100) : 0}%`, color: '#f59e0b' },
         ].map(card => (
-          <div key={card.label} className="brand-card">
-            <div className="text-xs text-gray-400 uppercase tracking-wide mb-1">{card.label}</div>
-            <div className="text-xl font-black" style={{ color: card.color }}>{card.value}</div>
+          <div key={card.label} className="brand-card kpi-card">
+            <div className="text-[10px] text-gray-400 uppercase tracking-widest font-semibold mb-1.5">{card.label}</div>
+            <div className="text-2xl font-black tracking-tight" style={{ color: card.color }}>{card.value}</div>
           </div>
         ))}
       </div>
