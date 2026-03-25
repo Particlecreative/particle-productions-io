@@ -21,8 +21,9 @@ app.use(cors({
     if (!origin) return cb(null, true);
     // If no allowlist configured, allow all (dev mode)
     if (!allowedList) return cb(null, true);
-    if (allowedList.includes(origin)) return cb(null, true);
-    cb(new Error('CORS blocked'));
+    if (allowedList.includes(origin)) return cb(null, origin);
+    // Block: return false (no Access-Control-Allow-Origin header)
+    cb(null, false);
   },
   credentials: true,
 }));
