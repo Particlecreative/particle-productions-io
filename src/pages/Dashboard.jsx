@@ -345,50 +345,99 @@ export default function Dashboard() {
   const totalSpent = productions.reduce((s, p) => s + (parseFloat(p.actual_spent) || 0), 0);
   const canSaveForAll = isAdmin || isEditor;
 
+  const pctSpent = totalBudget ? Math.round((totalSpent / totalBudget) * 100) : 0;
+  const stageBreakdown = productions.reduce((m, p) => {
+    const s = p.stage || 'Pending';
+    m[s] = (m[s] || 0) + 1;
+    return m;
+  }, {});
+
   return (
-    <div>
-      {/* Header */}
-      <div className="flex items-start justify-between mb-6 flex-wrap gap-4">
-        <div>
-          <h1 className="text-3xl font-black brand-title" style={{ color: 'var(--brand-primary)' }}>
-            Productions
-          </h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            {filtered.length} of {productions.length} · {selectedYear} Total: {fmt(totalBudget)}
-          </p>
+    <div className="animate-fadeIn">
+      {/* ── Bento Header Grid ──────────────────────────────────── */}
+      <div className="grid grid-cols-12 gap-4 mb-6">
+
+        {/* Left: Title + Total Budget (spans 5 cols) */}
+        <div className="col-span-12 md:col-span-5 brand-card flex flex-col justify-between" style={{ minHeight: 160 }}>
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h1 className="text-2xl font-black brand-title" style={{ color: 'var(--brand-primary)' }}>
+                Productions
+              </h1>
+              {isEditor && (
+                <button className="btn-cta flex items-center gap-2 text-sm" onClick={() => setShowNewModal(true)}>
+                  <Plus size={14} />
+                  New
+                </button>
+              )}
+            </div>
+            <p className="text-xs text-gray-400 mb-4">
+              {filtered.length} of {productions.length} · {selectedYear}
+            </p>
+          </div>
+          <div>
+            <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">{selectedYear} Total Budget</div>
+            <div className="text-4xl font-black tracking-tight" style={{ color: 'var(--brand-primary)', letterSpacing: '-0.04em' }}>
+              {fmt(totalBudget)}
+            </div>
+          </div>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {customOrder && !search && !stageFilter && !productTypeFilter && (
+
+        {/* Right: 3 metric cards (spans 7 cols) */}
+        <div className="col-span-12 md:col-span-7 grid grid-cols-3 gap-4">
+
+          {/* Actual Spent */}
+          <div className="brand-card flex flex-col justify-between" style={{ minHeight: 160 }}>
+            <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Spent</div>
+            <div>
+              <div className="text-3xl font-black tracking-tight text-green-600" style={{ letterSpacing: '-0.04em' }}>
+                {fmt(totalSpent)}
+              </div>
+              <div className="mt-2 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                <div className="h-full rounded-full bg-green-500 transition-all duration-700" style={{ width: `${Math.min(pctSpent, 100)}%` }} />
+              </div>
+              <div className="text-[10px] text-gray-400 mt-1">{pctSpent}% of budget</div>
+            </div>
+          </div>
+
+          {/* Remaining */}
+          <div className="brand-card flex flex-col justify-between" style={{ minHeight: 160 }}>
+            <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Remaining</div>
+            <div>
+              <div className="text-3xl font-black tracking-tight" style={{ color: 'var(--brand-secondary)', letterSpacing: '-0.04em' }}>
+                {fmt(totalBudget - totalSpent)}
+              </div>
+            </div>
+          </div>
+
+          {/* Stage Breakdown - mini donut */}
+          <div className="brand-card flex flex-col justify-between" style={{ minHeight: 160 }}>
+            <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider">By Stage</div>
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {Object.entries(stageBreakdown).map(([stage, count]) => (
+                <span key={stage} className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                  {stage} <span className="text-gray-400">{count}</span>
+                </span>
+              ))}
+            </div>
+            <div className="text-2xl font-black mt-1" style={{ color: 'var(--brand-primary)' }}>
+              {productions.length}
+              <span className="text-xs font-medium text-gray-400 ml-1">total</span>
+            </div>
+          </div>
+        </div>
+
+        {customOrder && !search && !stageFilter && !productTypeFilter && (
+          <div className="col-span-12">
             <button
               onClick={handleSaveViewClick}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold border border-green-300 text-green-700 bg-green-50 hover:bg-green-100 transition-all"
+              className="flex items-center gap-2 px-3 py-2 rounded-full text-xs font-semibold border border-green-300 text-green-700 bg-green-50 hover:bg-green-100 transition-all"
             >
               <Save size={13} />
               Save This View
             </button>
-          )}
-          {isEditor && (
-            <button className="btn-cta flex items-center gap-2" onClick={() => setShowNewModal(true)}>
-              <Plus size={14} />
-              New Production
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        {[
-          { label: `${selectedYear} Planned`, value: fmt(totalBudget), color: 'var(--brand-primary)' },
-          { label: 'Actual Spent', value: fmt(totalSpent), color: '#16a34a' },
-          { label: 'Remaining', value: fmt(totalBudget - totalSpent), color: 'var(--brand-secondary)' },
-          { label: '% Spent', value: `${totalBudget ? Math.round((totalSpent / totalBudget) * 100) : 0}%`, color: '#f59e0b' },
-        ].map(card => (
-          <div key={card.label} className="brand-card kpi-card">
-            <div className="text-[10px] text-gray-400 uppercase tracking-widest font-semibold mb-1.5">{card.label}</div>
-            <div className="text-2xl font-black tracking-tight" style={{ color: card.color }}>{card.value}</div>
           </div>
-        ))}
+        )}
       </div>
 
       {/* Toolbar */}

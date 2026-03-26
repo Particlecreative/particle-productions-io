@@ -7,6 +7,7 @@ import {
   getWeeklyReports, getWeeklyReport, saveWeeklyReport, deleteWeeklyReport,
   getComments, getLinks, generateId,
 } from '../../lib/dataService';
+import { getHoliday } from '../../lib/holidays';
 import { useAuth } from '../../context/AuthContext';
 import { useBrand } from '../../context/BrandContext';
 import StageBadge from '../ui/StageBadge';
@@ -686,6 +687,126 @@ function AddProductionModal({ productions, existingIds, onAdd, onClose }) {
   );
 }
 
+// ─── Day labels for Israeli work week (Sun–Sat) ─────────────────────────────
+
+const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const WORK_DAYS = new Set([0, 1, 2, 3, 4]); // Sun-Thu (indices into DAY_LABELS)
+
+// ─── WeekStrip ────────────────────────────────────────────────────────────────
+
+function WeekStrip({ weekStart, showUS, showIL }) {
+  const today = toDateStr(new Date());
+  return (
+    <div className="grid grid-cols-7 gap-1">
+      {DAY_LABELS.map((label, i) => {
+        const day = addDays(weekStart, i);
+        const dateStr = toDateStr(day);
+        const isWorkDay = WORK_DAYS.has(i);
+        const isToday = dateStr === today;
+        const holidays = getHoliday(dateStr, showUS, showIL);
+        const usHoliday = holidays.find(h => h.country === 'US');
+        const ilHoliday = holidays.find(h => h.country === 'IL');
+
+        // Build tooltip
+        const tooltipParts = holidays.map(h =>
+          h.country === 'US' ? `\u{1F1FA}\u{1F1F8} ${h.name}` : `\u{1F1EE}\u{1F1F1} ${h.nameHe || h.name}`
+        );
+        const tooltip = tooltipParts.length > 0 ? tooltipParts.join('\n') : undefined;
+
+        return (
+          <div
+            key={i}
+            title={tooltip}
+            className={clsx(
+              'relative rounded-xl px-2 py-2 text-center transition-all border',
+              !isWorkDay && 'opacity-50',
+              !isWorkDay && !usHoliday && !ilHoliday && 'bg-gray-100 border-gray-200',
+              isWorkDay && !usHoliday && !ilHoliday && 'bg-white border-gray-200',
+              isToday && 'ring-2 ring-[var(--brand-accent)] ring-offset-1',
+            )}
+            style={{
+              // Weekend diagonal stripe pattern when no holiday
+              ...(!isWorkDay && !usHoliday && !ilHoliday ? {
+                backgroundImage: 'repeating-linear-gradient(135deg, transparent, transparent 3px, rgba(156,163,175,0.15) 3px, rgba(156,163,175,0.15) 5px)',
+              } : {}),
+            }}
+          >
+            {/* Holiday overlay backgrounds */}
+            {usHoliday && (
+              <div className="absolute inset-0 rounded-xl bg-blue-100/70 border border-blue-200 pointer-events-none" />
+            )}
+            {ilHoliday && !usHoliday && (
+              <div className="absolute inset-0 rounded-xl pointer-events-none border border-sky-200"
+                style={{ background: 'linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 50%, #e0f2fe 100%)' }}
+              />
+            )}
+            {ilHoliday && usHoliday && (
+              <div className="absolute inset-0 rounded-xl pointer-events-none border border-blue-200"
+                style={{ background: 'linear-gradient(135deg, #dbeafe 0%, #e0f2fe 50%, #f0f9ff 100%)' }}
+              />
+            )}
+
+            <div className="relative z-10">
+              <div className={clsx(
+                'text-[10px] font-bold uppercase tracking-wider',
+                isWorkDay ? 'text-gray-500' : 'text-gray-400'
+              )}>
+                {label}
+              </div>
+              <div className={clsx(
+                'text-sm font-bold mt-0.5',
+                isToday ? 'text-[var(--brand-accent)]' : isWorkDay ? 'text-gray-800' : 'text-gray-400'
+              )}>
+                {day.getDate()}
+              </div>
+              {holidays.length > 0 && (
+                <div className="text-[9px] font-semibold mt-0.5 leading-tight truncate"
+                  style={{ color: usHoliday ? '#2563eb' : '#0284c7' }}
+                >
+                  {holidays[0].name}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── HolidayToggles ───────────────────────────────────────────────────────────
+
+function HolidayToggles({ showUS, showIL, onToggleUS, onToggleIL }) {
+  return (
+    <div className="flex items-center gap-1">
+      <button
+        onClick={onToggleUS}
+        title={showUS ? 'Hide US holidays' : 'Show US holidays'}
+        className={clsx(
+          'flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold border transition-all',
+          showUS
+            ? 'bg-blue-50 border-blue-300 text-blue-700 shadow-sm'
+            : 'bg-white border-gray-200 text-gray-400 hover:border-gray-300'
+        )}
+      >
+        {'\u{1F1FA}\u{1F1F8}'}
+      </button>
+      <button
+        onClick={onToggleIL}
+        title={showIL ? 'Hide Israeli holidays' : 'Show Israeli holidays'}
+        className={clsx(
+          'flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold border transition-all',
+          showIL
+            ? 'bg-sky-50 border-sky-300 text-sky-700 shadow-sm'
+            : 'bg-white border-gray-200 text-gray-400 hover:border-gray-300'
+        )}
+      >
+        {'\u{1F1EE}\u{1F1F1}'}
+      </button>
+    </div>
+  );
+}
+
 // ─── Main WeeklyView ──────────────────────────────────────────────────────────
 
 export default function WeeklyView({ productions, brandId, selectedYear }) {
@@ -702,6 +823,29 @@ export default function WeeklyView({ productions, brandId, selectedYear }) {
   const [showAddProd, setShowAddProd] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
+
+  // Holiday toggle state — persisted in localStorage
+  const [showUSHolidays, setShowUSHolidays] = useState(() => {
+    try { return localStorage.getItem('weeklyView_showUS') !== 'false'; } catch { return true; }
+  });
+  const [showILHolidays, setShowILHolidays] = useState(() => {
+    try { return localStorage.getItem('weeklyView_showIL') !== 'false'; } catch { return true; }
+  });
+
+  function toggleUS() {
+    setShowUSHolidays(v => {
+      const next = !v;
+      try { localStorage.setItem('weeklyView_showUS', String(next)); } catch {}
+      return next;
+    });
+  }
+  function toggleIL() {
+    setShowILHolidays(v => {
+      const next = !v;
+      try { localStorage.setItem('weeklyView_showIL', String(next)); } catch {}
+      return next;
+    });
+  }
 
   // Arrow key navigation — prev/next week when no input is focused
   useEffect(() => {
@@ -914,6 +1058,13 @@ export default function WeeklyView({ productions, brandId, selectedYear }) {
               >
                 <Clock size={11} /> Today
               </button>
+              <div className="w-px h-5 bg-gray-200 mx-1" />
+              <HolidayToggles
+                showUS={showUSHolidays}
+                showIL={showILHolidays}
+                onToggleUS={toggleUS}
+                onToggleIL={toggleIL}
+              />
             </div>
 
             {/* Actions */}
@@ -939,6 +1090,15 @@ export default function WeeklyView({ productions, brandId, selectedYear }) {
               )}
             </div>
           </div>
+        </div>
+
+        {/* Week day strip — Israeli work week (Sun-Thu active, Fri-Sat grayed) */}
+        <div className="brand-card p-3">
+          <WeekStrip
+            weekStart={weekStart}
+            showUS={showUSHolidays}
+            showIL={showILHolidays}
+          />
         </div>
 
         {/* Empty state */}

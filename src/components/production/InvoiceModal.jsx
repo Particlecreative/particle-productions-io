@@ -86,7 +86,9 @@ export default function InvoiceModal({ lineItemId, productionId, initialStep = '
   const [netDays, setNetDays] = useState(30);
   const [invoiceType, setInvoiceType] = useState('Israeli');
   const [messageText, setMessageText] = useState('');
-  const [invoiceLocale, setInvoiceLocale] = useState('en'); // 'en' | 'he'
+  const [invoiceLocale, setInvoiceLocale] = useState(() => {
+    try { return localStorage.getItem('cp_invoice_locale') || 'en'; } catch { return 'en'; }
+  }); // 'en' | 'he'
   const [item, setItem] = useState(null);
   const [production, setProduction] = useState(null);
   const [dealerType, setDealerType] = useState(null);
@@ -114,12 +116,14 @@ export default function InvoiceModal({ lineItemId, productionId, initialStep = '
         else if (dt === 'osek_murshe' || dt === 'ltd') setInvoiceType('tax_invoice_receipt');
         else setInvoiceType('Israeli');
 
+        const savedLocale = (() => { try { return localStorage.getItem('cp_invoice_locale') || 'en'; } catch { return 'en'; } })();
+        setInvoiceLocale(savedLocale);
         setMessageText(INVOICE_TEMPLATE(
           productionId,
           found.actual_spent || found.planned_budget,
           lineItemId,
           brandName,
-          'en'
+          savedLocale
         ));
       }
       setLoaded(true);
@@ -138,7 +142,9 @@ export default function InvoiceModal({ lineItemId, productionId, initialStep = '
   }
 
   function handleEmail() {
-    const subject = encodeURIComponent(`Invoice Request — ${productionId} (Ref: ${lineItemId})`);
+    const prodName = production?.project_name || productionId;
+    const itemName = item?.item || lineItemId;
+    const subject = encodeURIComponent(`Invoice Request — ${prodName} - ${itemName}`);
     // Open Gmail compose directly instead of default mail client
     const gmailUrl = `https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(email)}&su=${subject}&body=${encodeURIComponent(messageText)}`;
     window.open(gmailUrl, '_blank');
@@ -279,6 +285,7 @@ export default function InvoiceModal({ lineItemId, productionId, initialStep = '
                   type="button"
                   onClick={() => {
                     setInvoiceLocale('en');
+                    try { localStorage.setItem('cp_invoice_locale', 'en'); } catch {}
                     setMessageText(INVOICE_TEMPLATE(productionId, item?.actual_spent || item?.planned_budget, lineItemId, brandName, 'en'));
                   }}
                   className={`px-2 py-1 rounded text-xs font-semibold border transition-colors ${invoiceLocale === 'en' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300'}`}
@@ -289,6 +296,7 @@ export default function InvoiceModal({ lineItemId, productionId, initialStep = '
                   type="button"
                   onClick={() => {
                     setInvoiceLocale('he');
+                    try { localStorage.setItem('cp_invoice_locale', 'he'); } catch {}
                     setMessageText(INVOICE_TEMPLATE(productionId, item?.actual_spent || item?.planned_budget, lineItemId, brandName, 'he'));
                   }}
                   className={`px-2 py-1 rounded text-xs font-semibold border transition-colors ${invoiceLocale === 'he' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300'}`}

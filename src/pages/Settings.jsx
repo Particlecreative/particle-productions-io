@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Save, Upload, Palette, Type, Globe, List, Plus, X, Check, ChevronUp, ChevronDown, RotateCcw, Clock, Wrench, Trash2, Building2, Pencil, ServerCog } from 'lucide-react';
+import { Save, Upload, Palette, Type, Globe, List, Plus, X, Check, ChevronUp, ChevronDown, RotateCcw, Clock, Wrench, Trash2, Building2, Pencil, ServerCog, Mail } from 'lucide-react';
 import { useBrand } from '../context/BrandContext';
 import { useLists } from '../context/ListsContext';
 import { useAuth } from '../context/AuthContext';
@@ -679,9 +679,32 @@ export default function Settings() {
                   Submit Request
                 </button>
                 {ticketSubmitted && (
-                  <span className="text-sm text-emerald-600 flex items-center gap-1">
-                    <Check size={13} /> Submitted!
-                  </span>
+                  <>
+                    <span className="text-sm text-emerald-600 flex items-center gap-1">
+                      <Check size={13} /> Submitted!
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const cat = CATEGORY_LABELS[ticketForm.category] || ticketForm.category;
+                        const pri = ticketForm.priority ? ticketForm.priority.charAt(0).toUpperCase() + ticketForm.priority.slice(1) : 'Medium';
+                        const subj = encodeURIComponent(`CP Panel Ticket: ${ticketForm.title || 'New Request'}`);
+                        const body = encodeURIComponent(
+                          `Hi Tomer,\n\nA new improvement ticket has been submitted:\n\n` +
+                          `Title: ${ticketForm.title || '(no title)'}\n` +
+                          `Category: ${cat}\n` +
+                          `Priority: ${pri}\n` +
+                          `Description: ${ticketForm.description || '(no description)'}\n` +
+                          `Submitted by: ${user?.name || 'Unknown'}\n\n` +
+                          `Please review at your earliest convenience.\n\nThank you.`
+                        );
+                        window.open(`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent('tomer@particleformen.com')}&su=${subj}&body=${body}`, '_blank');
+                      }}
+                      className="flex items-center gap-1 text-sm px-3 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors font-semibold"
+                    >
+                      <Mail size={13} /> Notify Tomer
+                    </button>
+                  </>
                 )}
                 <span className="text-xs text-gray-400 ml-auto">
                   Assigned to: <span className="font-medium text-gray-600">Tomer Wilf Lezmy</span>
