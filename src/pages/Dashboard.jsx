@@ -66,7 +66,7 @@ const DASHBOARD_TOGGLE_COLS = [
 export default function Dashboard() {
   const { brandId } = useBrand();
   const { user, isEditor, isAdmin } = useAuth();
-  const { fmt } = useCurrency();
+  const { fmt, currency } = useCurrency();
   const { addNotification } = useNotifications();
   const { lists } = useLists();
   const navigate = useNavigate();
