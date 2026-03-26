@@ -20,6 +20,7 @@ router.get('/auth', verifyJWT, (req, res) => {
     scope: [
       'https://www.googleapis.com/auth/drive.file',
       'https://www.googleapis.com/auth/calendar',
+      'https://www.googleapis.com/auth/gmail.send',
     ],
     prompt: 'consent',
     state: String(req.user.id),

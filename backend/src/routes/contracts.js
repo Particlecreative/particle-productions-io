@@ -2,6 +2,7 @@ const router = require('express').Router();
 const db     = require('../db');
 const crypto = require('crypto');
 const { verifyJWT } = require('../middleware/auth');
+const { sendEmail } = require('./gmail');
 
 // ── Token helper ──────────────────────────────────────
 function generateToken() {
@@ -149,6 +150,21 @@ router.post('/sign/:id/:token', async (req, res) => {
       );
       // Slack notification — fully signed
       notifySlack(`\u2705 Contract fully signed: ${projectLabel} \u2014 ${sig.provider_name || signer_name}`);
+
+      // Email all parties — contract completed
+      const completedSubject = `Contract Signed: ${projectLabel} — ${sig.provider_name}`;
+      const completedBody = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px;">
+          <h2 style="color: #2e7d32;">✅ Contract Fully Signed</h2>
+          <p>The contract for <strong>${projectLabel}</strong> with <strong>${sig.provider_name}</strong> has been signed by all parties.</p>
+          <p>A copy has been saved to Google Drive and Dropbox.</p>
+          <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
+          <p style="color: #aaa; font-size: 11px;">Sent via CP Panel — Particle Aesthetic Science Ltd.</p>
+        </div>
+      `;
+      // Send to provider + HOCP + Omer
+      sendEmail({ to: sig.provider_email, subject: completedSubject, htmlBody: completedBody }).catch(() => {});
+      sendEmail({ to: 'tomer@particleformen.com', subject: completedSubject, htmlBody: completedBody }).catch(() => {});
     }
 
     res.json({ success: true, all_signed: allSigned });
@@ -329,12 +345,36 @@ router.post('/:production_id/generate', async (req, res) => {
     // Slack notification — contract generated/sent
     notifySlack(`\ud83d\udcc4 Contract sent: ${projectName} \u2014 ${provider_name}`);
 
+    // Auto-send email to provider via Gmail API (fire-and-forget)
+    sendEmail({
+      to: provider_email,
+      cc: [hocp_email || 'tomer@particleformen.com'],
+      subject: `Contract for ${projectName} — ${provider_name}`,
+      htmlBody: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px;">
+          <h2 style="color: #030b2e;">Contract Ready for Signature</h2>
+          <p>Hi ${provider_name},</p>
+          <p>A contract has been prepared for <strong>${projectName}</strong>.</p>
+          <p>Please review and sign the contract by clicking the link below:</p>
+          <p style="margin: 24px 0;">
+            <a href="${providerSignUrl}" style="background: #0808f8; color: white; padding: 12px 28px; border-radius: 8px; text-decoration: none; font-weight: bold;">
+              Review & Sign Contract
+            </a>
+          </p>
+          <p style="color: #888; font-size: 13px;">If the button doesn't work, copy this link: ${providerSignUrl}</p>
+          <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
+          <p style="color: #aaa; font-size: 11px;">Sent via CP Panel — Particle Aesthetic Science Ltd.</p>
+        </div>
+      `,
+    }).catch(() => {}); // Non-blocking
+
     res.json({
       contract,
       signing_links: {
         provider: { url: providerSignUrl, name: provider_name, email: provider_email },
         hocp:     { url: hocpSignUrl,     name: hocp_name || 'Tomer Wilf Lezmy', email: hocp_email || 'tomer@particleformen.com' },
       },
+      emailSent: true,
     });
   } catch (err) {
     console.error('POST /contracts/generate error:', err);

@@ -386,6 +386,10 @@ export function generateContractSignatures(productionId, data) {
       production_id: productionId,
       provider_name: data.provider_name,
       provider_email: data.provider_email,
+      exhibit_a: data.exhibit_a || '',
+      exhibit_b: data.exhibit_b || '',
+      fee_amount: data.fee_amount || null,
+      payment_terms: data.payment_terms || '',
       status: 'pending',
       events: [{ type: 'created', at: new Date().toISOString() }],
     });

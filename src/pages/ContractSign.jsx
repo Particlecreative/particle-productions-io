@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { CheckCircle, RotateCcw, Undo2, PenTool } from 'lucide-react';
+import { CheckCircle, RotateCcw, Undo2, PenTool, FileText, DollarSign } from 'lucide-react';
 
 const API = import.meta.env.VITE_API_URL || '';
 
@@ -17,7 +17,7 @@ export default function ContractSign() {
   // Signature pad state
   const canvasRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
-  const [strokes, setStrokes] = useState([]); // array of stroke arrays (each stroke is array of points)
+  const [strokes, setStrokes] = useState([]);
   const [currentStroke, setCurrentStroke] = useState([]);
   const [hasSignature, setHasSignature] = useState(false);
 
@@ -97,7 +97,6 @@ export default function ContractSign() {
     const pos = getPos(e);
     setCurrentStroke(prev => {
       const updated = [...prev, pos];
-      // Draw in real-time
       const canvas = canvasRef.current;
       if (canvas && updated.length >= 2) {
         const ctx = canvas.getContext('2d');
@@ -241,11 +240,11 @@ export default function ContractSign() {
           </div>
           <div>
             <div style={{ color: '#9ca3af', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Producer</div>
-            <div style={{ color: '#1e293b', fontWeight: 600 }}>{contractData.producer || '—'}</div>
+            <div style={{ color: '#1e293b', fontWeight: 600 }}>{contractData.producer || '\u2014'}</div>
           </div>
           <div>
             <div style={{ color: '#9ca3af', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Service Provider</div>
-            <div style={{ color: '#1e293b', fontWeight: 600 }}>{contractData.provider_name || '—'}</div>
+            <div style={{ color: '#1e293b', fontWeight: 600 }}>{contractData.provider_name || '\u2014'}</div>
           </div>
           <div>
             <div style={{ color: '#9ca3af', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Signing As</div>
@@ -256,10 +255,49 @@ export default function ContractSign() {
         </div>
       </div>
 
+      {/* Exhibit A — Services & Instructions */}
+      {contractData.exhibit_a && (
+        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 12, padding: '16px 20px', marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <FileText size={16} style={{ color: '#2563eb' }} />
+            <h4 style={{ fontSize: 14, fontWeight: 700, color: '#1e40af', margin: 0 }}>Exhibit A \u2014 Services & Instructions</h4>
+          </div>
+          <div style={{ fontSize: 13, color: '#1e3a5f', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
+            {contractData.exhibit_a}
+          </div>
+        </div>
+      )}
+
+      {/* Exhibit B — Fees & Payment */}
+      {(contractData.exhibit_b || contractData.fee_amount || contractData.payment_terms) && (
+        <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 12, padding: '16px 20px', marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <DollarSign size={16} style={{ color: '#16a34a' }} />
+            <h4 style={{ fontSize: 14, fontWeight: 700, color: '#166534', margin: 0 }}>Exhibit B \u2014 Fees & Payment</h4>
+          </div>
+          {contractData.fee_amount && (
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#166534', marginBottom: 8 }}>
+              Total Fee: {Number(contractData.fee_amount).toLocaleString()}
+            </div>
+          )}
+          {contractData.payment_terms && (
+            <div style={{ fontSize: 13, color: '#166534', lineHeight: 1.7, marginBottom: 6 }}>
+              <strong>Payment Terms:</strong> {contractData.payment_terms}
+            </div>
+          )}
+          {contractData.exhibit_b && (
+            <div style={{ fontSize: 13, color: '#1e3a5f', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
+              {contractData.exhibit_b}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Contract terms note */}
-      <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 12, padding: '16px 20px', marginBottom: 28, fontSize: 13, color: '#1e40af', lineHeight: 1.7 }}>
+      <div style={{ background: '#fefce8', border: '1px solid #fde68a', borderRadius: 12, padding: '16px 20px', marginBottom: 28, fontSize: 13, color: '#92400e', lineHeight: 1.7 }}>
         <strong>Agreement Terms:</strong> By signing below, you confirm that you have read, understood, and agree to the terms of the service agreement
-        for the production referenced above. Both parties agree to the scope of work, compensation, and terms as discussed and documented.
+        for the production referenced above, including Exhibit A (Services) and Exhibit B (Fees & Payment). Both parties agree to the scope of work,
+        compensation, and terms as documented in this agreement.
       </div>
 
       <form onSubmit={handleSubmit}>

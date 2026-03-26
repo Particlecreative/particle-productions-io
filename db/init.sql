@@ -209,18 +209,25 @@ CREATE TABLE IF NOT EXISTS weekly_reports (
 -- CONTRACTS
 -- =============================================
 CREATE TABLE IF NOT EXISTS contracts (
-  id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  production_id  TEXT UNIQUE REFERENCES productions(id) ON DELETE CASCADE,
-  provider_name  TEXT,
-  provider_email TEXT,
-  status         TEXT DEFAULT 'none',   -- none | pending | sent | signed
-  sent_at        TIMESTAMPTZ,
-  signed_at      TIMESTAMPTZ,
-  pdf_url        TEXT,
-  events         JSONB DEFAULT '[]',
-  drive_url      TEXT,
-  dropbox_url    TEXT,
-  created_at     TIMESTAMPTZ DEFAULT NOW()
+  id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  production_id       TEXT UNIQUE REFERENCES productions(id) ON DELETE CASCADE,
+  provider_name       TEXT,
+  provider_email      TEXT,
+  status              TEXT DEFAULT 'none',   -- none | pending | sent | signed
+  sent_at             TIMESTAMPTZ,
+  signed_at           TIMESTAMPTZ,
+  pdf_url             TEXT,
+  events              JSONB DEFAULT '[]',
+  drive_url           TEXT,
+  dropbox_url         TEXT,
+  exhibit_a           TEXT,
+  exhibit_b           TEXT,
+  fee_amount          NUMERIC(12,2),
+  payment_terms       TEXT,
+  contract_pdf_base64 TEXT,
+  provider_id_number  TEXT,
+  provider_address    TEXT,
+  created_at          TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Contract e-signatures

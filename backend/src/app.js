@@ -80,6 +80,7 @@ app.use('/api/weekly-reports', require('./routes/weeklyReports'));
 app.use('/api/admin',          require('./routes/admin'));
 app.use('/api/drive',          require('./routes/drive'));
 app.use('/api/gcal',           require('./routes/gcal'));
+app.use('/api/gmail',          require('./routes/gmail'));
 app.use('/api/monday',         require('./routes/monday'));
 
 // Google OAuth callback redirect — the callback URL registered with Google
