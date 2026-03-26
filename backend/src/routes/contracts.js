@@ -154,19 +154,44 @@ router.post('/sign/:id/:token', async (req, res) => {
       notifySlack(`\u2705 Contract fully signed: ${projectLabel} \u2014 ${sig.provider_name || signer_name}`, `${APP_BASE}/production/${sig.production_id}`);
 
       // Email all parties — contract completed
-      const completedSubject = `Contract Signed: ${projectLabel} — ${sig.provider_name}`;
+      // Gather document history from events
+      const allEvents = events;
+      const createdEvent = allEvents.find(e => e.type === 'created');
+      const sentEvent = allEvents.find(e => e.type === 'sent');
+      const signedEvents = allEvents.filter(e => e.type === 'signed');
+      const completedEvent = allEvents.find(e => e.type === 'completed');
+
+      // Fetch drive_url for PDF link
+      const { rows: contractInfo } = await db.query('SELECT drive_url FROM contracts WHERE id = $1', [id]);
+      const driveUrl = contractInfo[0]?.drive_url;
+
+      const formatDate = (d) => d ? new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'N/A';
+
+      const historyHtml = `
+        <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+          ${createdEvent ? `<tr><td style="padding: 6px 0; color: #666; font-size: 13px;">Contract Created</td><td style="padding: 6px 0; font-size: 13px;">${formatDate(createdEvent.at)}</td></tr>` : ''}
+          ${sentEvent ? `<tr><td style="padding: 6px 0; color: #666; font-size: 13px;">Sent to ${sig.provider_name}</td><td style="padding: 6px 0; font-size: 13px;">${formatDate(sentEvent.at)}</td></tr>` : ''}
+          ${signedEvents.map(se => `<tr><td style="padding: 6px 0; color: #666; font-size: 13px;">Signed by ${se.name || se.role}</td><td style="padding: 6px 0; font-size: 13px;">${formatDate(se.at)}</td></tr>`).join('')}
+          ${completedEvent ? `<tr><td style="padding: 6px 0; color: #666; font-size: 13px; font-weight: bold;">Completed</td><td style="padding: 6px 0; font-size: 13px; font-weight: bold;">${formatDate(completedEvent.at)}</td></tr>` : ''}
+        </table>
+      `;
+
+      const completedSubject = `Contract Signed & Completed: ${projectLabel} — ${sig.provider_name}`;
       const completedBody = `
         <div style="font-family: Arial, sans-serif; max-width: 600px;">
-          <h2 style="color: #2e7d32;">✅ Contract Fully Signed</h2>
+          <h2 style="color: #2e7d32;">&#9989; Contract Fully Signed</h2>
           <p>The contract for <strong>${projectLabel}</strong> with <strong>${sig.provider_name}</strong> has been signed by all parties.</p>
-          <p>A copy has been saved to Google Drive and Dropbox.</p>
+          ${driveUrl ? `<p><a href="${driveUrl}" style="color: #1a73e8; text-decoration: none; font-weight: bold;">&#128196; View Signed PDF in Google Drive</a></p>` : ''}
+          <h3 style="color: #333; font-size: 14px; margin-top: 24px;">Document History</h3>
+          ${historyHtml}
           <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
           <p style="color: #aaa; font-size: 11px;">Sent via CP Panel — Particle Aesthetic Science Ltd.</p>
         </div>
       `;
-      // Send to provider + HOCP + Omer
+      // Send to provider + Tomer + Omer
       sendEmail({ to: sig.provider_email, subject: completedSubject, htmlBody: completedBody }).catch(() => {});
       sendEmail({ to: 'tomer@particleformen.com', subject: completedSubject, htmlBody: completedBody }).catch(() => {});
+      sendEmail({ to: 'omer@particleformen.com', subject: completedSubject, htmlBody: completedBody }).catch(() => {});
     }
 
     res.json({ success: true, all_signed: allSigned });
@@ -348,9 +373,9 @@ router.post('/:production_id/generate', async (req, res) => {
     notifySlack(`\ud83d\udcc4 Contract sent: ${projectName} \u2014 ${provider_name}\nProvider sign: ${providerSignUrl}`, `${APP_BASE}/production/${prodId}`);
 
     // Auto-send email to provider via Gmail API (fire-and-forget)
+    // Note: Omer is NOT CC'd on initial send — only on completion
     sendEmail({
       to: provider_email,
-      cc: [hocp_email || 'tomer@particleformen.com'],
       subject: `Contract for ${projectName} — ${provider_name}`,
       htmlBody: `
         <div style="font-family: Arial, sans-serif; max-width: 600px;">

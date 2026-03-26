@@ -393,6 +393,7 @@ function AddForm({ title, url, onTitle, onUrl, onAdd, onCancel, productionId }) 
           onUploaded={(data) => {
             const link = data?.drive?.viewLink || data?.dropbox?.link || '';
             if (link) onUrl(link);
+            if (!title && data?.originalFileNameNoExt) onTitle(data.originalFileNameNoExt);
           }}
         />
       </div>

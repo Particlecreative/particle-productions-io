@@ -343,7 +343,38 @@ export default function ContractSign() {
           </div>
         </div>
 
-        {/* ── Section 3: Exhibit A — Scope of Services ── */}
+        {/* ── Section 3: Full Agreement Terms ── */}
+        <div className="px-6 sm:px-10 py-6 border-b border-gray-100">
+          <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-4">Agreement Terms</h3>
+          <div className="text-sm text-gray-600 leading-relaxed space-y-3">
+            <p>
+              This Services Agreement (the &ldquo;Agreement&rdquo;) is entered into as of {effectiveDate} by and between{' '}
+              <strong>Particle Aesthetic Science Ltd.</strong> (&ldquo;the Company&rdquo;) and{' '}
+              <strong>{d.provider_name || 'the Service Provider'}</strong> (&ldquo;the Provider&rdquo;).
+            </p>
+            <p>
+              The Company hereby engages the Provider to perform the services described in Exhibit A below, subject to
+              the terms and conditions set forth in this Agreement. The Provider shall perform the services in a professional
+              and workmanlike manner, in accordance with industry standards and the Company&rsquo;s reasonable instructions.
+            </p>
+            <p>
+              The Provider represents that they are an independent contractor, not an employee of the Company. The Provider
+              shall be solely responsible for all taxes, insurance, and other obligations arising from the compensation
+              received under this Agreement.
+            </p>
+            <p>
+              All intellectual property, creative works, and deliverables produced under this Agreement shall be the
+              exclusive property of the Company. The Provider hereby assigns all rights, title, and interest in such
+              works to the Company.
+            </p>
+            <p>
+              The Provider shall maintain strict confidentiality regarding all proprietary information, trade secrets,
+              and business information of the Company, both during and after the term of this Agreement.
+            </p>
+          </div>
+        </div>
+
+        {/* ── Section 4: Exhibit A — Scope of Services ── */}
         {d.exhibit_a && (
           <div className="px-6 sm:px-10 py-6 border-b border-gray-100">
             <ExhibitCard
@@ -356,7 +387,7 @@ export default function ContractSign() {
           </div>
         )}
 
-        {/* ── Section 4: Exhibit B — Fees & Payment ── */}
+        {/* ── Section 5: Exhibit B — Fees & Payment ── */}
         {(d.exhibit_b || d.fee_amount || d.payment_terms) && (
           <div className="px-6 sm:px-10 py-6 border-b border-gray-100">
             <ExhibitCard
@@ -386,7 +417,7 @@ export default function ContractSign() {
           </div>
         )}
 
-        {/* ── Section 5: Standard Terms Summary ── */}
+        {/* ── Section 6: Standard Terms Summary ── */}
         <div className="px-6 sm:px-10 py-6 border-b border-gray-100 bg-gray-50/40">
           <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-4">Key Terms</h3>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-gray-600">
@@ -400,7 +431,7 @@ export default function ContractSign() {
           </p>
         </div>
 
-        {/* ── Section 6: Signature Section ── */}
+        {/* ── Section 7: Signature Section ── */}
         <div ref={signSectionRef} className="px-6 sm:px-10 py-8">
           <div className="flex items-center gap-3 mb-6">
             <div className="w-8 h-8 rounded-full bg-[#0a1e42] flex items-center justify-center">

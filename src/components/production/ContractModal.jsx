@@ -143,6 +143,26 @@ function SigningLinks({ signingLinks, onCopy, productionName }) {
   );
 }
 
+// ── Logo fetch helper ────────────────────────────────────────────
+const PARTICLE_LOGO_URL = 'https://www.particleformen.com/wp-content/themes/particleformen/assets/images/particle-for-men-logo.png';
+let _cachedLogoBase64 = null;
+
+async function fetchLogoBase64() {
+  if (_cachedLogoBase64) return _cachedLogoBase64;
+  try {
+    const response = await fetch(PARTICLE_LOGO_URL);
+    const blob = await response.blob();
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => { _cachedLogoBase64 = reader.result; resolve(reader.result); };
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
 // ── PDF Generation ───────────────────────────────────────────────
 function generateContractPDF(data) {
   const doc = new jsPDF();
@@ -171,14 +191,34 @@ function generateContractPDF(data) {
   // ── Header / Letterhead ──
   doc.setFillColor(3, 11, 46); // Particle dark navy
   doc.rect(0, 0, pageWidth, 35, 'F');
+
+  // Add logo if available
+  if (data.logoBase64) {
+    try {
+      doc.addImage(data.logoBase64, 'PNG', margin, 6, 40, 22);
+    } catch {
+      // Fallback to text-based logo
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(20);
+      doc.setFont('helvetica', 'bold');
+      doc.text('PARTICLE', margin, 18);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.text('for men', margin + 52, 18);
+    }
+  } else {
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(20);
+    doc.setFont('helvetica', 'bold');
+    doc.text('PARTICLE', margin, 18);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.text('for men', margin + 52, 18);
+  }
+
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(20);
-  doc.setFont('helvetica', 'bold');
-  doc.text('PARTICLE', margin, 18);
-  doc.setFontSize(8);
-  doc.setFont('helvetica', 'normal');
-  doc.text('for men', margin + 52, 18);
   doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
   doc.text(PARTICLE_COMPANY.name, pageWidth - margin, 14, { align: 'right' });
   doc.text(PARTICLE_COMPANY.address, pageWidth - margin, 20, { align: 'right' });
   if (data.effective_date) {
@@ -357,6 +397,32 @@ function generateContractPDF(data) {
   yRight += 10;
   doc.text(`Date: ___________`, rightX, yRight);
 
+  // ── Document History ──
+  if (data.documentHistory && data.documentHistory.length > 0) {
+    y += 10;
+    addPageIfNeeded(50);
+    doc.setFillColor(248, 250, 252);
+    doc.rect(margin, y - 4, contentWidth, 10, 'F');
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(3, 11, 46);
+    doc.text('DOCUMENT HISTORY', margin + 3, y + 3);
+    y += 14;
+
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 100, 100);
+
+    data.documentHistory.forEach(entry => {
+      addPageIfNeeded(8);
+      doc.setFont('helvetica', 'bold');
+      doc.text(entry.label, margin + 3, y);
+      doc.setFont('helvetica', 'normal');
+      doc.text(entry.date, margin + 80, y);
+      y += 7;
+    });
+  }
+
   // ── Footer ──
   const pageCount = doc.internal.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
@@ -464,6 +530,10 @@ export default function ContractModal({ production, lineItem, onClose }) {
   const [generateError, setGenerateError] = useState('');
   const [copyMsg, setCopyMsg] = useState('');
 
+  // ── Logo for PDF ──
+  const [logoBase64, setLogoBase64] = useState(null);
+  useEffect(() => { fetchLogoBase64().then(b64 => setLogoBase64(b64)); }, []);
+
   // ── Legacy fields ──
   const [pdfUrl, setPdfUrl] = useState(existing?.pdf_url || '');
   const [externalUrl, setExternalUrl] = useState(existing?.drive_url || existing?.dropbox_url || '');
@@ -550,6 +620,23 @@ export default function ContractModal({ production, lineItem, onClose }) {
     setEditableExhibitB(bParts.join('\n\n'));
   }
 
+  // ── Build document history for PDF ──
+  function buildDocumentHistory() {
+    const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+    const history = [];
+    const created = events.find(e => e.type === 'created');
+    if (created) history.push({ label: 'Contract Created', date: fmtDate(created.at) });
+    const sent = events.find(e => e.type === 'sent');
+    if (sent) history.push({ label: `Sent to ${providerName}`, date: fmtDate(sent.at) });
+    events.filter(e => e.type === 'signed').forEach(se => {
+      const who = se.role === 'hocp' ? 'Particle (HOCP)' : (se.name || 'Provider');
+      history.push({ label: `Signed by ${who}`, date: fmtDate(se.at) });
+    });
+    const completed = events.find(e => e.type === 'completed');
+    if (completed) history.push({ label: 'Completed', date: fmtDate(completed.at) });
+    return history;
+  }
+
   // ── PDF Preview Generation ──
   function handleGeneratePdfPreview() {
     const formattedDate = effectiveDate
@@ -570,6 +657,8 @@ export default function ContractModal({ production, lineItem, onClose }) {
       payment_terms: paymentTerms,
       payment_method: paymentMethod,
       hocp_name: user?.name || 'Tomer Wilf Lezmy',
+      logoBase64,
+      documentHistory: buildDocumentHistory(),
     });
 
     const dataUrl = doc.output('datauristring');
@@ -628,9 +717,49 @@ export default function ContractModal({ production, lineItem, onClose }) {
     }
   }
 
-  // ── Send contract ──
-  function handleSendContract() {
+  // ── Send contract via Gmail API ──
+  async function handleSendContract() {
     const now = nowISOString();
+    const providerLink = signingLinks?.provider?.url || '';
+    const token = localStorage.getItem('cp_auth_token');
+    const API = import.meta.env.VITE_API_URL || '';
+
+    try {
+      const res = await fetch(`${API}/api/gmail/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          to: providerEmail,
+          subject: `Contract for ${production.project_name} — ${providerName}`,
+          htmlBody: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px;">
+              <h2 style="color: #030b2e;">Contract Ready for Signature</h2>
+              <p>Hi ${providerName},</p>
+              <p>A contract has been prepared for <strong>${production.project_name}</strong>.</p>
+              <p>Please review and sign the contract by clicking the link below:</p>
+              <p style="margin: 24px 0;">
+                <a href="${providerLink}" style="background: #0808f8; color: white; padding: 12px 28px; border-radius: 8px; text-decoration: none; font-weight: bold;">
+                  Review & Sign Contract
+                </a>
+              </p>
+              <p style="color: #888; font-size: 13px;">If the button doesn't work, copy this link: ${providerLink}</p>
+              <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
+              <p style="color: #aaa; font-size: 11px;">Sent via CP Panel — Particle Aesthetic Science Ltd.</p>
+            </div>
+          `,
+        }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'Failed to send email');
+      }
+    } catch (err) {
+      console.error('Gmail send failed:', err);
+      // Fallback: still mark as sent but warn user
+      setSendSuccess(`Warning: Email may not have sent (${err.message}). Contract marked as sent.`);
+    }
+
     const newEvents = [...events, { type: 'sent', at: now }];
     upsertContract({
       production_id: contractKey,
@@ -647,15 +776,6 @@ export default function ContractModal({ production, lineItem, onClose }) {
     setEvents(newEvents);
     setStatus('sent');
     addNotification('contract_sent', `Contract sent for ${production.project_name}`, production.id);
-
-    // Open Gmail compose with auto-CC to omer
-    const providerLink = signingLinks?.provider?.url || '';
-    const subject = encodeURIComponent(`Contract for ${production.project_name} — ${providerName}`);
-    const body = encodeURIComponent(
-      `Hi ${providerName},\n\nPlease review and sign the attached contract.\n\nClick here to sign: ${providerLink}\n\nThank you,\n${user?.name || 'Tomer Wilf Lezmy'}\nParticle Aesthetic Science Ltd.`
-    );
-    const gmailUrl = `https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(providerEmail)}&cc=${encodeURIComponent('omer@particleformen.com')}&su=${subject}&body=${body}`;
-    window.open(gmailUrl, '_blank');
 
     setSendSuccess(`Contract sent to ${providerName}!`);
     setTimeout(() => setSendSuccess(''), 5000);
@@ -685,6 +805,8 @@ export default function ContractModal({ production, lineItem, onClose }) {
       payment_terms: paymentTerms,
       payment_method: paymentMethod,
       hocp_name: user?.name || 'Tomer Wilf Lezmy',
+      logoBase64,
+      documentHistory: buildDocumentHistory(),
     });
     doc.save(`Contract_${production.project_name}_${providerName}.pdf`);
   }
@@ -1013,9 +1135,29 @@ export default function ContractModal({ production, lineItem, onClose }) {
               </div>
             </div>
 
+            {/* Editable Effective Date in preview */}
+            <div className="flex items-center gap-3 mb-3 bg-gray-50 rounded-lg px-3 py-2 border border-gray-200">
+              <label className="text-xs font-semibold text-gray-500 whitespace-nowrap">Effective Date:</label>
+              <input
+                type="date"
+                className="brand-input text-sm"
+                style={{ maxWidth: 180, padding: '4px 8px' }}
+                value={effectiveDate}
+                onChange={e => {
+                  setEffectiveDate(e.target.value);
+                  // Auto-refresh preview after date change
+                  setTimeout(() => handleGeneratePdfPreview(), 100);
+                }}
+                disabled={isSigned}
+              />
+              <span className="text-xs text-gray-400">
+                {effectiveDate ? new Date(effectiveDate + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'Not set'}
+              </span>
+            </div>
+
             {editMode && (
               <div className="text-[10px] text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 mb-3">
-                Edit mode is ON. Modify the text below, then click "Refresh PDF" or "Download PDF" to generate the final document.
+                Edit mode is ON. Modify the text below, then click &ldquo;Refresh PDF&rdquo; or &ldquo;Download PDF&rdquo; to generate the final document.
               </div>
             )}
 
@@ -1291,17 +1433,27 @@ export default function ContractModal({ production, lineItem, onClose }) {
         ═══════════════════════════════════════════════════ */}
         {currentStep === 5 && (
           <div>
-            {/* Sent status header */}
-            {existing?.sent_at && (
-              <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 mb-4">
-                <div className="text-sm font-semibold text-blue-800">
-                  Sent to {providerName} on {formatIST(existing.sent_at)}
-                </div>
-                <div className="text-xs text-blue-600 mt-0.5">
-                  Status: {isSigned ? 'Signed' : 'Pending Signature'}
+            {/* Contract status badge */}
+            {isSigned ? (
+              <div className="flex items-center gap-3 bg-green-50 border border-green-300 rounded-xl px-4 py-3 mb-4">
+                <span className="text-lg">&#9989;</span>
+                <div>
+                  <div className="text-sm font-bold text-green-800">Signed & Completed</div>
+                  <div className="text-xs text-green-600">All parties have signed this contract.</div>
                 </div>
               </div>
-            )}
+            ) : existing?.sent_at ? (
+              <div className="flex items-center gap-3 bg-yellow-50 border border-yellow-300 rounded-xl px-4 py-3 mb-4">
+                <span className="text-lg" style={{ animation: 'pulse 2s ease-in-out infinite' }}>&#128993;</span>
+                <div>
+                  <div className="text-sm font-bold text-yellow-800">Pending Signature</div>
+                  <div className="text-xs text-yellow-700">
+                    Sent to {providerName} on {formatIST(existing.sent_at)} — awaiting signature.
+                  </div>
+                </div>
+                <style>{`@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }`}</style>
+              </div>
+            ) : null}
 
             {/* Provider signature status */}
             {(() => {

@@ -72,7 +72,8 @@ export default function FileUploadButton({
       const data = await res.json();
       setResult(data);
       setStatus('done');
-      onUploaded?.(data);
+      // Pass back the data + original filename for auto-fill
+      onUploaded?.({ ...data, originalFileName: file.name, originalFileNameNoExt: file.name.replace(/\.[^/.]+$/, '') });
     } catch (err) {
       console.error('FileUploadButton error:', err);
       setStatus('error');
