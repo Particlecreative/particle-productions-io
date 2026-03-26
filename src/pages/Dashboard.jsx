@@ -383,15 +383,15 @@ export default function Dashboard() {
       </div>
 
       {/* ── Bento Header Grid ──────────────────────────────────── */}
-      <div className="grid grid-cols-12 gap-4 mb-6">
+      <div className={clsx('grid grid-cols-12 mb-6', compactMode ? 'gap-2' : 'gap-4')}>
 
         {/* Left: Total Budget (spans 5 cols) */}
-        <div className="col-span-12 md:col-span-5 brand-card flex flex-col justify-center relative overflow-hidden" style={{ minHeight: 120 }}>
+        <div className="col-span-12 md:col-span-5 brand-card flex flex-col justify-center relative overflow-hidden" style={{ minHeight: compactMode ? 90 : 120 }}>
           <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ background: 'var(--brand-gradient)' }} />
           <div className="relative z-10">
             <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">{selectedYear} Total Budget</div>
-            <div className="text-3xl md:text-4xl font-black tracking-tight kpi-value" style={{ color: 'var(--brand-primary)', letterSpacing: '-0.04em', lineHeight: 1 }}>
-              {fmt(totalBudget)}
+            <div className={clsx(compactMode ? 'text-xl' : 'text-3xl md:text-4xl', 'font-black tracking-tight kpi-value')} style={{ color: 'var(--brand-primary)', letterSpacing: '-0.04em', lineHeight: 1 }}>
+              {df(totalBudget)}
             </div>
             <div className="mt-3 h-1 w-20 rounded-full overflow-hidden" style={{ background: 'rgba(0,0,0,0.06)' }}>
               <div className="h-full rounded-full gradient-accent-line" style={{ background: 'var(--brand-gradient)', width: '100%' }} />
@@ -400,14 +400,14 @@ export default function Dashboard() {
         </div>
 
         {/* Right: 3 metric cards (spans 7 cols) */}
-        <div className="col-span-12 md:col-span-7 grid grid-cols-3 gap-4">
+        <div className={clsx('col-span-12 md:col-span-7 grid grid-cols-3', compactMode ? 'gap-2' : 'gap-4')}>
 
           {/* Actual Spent */}
-          <div className="kpi-card flex flex-col justify-between" style={{ minHeight: 120 }}>
+          <div className="kpi-card flex flex-col justify-between" style={{ minHeight: compactMode ? 90 : 120 }}>
             <div className="kpi-label">Spent</div>
             <div>
-              <div className="text-lg md:text-xl font-black tracking-tight text-green-600" style={{ letterSpacing: '-0.02em', lineHeight: 1 }}>
-                {fmt(totalSpent)}
+              <div className={clsx(compactMode ? 'text-base' : 'text-lg md:text-xl', 'font-black tracking-tight text-green-600')} style={{ letterSpacing: '-0.02em', lineHeight: 1 }}>
+                {df(totalSpent)}
               </div>
               <div className="mt-2 h-1.5 rounded-full bg-gray-100 overflow-hidden">
                 <div className="h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${Math.min(pctSpent, 100)}%`, background: 'linear-gradient(90deg, #22c55e, #16a34a)' }} />
@@ -417,11 +417,11 @@ export default function Dashboard() {
           </div>
 
           {/* Remaining */}
-          <div className="kpi-card flex flex-col justify-between" style={{ minHeight: 120 }}>
+          <div className="kpi-card flex flex-col justify-between" style={{ minHeight: compactMode ? 90 : 120 }}>
             <div className="kpi-label">Remaining</div>
             <div>
-              <div className="text-lg md:text-xl font-black tracking-tight" style={{ color: 'var(--brand-secondary)', letterSpacing: '-0.02em', lineHeight: 1 }}>
-                {fmt(totalBudget - totalSpent)}
+              <div className={clsx(compactMode ? 'text-base' : 'text-lg md:text-xl', 'font-black tracking-tight')} style={{ color: 'var(--brand-secondary)', letterSpacing: '-0.02em', lineHeight: 1 }}>
+                {df(totalBudget - totalSpent)}
               </div>
               <div className="mt-2 text-[10px] text-gray-400 font-medium">
                 {totalBudget > 0 ? `${100 - pctSpent}% left` : ''}
@@ -430,7 +430,7 @@ export default function Dashboard() {
           </div>
 
           {/* Stage Breakdown */}
-          <div className="kpi-card flex flex-col justify-between" style={{ minHeight: 180 }}>
+          <div className="kpi-card flex flex-col justify-between" style={{ minHeight: compactMode ? 90 : 140 }}>
             <div className="kpi-label">By Stage</div>
             <div className="flex flex-wrap gap-1.5 mt-2">
               {Object.entries(stageBreakdown).map(([stage, count]) => {
@@ -669,7 +669,7 @@ export default function Dashboard() {
       {/* Table */}
       {activeTab === 'productions' && <div className="brand-card p-0 overflow-hidden">
         <div className="table-scroll-wrapper" style={stickyHeader ? { maxHeight: 'calc(100vh - 260px)', overflowY: 'auto' } : {}}>
-          <table className={clsx('data-table', compactMode && 'compact-table')} style={{ minWidth: compactMode ? 900 : 1200 }}>
+          <table className={clsx('data-table', compactMode && 'compact-table')} style={{ minWidth: compactMode ? 700 : 1200 }}>
             <thead>
               <tr>
                 <th style={{ width: 32 }}></th>
