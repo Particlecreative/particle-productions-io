@@ -364,23 +364,17 @@ export default function Dashboard() {
             {filtered.length} of {productions.length} · {selectedYear}
           </p>
         </div>
-        {isEditor && (
-          <button className="btn-cta flex items-center gap-2 text-sm px-5 py-2" onClick={() => setShowNewModal(true)}>
-            <Plus size={14} strokeWidth={2.5} />
-            New Production
-          </button>
-        )}
       </div>
 
       {/* ── Bento Header Grid ──────────────────────────────────── */}
       <div className="grid grid-cols-12 gap-4 mb-6">
 
         {/* Left: Total Budget (spans 5 cols) */}
-        <div className="col-span-12 md:col-span-5 brand-card flex flex-col justify-center relative overflow-hidden" style={{ minHeight: 140 }}>
+        <div className="col-span-12 md:col-span-5 brand-card flex flex-col justify-center relative overflow-hidden" style={{ minHeight: 120 }}>
           <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ background: 'var(--brand-gradient)' }} />
           <div className="relative z-10">
             <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">{selectedYear} Total Budget</div>
-            <div className="text-3xl md:text-4xl font-black tracking-tighter kpi-value" style={{ color: 'var(--brand-primary)', letterSpacing: '-0.04em', lineHeight: 1 }}>
+            <div className="text-2xl md:text-3xl font-black tracking-tight kpi-value" style={{ color: 'var(--brand-primary)', letterSpacing: '-0.03em', lineHeight: 1 }}>
               {fmt(totalBudget)}
             </div>
             <div className="mt-3 h-1 w-20 rounded-full overflow-hidden" style={{ background: 'rgba(0,0,0,0.06)' }}>
@@ -393,10 +387,10 @@ export default function Dashboard() {
         <div className="col-span-12 md:col-span-7 grid grid-cols-3 gap-4">
 
           {/* Actual Spent */}
-          <div className="kpi-card flex flex-col justify-between" style={{ minHeight: 140 }}>
+          <div className="kpi-card flex flex-col justify-between" style={{ minHeight: 120 }}>
             <div className="kpi-label">Spent</div>
             <div>
-              <div className="text-2xl md:text-3xl font-black tracking-tight text-green-600 kpi-value" style={{ letterSpacing: '-0.03em', lineHeight: 1 }}>
+              <div className="text-xl md:text-2xl font-black tracking-tight text-green-600 kpi-value" style={{ letterSpacing: '-0.02em', lineHeight: 1 }}>
                 {fmt(totalSpent)}
               </div>
               <div className="mt-2 h-1.5 rounded-full bg-gray-100 overflow-hidden">
@@ -407,10 +401,10 @@ export default function Dashboard() {
           </div>
 
           {/* Remaining */}
-          <div className="kpi-card flex flex-col justify-between" style={{ minHeight: 140 }}>
+          <div className="kpi-card flex flex-col justify-between" style={{ minHeight: 120 }}>
             <div className="kpi-label">Remaining</div>
             <div>
-              <div className="text-2xl md:text-3xl font-black tracking-tight kpi-value" style={{ color: 'var(--brand-secondary)', letterSpacing: '-0.03em', lineHeight: 1 }}>
+              <div className="text-xl md:text-2xl font-black tracking-tight kpi-value" style={{ color: 'var(--brand-secondary)', letterSpacing: '-0.02em', lineHeight: 1 }}>
                 {fmt(totalBudget - totalSpent)}
               </div>
               <div className="mt-2 text-[10px] text-gray-400 font-medium">
@@ -440,9 +434,9 @@ export default function Dashboard() {
                 );
               })}
             </div>
-            <div className="text-3xl font-black mt-2 kpi-value" style={{ color: 'var(--brand-primary)', letterSpacing: '-0.04em' }}>
+            <div className="text-xl font-black mt-2 kpi-value" style={{ color: 'var(--brand-primary)', letterSpacing: '-0.03em' }}>
               {productions.length}
-              <span className="text-xs font-medium text-gray-400 ml-1.5">total</span>
+              <span className="text-xs font-medium text-gray-400 ml-1">total</span>
             </div>
           </div>
         </div>
@@ -609,8 +603,8 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Tab Bar */}
-      <div className="flex gap-1 border-b border-gray-100 mb-4">
+      {/* Tab Bar + New Production */}
+      <div className="flex items-center gap-1 border-b border-gray-100 mb-4 sticky top-0 z-30 bg-[var(--brand-bg)] py-2 -mx-1 px-1">
         {[
           { id: 'productions', label: '📋 Productions' },
           { id: 'weekly',      label: '📅 Weekly' },
@@ -625,6 +619,13 @@ export default function Dashboard() {
             {t.label}
           </button>
         ))}
+        {/* New Production — right-aligned in tab bar */}
+        {isEditor && (
+          <button className="btn-cta flex items-center gap-2 text-xs px-4 py-1.5 ml-auto" onClick={() => setShowNewModal(true)}>
+            <Plus size={13} strokeWidth={2.5} />
+            New Production
+          </button>
+        )}
       </div>
 
       {/* Table */}
