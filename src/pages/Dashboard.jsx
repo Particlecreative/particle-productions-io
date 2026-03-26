@@ -82,6 +82,9 @@ export default function Dashboard() {
     try { return JSON.parse(localStorage.getItem('cp_dash_filters') || '{}').hideCompleted ?? false; } catch { return false; }
   });
   const [colorByStatus, setColorByStatus] = useState(true);
+  const [stickyHeader, setStickyHeader] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('cp_dash_sticky') || 'true'); } catch { return true; }
+  });
   const [search, setSearch] = useState(() => {
     try { return JSON.parse(localStorage.getItem('cp_dash_filters') || '{}').search ?? ''; } catch { return ''; }
   });
@@ -530,6 +533,15 @@ export default function Dashboard() {
         >
           {colorByStatus ? '⬛' : '⬜'} {colorByStatus ? 'Colors On' : 'Colors Off'}
         </button>
+        <button
+          onClick={() => setStickyHeader(v => { const n = !v; localStorage.setItem('cp_dash_sticky', JSON.stringify(n)); return n; })}
+          className={clsx(
+            'flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold border transition-all',
+            stickyHeader ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'
+          )}
+        >
+          📌 {stickyHeader ? 'Sticky On' : 'Sticky Off'}
+        </button>
         {customOrder && (
           <button
             onClick={() => { setCustomOrder(null); setSortConfig({ key: 'id', dir: 'asc' }); }}
@@ -621,22 +633,22 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* Floating New Production button — bottom right */}
+      {/* Floating New Production button — bottom right, above mobile nav */}
       {isEditor && (
         <button
-          className="btn-cta fixed bottom-6 right-6 z-50 flex items-center gap-2 text-sm px-6 py-3 shadow-lg hover:shadow-xl transition-all"
+          className="btn-cta fixed bottom-20 md:bottom-6 right-6 z-50 flex items-center gap-2 text-sm px-5 py-2.5 shadow-lg hover:shadow-xl transition-all rounded-full"
           style={{ animation: 'floatUp 0.4s cubic-bezier(0.16, 1, 0.3, 1)' }}
           onClick={() => setShowNewModal(true)}
         >
-          <Plus size={16} strokeWidth={2.5} />
+          <Plus size={15} strokeWidth={2.5} />
           New Production
         </button>
       )}
 
       {/* Table */}
       {activeTab === 'productions' && <div className="brand-card p-0 overflow-hidden">
-        <div className="table-scroll-wrapper" style={{ maxHeight: 'calc(100vh - 280px)', overflowY: 'auto' }}>
-          <table className="data-table" style={{ minWidth: 1400 }}>
+        <div className="table-scroll-wrapper" style={stickyHeader ? { maxHeight: 'calc(100vh - 260px)', overflowY: 'auto' } : {}}>
+          <table className="data-table" style={{ minWidth: 1200 }}>
             <thead>
               <tr>
                 <th style={{ width: 32 }}></th>
