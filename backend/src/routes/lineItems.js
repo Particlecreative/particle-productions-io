@@ -109,6 +109,17 @@ router.delete('/:id', async (req, res) => {
       [req.params.id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+
+    // Clean up associated contract + signatures
+    const contractKey = `${rows[0].production_id}_li_${req.params.id}`;
+    try {
+      const { rows: cRows } = await db.query('SELECT id FROM contracts WHERE production_id = $1', [contractKey]);
+      if (cRows[0]) {
+        await db.query('DELETE FROM contract_signatures WHERE contract_id = $1', [cRows[0].id]);
+        await db.query('DELETE FROM contracts WHERE id = $1', [cRows[0].id]);
+      }
+    } catch (_) { /* non-critical */ }
+
     await syncTotals(rows[0].production_id);
     res.json({ success: true });
   } catch (err) {
