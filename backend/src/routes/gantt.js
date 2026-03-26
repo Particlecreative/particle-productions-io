@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const db     = require('../db');
 const { verifyJWT } = require('../middleware/auth');
+const { syncEventToGoogle, deleteEventFromGoogle } = require('./gcal');
 
 router.use(verifyJWT);
 
@@ -65,6 +66,8 @@ router.post('/events', async (req, res) => {
       [production_id, phase_id || null, title, start_date, end_date, color || null]
     );
     res.status(201).json(rows[0]);
+    // Auto-sync to Google Calendar (fire-and-forget)
+    syncEventToGoogle(rows[0].id).catch(() => {});
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }
@@ -86,6 +89,8 @@ router.patch('/events/:id', async (req, res) => {
     );
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
     res.json(rows[0]);
+    // Auto-sync to Google Calendar (fire-and-forget)
+    syncEventToGoogle(rows[0].id).catch(() => {});
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }
@@ -94,8 +99,12 @@ router.patch('/events/:id', async (req, res) => {
 // DELETE /api/gantt/events/:id
 router.delete('/events/:id', async (req, res) => {
   try {
+    // Get gcal_event_id before deleting
+    const { rows: existing } = await db.query('SELECT gcal_event_id FROM gantt_events WHERE id = $1', [req.params.id]);
     await db.query('DELETE FROM gantt_events WHERE id = $1', [req.params.id]);
     res.json({ success: true });
+    // Auto-delete from Google Calendar (fire-and-forget)
+    if (existing[0]?.gcal_event_id) deleteEventFromGoogle(existing[0].gcal_event_id).catch(() => {});
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }

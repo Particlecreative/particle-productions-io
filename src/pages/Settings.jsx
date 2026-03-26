@@ -320,6 +320,68 @@ const PRIORITY_STYLES = {
   high:   'text-red-600 font-semibold',
 };
 
+function GCalSection({ driveConnected }) {
+  const [status, setStatus] = useState(null);
+  const [syncing, setSyncing] = useState(false);
+  useEffect(() => {
+    fetch('/api/gcal/status', { headers: { Authorization: `Bearer ${localStorage.getItem('cp_auth_token')}` } })
+      .then(r => r.json()).then(setStatus).catch(() => {});
+  }, []);
+
+  async function handleSetup() {
+    try {
+      const r = await fetch('/api/gcal/setup', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${localStorage.getItem('cp_auth_token')}`, 'Content-Type': 'application/json' },
+      });
+      const d = await r.json();
+      if (d.calendarId) { setStatus({ connected: true, calendarId: d.calendarId }); alert('Calendar created!'); }
+      else alert(d.error || 'Failed');
+    } catch (e) { alert('Error: ' + e.message); }
+  }
+
+  async function handleSync() {
+    setSyncing(true);
+    try {
+      const h = { Authorization: `Bearer ${localStorage.getItem('cp_auth_token')}`, 'Content-Type': 'application/json' };
+      const r1 = await fetch('/api/gcal/sync-to-google', { method: 'POST', headers: h });
+      const d1 = await r1.json();
+      const r2 = await fetch('/api/gcal/sync-from-google', { method: 'POST', headers: h });
+      const d2 = await r2.json();
+      setStatus(prev => ({ ...prev, lastSync: new Date().toISOString() }));
+      alert(`Sync done! To Google: ${d1.created || 0} created, ${d1.updated || 0} updated. From Google: ${d2.updated || 0} updated.`);
+    } catch (e) { alert('Error: ' + e.message); }
+    setSyncing(false);
+  }
+
+  return (
+    <div>
+      {status?.connected ? (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-xl px-4 py-2.5">
+            <span className="text-green-600">✅</span>
+            <span className="font-semibold">Calendar Connected</span>
+            <span className="text-xs text-green-500 ml-1 font-mono">{status.calendarId}</span>
+          </div>
+          {status.lastSync && (
+            <div className="text-xs text-gray-400">Last sync: {new Date(status.lastSync).toLocaleString()}</div>
+          )}
+          <div className="flex items-center gap-3">
+            <button onClick={handleSync} className="btn-secondary text-xs px-4 py-2" disabled={syncing}>
+              {syncing ? '🔄 Syncing...' : '🔄 Sync Now'}
+            </button>
+            <span className="text-xs text-gray-400">Auto-syncs when Gantt events change. Google Calendar changes sync via webhook.</span>
+          </div>
+        </div>
+      ) : (
+        <button onClick={handleSetup} className="btn-cta text-xs px-4 py-2" disabled={!driveConnected}>
+          Setup Calendar
+        </button>
+      )}
+    </div>
+  );
+}
+
 export default function Settings() {
   const { brandId, brand, refreshBrands } = useBrand();
   const { lists, updateList, resetListKey } = useLists();
@@ -1010,41 +1072,7 @@ export default function Settings() {
               Sync Gantt events with a dedicated Google Calendar. Changes in either direction are mirrored.
               {driveConnected ? '' : ' Connect Google Drive first (with Calendar scope).'}
             </p>
-            <div className="flex items-center gap-3 flex-wrap">
-              <button
-                onClick={async () => {
-                  try {
-                    const r = await fetch('/api/gcal/setup', {
-                      method: 'POST',
-                      headers: { 'Authorization': `Bearer ${localStorage.getItem('cp_auth_token')}`, 'Content-Type': 'application/json' },
-                    });
-                    const d = await r.json();
-                    if (d.calendarId) alert('Calendar created: ' + d.calendarId);
-                    else alert(d.error || 'Failed');
-                  } catch (e) { alert('Error: ' + e.message); }
-                }}
-                className="btn-cta text-xs px-4 py-2"
-                disabled={!driveConnected}
-              >
-                Setup Calendar
-              </button>
-              <button
-                onClick={async () => {
-                  try {
-                    const token = localStorage.getItem('cp_auth_token');
-                    const h = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
-                    const r1 = await fetch('/api/gcal/sync-to-google', { method: 'POST', headers: h });
-                    const d1 = await r1.json();
-                    const r2 = await fetch('/api/gcal/sync-from-google', { method: 'POST', headers: h });
-                    const d2 = await r2.json();
-                    alert(`Sync done! To Google: ${d1.created || 0} created, ${d1.updated || 0} updated. From Google: ${d2.updated || 0} updated.`);
-                  } catch (e) { alert('Error: ' + e.message); }
-                }}
-                className="btn-secondary text-xs px-4 py-2"
-              >
-                🔄 Sync Now
-              </button>
-            </div>
+            <GCalSection driveConnected={driveConnected} />
           </section>
         </div>
       )}

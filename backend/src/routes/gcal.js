@@ -35,6 +35,40 @@ async function getCalendarId() {
   return rows[0]?.gcal_calendar_id;
 }
 
+// ── POST /api/gcal/webhook — Google Calendar push notification (PUBLIC) ──────
+router.post('/webhook', async (req, res) => {
+  res.status(200).end(); // Respond immediately
+  try {
+    const calendar = await getCalendarClient();
+    const calendarId = await getCalendarId();
+    if (!calendarId) return;
+    const { data } = await calendar.events.list({
+      calendarId, maxResults: 500, singleEvents: true, orderBy: 'startTime',
+    });
+    for (const ge of (data.items || [])) {
+      if (ge.status === 'cancelled') {
+        await db.query('DELETE FROM gantt_events WHERE gcal_event_id = $1', [ge.id]);
+        continue;
+      }
+      const { rows } = await db.query('SELECT * FROM gantt_events WHERE gcal_event_id = $1', [ge.id]);
+      if (rows[0]) {
+        const newStart = ge.start?.date || ge.start?.dateTime?.slice(0, 10);
+        const newEnd = ge.end?.date || ge.end?.dateTime?.slice(0, 10);
+        if (newStart !== rows[0].start_date || newEnd !== rows[0].end_date) {
+          await db.query(
+            'UPDATE gantt_events SET start_date = $1, end_date = $2, name = $3 WHERE gcal_event_id = $4',
+            [newStart, newEnd, ge.summary?.replace(/^\[.*?\]\s*/, '') || rows[0].name, ge.id]
+          );
+        }
+      }
+    }
+    await db.query("UPDATE settings SET gcal_last_sync = NOW() WHERE brand_id = 'particle'");
+  } catch (err) {
+    console.error('GCal webhook sync error:', err.message);
+  }
+});
+
+// ── Protected routes below ──────────────────────────────────────────────────
 router.use(verifyJWT);
 
 // ── POST /api/gcal/setup — Create CP Panel calendar ─────────────────────────
@@ -236,6 +270,29 @@ async function deleteEventFromGoogle(gcalEventId) {
     console.error('GCal delete error:', err.message);
   }
 }
+
+// ── POST /api/gcal/watch — Register webhook with Google ─────────────────────
+router.post('/watch', requireAdmin, async (req, res) => {
+  try {
+    const calendar = await getCalendarClient();
+    const calendarId = await getCalendarId();
+    if (!calendarId) return res.status(400).json({ error: 'Calendar not set up' });
+
+    const { data } = await calendar.events.watch({
+      calendarId,
+      requestBody: {
+        id: `cp-panel-watch-${Date.now()}`,
+        type: 'web_hook',
+        address: `https://particlepdio.particleface.com/api/gcal/webhook`,
+        expiration: String(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+      },
+    });
+    res.json({ message: 'Webhook registered', expiration: data.expiration });
+  } catch (err) {
+    console.error('GCal watch error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 module.exports = router;
 module.exports.syncEventToGoogle = syncEventToGoogle;
