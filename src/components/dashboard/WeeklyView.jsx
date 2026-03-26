@@ -1,29 +1,31 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   ChevronLeft, ChevronRight, Plus, Trash2, Check, X, Link2,
   ExternalLink, Presentation, Clock, Edit3, ChevronDown,
+  Calendar as CalendarIcon, FileText,
 } from 'lucide-react';
 import {
   getWeeklyReports, getWeeklyReport, saveWeeklyReport, deleteWeeklyReport,
-  getComments, getLinks, generateId,
+  getComments, getLinks, generateId, getProductions,
 } from '../../lib/dataService';
 import { getHoliday } from '../../lib/holidays';
+import { getAllGanttEvents, createGanttEvent, DEFAULT_PHASES } from '../../lib/ganttService';
 import { useAuth } from '../../context/AuthContext';
 import { useBrand } from '../../context/BrandContext';
 import StageBadge from '../ui/StageBadge';
 import clsx from 'clsx';
 
-// ─── date helpers ─────────────────────────────────────────────────────────────
+// ============================================================================
+// SHARED DATE HELPERS
+// ============================================================================
 
-// Israeli work week: Sunday = start of week
 function getSundayOf(d) {
   const date = new Date(d);
-  const day = date.getDay(); // 0=Sun, 6=Sat
+  const day = date.getDay();
   date.setDate(date.getDate() - day);
   date.setHours(0, 0, 0, 0);
   return date;
 }
-// Keep alias for backward compat
 function getMondayOf(d) { return getSundayOf(d); }
 
 function addDays(date, n) {
@@ -40,24 +42,26 @@ function fmtWeekLabel(sunday) {
   const saturday = addDays(sunday, 6);
   const lo = sunday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   const hi = saturday.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  return `${lo} – ${hi}`;
+  return `${lo} \u2013 ${hi}`;
 }
 
 function fmtShortWeek(monday) {
   const sunday = addDays(monday, 6);
   const lo = monday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   const hi = sunday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  return `${lo}–${hi}`;
+  return `${lo}\u2013${hi}`;
 }
 
-// ─── constants ────────────────────────────────────────────────────────────────
+// ============================================================================
+// WEEKLY REPORTS CONSTANTS & HELPERS
+// ============================================================================
 
 const STATUSES = [
-  { value: 'on_track',  label: 'On Track',  icon: '🟢', bg: 'bg-green-100',  text: 'text-green-800',  border: 'border-green-300'  },
-  { value: 'pending',   label: 'Pending',   icon: '⬜', bg: 'bg-gray-100',   text: 'text-gray-600',   border: 'border-gray-300'   },
-  { value: 'at_risk',   label: 'At Risk',   icon: '🟡', bg: 'bg-amber-100',  text: 'text-amber-800',  border: 'border-amber-300'  },
-  { value: 'blocked',   label: 'Blocked',   icon: '🔴', bg: 'bg-red-100',    text: 'text-red-800',    border: 'border-red-300'    },
-  { value: 'completed', label: 'Completed', icon: '🔵', bg: 'bg-blue-100',   text: 'text-blue-800',   border: 'border-blue-300'   },
+  { value: 'on_track',  label: 'On Track',  icon: '\uD83D\uDFE2', bg: 'bg-green-100',  text: 'text-green-800',  border: 'border-green-300'  },
+  { value: 'pending',   label: 'Pending',   icon: '\u2B1C',       bg: 'bg-gray-100',   text: 'text-gray-600',   border: 'border-gray-300'   },
+  { value: 'at_risk',   label: 'At Risk',   icon: '\uD83D\uDFE1', bg: 'bg-amber-100',  text: 'text-amber-800',  border: 'border-amber-300'  },
+  { value: 'blocked',   label: 'Blocked',   icon: '\uD83D\uDD34', bg: 'bg-red-100',    text: 'text-red-800',    border: 'border-red-300'    },
+  { value: 'completed', label: 'Completed', icon: '\uD83D\uDD35', bg: 'bg-blue-100',   text: 'text-blue-800',   border: 'border-blue-300'   },
 ];
 
 const STATUS_SORT = { on_track: 0, pending: 1, at_risk: 2, blocked: 3, completed: 4 };
@@ -94,7 +98,68 @@ function overlapsWeek(prod, weekStart, weekEnd) {
   return true;
 }
 
-// ─── StatusBadge ──────────────────────────────────────────────────────────────
+// ============================================================================
+// CALENDAR CONSTANTS
+// ============================================================================
+
+const PRODUCTION_COLORS = ['#0808f8','#030b2e','#27AE60','#F5A623','#E74C3C','#9B59B6','#3498DB','#00BCD4'];
+const HOURS = Array.from({ length: 13 }, (_, i) => i + 8); // 8..20
+const DAY_NAMES_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+function getMonthGrid(year, month) {
+  const first = new Date(year, month, 1);
+  const startDay = first.getDay(); // 0=Sun
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells = [];
+  // Leading blanks from previous month
+  const prevMonthDays = new Date(year, month, 0).getDate();
+  for (let i = startDay - 1; i >= 0; i--) {
+    const d = new Date(year, month - 1, prevMonthDays - i);
+    cells.push({ date: d, outside: true });
+  }
+  // Current month
+  for (let d = 1; d <= daysInMonth; d++) {
+    cells.push({ date: new Date(year, month, d), outside: false });
+  }
+  // Trailing to fill 6 rows
+  while (cells.length < 42) {
+    const d = cells.length - startDay - daysInMonth + 1;
+    cells.push({ date: new Date(year, month + 1, d), outside: true });
+  }
+  return cells;
+}
+
+function getWeekDates(anchorDate) {
+  const sunday = getSundayOf(anchorDate);
+  return Array.from({ length: 7 }, (_, i) => addDays(sunday, i));
+}
+
+function isWeekend(date) {
+  const d = date.getDay();
+  return d === 5 || d === 6; // Fri, Sat
+}
+
+function isSameDay(a, b) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+function eventOverlapsDate(ev, dateStr) {
+  return ev.start <= dateStr && ev.end >= dateStr;
+}
+
+function eventOverlapsRange(ev, rangeStart, rangeEnd) {
+  return ev.start <= rangeEnd && ev.end >= rangeStart;
+}
+
+function phaseColor(phase) {
+  const p = DEFAULT_PHASES.find(ph => ph.id === phase || ph.name === phase);
+  return p ? p.color : '#6B7280';
+}
+
+// ============================================================================
+// StatusBadge
+// ============================================================================
 
 function StatusBadge({ status }) {
   const s = getStatus(status);
@@ -105,7 +170,9 @@ function StatusBadge({ status }) {
   );
 }
 
-// ─── StatusDropdown ───────────────────────────────────────────────────────────
+// ============================================================================
+// StatusDropdown
+// ============================================================================
 
 function StatusDropdown({ value, onChange }) {
   const [open, setOpen] = useState(false);
@@ -149,12 +216,14 @@ function StatusDropdown({ value, onChange }) {
   );
 }
 
-// ─── ProductionEntry (edit mode) ──────────────────────────────────────────────
+// ============================================================================
+// ProductionEntry (edit mode)
+// ============================================================================
 
 function ProductionEntry({ entry, prod, comments, links, onUpdate, onRemove, isEditor }) {
   const [showComments, setShowComments] = useState(false);
   const [showLinks, setShowLinks] = useState(false);
-  const [addLinkMode, setAddLinkMode] = useState(null); // null | 'production' | 'custom'
+  const [addLinkMode, setAddLinkMode] = useState(null);
   const [customLink, setCustomLink] = useState({ title: '', url: '' });
   const [collapsed, setCollapsed] = useState(false);
 
@@ -268,7 +337,7 @@ function ProductionEntry({ entry, prod, comments, links, onUpdate, onRemove, isE
             <textarea
               value={entry.note || ''}
               onChange={e => onUpdate({ note: e.target.value })}
-              placeholder="Status update, key decisions, blockers…"
+              placeholder="Status update, key decisions, blockers\u2026"
               rows={2}
               className="w-full text-sm text-gray-700 border border-gray-200 rounded-xl px-3 py-2 resize-none outline-none focus:border-[var(--brand-accent)] transition-colors placeholder-gray-300"
             />
@@ -318,7 +387,7 @@ function ProductionEntry({ entry, prod, comments, links, onUpdate, onRemove, isE
                       {checked && (
                         <button
                           onClick={e => { e.stopPropagation(); toggleCommentApproval(c.id); }}
-                          title={approved ? 'Approved — click to unapprove' : 'Click to approve'}
+                          title={approved ? 'Approved \u2014 click to unapprove' : 'Click to approve'}
                           className={clsx(
                             'flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] transition-all border',
                             approved
@@ -326,7 +395,7 @@ function ProductionEntry({ entry, prod, comments, links, onUpdate, onRemove, isE
                               : 'border-gray-300 text-gray-300 hover:border-green-400 hover:text-green-500'
                           )}
                         >
-                          ✓
+                          \u2713
                         </button>
                       )}
                     </div>
@@ -352,7 +421,7 @@ function ProductionEntry({ entry, prod, comments, links, onUpdate, onRemove, isE
                   <div key={wl.id} className="flex items-center gap-2 px-2.5 py-1.5 bg-gray-50 rounded-lg border border-gray-200">
                     <button
                       onClick={() => toggleLinkApproval(wl.id)}
-                      title={wl.approved ? 'Approved — click to remove' : 'Click to approve'}
+                      title={wl.approved ? 'Approved \u2014 click to remove' : 'Click to approve'}
                       className={clsx(
                         'w-5 h-5 rounded-full flex items-center justify-center text-[10px] flex-shrink-0 border transition-all',
                         wl.approved
@@ -360,7 +429,7 @@ function ProductionEntry({ entry, prod, comments, links, onUpdate, onRemove, isE
                           : 'border-gray-300 text-gray-300 hover:border-green-400 hover:text-green-500'
                       )}
                     >
-                      ✓
+                      \u2713
                     </button>
                     <a
                       href={wl.url}
@@ -433,7 +502,7 @@ function ProductionEntry({ entry, prod, comments, links, onUpdate, onRemove, isE
                     />
                     <input
                       type="url"
-                      placeholder="https://…"
+                      placeholder="https://\u2026"
                       value={customLink.url}
                       onChange={e => setCustomLink(p => ({ ...p, url: e.target.value }))}
                       onKeyDown={e => { if (e.key === 'Enter') addCustomLink(); if (e.key === 'Escape') setAddLinkMode(null); }}
@@ -454,7 +523,9 @@ function ProductionEntry({ entry, prod, comments, links, onUpdate, onRemove, isE
   );
 }
 
-// ─── PresentCard ──────────────────────────────────────────────────────────────
+// ============================================================================
+// PresentCard
+// ============================================================================
 
 function PresentCard({ entry, prod }) {
   if (!prod) return null;
@@ -465,7 +536,6 @@ function PresentCard({ entry, prod }) {
       'rounded-2xl border-2 bg-white shadow-md flex flex-col min-h-[220px]',
       s.border
     )}>
-      {/* Card header */}
       <div className={clsx('rounded-t-2xl px-5 py-4', s.bg)}>
         <div className="flex items-center gap-2 mb-1">
           <span className="text-lg">{s.icon}</span>
@@ -475,29 +545,24 @@ function PresentCard({ entry, prod }) {
         <span className="font-mono text-[10px] text-gray-400">{prod.id}</span>
       </div>
 
-      {/* Card body */}
       <div className="flex-1 px-5 py-4 space-y-3">
-        {/* Weekly note */}
         {entry.note && (
           <p className="text-sm text-gray-700 leading-relaxed">{entry.note}</p>
         )}
 
-        {/* Approved updates */}
         {(entry.selected_comment_ids || []).length > 0 && (
           <div className="space-y-1.5">
             {entry.selected_comment_ids.map(cid => {
               const approved = (entry.approved_comment_ids || []).includes(cid);
-              // We need to pass comment text — done via prod entries lookup in parent
               return (
                 <div key={cid} className="flex items-start gap-2 text-xs text-gray-700">
                   <span className={clsx(
                     'flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[9px] mt-0.5',
                     approved ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'
                   )}>
-                    {approved ? '✓' : '•'}
+                    {approved ? '\u2713' : '\u2022'}
                   </span>
                   <span className={clsx(approved && 'font-medium text-gray-800')} data-comment-id={cid}>
-                    {/* text filled in by parent via CommentTextFill */}
                     <CommentBodyPlaceholder cid={cid} />
                   </span>
                 </div>
@@ -506,7 +571,6 @@ function PresentCard({ entry, prod }) {
           </div>
         )}
 
-        {/* Links */}
         {(entry.weekly_links || []).length > 0 && (
           <div className="flex flex-wrap gap-1.5 pt-1">
             {entry.weekly_links.map(wl => (
@@ -522,13 +586,12 @@ function PresentCard({ entry, prod }) {
                     : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-blue-300 hover:text-blue-600'
                 )}
               >
-                {wl.approved ? '✅' : '🔗'} {wl.title || wl.url}
+                {wl.approved ? '\u2705' : '\uD83D\uDD17'} {wl.title || wl.url}
               </a>
             ))}
           </div>
         )}
 
-        {/* Stage badge */}
         <div className="pt-1">
           <StageBadge stage={prod.stage} />
         </div>
@@ -537,15 +600,15 @@ function PresentCard({ entry, prod }) {
   );
 }
 
-// Tiny helper — PresentCard gets comment text via a context-free lookup
 function CommentBodyPlaceholder({ cid }) {
-  return <span className="text-[11px]">{window.__weeklyComments?.[cid] || '…'}</span>;
+  return <span className="text-[11px]">{window.__weeklyComments?.[cid] || '\u2026'}</span>;
 }
 
-// ─── PresentationMode ─────────────────────────────────────────────────────────
+// ============================================================================
+// PresentationMode
+// ============================================================================
 
 function PresentationMode({ report, productions, commentsByProd, brand, onClose }) {
-  // Build a flat comment lookup { id → body }
   useEffect(() => {
     const lookup = {};
     Object.values(commentsByProd).forEach(arr =>
@@ -561,7 +624,6 @@ function PresentationMode({ report, productions, commentsByProd, brand, onClose 
 
   return (
     <div className="fixed inset-0 z-50 bg-white overflow-y-auto">
-      {/* Header bar */}
       <div className="sticky top-0 z-10 flex items-center justify-between px-8 py-4 border-b border-gray-200 bg-white/95 backdrop-blur-sm shadow-sm">
         <div className="flex items-center gap-4">
           <div>
@@ -580,7 +642,6 @@ function PresentationMode({ report, productions, commentsByProd, brand, onClose 
         </button>
       </div>
 
-      {/* Cards */}
       <div className="p-8">
         {sorted.length === 0 ? (
           <div className="text-center py-20 text-gray-400">No productions in this report</div>
@@ -597,7 +658,9 @@ function PresentationMode({ report, productions, commentsByProd, brand, onClose 
   );
 }
 
-// ─── HistorySidebar ───────────────────────────────────────────────────────────
+// ============================================================================
+// HistorySidebar
+// ============================================================================
 
 function HistorySidebar({ history, weekStart, onSelect, onDelete, isEditor }) {
   const weekStr = toDateStr(weekStart);
@@ -641,7 +704,9 @@ function HistorySidebar({ history, weekStart, onSelect, onDelete, isEditor }) {
   );
 }
 
-// ─── AddProductionModal ───────────────────────────────────────────────────────
+// ============================================================================
+// AddProductionModal
+// ============================================================================
 
 function AddProductionModal({ productions, existingIds, onAdd, onClose }) {
   const [search, setSearch] = useState('');
@@ -660,7 +725,7 @@ function AddProductionModal({ productions, existingIds, onAdd, onClose }) {
         <input
           autoFocus
           type="text"
-          placeholder="Search productions…"
+          placeholder="Search productions\u2026"
           value={search}
           onChange={e => setSearch(e.target.value)}
           className="brand-input w-full mb-3"
@@ -687,12 +752,12 @@ function AddProductionModal({ productions, existingIds, onAdd, onClose }) {
   );
 }
 
-// ─── Day labels for Israeli work week (Sun–Sat) ─────────────────────────────
+// ============================================================================
+// WeekStrip (for Weekly Reports tab)
+// ============================================================================
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const WORK_DAYS = new Set([0, 1, 2, 3, 4]); // Sun-Thu (indices into DAY_LABELS)
-
-// ─── WeekStrip ────────────────────────────────────────────────────────────────
+const WORK_DAYS = new Set([0, 1, 2, 3, 4]);
 
 function WeekStrip({ weekStart, showUS, showIL }) {
   const today = toDateStr(new Date());
@@ -707,7 +772,6 @@ function WeekStrip({ weekStart, showUS, showIL }) {
         const usHoliday = holidays.find(h => h.country === 'US');
         const ilHoliday = holidays.find(h => h.country === 'IL');
 
-        // Build tooltip
         const tooltipParts = holidays.map(h =>
           h.country === 'US' ? `\u{1F1FA}\u{1F1F8} ${h.name}` : `\u{1F1EE}\u{1F1F1} ${h.nameHe || h.name}`
         );
@@ -725,13 +789,11 @@ function WeekStrip({ weekStart, showUS, showIL }) {
               isToday && 'ring-2 ring-[var(--brand-accent)] ring-offset-1',
             )}
             style={{
-              // Weekend diagonal stripe pattern when no holiday
               ...(!isWorkDay && !usHoliday && !ilHoliday ? {
                 backgroundImage: 'repeating-linear-gradient(135deg, transparent, transparent 3px, rgba(156,163,175,0.15) 3px, rgba(156,163,175,0.15) 5px)',
               } : {}),
             }}
           >
-            {/* Holiday overlay backgrounds */}
             {usHoliday && (
               <div className="absolute inset-0 rounded-xl bg-blue-100/70 border border-blue-200 pointer-events-none" />
             )}
@@ -774,7 +836,9 @@ function WeekStrip({ weekStart, showUS, showIL }) {
   );
 }
 
-// ─── HolidayToggles ───────────────────────────────────────────────────────────
+// ============================================================================
+// HolidayToggles
+// ============================================================================
 
 function HolidayToggles({ showUS, showIL, onToggleUS, onToggleIL }) {
   return (
@@ -807,16 +871,18 @@ function HolidayToggles({ showUS, showIL, onToggleUS, onToggleIL }) {
   );
 }
 
-// ─── Main WeeklyView ──────────────────────────────────────────────────────────
+// ============================================================================
+// WeeklyReportsTab -- wraps all existing Weekly Reports functionality
+// ============================================================================
 
-export default function WeeklyView({ productions, brandId, selectedYear }) {
+function WeeklyReportsTab({ productions, brandId, selectedYear }) {
   const { user, isEditor } = useAuth();
   const { brand } = useBrand();
 
   const [weekStart, setWeekStart] = useState(() => getMondayOf(new Date()));
   const [report, setReport] = useState(null);
   const [history, setHistory] = useState([]);
-  const [mode, setMode] = useState('edit');          // 'edit' | 'present'
+  const [mode, setMode] = useState('edit');
   const [dirty, setDirty] = useState(false);
   const [commentsByProd, setCommentsByProd] = useState({});
   const [linksByProd, setLinksByProd] = useState({});
@@ -824,7 +890,6 @@ export default function WeeklyView({ productions, brandId, selectedYear }) {
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
 
-  // Holiday toggle state — persisted in localStorage
   const [showUSHolidays, setShowUSHolidays] = useState(() => {
     try { return localStorage.getItem('weeklyView_showUS') !== 'false'; } catch { return true; }
   });
@@ -847,7 +912,6 @@ export default function WeeklyView({ productions, brandId, selectedYear }) {
     });
   }
 
-  // Arrow key navigation — prev/next week when no input is focused
   useEffect(() => {
     function handleKey(e) {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
@@ -858,7 +922,6 @@ export default function WeeklyView({ productions, brandId, selectedYear }) {
     return () => document.removeEventListener('keydown', handleKey);
   }, []);
 
-  // Load report + history when week or brand changes
   useEffect(() => {
     async function load() {
       const weekStr = toDateStr(weekStart);
@@ -885,7 +948,6 @@ export default function WeeklyView({ productions, brandId, selectedYear }) {
     load();
   }, [brandId, weekStart]);
 
-  // Auto-save debounced
   const saveTimerRef = useRef(null);
   useEffect(() => {
     if (!dirty || !report) return;
@@ -976,10 +1038,7 @@ export default function WeeklyView({ productions, brandId, selectedYear }) {
     }
   }
 
-  const weekEnd = addDays(weekStart, 6);
   const existingProdIds = (report?.entries || []).map(e => e.production_id);
-
-  // ── Render ─────────────────────────────────────────────────────────────────
 
   if (mode === 'present' && report) {
     return (
@@ -995,8 +1054,6 @@ export default function WeeklyView({ productions, brandId, selectedYear }) {
 
   return (
     <div className="flex gap-5 items-start">
-
-      {/* ── History sidebar ─────────────────────────────────────────────── */}
       <HistorySidebar
         history={history}
         weekStart={weekStart}
@@ -1005,13 +1062,10 @@ export default function WeeklyView({ productions, brandId, selectedYear }) {
         isEditor={isEditor}
       />
 
-      {/* ── Main panel ──────────────────────────────────────────────────── */}
       <div className="flex-1 min-w-0 space-y-4">
-
         {/* Header bar */}
         <div className="brand-card p-4">
           <div className="flex flex-wrap items-center gap-3 justify-between">
-            {/* Week nav */}
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setWeekStart(d => addDays(d, -7))}
@@ -1042,8 +1096,8 @@ export default function WeeklyView({ productions, brandId, selectedYear }) {
                 )}
                 <p className="text-[11px] text-gray-400">
                   {report ? `${(report.entries || []).length} productions` : 'No report yet'}
-                  {dirty && <span className="ml-2 text-amber-500">• saving…</span>}
-                  {!dirty && report && <span className="ml-2 text-green-500">• saved</span>}
+                  {dirty && <span className="ml-2 text-amber-500">\u2022 saving\u2026</span>}
+                  {!dirty && report && <span className="ml-2 text-green-500">\u2022 saved</span>}
                 </p>
               </div>
               <button
@@ -1067,7 +1121,6 @@ export default function WeeklyView({ productions, brandId, selectedYear }) {
               />
             </div>
 
-            {/* Actions */}
             <div className="flex items-center gap-2">
               {report && isEditor && (
                 <button
@@ -1092,28 +1145,21 @@ export default function WeeklyView({ productions, brandId, selectedYear }) {
           </div>
         </div>
 
-        {/* Week day strip — Israeli work week (Sun-Thu active, Fri-Sat grayed) */}
+        {/* Week day strip */}
         <div className="brand-card p-3">
-          <WeekStrip
-            weekStart={weekStart}
-            showUS={showUSHolidays}
-            showIL={showILHolidays}
-          />
+          <WeekStrip weekStart={weekStart} showUS={showUSHolidays} showIL={showILHolidays} />
         </div>
 
         {/* Empty state */}
         {!report ? (
           <div className="brand-card py-16 text-center">
-            <div className="text-5xl mb-4">📋</div>
+            <div className="text-5xl mb-4">{'\uD83D\uDCCB'}</div>
             <h3 className="font-black text-gray-700 text-lg mb-2">No weekly report for this week</h3>
             <p className="text-sm text-gray-400 mb-6 max-w-sm mx-auto">
               Create a weekly report to track production status, curate updates, and present to stakeholders.
             </p>
             {isEditor ? (
-              <button
-                onClick={createReport}
-                className="btn-cta inline-flex items-center gap-2"
-              >
+              <button onClick={createReport} className="btn-cta inline-flex items-center gap-2">
                 <Plus size={15} />
                 Create Weekly Report
               </button>
@@ -1122,8 +1168,6 @@ export default function WeeklyView({ productions, brandId, selectedYear }) {
             )}
           </div>
         ) : (
-
-          /* Production entries */
           <div className="space-y-3">
             {(report.entries || []).length === 0 ? (
               <div className="brand-card py-12 text-center text-gray-400">
@@ -1153,7 +1197,6 @@ export default function WeeklyView({ productions, brandId, selectedYear }) {
         )}
       </div>
 
-      {/* Add Production modal */}
       {showAddProd && (
         <AddProductionModal
           productions={productions}
@@ -1161,6 +1204,931 @@ export default function WeeklyView({ productions, brandId, selectedYear }) {
           onAdd={addProduction}
           onClose={() => setShowAddProd(false)}
         />
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// CALENDAR: Add Event Modal
+// ============================================================================
+
+function AddEventModal({ initialDate, initialHour, productions, onSave, onClose }) {
+  const [title, setTitle] = useState('');
+  const [startDate, setStartDate] = useState(initialDate || toDateStr(new Date()));
+  const [startTime, setStartTime] = useState(initialHour != null ? `${String(initialHour).padStart(2,'0')}:00` : '');
+  const [endDate, setEndDate] = useState(initialDate || toDateStr(new Date()));
+  const [endTime, setEndTime] = useState(initialHour != null ? `${String(initialHour + 1).padStart(2,'0')}:00` : '');
+  const [fullDay, setFullDay] = useState(initialHour == null);
+  const [productionId, setProductionId] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    if (!title.trim() || !productionId) return;
+    setSaving(true);
+    try {
+      await createGanttEvent({
+        production_id: productionId,
+        name: title.trim(),
+        start_date: startDate,
+        end_date: endDate || startDate,
+        phase: 'Custom',
+        start_time: fullDay ? null : startTime,
+        end_time: fullDay ? null : endTime,
+        full_day: fullDay,
+      });
+      onSave();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-panel" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-lg font-black" style={{ color: 'var(--brand-primary)' }}>New Event</h2>
+          <button onClick={onClose}><X size={18} className="text-gray-400" /></button>
+        </div>
+
+        <div className="space-y-4">
+          {/* Title */}
+          <div>
+            <label className="text-xs font-semibold text-gray-500 block mb-1">Title</label>
+            <input
+              autoFocus
+              type="text"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              placeholder="Event name"
+              className="brand-input w-full"
+              onKeyDown={e => { if (e.key === 'Enter') handleSave(); }}
+            />
+          </div>
+
+          {/* Full day toggle */}
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={fullDay}
+              onChange={e => setFullDay(e.target.checked)}
+              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span className="text-sm text-gray-700">Full day</span>
+          </label>
+
+          {/* Date/time inputs */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-semibold text-gray-500 block mb-1">Start date</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={e => { setStartDate(e.target.value); if (e.target.value > endDate) setEndDate(e.target.value); }}
+                className="brand-input w-full"
+              />
+            </div>
+            {!fullDay && (
+              <div>
+                <label className="text-xs font-semibold text-gray-500 block mb-1">Start time</label>
+                <input
+                  type="time"
+                  value={startTime}
+                  onChange={e => setStartTime(e.target.value)}
+                  className="brand-input w-full"
+                />
+              </div>
+            )}
+            <div>
+              <label className="text-xs font-semibold text-gray-500 block mb-1">End date</label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={e => setEndDate(e.target.value)}
+                min={startDate}
+                className="brand-input w-full"
+              />
+            </div>
+            {!fullDay && (
+              <div>
+                <label className="text-xs font-semibold text-gray-500 block mb-1">End time</label>
+                <input
+                  type="time"
+                  value={endTime}
+                  onChange={e => setEndTime(e.target.value)}
+                  className="brand-input w-full"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Production dropdown */}
+          <div>
+            <label className="text-xs font-semibold text-gray-500 block mb-1">Production</label>
+            <select
+              value={productionId}
+              onChange={e => setProductionId(e.target.value)}
+              className="brand-input w-full"
+            >
+              <option value="">Select production\u2026</option>
+              {productions.map(p => (
+                <option key={p.id} value={p.id}>{p.project_name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Save */}
+          <div className="flex justify-end gap-2 pt-2">
+            <button onClick={onClose} className="btn-secondary text-sm px-4 py-2">Cancel</button>
+            <button
+              onClick={handleSave}
+              disabled={!title.trim() || !productionId || saving}
+              className="btn-cta text-sm px-5 py-2 disabled:opacity-50"
+            >
+              {saving ? 'Saving\u2026' : 'Save Event'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// CALENDAR: Mini Month Navigator (sidebar)
+// ============================================================================
+
+function MiniMonth({ year, month, selectedDate, onSelect }) {
+  const cells = getMonthGrid(year, month);
+  const todayStr = toDateStr(new Date());
+  const selectedStr = selectedDate ? toDateStr(selectedDate) : '';
+
+  return (
+    <div>
+      <div className="text-xs font-bold text-gray-700 mb-1.5 text-center">
+        {MONTH_NAMES[month]} {year}
+      </div>
+      <div className="grid grid-cols-7 gap-0">
+        {DAY_NAMES_SHORT.map(d => (
+          <div key={d} className="text-[9px] font-bold text-gray-400 text-center pb-0.5">{d[0]}</div>
+        ))}
+        {cells.map((cell, i) => {
+          const ds = toDateStr(cell.date);
+          const isToday = ds === todayStr;
+          const isSelected = ds === selectedStr;
+          return (
+            <button
+              key={i}
+              onClick={() => onSelect(cell.date)}
+              className={clsx(
+                'text-[10px] w-6 h-6 rounded-full flex items-center justify-center transition-all mx-auto',
+                cell.outside && 'text-gray-300',
+                !cell.outside && !isToday && !isSelected && 'text-gray-600 hover:bg-gray-100',
+                isToday && !isSelected && 'font-bold text-blue-600 bg-blue-50',
+                isSelected && 'bg-[var(--brand-accent)] text-white font-bold',
+              )}
+            >
+              {cell.date.getDate()}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// CALENDAR: Main CalendarTab
+// ============================================================================
+
+function CalendarTab({ productions, brandId }) {
+  const { brand } = useBrand();
+
+  const [viewMode, setViewMode] = useState('month'); // month | week | day
+  const [anchor, setAnchor] = useState(new Date()); // anchor date for navigation
+  const [showAddEvent, setShowAddEvent] = useState(null); // null or { date, hour? }
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Production visibility filter
+  const [visibleProdIds, setVisibleProdIds] = useState(() => new Set(productions.map(p => p.id)));
+
+  // Holiday toggles
+  const [showUS, setShowUS] = useState(true);
+  const [showIL, setShowIL] = useState(true);
+
+  // Update visible prods when productions change
+  useEffect(() => {
+    setVisibleProdIds(new Set(productions.map(p => p.id)));
+  }, [productions]);
+
+  // Production color map
+  const prodColorMap = useMemo(() => {
+    const map = {};
+    productions.forEach((p, i) => {
+      map[p.id] = PRODUCTION_COLORS[i % PRODUCTION_COLORS.length];
+    });
+    return map;
+  }, [productions]);
+
+  // Load all calendar events
+  const calendarEvents = useMemo(() => {
+    const events = [];
+
+    // Gantt events
+    const gantt = getAllGanttEvents();
+    gantt.forEach(ge => {
+      if (!visibleProdIds.has(ge.production_id)) return;
+      events.push({
+        id: ge.id,
+        title: ge.name,
+        start: ge.start_date,
+        end: ge.end_date || ge.start_date,
+        color: phaseColor(ge.phase) || prodColorMap[ge.production_id] || '#6B7280',
+        type: 'gantt',
+        productionId: ge.production_id,
+        phase: ge.phase,
+        startTime: ge.start_time || null,
+        endTime: ge.end_time || null,
+        fullDay: ge.full_day !== false,
+      });
+    });
+
+    // Production timelines
+    productions.forEach(p => {
+      if (!visibleProdIds.has(p.id)) return;
+      if (p.planned_start && p.planned_end) {
+        events.push({
+          id: `timeline-${p.id}`,
+          title: p.project_name,
+          start: p.planned_start,
+          end: p.planned_end,
+          color: prodColorMap[p.id] || '#6B7280',
+          type: 'timeline',
+          productionId: p.id,
+          fullDay: true,
+        });
+      }
+      // Shoot dates
+      if (p.shoot_date) {
+        events.push({
+          id: `shoot-${p.id}`,
+          title: `Shoot: ${p.project_name}`,
+          start: p.shoot_date,
+          end: p.shoot_date,
+          color: '#E74C3C',
+          type: 'shoot',
+          productionId: p.id,
+          fullDay: true,
+        });
+      }
+      // Delivery / air dates
+      if (p.delivery_date) {
+        events.push({
+          id: `delivery-${p.id}`,
+          title: `Delivery: ${p.project_name}`,
+          start: p.delivery_date,
+          end: p.delivery_date,
+          color: '#9B59B6',
+          type: 'delivery',
+          productionId: p.id,
+          fullDay: true,
+        });
+      }
+      if (p.air_date) {
+        events.push({
+          id: `air-${p.id}`,
+          title: `Air: ${p.project_name}`,
+          start: p.air_date,
+          end: p.air_date,
+          color: '#F5A623',
+          type: 'air',
+          productionId: p.id,
+          fullDay: true,
+        });
+      }
+    });
+
+    return events;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productions, visibleProdIds, prodColorMap, refreshKey]);
+
+  // Navigation
+  function goPrev() {
+    setAnchor(d => {
+      const nd = new Date(d);
+      if (viewMode === 'month') nd.setMonth(nd.getMonth() - 1);
+      else if (viewMode === 'week') nd.setDate(nd.getDate() - 7);
+      else nd.setDate(nd.getDate() - 1);
+      return nd;
+    });
+  }
+  function goNext() {
+    setAnchor(d => {
+      const nd = new Date(d);
+      if (viewMode === 'month') nd.setMonth(nd.getMonth() + 1);
+      else if (viewMode === 'week') nd.setDate(nd.getDate() + 7);
+      else nd.setDate(nd.getDate() + 1);
+      return nd;
+    });
+  }
+  function goToday() {
+    setAnchor(new Date());
+  }
+
+  // Mini month nav
+  const miniYear = anchor.getFullYear();
+  const miniMonth = anchor.getMonth();
+
+  // Title
+  let headerTitle = '';
+  if (viewMode === 'month') {
+    headerTitle = `${MONTH_NAMES[anchor.getMonth()]} ${anchor.getFullYear()}`;
+  } else if (viewMode === 'week') {
+    const sun = getSundayOf(anchor);
+    const sat = addDays(sun, 6);
+    headerTitle = `${sun.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} \u2013 ${sat.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+  } else {
+    headerTitle = anchor.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  }
+
+  function toggleProd(id) {
+    setVisibleProdIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  function selectAllProds() { setVisibleProdIds(new Set(productions.map(p => p.id))); }
+  function selectNoneProds() { setVisibleProdIds(new Set()); }
+
+  function handleEventSaved() {
+    setShowAddEvent(null);
+    setRefreshKey(k => k + 1);
+  }
+
+  return (
+    <div className="flex gap-4 items-start">
+      {/* ---- LEFT SIDEBAR ---- */}
+      <div className="w-52 flex-shrink-0 space-y-5">
+        {/* Mini calendar navigator */}
+        <div className="brand-card p-3">
+          <div className="flex items-center justify-between mb-2">
+            <button onClick={() => {
+              const nd = new Date(miniYear, miniMonth - 1, 1);
+              setAnchor(nd);
+            }} className="p-0.5 rounded hover:bg-gray-100 text-gray-400"><ChevronLeft size={14}/></button>
+            <button onClick={() => {
+              const nd = new Date(miniYear, miniMonth + 1, 1);
+              setAnchor(nd);
+            }} className="p-0.5 rounded hover:bg-gray-100 text-gray-400"><ChevronRight size={14}/></button>
+          </div>
+          <MiniMonth
+            year={miniYear}
+            month={miniMonth}
+            selectedDate={anchor}
+            onSelect={d => setAnchor(d)}
+          />
+        </div>
+
+        {/* Production filters */}
+        <div className="brand-card p-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Productions</span>
+            <div className="flex gap-1">
+              <button onClick={selectAllProds} className="text-[10px] text-blue-500 hover:underline">All</button>
+              <span className="text-gray-300">|</span>
+              <button onClick={selectNoneProds} className="text-[10px] text-blue-500 hover:underline">None</button>
+            </div>
+          </div>
+          <div className="space-y-1 max-h-60 overflow-y-auto">
+            {productions.map(p => (
+              <label key={p.id} className="flex items-center gap-2 px-1.5 py-1 rounded-lg hover:bg-gray-50 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={visibleProdIds.has(p.id)}
+                  onChange={() => toggleProd(p.id)}
+                  className="w-3.5 h-3.5 rounded border-gray-300"
+                  style={{ accentColor: prodColorMap[p.id] }}
+                />
+                <span
+                  className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                  style={{ background: prodColorMap[p.id] }}
+                />
+                <span className="text-xs text-gray-700 truncate">{p.project_name}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        {/* Holiday toggles */}
+        <div className="brand-card p-3">
+          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-2">Holidays</span>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowUS(v => !v)}
+              className={clsx(
+                'flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all',
+                showUS ? 'bg-blue-50 border-blue-300 text-blue-700' : 'bg-white border-gray-200 text-gray-400'
+              )}
+            >
+              {'\u{1F1FA}\u{1F1F8}'} US
+            </button>
+            <button
+              onClick={() => setShowIL(v => !v)}
+              className={clsx(
+                'flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all',
+                showIL ? 'bg-sky-50 border-sky-300 text-sky-700' : 'bg-white border-gray-200 text-gray-400'
+              )}
+            >
+              {'\u{1F1EE}\u{1F1F1}'} IL
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ---- MAIN CALENDAR AREA ---- */}
+      <div className="flex-1 min-w-0">
+        {/* Top bar: navigation + view toggles */}
+        <div className="brand-card p-3 mb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <button onClick={goPrev} className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-500"><ChevronLeft size={16}/></button>
+              <button onClick={goNext} className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-500"><ChevronRight size={16}/></button>
+              <button onClick={goToday} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 font-medium">
+                <Clock size={12}/> Today
+              </button>
+              <h2 className="text-base font-bold text-gray-800 ml-2">{headerTitle}</h2>
+            </div>
+            <div className="flex items-center bg-gray-100 rounded-lg p-0.5">
+              {['month','week','day'].map(m => (
+                <button
+                  key={m}
+                  onClick={() => setViewMode(m)}
+                  className={clsx(
+                    'px-3 py-1.5 rounded-md text-xs font-semibold transition-all capitalize',
+                    viewMode === m ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700'
+                  )}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Calendar grid */}
+        {viewMode === 'month' && (
+          <MonthGrid
+            anchor={anchor}
+            events={calendarEvents}
+            showUS={showUS}
+            showIL={showIL}
+            onCellClick={dateStr => setShowAddEvent({ date: dateStr })}
+            prodColorMap={prodColorMap}
+          />
+        )}
+        {viewMode === 'week' && (
+          <WeekGrid
+            anchor={anchor}
+            events={calendarEvents}
+            showUS={showUS}
+            showIL={showIL}
+            onSlotClick={(dateStr, hour) => setShowAddEvent({ date: dateStr, hour })}
+            prodColorMap={prodColorMap}
+          />
+        )}
+        {viewMode === 'day' && (
+          <DayGrid
+            anchor={anchor}
+            events={calendarEvents}
+            showUS={showUS}
+            showIL={showIL}
+            onSlotClick={(dateStr, hour) => setShowAddEvent({ date: dateStr, hour })}
+            prodColorMap={prodColorMap}
+          />
+        )}
+      </div>
+
+      {/* Add event modal */}
+      {showAddEvent && (
+        <AddEventModal
+          initialDate={showAddEvent.date}
+          initialHour={showAddEvent.hour}
+          productions={productions}
+          onSave={handleEventSaved}
+          onClose={() => setShowAddEvent(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// CALENDAR: Month Grid
+// ============================================================================
+
+function MonthGrid({ anchor, events, showUS, showIL, onCellClick, prodColorMap }) {
+  const year = anchor.getFullYear();
+  const month = anchor.getMonth();
+  const cells = getMonthGrid(year, month);
+  const todayStr = toDateStr(new Date());
+  const MAX_EVENTS = 3;
+
+  return (
+    <div className="brand-card overflow-hidden">
+      {/* Header row */}
+      <div className="grid grid-cols-7 border-b border-gray-200">
+        {DAY_NAMES_SHORT.map((d, i) => (
+          <div key={d} className={clsx(
+            'text-[11px] font-bold text-center py-2 uppercase tracking-wider',
+            (i === 5 || i === 6) ? 'text-gray-400 bg-gray-50' : 'text-gray-500'
+          )}>
+            {d}
+          </div>
+        ))}
+      </div>
+      {/* Grid */}
+      <div className="grid grid-cols-7">
+        {cells.map((cell, i) => {
+          const dateStr = toDateStr(cell.date);
+          const dayOfWeek = cell.date.getDay();
+          const isWkend = dayOfWeek === 5 || dayOfWeek === 6;
+          const isToday = dateStr === todayStr;
+          const holidays = getHoliday(dateStr, showUS, showIL);
+          const dayEvents = events.filter(ev => eventOverlapsDate(ev, dateStr));
+          const shown = dayEvents.slice(0, MAX_EVENTS);
+          const overflow = dayEvents.length - MAX_EVENTS;
+
+          return (
+            <div
+              key={i}
+              onClick={() => onCellClick(dateStr)}
+              className={clsx(
+                'min-h-[100px] border-b border-r border-gray-100 p-1.5 cursor-pointer transition-colors hover:bg-blue-50/30',
+                isWkend && 'bg-gray-50/80',
+                cell.outside && 'opacity-40',
+              )}
+            >
+              {/* Date number */}
+              <div className="flex items-center gap-1 mb-0.5">
+                <span className={clsx(
+                  'text-xs font-semibold w-6 h-6 flex items-center justify-center rounded-full',
+                  isToday && 'bg-[var(--brand-accent)] text-white',
+                  !isToday && !cell.outside && 'text-gray-700',
+                  !isToday && cell.outside && 'text-gray-400',
+                )}>
+                  {cell.date.getDate()}
+                </span>
+                {/* Holiday dots */}
+                {holidays.map((h, hi) => (
+                  <span
+                    key={hi}
+                    title={h.country === 'US' ? h.name : (h.nameHe || h.name)}
+                    className={clsx(
+                      'w-2 h-2 rounded-full flex-shrink-0',
+                      h.country === 'US' ? 'bg-blue-500' : 'bg-sky-400'
+                    )}
+                  />
+                ))}
+              </div>
+              {/* Events */}
+              <div className="space-y-0.5">
+                {shown.map(ev => (
+                  <div
+                    key={ev.id}
+                    title={ev.title}
+                    className={clsx(
+                      'text-[10px] leading-tight px-1.5 py-0.5 rounded truncate font-medium',
+                      ev.type === 'timeline' && 'border border-dashed opacity-70',
+                      ev.type === 'shoot' && 'flex items-center gap-0.5',
+                      ev.type === 'delivery' || ev.type === 'air' ? 'flex items-center gap-0.5' : '',
+                    )}
+                    style={{
+                      background: ev.type === 'timeline' ? `${ev.color}15` : `${ev.color}20`,
+                      color: ev.color,
+                      borderColor: ev.type === 'timeline' ? ev.color : 'transparent',
+                    }}
+                  >
+                    {ev.type === 'shoot' && <span className="text-red-500">{'\u2022'}</span>}
+                    {(ev.type === 'delivery' || ev.type === 'air') && <span>{'\u25C6'}</span>}
+                    {ev.title}
+                  </div>
+                ))}
+                {overflow > 0 && (
+                  <div className="text-[10px] text-gray-400 font-medium pl-1">+{overflow} more</div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// CALENDAR: Week Grid
+// ============================================================================
+
+function WeekGrid({ anchor, events, showUS, showIL, onSlotClick, prodColorMap }) {
+  const days = getWeekDates(anchor);
+  const todayStr = toDateStr(new Date());
+  const now = new Date();
+  const currentHour = now.getHours() + now.getMinutes() / 60;
+  const todayDayStr = toDateStr(now);
+
+  // All-day events
+  const allDayEvents = events.filter(ev => ev.fullDay);
+  // Timed events (approximate -- place at start hour or 9am)
+  const timedEvents = events.filter(ev => !ev.fullDay);
+
+  return (
+    <div className="brand-card overflow-hidden">
+      {/* Day headers */}
+      <div className="grid grid-cols-[60px_repeat(7,1fr)] border-b border-gray-200">
+        <div className="border-r border-gray-100" />
+        {days.map((d, i) => {
+          const ds = toDateStr(d);
+          const isToday = ds === todayStr;
+          const wkend = isWeekend(d);
+          const holidays = getHoliday(ds, showUS, showIL);
+          return (
+            <div key={i} className={clsx(
+              'text-center py-2 border-r border-gray-100',
+              wkend && 'bg-gray-50',
+            )}>
+              <div className="text-[10px] font-bold text-gray-400 uppercase">{DAY_NAMES_SHORT[d.getDay()]}</div>
+              <div className={clsx(
+                'text-sm font-bold mx-auto w-7 h-7 flex items-center justify-center rounded-full',
+                isToday && 'bg-[var(--brand-accent)] text-white',
+                !isToday && 'text-gray-700',
+              )}>
+                {d.getDate()}
+              </div>
+              {holidays.length > 0 && (
+                <div className="text-[9px] text-blue-500 font-medium truncate px-1">{holidays[0].name}</div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* All-day events row */}
+      <div className="grid grid-cols-[60px_repeat(7,1fr)] border-b border-gray-200 min-h-[32px]">
+        <div className="text-[9px] text-gray-400 font-medium px-1 py-1 border-r border-gray-100 flex items-center justify-center">
+          All day
+        </div>
+        {days.map((d, i) => {
+          const ds = toDateStr(d);
+          const dayAllDay = allDayEvents.filter(ev => eventOverlapsDate(ev, ds));
+          const wkend = isWeekend(d);
+          return (
+            <div key={i} className={clsx(
+              'border-r border-gray-100 p-0.5 space-y-0.5',
+              wkend && 'bg-gray-50/50',
+            )}>
+              {dayAllDay.slice(0, 2).map(ev => (
+                <div
+                  key={ev.id}
+                  title={ev.title}
+                  className={clsx(
+                    'text-[9px] px-1 py-0.5 rounded truncate font-medium',
+                    ev.type === 'timeline' && 'border border-dashed opacity-70',
+                  )}
+                  style={{
+                    background: ev.type === 'timeline' ? `${ev.color}15` : `${ev.color}20`,
+                    color: ev.color,
+                    borderColor: ev.type === 'timeline' ? ev.color : 'transparent',
+                  }}
+                >
+                  {ev.type === 'shoot' && '\u2022 '}
+                  {(ev.type === 'delivery' || ev.type === 'air') && '\u25C6 '}
+                  {ev.title}
+                </div>
+              ))}
+              {dayAllDay.length > 2 && (
+                <div className="text-[9px] text-gray-400 pl-1">+{dayAllDay.length - 2}</div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Hour rows */}
+      <div className="relative max-h-[600px] overflow-y-auto">
+        {HOURS.map(hour => (
+          <div key={hour} className="grid grid-cols-[60px_repeat(7,1fr)] border-b border-gray-50 min-h-[48px]">
+            <div className="text-[10px] text-gray-400 font-medium px-2 py-1 border-r border-gray-100 text-right">
+              {hour > 12 ? `${hour - 12}PM` : hour === 12 ? '12PM' : `${hour}AM`}
+            </div>
+            {days.map((d, i) => {
+              const ds = toDateStr(d);
+              const wkend = isWeekend(d);
+              // Find timed events at this hour
+              const hourEvents = timedEvents.filter(ev => {
+                if (!eventOverlapsDate(ev, ds)) return false;
+                const evHour = ev.startTime ? parseInt(ev.startTime.split(':')[0], 10) : 9;
+                return evHour === hour;
+              });
+              const isNowRow = ds === todayDayStr && hour <= currentHour && currentHour < hour + 1;
+              return (
+                <div
+                  key={i}
+                  onClick={() => onSlotClick(ds, hour)}
+                  className={clsx(
+                    'border-r border-gray-50 px-0.5 py-0.5 cursor-pointer hover:bg-blue-50/30 transition-colors relative',
+                    wkend && 'bg-gray-50/30',
+                  )}
+                >
+                  {/* Current time line */}
+                  {isNowRow && (
+                    <div
+                      className="absolute left-0 right-0 h-0.5 bg-red-500 z-10 pointer-events-none"
+                      style={{ top: `${((currentHour - hour) * 100)}%` }}
+                    >
+                      <div className="absolute -left-1 -top-1 w-2.5 h-2.5 rounded-full bg-red-500" />
+                    </div>
+                  )}
+                  {hourEvents.map(ev => (
+                    <div
+                      key={ev.id}
+                      title={ev.title}
+                      className="text-[10px] px-1.5 py-1 rounded font-medium truncate mb-0.5"
+                      style={{
+                        background: `${ev.color}25`,
+                        color: ev.color,
+                        borderLeft: `3px solid ${ev.color}`,
+                      }}
+                    >
+                      {ev.startTime && <span className="opacity-70">{ev.startTime} </span>}
+                      {ev.title}
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// CALENDAR: Day Grid
+// ============================================================================
+
+function DayGrid({ anchor, events, showUS, showIL, onSlotClick, prodColorMap }) {
+  const dateStr = toDateStr(anchor);
+  const todayStr = toDateStr(new Date());
+  const now = new Date();
+  const currentHour = now.getHours() + now.getMinutes() / 60;
+  const isToday = dateStr === todayStr;
+  const holidays = getHoliday(dateStr, showUS, showIL);
+
+  const dayAllDay = events.filter(ev => ev.fullDay && eventOverlapsDate(ev, dateStr));
+  const dayTimed = events.filter(ev => !ev.fullDay && eventOverlapsDate(ev, dateStr));
+
+  return (
+    <div className="brand-card overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center gap-3 p-3 border-b border-gray-200">
+        <div className={clsx(
+          'text-lg font-bold px-3 py-1 rounded-xl',
+          isToday && 'bg-[var(--brand-accent)] text-white',
+          !isToday && 'text-gray-700',
+        )}>
+          {anchor.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+        </div>
+        {holidays.map((h, i) => (
+          <span key={i} className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-1 rounded-full">
+            {h.country === 'US' ? '\u{1F1FA}\u{1F1F8}' : '\u{1F1EE}\u{1F1F1}'} {h.name}
+          </span>
+        ))}
+      </div>
+
+      {/* All-day */}
+      {dayAllDay.length > 0 && (
+        <div className="p-2 border-b border-gray-100 space-y-1">
+          <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">All Day</div>
+          {dayAllDay.map(ev => (
+            <div
+              key={ev.id}
+              className={clsx(
+                'text-xs px-2.5 py-1.5 rounded-lg font-medium',
+                ev.type === 'timeline' && 'border border-dashed opacity-70',
+              )}
+              style={{
+                background: ev.type === 'timeline' ? `${ev.color}15` : `${ev.color}15`,
+                color: ev.color,
+                borderColor: ev.type === 'timeline' ? ev.color : 'transparent',
+              }}
+            >
+              {ev.type === 'shoot' && '\u2022 '}
+              {(ev.type === 'delivery' || ev.type === 'air') && '\u25C6 '}
+              {ev.title}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Hour rows */}
+      <div className="relative max-h-[600px] overflow-y-auto">
+        {HOURS.map(hour => {
+          const hourEvents = dayTimed.filter(ev => {
+            const evHour = ev.startTime ? parseInt(ev.startTime.split(':')[0], 10) : 9;
+            return evHour === hour;
+          });
+          const isNowRow = isToday && hour <= currentHour && currentHour < hour + 1;
+
+          return (
+            <div
+              key={hour}
+              onClick={() => onSlotClick(dateStr, hour)}
+              className="flex border-b border-gray-50 min-h-[56px] cursor-pointer hover:bg-blue-50/30 transition-colors relative"
+            >
+              {/* Time label */}
+              <div className="w-16 flex-shrink-0 text-[11px] text-gray-400 font-medium px-2 py-1.5 border-r border-gray-100 text-right">
+                {hour > 12 ? `${hour - 12} PM` : hour === 12 ? '12 PM' : `${hour} AM`}
+              </div>
+              {/* Events */}
+              <div className="flex-1 px-2 py-1 relative">
+                {isNowRow && (
+                  <div
+                    className="absolute left-0 right-0 h-0.5 bg-red-500 z-10 pointer-events-none"
+                    style={{ top: `${((currentHour - hour) * 100)}%` }}
+                  >
+                    <div className="absolute -left-1 -top-1 w-2.5 h-2.5 rounded-full bg-red-500" />
+                  </div>
+                )}
+                {hourEvents.map(ev => (
+                  <div
+                    key={ev.id}
+                    className="text-xs px-3 py-2 rounded-lg font-medium mb-1"
+                    style={{
+                      background: `${ev.color}18`,
+                      color: ev.color,
+                      borderLeft: `4px solid ${ev.color}`,
+                    }}
+                  >
+                    <div className="font-bold">{ev.title}</div>
+                    {ev.startTime && ev.endTime && (
+                      <div className="text-[10px] opacity-70 mt-0.5">{ev.startTime} \u2013 {ev.endTime}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// MAIN EXPORT: WeeklyView with 2 tabs
+// ============================================================================
+
+export default function WeeklyView({ productions, brandId, selectedYear }) {
+  const [activeTab, setActiveTab] = useState('calendar');
+
+  return (
+    <div>
+      {/* Tab bar */}
+      <div className="flex items-center gap-1 mb-5 border-b border-gray-200 pb-0">
+        <button
+          onClick={() => setActiveTab('calendar')}
+          className={clsx(
+            'flex items-center gap-2 px-4 py-2.5 text-sm font-semibold transition-all border-b-2 -mb-px',
+            activeTab === 'calendar'
+              ? 'border-[var(--brand-accent)] text-[var(--brand-accent)]'
+              : 'border-transparent text-gray-400 hover:text-gray-600'
+          )}
+        >
+          <CalendarIcon size={15} />
+          Calendar
+        </button>
+        <button
+          onClick={() => setActiveTab('reports')}
+          className={clsx(
+            'flex items-center gap-2 px-4 py-2.5 text-sm font-semibold transition-all border-b-2 -mb-px',
+            activeTab === 'reports'
+              ? 'border-[var(--brand-accent)] text-[var(--brand-accent)]'
+              : 'border-transparent text-gray-400 hover:text-gray-600'
+          )}
+        >
+          <FileText size={15} />
+          Weekly Reports
+        </button>
+      </div>
+
+      {/* Tab content */}
+      {activeTab === 'calendar' ? (
+        <CalendarTab productions={productions} brandId={brandId} />
+      ) : (
+        <WeeklyReportsTab productions={productions} brandId={brandId} selectedYear={selectedYear} />
       )}
     </div>
   );

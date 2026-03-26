@@ -934,10 +934,25 @@ export default function Settings() {
             </p>
             <div className="flex items-center gap-3">
               {driveConnected ? (
-                <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-xl px-4 py-2.5 flex-1">
-                  <CheckCircle size={14} className="text-green-600" />
-                  <span className="font-semibold">Connected</span>
-                  <span className="text-xs text-green-500 ml-1">— signed contracts will auto-upload</span>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-xl px-4 py-2.5">
+                    <CheckCircle size={14} className="text-green-600" />
+                    <span className="font-semibold">Connected</span>
+                    <span className="text-xs text-green-500 ml-1">— signed contracts will auto-upload</span>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const token = localStorage.getItem('cp_auth_token');
+                        const r = await fetch('/api/drive/auth', { headers: { Authorization: `Bearer ${token}` } });
+                        const d = await r.json();
+                        if (d.url) window.location.href = d.url;
+                      } catch (e) { alert('Error: ' + e.message); }
+                    }}
+                    className="text-xs text-blue-500 hover:text-blue-700 underline"
+                  >
+                    Re-authorize (add Calendar scope)
+                  </button>
                 </div>
               ) : (
                 <button
