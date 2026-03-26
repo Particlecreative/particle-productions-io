@@ -148,15 +148,33 @@ export default function StudioTickets() {
           </div>
         )}
 
+        {/* Test Embed button */}
+        {settings.embedUrl && (
+          <div className="flex items-center gap-2 mb-3">
+            <a
+              href={settings.embedUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[11px] text-gray-400 hover:text-blue-500 underline"
+            >
+              Test embed URL in new tab ↗
+            </a>
+            <span className="text-[10px] text-gray-300">If iframe is blank, the URL may need refreshing from Monday.com</span>
+          </div>
+        )}
+
         {/* Iframe */}
         {settings.embedUrl ? (
-          <iframe
-            key={iframeKey.current}
-            src={settings.embedUrl}
-            title="Studio Overview"
-            style={{ width: '100%', height: iframeHeight, border: 'none', borderRadius: 8 }}
-            allowFullScreen
-          />
+          <div style={{ position: 'relative' }}>
+            <iframe
+              key={iframeKey.current}
+              src={settings.embedUrl}
+              title="Studio Overview"
+              style={{ width: '100%', height: iframeHeight, border: 'none', borderRadius: 8 }}
+              allowFullScreen
+              onError={() => console.warn('Studio embed iframe failed to load')}
+            />
+          </div>
         ) : (
           <div
             style={{ height: iframeHeight }}
