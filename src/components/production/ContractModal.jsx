@@ -450,6 +450,14 @@ export default function ContractModal({ production, lineItem, onClose }) {
 
   const existing = getContract(contractKey);
 
+  // ── Sandbox mode (Tomer only) ──
+  const isTomer = user?.email?.toLowerCase() === 'tomer@particleformen.com';
+  const [sandboxMode, setSandboxMode] = useState(false);
+
+  // In sandbox: override provider to Tomer, skip CC, Slack → Tomer's DM only
+  const effectiveProviderName = sandboxMode ? (user?.name || 'Tomer Wilf Lezmy') : providerName;
+  const effectiveProviderEmail = sandboxMode ? 'tomer@particleformen.com' : providerEmail;
+
   // ── Step navigation ──
   const [currentStep, setCurrentStep] = useState(1);
   const [maxReachedStep, setMaxReachedStep] = useState(1);
@@ -692,10 +700,11 @@ export default function ContractModal({ production, lineItem, onClose }) {
       });
 
       const result = await generateContractSignatures(contractKey, {
-        provider_name: providerName,
-        provider_email: providerEmail,
+        provider_name: sandboxMode ? (user?.name || 'Tomer Wilf Lezmy') : providerName,
+        provider_email: sandboxMode ? 'tomer@particleformen.com' : providerEmail,
         hocp_name: user?.name || 'Tomer Wilf Lezmy',
         hocp_email: user?.email || 'tomer@particleformen.com',
+        sandbox: sandboxMode,
         exhibit_a: exhibitA,
         exhibit_b: exhibitB,
         fee_amount: feeAmount,
@@ -724,17 +733,22 @@ export default function ContractModal({ production, lineItem, onClose }) {
     const token = localStorage.getItem('cp_auth_token');
     const API = import.meta.env.VITE_API_URL || '';
 
+    const toEmail = sandboxMode ? 'tomer@particleformen.com' : providerEmail;
+    const toName = sandboxMode ? (user?.name || 'Tomer') : providerName;
+    const subjectPrefix = sandboxMode ? '🧪 [TEST] ' : '';
+
     try {
       const res = await fetch(`${API}/api/gmail/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          to: providerEmail,
-          subject: `Contract for ${production.project_name} — ${providerName}`,
+          to: toEmail,
+          subject: `${subjectPrefix}Contract for ${production.project_name} — ${toName}`,
           htmlBody: `
             <div style="font-family: Arial, sans-serif; max-width: 600px;">
+              ${sandboxMode ? '<div style="background:#fef3c7;border:2px solid #f59e0b;padding:10px 16px;border-radius:8px;margin-bottom:16px;font-weight:bold;color:#92400e;">🧪 SANDBOX TEST — This is a test contract. No real signatures needed.</div>' : ''}
               <h2 style="color: #030b2e;">Contract Ready for Signature</h2>
-              <p>Hi ${providerName},</p>
+              <p>Hi ${toName},</p>
               <p>A contract has been prepared for <strong>${production.project_name}</strong>.</p>
               <p>Please review and sign the contract by clicking the link below:</p>
               <p style="margin: 24px 0;">
@@ -838,6 +852,29 @@ export default function ContractModal({ production, lineItem, onClose }) {
         {copyMsg && (
           <div className="text-xs text-green-600 bg-green-50 border border-green-200 rounded-lg px-3 py-1.5 mb-3 text-center">
             {copyMsg}
+          </div>
+        )}
+
+        {/* Sandbox toggle — Tomer only */}
+        {isTomer && (
+          <div className="flex items-center justify-end mb-2">
+            <button
+              type="button"
+              onClick={() => setSandboxMode(v => !v)}
+              className={clsx(
+                'inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border transition-all',
+                sandboxMode
+                  ? 'bg-amber-100 border-amber-400 text-amber-800'
+                  : 'bg-gray-50 border-gray-200 text-gray-400 hover:border-gray-300'
+              )}
+            >
+              🧪 {sandboxMode ? 'Sandbox ON — sends to you only' : 'Test Mode'}
+            </button>
+          </div>
+        )}
+        {sandboxMode && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 mb-3 text-xs text-amber-800">
+            <strong>🧪 Sandbox Mode:</strong> Contract will be sent to <strong>tomer@particleformen.com</strong> only. No CC to Omer. Slack notification goes to your DM. You can test the full signing flow as both sides.
           </div>
         )}
 
