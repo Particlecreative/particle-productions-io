@@ -25,6 +25,16 @@ services:
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
       MASTER_KEY: ${MASTER_KEY:-}
+      APP_URL: ${APP_URL:-https://particlepdio.particleface.com}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-https://particlepdio.particleface.com/api/auth/google/callback}
+      DRIVE_FOLDER_ID: ${DRIVE_FOLDER_ID}
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL}
+      SLACK_EXPIRING_WEBHOOK_URL: ${SLACK_EXPIRING_WEBHOOK_URL}
+      DROPBOX_ACCESS_TOKEN: ${DROPBOX_ACCESS_TOKEN}
+      MONDAY_API_TOKEN: ${MONDAY_API_TOKEN}
+      CALENDAR_TOKEN: ${CALENDAR_TOKEN:-cp-cal-2026}
       PORT: 3001
       NODE_ENV: production
     depends_on:
