@@ -19,7 +19,7 @@ async function notifySlack(message, link) {
     await fetch(webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text },
+      body: JSON.stringify({ text }),
     });
   } catch (e) {
     console.warn('Slack notification failed:', e.message);
