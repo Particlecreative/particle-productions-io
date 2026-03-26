@@ -354,38 +354,36 @@ export default function Dashboard() {
 
   return (
     <div className="animate-fadeIn">
+      {/* ── Title Row ──────────────────────────────────── */}
+      <div className="flex items-center justify-between mb-5">
+        <div>
+          <h1 className="text-2xl font-black brand-title" style={{ color: 'var(--brand-primary)' }}>
+            Productions
+          </h1>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {filtered.length} of {productions.length} · {selectedYear}
+          </p>
+        </div>
+        {isEditor && (
+          <button className="btn-cta flex items-center gap-2 text-sm px-5 py-2" onClick={() => setShowNewModal(true)}>
+            <Plus size={14} strokeWidth={2.5} />
+            New Production
+          </button>
+        )}
+      </div>
+
       {/* ── Bento Header Grid ──────────────────────────────────── */}
       <div className="grid grid-cols-12 gap-4 mb-6">
 
-        {/* Left: Title + Total Budget (spans 5 cols) */}
-        <div className="col-span-12 md:col-span-5 brand-card flex flex-col justify-between relative overflow-hidden" style={{ minHeight: 180 }}>
-          {/* Subtle gradient accent background */}
+        {/* Left: Total Budget (spans 5 cols) */}
+        <div className="col-span-12 md:col-span-5 brand-card flex flex-col justify-center relative overflow-hidden" style={{ minHeight: 140 }}>
           <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ background: 'var(--brand-gradient)' }} />
           <div className="relative z-10">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <h1 className="text-2xl font-black brand-title" style={{ color: 'var(--brand-primary)' }}>
-                  Productions
-                </h1>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  {filtered.length} of {productions.length} · {selectedYear}
-                </p>
-              </div>
-              {isEditor && (
-                <button className="btn-cta flex items-center gap-2 text-sm px-6 py-2.5" onClick={() => setShowNewModal(true)}>
-                  <Plus size={15} strokeWidth={2.5} />
-                  New Production
-                </button>
-              )}
-            </div>
-          </div>
-          <div className="relative z-10">
             <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">{selectedYear} Total Budget</div>
-            <div className="text-5xl font-black tracking-tighter kpi-value" style={{ color: 'var(--brand-primary)', letterSpacing: '-0.05em', lineHeight: 1 }}>
+            <div className="text-3xl md:text-4xl font-black tracking-tighter kpi-value" style={{ color: 'var(--brand-primary)', letterSpacing: '-0.04em', lineHeight: 1 }}>
               {fmt(totalBudget)}
             </div>
-            {/* Animated gradient accent line */}
-            <div className="mt-3 h-1 w-24 rounded-full overflow-hidden" style={{ background: 'rgba(0,0,0,0.06)' }}>
+            <div className="mt-3 h-1 w-20 rounded-full overflow-hidden" style={{ background: 'rgba(0,0,0,0.06)' }}>
               <div className="h-full rounded-full gradient-accent-line" style={{ background: 'var(--brand-gradient)', width: '100%' }} />
             </div>
           </div>
@@ -395,27 +393,27 @@ export default function Dashboard() {
         <div className="col-span-12 md:col-span-7 grid grid-cols-3 gap-4">
 
           {/* Actual Spent */}
-          <div className="kpi-card flex flex-col justify-between" style={{ minHeight: 180 }}>
+          <div className="kpi-card flex flex-col justify-between" style={{ minHeight: 140 }}>
             <div className="kpi-label">Spent</div>
             <div>
-              <div className="text-4xl font-black tracking-tighter text-green-600 kpi-value" style={{ letterSpacing: '-0.05em', lineHeight: 1 }}>
+              <div className="text-2xl md:text-3xl font-black tracking-tight text-green-600 kpi-value" style={{ letterSpacing: '-0.03em', lineHeight: 1 }}>
                 {fmt(totalSpent)}
               </div>
-              <div className="mt-3 h-2 rounded-full bg-gray-100 overflow-hidden">
+              <div className="mt-2 h-1.5 rounded-full bg-gray-100 overflow-hidden">
                 <div className="h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${Math.min(pctSpent, 100)}%`, background: 'linear-gradient(90deg, #22c55e, #16a34a)' }} />
               </div>
-              <div className="text-[10px] text-gray-400 mt-1.5 font-medium">{pctSpent}% of budget</div>
+              <div className="text-[10px] text-gray-400 mt-1 font-medium">{pctSpent}% of budget</div>
             </div>
           </div>
 
           {/* Remaining */}
-          <div className="kpi-card flex flex-col justify-between" style={{ minHeight: 180 }}>
+          <div className="kpi-card flex flex-col justify-between" style={{ minHeight: 140 }}>
             <div className="kpi-label">Remaining</div>
             <div>
-              <div className="text-4xl font-black tracking-tighter kpi-value" style={{ color: 'var(--brand-secondary)', letterSpacing: '-0.05em', lineHeight: 1 }}>
+              <div className="text-2xl md:text-3xl font-black tracking-tight kpi-value" style={{ color: 'var(--brand-secondary)', letterSpacing: '-0.03em', lineHeight: 1 }}>
                 {fmt(totalBudget - totalSpent)}
               </div>
-              <div className="mt-3 text-xs text-gray-400 font-medium">
+              <div className="mt-2 text-[10px] text-gray-400 font-medium">
                 {totalBudget > 0 ? `${100 - pctSpent}% left` : ''}
               </div>
             </div>
