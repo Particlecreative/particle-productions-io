@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import {
-  X, ExternalLink, Download, FileSignature, CheckCircle, Clock, Send,
+  X, Download, FileSignature, CheckCircle, Clock, Send,
   MessageCircle, Mail, Copy, Link2, Plus, AlertCircle, Upload, File,
   FolderOpen, ChevronLeft, ChevronRight, Eye, Edit3, PenTool, Printer,
 } from 'lucide-react';
@@ -16,8 +16,6 @@ import clsx from 'clsx';
 import jsPDF from 'jspdf';
 
 // ── Constants ────────────────────────────────────────────────────
-const HELLOSIGN_CAST = 'https://app.hellosign.com/prep-and-send/b0b7d49634c1963b10b86f62ed80aced3d9d9eae/recipients';
-const HELLOSIGN_CREW = 'https://app.hellosign.com/prep-and-send/bc5114dd429e77ad9f54c5ae74a0f23f81cfc166/recipients';
 const CAST_TYPES = ['Cast', 'Actor', 'Model', 'Talent', 'Actress'];
 
 const PARTICLE_COMPANY = {
@@ -123,53 +121,24 @@ function SigningLinks({ signingLinks, onCopy, productionName }) {
         <Link2 size={14} className="text-purple-600" />
         <div className="text-sm font-bold text-purple-800">E-Signature Links</div>
       </div>
-      {['provider', 'hocp'].map(role => {
-        const link = signingLinks[role];
-        if (!link) return null;
-        return (
-          <div key={role} className="flex items-center justify-between bg-white rounded-lg px-3 py-2.5 border border-purple-100 mb-2 last:mb-0">
+      {signingLinks.provider && (
+          <div className="flex items-center justify-between bg-white rounded-lg px-3 py-2.5 border border-purple-100">
             <div className="min-w-0 flex-1">
-              <div className="text-[10px] font-bold text-purple-500 uppercase">
-                {role === 'hocp' ? 'Particle HOCP' : 'Service Provider'}
-              </div>
-              <div className="text-sm font-semibold text-gray-800 truncate">{link.name}</div>
-              <div className="text-xs text-gray-500 truncate">{link.email}</div>
+              <div className="text-[10px] font-bold text-purple-500 uppercase">Service Provider</div>
+              <div className="text-sm font-semibold text-gray-800 truncate">{signingLinks.provider.name}</div>
+              <div className="text-xs text-gray-500 truncate">{signingLinks.provider.email}</div>
             </div>
             <div className="flex items-center gap-2 shrink-0 ml-3">
               <button
                 type="button"
-                onClick={() => { navigator.clipboard.writeText(link.url); onCopy?.(`${role} link copied!`); }}
+                onClick={() => { navigator.clipboard.writeText(signingLinks.provider.url); onCopy?.('Signing link copied!'); }}
                 className="text-xs text-purple-600 hover:text-purple-800 px-2 py-1 rounded border border-purple-200 hover:bg-purple-50 flex items-center gap-1"
               >
                 <Copy size={10} /> Copy
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const text = `Please sign the contract using this link:\n${link.url}`;
-                  window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
-                }}
-                className="text-xs text-green-600 hover:text-green-800 px-2 py-1 rounded border border-green-200 hover:bg-green-50 flex items-center gap-1"
-              >
-                <MessageCircle size={10} /> WhatsApp
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const subject = encodeURIComponent(`Contract for ${productionName || 'Production'} — ${link.name}`);
-                  const body = encodeURIComponent(
-                    `Hi ${link.name},\n\nPlease review and sign the attached contract.\nClick here to sign: ${link.url}\n\nThank you.`
-                  );
-                  window.open(`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(link.email)}&su=${subject}&body=${body}`, '_blank');
-                }}
-                className="text-xs text-blue-600 hover:text-blue-800 px-2 py-1 rounded border border-blue-200 hover:bg-blue-50 flex items-center gap-1"
-              >
-                <Mail size={10} /> Email
-              </button>
             </div>
           </div>
-        );
-      })}
+      )}
     </div>
   );
 }
@@ -440,6 +409,10 @@ export default function ContractModal({ production, lineItem, onClose }) {
   const [providerAddress, setProviderAddress] = useState(
     existing?.provider_address || lineItem?.address || matchedSupplier?.address || ''
   );
+  const [providerPhone, setProviderPhone] = useState(
+    existing?.provider_phone || lineItem?.phone || matchedSupplier?.phone || ''
+  );
+  const [sendSuccess, setSendSuccess] = useState('');
 
   // ── Effective Date (editable) ──
   const [effectiveDate, setEffectiveDate] = useState(() => {
@@ -494,7 +467,7 @@ export default function ContractModal({ production, lineItem, onClose }) {
   // ── Legacy fields ──
   const [pdfUrl, setPdfUrl] = useState(existing?.pdf_url || '');
   const [externalUrl, setExternalUrl] = useState(existing?.drive_url || existing?.dropbox_url || '');
-  const [showDropboxFallback, setShowDropboxFallback] = useState(false);
+
 
   // Load signatures if contract exists
   useEffect(() => {
@@ -675,14 +648,17 @@ export default function ContractModal({ production, lineItem, onClose }) {
     setStatus('sent');
     addNotification('contract_sent', `Contract sent for ${production.project_name}`, production.id);
 
-    // Open Gmail compose
+    // Open Gmail compose with auto-CC to omer
     const providerLink = signingLinks?.provider?.url || '';
     const subject = encodeURIComponent(`Contract for ${production.project_name} — ${providerName}`);
     const body = encodeURIComponent(
       `Hi ${providerName},\n\nPlease review and sign the attached contract.\n\nClick here to sign: ${providerLink}\n\nThank you,\n${user?.name || 'Tomer Wilf Lezmy'}\nParticle Aesthetic Science Ltd.`
     );
-    const gmailUrl = `https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(providerEmail)}&su=${subject}&body=${body}`;
+    const gmailUrl = `https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(providerEmail)}&cc=${encodeURIComponent('omer@particleformen.com')}&su=${subject}&body=${body}`;
     window.open(gmailUrl, '_blank');
+
+    setSendSuccess(`Contract sent to ${providerName}!`);
+    setTimeout(() => setSendSuccess(''), 5000);
 
     // Move to signing status step
     setCurrentStep(5);
@@ -1194,16 +1170,16 @@ export default function ContractModal({ production, lineItem, onClose }) {
             {!signingLinks && !generating && (
               <div className="bg-purple-50 border border-purple-200 rounded-xl p-5 mb-4 text-center">
                 <FileSignature size={28} className="mx-auto mb-3 text-purple-500" />
-                <div className="text-sm font-bold text-purple-800 mb-2">Generate Signing Links</div>
+                <div className="text-sm font-bold text-purple-800 mb-2">Generate Signing Link</div>
                 <div className="text-xs text-purple-600 mb-4">
-                  Create unique signing links for both the Service Provider and Particle HOCP.
+                  Create a unique signing link for the Service Provider. Particle signs automatically.
                 </div>
                 <button
                   onClick={handleGenerate}
                   disabled={generating || !providerName.trim() || !providerEmail.trim()}
                   className="px-6 py-2.5 rounded-xl text-sm font-semibold bg-purple-600 hover:bg-purple-700 text-white transition-colors"
                 >
-                  Generate E-Sign Links
+                  Generate E-Sign Link
                 </button>
               </div>
             )}
@@ -1211,7 +1187,7 @@ export default function ContractModal({ production, lineItem, onClose }) {
             {generating && (
               <div className="flex items-center justify-center py-8">
                 <div className="w-6 h-6 border-2 border-purple-300 border-t-purple-600 rounded-full animate-spin mr-3" />
-                <span className="text-sm text-gray-500">Generating signing links...</span>
+                <span className="text-sm text-gray-500">Generating signing link...</span>
               </div>
             )}
 
@@ -1228,62 +1204,71 @@ export default function ContractModal({ production, lineItem, onClose }) {
               </div>
             )}
 
-            {/* Signing links */}
+            {/* Success toast */}
+            {sendSuccess && (
+              <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-4 py-3 mb-4 text-sm text-green-700 font-semibold">
+                <CheckCircle size={16} className="text-green-600" />
+                {sendSuccess}
+              </div>
+            )}
+
+            {/* Service Provider signing link */}
             <SigningLinks signingLinks={signingLinks} onCopy={handleCopyMsg} productionName={production.project_name} />
 
             {signingLinks && (
               <>
-                {/* Send contract button */}
+                {/* Primary: Send Contract */}
                 <button
                   onClick={handleSendContract}
-                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white transition-colors mb-4"
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white transition-colors mb-3"
                 >
-                  <Mail size={14} />
-                  Send Contract via Gmail
+                  <Send size={14} />
+                  Send Contract
                 </button>
 
-                {/* WhatsApp quick send */}
+                {/* WhatsApp send — needs phone number */}
                 {signingLinks.provider && (
-                  <button
-                    onClick={() => {
-                      const text = `Hi ${providerName},\n\nPlease sign the contract for ${production.project_name}:\n${signingLinks.provider.url}\n\nThank you!`;
-                      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
-                    }}
-                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold bg-green-600 hover:bg-green-700 text-white transition-colors mb-4"
-                  >
-                    <MessageCircle size={14} />
-                    Send via WhatsApp
-                  </button>
+                  <div className="mb-4">
+                    {!providerPhone && (
+                      <div className="flex items-center gap-2 mb-2">
+                        <input
+                          type="tel"
+                          className="brand-input flex-1 text-sm"
+                          placeholder="Provider phone (e.g. +972...)"
+                          value={providerPhone}
+                          onChange={e => setProviderPhone(e.target.value)}
+                        />
+                      </div>
+                    )}
+                    <button
+                      onClick={() => {
+                        const text = `Hi ${providerName},\n\nPlease sign the contract for ${production.project_name}:\n${signingLinks.provider.url}\n\nThank you!`;
+                        const phone = providerPhone.replace(/[^0-9+]/g, '');
+                        window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
+                      }}
+                      disabled={!providerPhone.trim()}
+                      className={clsx(
+                        'w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-colors',
+                        providerPhone.trim()
+                          ? 'bg-green-600 hover:bg-green-700 text-white'
+                          : 'bg-gray-100 text-gray-400 cursor-default'
+                      )}
+                    >
+                      <MessageCircle size={14} />
+                      Send via WhatsApp
+                    </button>
+                    {providerPhone && (
+                      <button
+                        onClick={() => setProviderPhone('')}
+                        className="text-[10px] text-gray-400 hover:text-gray-600 mt-1"
+                      >
+                        Change phone number
+                      </button>
+                    )}
+                  </div>
                 )}
               </>
             )}
-
-            {/* Dropbox Sign fallback */}
-            <div className="border-t border-gray-100 pt-3 mt-3">
-              <button
-                onClick={() => setShowDropboxFallback(!showDropboxFallback)}
-                className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1"
-              >
-                <ExternalLink size={10} />
-                {showDropboxFallback ? 'Hide' : 'Use'} Dropbox Sign (legacy)
-              </button>
-              {showDropboxFallback && (
-                <div className="mt-3 bg-gray-50 rounded-xl p-3">
-                  <div className="text-xs text-gray-500 mb-2">
-                    Template: {CAST_TYPES.includes(lineItem?.type) ? 'Cast' : 'Crew'}
-                  </div>
-                  <button
-                    onClick={() => {
-                      const url = CAST_TYPES.includes(lineItem?.type) ? HELLOSIGN_CAST : HELLOSIGN_CREW;
-                      window.open(url, '_blank');
-                    }}
-                    className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-semibold bg-gray-200 hover:bg-gray-300 text-gray-700 transition-colors"
-                  >
-                    <ExternalLink size={12} /> Open Dropbox Sign
-                  </button>
-                </div>
-              )}
-            </div>
 
             {/* Navigation */}
             <div className="flex gap-3 mt-4">
@@ -1306,15 +1291,27 @@ export default function ContractModal({ production, lineItem, onClose }) {
         ═══════════════════════════════════════════════════ */}
         {currentStep === 5 && (
           <div>
-            {/* Signature status badges */}
-            {signatures.length > 0 ? (
-              <div className="space-y-3 mb-5">
-                {signatures.map((sig, i) => (
+            {/* Sent status header */}
+            {existing?.sent_at && (
+              <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 mb-4">
+                <div className="text-sm font-semibold text-blue-800">
+                  Sent to {providerName} on {formatIST(existing.sent_at)}
+                </div>
+                <div className="text-xs text-blue-600 mt-0.5">
+                  Status: {isSigned ? 'Signed' : 'Pending Signature'}
+                </div>
+              </div>
+            )}
+
+            {/* Provider signature status */}
+            {(() => {
+              const providerSig = signatures.find(s => s.signer_role === 'provider');
+              if (providerSig) {
+                return (
                   <div
-                    key={i}
                     className={clsx(
-                      'flex items-center justify-between p-3 rounded-xl border',
-                      sig.signed_at
+                      'flex items-center justify-between p-3 rounded-xl border mb-4',
+                      providerSig.signed_at
                         ? 'bg-green-50 border-green-200'
                         : 'bg-orange-50 border-orange-200'
                     )}
@@ -1322,83 +1319,117 @@ export default function ContractModal({ production, lineItem, onClose }) {
                     <div className="flex items-center gap-3">
                       <div className={clsx(
                         'w-8 h-8 rounded-full flex items-center justify-center',
-                        sig.signed_at ? 'bg-green-100' : 'bg-orange-100'
+                        providerSig.signed_at ? 'bg-green-100' : 'bg-orange-100'
                       )}>
-                        {sig.signed_at ? <CheckCircle size={16} className="text-green-600" /> : <Clock size={16} className="text-orange-500" />}
+                        {providerSig.signed_at ? <CheckCircle size={16} className="text-green-600" /> : <Clock size={16} className="text-orange-500" />}
                       </div>
                       <div>
-                        <div className="text-sm font-semibold text-gray-800">
-                          {sig.signer_role === 'hocp' ? 'Particle HOCP' : 'Service Provider'}
-                        </div>
-                        <div className="text-xs text-gray-500">{sig.signer_name} ({sig.signer_email})</div>
-                        {sig.signed_at && (
-                          <div className="text-[10px] text-green-600">Signed {formatIST(sig.signed_at)}</div>
+                        <div className="text-sm font-semibold text-gray-800">Service Provider</div>
+                        <div className="text-xs text-gray-500">{providerSig.signer_name} ({providerSig.signer_email})</div>
+                        {providerSig.signed_at && (
+                          <div className="text-[10px] text-green-600">Signed {formatIST(providerSig.signed_at)}</div>
                         )}
                       </div>
                     </div>
-                    {!sig.signed_at && sig.sign_url && (
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => { navigator.clipboard.writeText(sig.sign_url); handleCopyMsg('Link copied!'); }}
-                          className="text-xs text-purple-600 px-2 py-1 rounded border border-purple-200 hover:bg-purple-50 flex items-center gap-1"
-                        >
-                          <Copy size={10} /> Copy Link
-                        </button>
-                      </div>
+                    {!providerSig.signed_at && providerSig.sign_url && (
+                      <button
+                        onClick={() => { navigator.clipboard.writeText(providerSig.sign_url); handleCopyMsg('Link copied!'); }}
+                        className="text-xs text-purple-600 px-2 py-1 rounded border border-purple-200 hover:bg-purple-50 flex items-center gap-1"
+                      >
+                        <Copy size={10} /> Copy Link
+                      </button>
                     )}
                   </div>
-                ))}
+                );
+              }
+              // No signatures at all
+              if (signatures.length === 0) {
+                return (
+                  <div className="text-center py-8 text-gray-400 mb-4">
+                    <Clock size={32} className="mx-auto mb-3" />
+                    <div className="text-sm font-semibold mb-1">No signatures yet</div>
+                    <div className="text-xs">Generate a signing link in Step 4 to start the signature process.</div>
+                    <button
+                      onClick={() => goToStep(4)}
+                      className="mt-3 text-xs text-blue-600 hover:text-blue-800 underline"
+                    >
+                      Go to Send for Signature
+                    </button>
+                  </div>
+                );
+              }
+              return null;
+            })()}
 
-                {/* Overall status */}
-                {signatures.every(s => s.signed_at) && (
-                  <div className="bg-green-100 border border-green-300 rounded-xl p-4 text-center">
-                    <CheckCircle size={28} className="mx-auto mb-2 text-green-600" />
-                    <div className="text-sm font-bold text-green-800">Contract Fully Signed!</div>
-                    <div className="text-xs text-green-600 mt-1">All parties have signed. The contract is complete.</div>
+            {/* Signed & Completed banner */}
+            {isSigned && (
+              <div className="bg-green-100 border border-green-300 rounded-xl p-4 text-center mb-4">
+                <CheckCircle size={28} className="mx-auto mb-2 text-green-600" />
+                <div className="text-sm font-bold text-green-800">Signed & Completed</div>
+                <div className="text-xs text-green-600 mt-1">The contract has been signed and is complete.</div>
+                {existing?.signed_at && (
+                  <div className="text-[10px] text-green-500 mt-1">Signed on {formatIST(existing.signed_at)}</div>
+                )}
+              </div>
+            )}
+
+            {/* Saved documents — Google Drive & Dropbox links */}
+            {isSigned && (existing?.drive_url || existing?.dropbox_url) && (
+              <div className="bg-gray-50 rounded-xl p-3 mb-4">
+                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-2">Saved Documents</div>
+                <div className="text-xs text-gray-500 mb-2">PDF saved to Google Drive & Dropbox</div>
+                {existing?.drive_url && (
+                  <div className="flex items-center gap-2 text-xs mb-1">
+                    <FolderOpen size={12} className="text-blue-500" />
+                    <a href={existing.drive_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline truncate flex-1">
+                      Google Drive
+                    </a>
+                  </div>
+                )}
+                {existing?.dropbox_url && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <FolderOpen size={12} className="text-green-500" />
+                    <a href={existing.dropbox_url} target="_blank" rel="noopener noreferrer" className="text-green-600 hover:underline truncate flex-1">
+                      Dropbox
+                    </a>
                   </div>
                 )}
               </div>
-            ) : (
-              <div className="text-center py-8 text-gray-400">
-                <Clock size={32} className="mx-auto mb-3" />
-                <div className="text-sm font-semibold mb-1">No signatures yet</div>
-                <div className="text-xs">Generate signing links in Step 4 to start the signature process.</div>
+            )}
+
+            {/* Resend buttons — only when not yet signed */}
+            {!isSigned && signingLinks?.provider && (
+              <div className="flex gap-3 mb-4">
                 <button
-                  onClick={() => goToStep(4)}
-                  className="mt-3 text-xs text-blue-600 hover:text-blue-800 underline"
+                  onClick={handleSendContract}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white transition-colors"
                 >
-                  Go to Send for Signature
+                  <Mail size={14} /> Resend via Gmail
+                </button>
+                <button
+                  onClick={() => {
+                    const text = `Hi ${providerName},\n\nPlease sign the contract for ${production.project_name}:\n${signingLinks.provider.url}\n\nThank you!`;
+                    const phone = providerPhone.replace(/[^0-9+]/g, '');
+                    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
+                  }}
+                  disabled={!providerPhone.trim()}
+                  className={clsx(
+                    'flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-colors',
+                    providerPhone.trim()
+                      ? 'bg-green-600 hover:bg-green-700 text-white'
+                      : 'bg-gray-100 text-gray-400 cursor-default'
+                  )}
+                >
+                  <MessageCircle size={14} /> Resend via WhatsApp
                 </button>
               </div>
             )}
 
-            {/* Signing links (if still pending) */}
-            <SigningLinks signingLinks={signingLinks} onCopy={handleCopyMsg} productionName={production.project_name} />
-
-            {/* PDF and external URLs */}
-            {(pdfUrl || externalUrl) && (
-              <div className="bg-gray-50 rounded-xl p-3 mb-4">
-                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-2">Documents</div>
-                {pdfUrl && (
-                  <div className="flex items-center gap-2 text-xs mb-1">
-                    <File size={12} className="text-blue-500" />
-                    <a href={pdfUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline truncate flex-1">{pdfUrl}</a>
-                  </div>
-                )}
-                {externalUrl && externalUrl !== pdfUrl && (
-                  <div className="flex items-center gap-2 text-xs">
-                    <FolderOpen size={12} className="text-green-500" />
-                    <a href={externalUrl} target="_blank" rel="noopener noreferrer" className="text-green-600 hover:underline truncate flex-1">{externalUrl}</a>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Timestamps */}
-            {(existing?.sent_at || existing?.signed_at) && (
-              <div className="flex gap-4 text-xs text-gray-400 mb-4 bg-gray-50 rounded-xl px-4 py-2.5">
-                {existing?.sent_at && <span>Sent: <strong className="text-gray-600">{formatIST(existing.sent_at)}</strong></span>}
-                {existing?.signed_at && <span>Signed: <strong className="text-green-600">{formatIST(existing.signed_at)}</strong></span>}
+            {/* Success toast */}
+            {sendSuccess && (
+              <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-4 py-3 mb-4 text-sm text-green-700 font-semibold">
+                <CheckCircle size={16} className="text-green-600" />
+                {sendSuccess}
               </div>
             )}
 

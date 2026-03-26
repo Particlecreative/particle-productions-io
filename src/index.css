@@ -497,7 +497,10 @@ h1, h2, h3 { letter-spacing: -0.025em; }
 .brand-input {
   border: 1px solid rgba(0,0,0,0.08);
   border-radius: var(--radius-sm);
-  padding: 10px 14px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  padding-left: 14px;
+  padding-right: 14px;
   font-size: 13px;
   outline: none;
   transition: all 0.2s ease;

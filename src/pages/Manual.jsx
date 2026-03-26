@@ -1056,7 +1056,7 @@ export default function Manual() {
             placeholder="Search docs…"
             value={query}
             onChange={e => setQuery(e.target.value)}
-            className="brand-input pl-8 py-1.5 text-sm w-full"
+            className="brand-input pl-10 py-1.5 text-sm w-full"
             autoFocus
           />
           {query && (

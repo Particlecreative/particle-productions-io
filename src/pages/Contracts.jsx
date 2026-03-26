@@ -179,7 +179,7 @@ export default function Contracts() {
         <div className="relative">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
-            className="brand-input pl-8"
+            className="brand-input pl-10"
             style={{ width: 220 }}
             placeholder="Search supplier…"
             value={search}

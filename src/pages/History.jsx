@@ -156,7 +156,7 @@ export default function History() {
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Search…"
-              className="brand-input pl-8 w-full"
+              className="brand-input pl-10 w-full"
             />
           </div>
 
