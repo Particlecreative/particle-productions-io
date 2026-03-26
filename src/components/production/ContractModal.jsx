@@ -163,22 +163,23 @@ async function fetchLogoBase64() {
   }
 }
 
-// ── PDF Generation ───────────────────────────────────────────────
+// ── PDF Generation — Full Legal Text ─────────────────────────────
 function generateContractPDF(data) {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
   const margin = 20;
   const contentWidth = pageWidth - margin * 2;
   let y = 20;
+  const isCast = data.isCastType || false;
 
-  function addPageIfNeeded(needed = 30) {
-    if (y + needed > 270) {
+  function addPageIfNeeded(needed = 12) {
+    if (y + needed > 275) {
       doc.addPage();
       y = 20;
     }
   }
 
-  function drawWrappedText(text, x, startY, maxWidth, lineHeight = 6) {
+  function drawWrappedText(text, x, startY, maxWidth, lineHeight = 5.5) {
     const lines = doc.splitTextToSize(text || '', maxWidth);
     lines.forEach(line => {
       addPageIfNeeded(lineHeight);
@@ -188,167 +189,237 @@ function generateContractPDF(data) {
     return startY;
   }
 
-  // ── Header / Letterhead ──
-  doc.setFillColor(3, 11, 46); // Particle dark navy
-  doc.rect(0, 0, pageWidth, 35, 'F');
+  function sectionHeading(number, title) {
+    addPageIfNeeded(14);
+    y += 4;
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(3, 11, 46);
+    doc.text(`${number}. ${title}`, margin, y);
+    y += 7;
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(30, 30, 30);
+  }
 
-  // Add logo if available
+  function subHeading(number, title) {
+    addPageIfNeeded(10);
+    y += 2;
+    doc.setFontSize(8.5);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(30, 30, 30);
+    doc.text(`${number} ${title}`, margin + 4, y);
+    y += 5.5;
+    doc.setFont('helvetica', 'normal');
+  }
+
+  // ── Header / Letterhead ──
+  doc.setFillColor(3, 11, 46);
+  doc.rect(0, 0, pageWidth, 35, 'F');
   if (data.logoBase64) {
-    try {
-      doc.addImage(data.logoBase64, 'PNG', margin, 6, 40, 22);
-    } catch {
-      // Fallback to text-based logo
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(20);
-      doc.setFont('helvetica', 'bold');
-      doc.text('PARTICLE', margin, 18);
-      doc.setFontSize(8);
-      doc.setFont('helvetica', 'normal');
-      doc.text('for men', margin + 52, 18);
+    try { doc.addImage(data.logoBase64, 'PNG', margin, 6, 40, 22); } catch {
+      doc.setTextColor(255, 255, 255); doc.setFontSize(20); doc.setFont('helvetica', 'bold');
+      doc.text('PARTICLE', margin, 18); doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.text('for men', margin + 52, 18);
     }
   } else {
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(20);
-    doc.setFont('helvetica', 'bold');
-    doc.text('PARTICLE', margin, 18);
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'normal');
-    doc.text('for men', margin + 52, 18);
+    doc.setTextColor(255, 255, 255); doc.setFontSize(20); doc.setFont('helvetica', 'bold');
+    doc.text('PARTICLE', margin, 18); doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.text('for men', margin + 52, 18);
   }
-
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(255, 255, 255); doc.setFontSize(9); doc.setFont('helvetica', 'normal');
   doc.text(PARTICLE_COMPANY.name, pageWidth - margin, 14, { align: 'right' });
   doc.text(PARTICLE_COMPANY.address, pageWidth - margin, 20, { align: 'right' });
-  if (data.effective_date) {
-    doc.text(`Date: ${data.effective_date}`, pageWidth - margin, 26, { align: 'right' });
-  }
+  if (data.effective_date) doc.text(`Date: ${data.effective_date}`, pageWidth - margin, 26, { align: 'right' });
 
   y = 45;
   doc.setTextColor(3, 11, 46);
 
   // ── Title ──
-  doc.setFontSize(16);
+  doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
   doc.text('SERVICES AGREEMENT', pageWidth / 2, y, { align: 'center' });
-  y += 12;
-
-  // ── Effective Date ──
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`This Services Agreement (the "Agreement") is entered into as of ${data.effective_date || '___________'}`, margin, y);
-  y += 8;
-  doc.text('by and between:', margin, y);
   y += 10;
 
-  // ── Parties ──
-  doc.setFont('helvetica', 'bold');
-  doc.text('Company:', margin, y);
+  // ── Preamble ──
+  doc.setFontSize(8.5);
   doc.setFont('helvetica', 'normal');
-  doc.text(`${PARTICLE_COMPANY.name}, ${PARTICLE_COMPANY.address}`, margin + 30, y);
-  y += 7;
+  doc.setTextColor(30, 30, 30);
 
-  doc.setFont('helvetica', 'bold');
-  doc.text('Provider:', margin, y);
-  doc.setFont('helvetica', 'normal');
-  const providerLine = [data.provider_name, data.provider_id_number ? `ID: ${data.provider_id_number}` : '', data.provider_address].filter(Boolean).join(', ');
-  doc.text(providerLine || '___________', margin + 30, y);
-  y += 7;
+  const providerIdClause = isCast
+    ? `${data.provider_name || '[Please complete]'}, ID/Passport number ${data.provider_id_number || '[Please complete]'}, with a principal place of business at ${data.provider_address || '[Please complete]'} ("Service Provider"),`
+    : `${data.provider_name || '[Please complete]'} [ID/Passport number ${data.provider_id_number || '[Please complete]'}], with a principal place of business at ${data.provider_address || '[Please complete]'} ("Service Provider"),`;
 
-  if (data.provider_email) {
-    doc.text(`Email: ${data.provider_email}`, margin + 30, y);
-    y += 7;
-  }
-  y += 5;
+  const preamble = `This Services Agreement ("Agreement") is made and entered into on ${data.effective_date || '[Please complete]'} ("Effective Date"), by and between Particle Aesthetic Science Ltd., a company registered in Israel, with a principal place of business at King George 48, Tel Aviv ("Company"), and ${providerIdClause}`;
+  y = drawWrappedText(preamble, margin, y, contentWidth);
+  y += 3;
 
-  // ── Production Info ──
-  if (data.production_name) {
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`Production: ${data.production_name}`, margin, y);
-    y += 10;
-  }
+  y = drawWrappedText('WHEREAS, Service Provider has the skills, resources, know-how and ability required to provide the Services and create the Deliverables (each as defined below); and', margin, y, contentWidth);
+  y += 2;
+  y = drawWrappedText('WHEREAS, based on Service Provider\'s representations hereunder, the parties desire that Service Provider provide the Services as an independent contractor of Company upon the terms and conditions hereinafter specified;', margin, y, contentWidth);
+  y += 2;
+  y = drawWrappedText('NOW, THEREFORE, the parties hereby agree as follows:', margin, y, contentWidth);
+  y += 3;
 
-  // ── Agreement Body ──
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-  const bodyText = `The Company hereby engages the Provider to perform the services described in Exhibit A below, subject to the terms and conditions set forth in this Agreement. The Provider shall perform the services in a professional and workmanlike manner, in accordance with industry standards and the Company's reasonable instructions.`;
-  y = drawWrappedText(bodyText, margin, y, contentWidth);
-  y += 5;
+  // ── Section 1: DEFINITIONS ──
+  sectionHeading('1', 'DEFINITIONS');
+  y = drawWrappedText('For purposes of this Agreement (including any and all amendments made to or incorporated herein now or in the future), the following capitalized terms shall have the following meaning:', margin, y, contentWidth);
+  y += 2;
 
-  const bodyText2 = `The Provider represents that they are an independent contractor, not an employee of the Company. The Provider shall be solely responsible for all taxes, insurance, and other obligations arising from the compensation received under this Agreement.`;
-  y = drawWrappedText(bodyText2, margin, y, contentWidth);
-  y += 5;
-
-  const bodyText3 = `All intellectual property, creative works, and deliverables produced under this Agreement shall be the exclusive property of the Company. The Provider hereby assigns all rights, title, and interest in such works to the Company.`;
-  y = drawWrappedText(bodyText3, margin, y, contentWidth);
-  y += 5;
-
-  const bodyText4 = `The Provider shall maintain strict confidentiality regarding all proprietary information, trade secrets, and business information of the Company, both during and after the term of this Agreement.`;
-  y = drawWrappedText(bodyText4, margin, y, contentWidth);
-  y += 10;
-
-  // ── EXHIBIT A ──
-  addPageIfNeeded(40);
-  doc.setFillColor(240, 243, 255);
-  doc.rect(margin, y - 4, contentWidth, 10, 'F');
-  doc.setFontSize(12);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(37, 99, 235);
-  doc.text('EXHIBIT A — Services & Instructions', margin + 3, y + 3);
-  y += 14;
-
-  doc.setTextColor(3, 11, 46);
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-  if (data.exhibit_a) {
-    y = drawWrappedText(data.exhibit_a, margin, y, contentWidth);
+  if (isCast) {
+    y = drawWrappedText('"Content" shall mean any testimonials, data, personal stories and details, names, locations, videos, photos, audio, and any breakdown, definition or partition of video, film or TV clips, including images, sound footage and segments, recorded performance, interviews, likeness and voice of the Service Provider as embodied therein, and any and all other information which may be provided by the Service Provider to Company in connection with the Services.', margin, y, contentWidth);
   } else {
-    doc.text('[No services description provided]', margin, y);
-    y += 6;
+    y = drawWrappedText('"Deliverables" shall mean all deliverables provided or produced as a result of the work performed under this Agreement or in connection therewith, including, without limitation, any work products, composition, photographs, videos, information, specifications, documentation, content, designs, audio, and any breakdown, definition or partition of video, film or clips, images, sound footage and segments, recorded performance, including as set forth in Exhibit A, all in any media or form whatsoever.', margin, y, contentWidth);
   }
-  y += 10;
+  y += 2;
+  y = drawWrappedText('"Intellectual Property Rights" shall mean all worldwide, whether registered or not (i) patents, patent applications and patent rights; (ii) rights associated with works of authorship, including copyrights, copyrights applications, copyrights restrictions; (iii) rights relating to the protection of trade secrets and confidential information; (iv) trademarks, logos, service marks, brands, trade names, domain names, goodwill and the right to publicity; (v) rights analogous to those set forth herein and any other proprietary rights relating to intangible property; (vi) all other intellectual and industrial property rights (of every kind and nature throughout the world and however designated) whether arising by operation of law, contract, license, or otherwise; and (vii) all registrations, initial applications, renewals, extensions, continuations, divisions or reissues thereof now or hereafter in force (including any rights in any of the foregoing).', margin, y, contentWidth);
+  y += 2;
 
-  // ── EXHIBIT B ──
-  addPageIfNeeded(40);
-  doc.setFillColor(240, 253, 244);
-  doc.rect(margin, y - 4, contentWidth, 10, 'F');
-  doc.setFontSize(12);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(22, 163, 74);
-  doc.text('EXHIBIT B — Fees & Payment', margin + 3, y + 3);
-  y += 14;
-
-  doc.setTextColor(3, 11, 46);
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-
-  if (data.fee_amount) {
-    doc.setFont('helvetica', 'bold');
-    doc.text(`Total Fee: ${data.currency || 'USD'} ${Number(data.fee_amount).toLocaleString()}`, margin, y);
-    doc.setFont('helvetica', 'normal');
-    y += 8;
-  }
-
-  if (data.payment_terms) {
-    doc.text('Payment Terms:', margin, y);
-    y += 6;
-    y = drawWrappedText(data.payment_terms, margin, y, contentWidth);
-  }
-
-  if (data.payment_method) {
-    y += 4;
-    doc.text(`Payment Method: ${data.payment_method}`, margin, y);
-    y += 6;
-  }
-
-  if (data.exhibit_b) {
+  if (!isCast) {
+    y = drawWrappedText('"Services" shall have the meaning ascribed to it in Section 2 below.', margin, y, contentWidth);
     y += 2;
-    y = drawWrappedText(data.exhibit_b, margin, y, contentWidth);
+    y = drawWrappedText('"Specifications" shall mean Company\'s specifications for the Deliverables attached hereto as Exhibit A or as otherwise provided to Service Provider by Company from time to time.', margin, y, contentWidth);
+    y += 2;
   }
 
-  y += 15;
+  // ── Section 2: SERVICES ──
+  sectionHeading('2', 'SERVICES');
+  if (isCast) {
+    y = drawWrappedText('Service Provider shall provide Company with modeling services all in accordance with the Company\'s instructions, including the instructions set forth in Exhibit A attached hereto and to Company\'s full satisfaction ("Services"). Service Provider shall be liable for full compliance with the terms and conditions of this Agreement and for any negligent acts and omissions in connection therewith.', margin, y, contentWidth);
+  } else {
+    y = drawWrappedText('Service Provider shall provide Company with the services and deliver the Company the Deliverables all as detailed in Exhibit A, and all in accordance with the milestones and timelines set forth therein and in accordance with Company\'s instructions and to its full satisfaction ("Services"). Service Provider shall be liable for full compliance with the terms and conditions of this Agreement and for any negligent acts and omissions in connection therewith. Service Provider is and shall remain solely responsible and liable for obtaining, paying for, repairing and maintaining all the equipment, hardware and services required for providing the Services.', margin, y, contentWidth);
+  }
+  y += 2;
+
+  // ── Section 3: COMPENSATION ──
+  sectionHeading('3', 'COMPENSATION');
+  subHeading('3.1', 'Consideration.');
+  y = drawWrappedText('In consideration for the Services provided herein, Company shall pay Service Provider the fees set forth in Exhibit B attached hereto in accordance with the milestones therein. Such payments shall be the full and final consideration of Service Provider and no additional payments shall be made including without limitation payments for overtime or other. Payments shall be made net thirty (30) days after Company\'s receipt of an undisputed invoice. Company may deduct and withhold from any payments made hereunder all sums which it then may be required to deduct or withhold pursuant to any applicable statute, law, regulation or order of any jurisdiction whatsoever.', margin, y, contentWidth);
+  y += 2;
+  subHeading('3.2', 'Taxes.');
+  y = drawWrappedText('The consideration hereunder shall include all taxes, levies and charges however designated and levied by any state, local, or government agency (including sales taxes and VAT). Service Provider shall have sole responsibility for the payment of all of taxes, levies and charges.', margin, y, contentWidth);
+  y += 2;
+  subHeading('3.3', 'Expenses.');
+  y = drawWrappedText('Except for expenses pre-approved in writing by Company, which will be paid against an itemized invoice, Service Provider shall bear all of its expenses arising from the performance or obligations under this Agreement.', margin, y, contentWidth);
+  y += 2;
+
+  // ── Section 4: PROPRIETARY RIGHTS / WAIVER AND CONSENT ──
+  if (isCast) {
+    sectionHeading('4', 'WAIVER AND CONSENT');
+    y = drawWrappedText('Company exclusively own and shall continue to own all right title and interest in and to the Content, Company Confidential Information (defined below) and any modifications, enhancements, improvements and derivatives thereof and all Intellectual Property Rights thereto (including without limitation, performing rights, rights to publicity and copyrights), upon creation thereof ("Company IPR"). Without derogating from the generality of the foregoing, Company may use and otherwise exploit the Content in any media and/or platform whatsoever (including, without limitation, websites, social media, marketing materials and streaming platforms), including, without limitation, reproduce, display, exhibit, publish, publicly make available, transmit, distribute, broadcast, create derivative works, edit, change, use in advertisements or any other marketing materials, in Company\'s current or future products, services or features, and/or otherwise use and/or exploit the Content as Company deems appropriate at its sole discretion without any restrictions. Service Provider hereby agrees to automatically assign to Company all right, title and interest in and to the Company IPR upon creation thereof.', margin, y, contentWidth);
+    y += 2;
+    y = drawWrappedText('Service Provider unconditionally and irrevocably waives, releases and forever discharges any rights, claims, charges or demands whatsoever, in the past, present or future, whether under contract, law, equity or otherwise, in respect of the Company IPR and PII (as defined below) and/or any use thereof, including, without limitation, in connection with invasion of privacy, defamation, right of publicity, performing rights, moral rights, right to receive compensation or royalties including any compensation under Section 134 the Israeli Patent Law-1967 or other applicable laws, or any liability, damages and expenses of any kind or all analogous/similar rights throughout the world or any other cause of action in respect of the Company IPR or its use. Service Provider undertakes not to contest Company\'s rights to the Company IPR. Service Provider acknowledges that nothing herein shall obligate Company to use the Content or any part thereof.', margin, y, contentWidth);
+    y += 2;
+    y = drawWrappedText('Company may collect, process and retain the Service Provider\'s personally identifiable information ("PII") derived in connection with the Services. Such PII may be made available by the Company to third parties, including without limitation, to Company\'s affiliates, shareholders, partners, agents, contractors and advisors, whether local or foreign, all as part of the Content, in order to further the purposes herein. Company may also transfer PII as part of the Content to third parties in connection with a reorganization, merger, share purchase or sale of substantially all of Company\'s assets. Service Provider hereby confirms that it is not legally required to provide its PII and such PII is provided at the Service Provider\'s volition.', margin, y, contentWidth);
+  } else {
+    sectionHeading('4', 'PROPRIETARY RIGHTS');
+    y = drawWrappedText('The Specifications, Deliverables, Company Confidential Information (defined below) and any and all modifications, enhancements and derivatives thereof and all Intellectual Property Rights thereto ("Company IPR") are and shall be owned exclusively by Company upon their creation and shall be deemed works for hire by Service Provider for Company. Without derogating from the foregoing, any and all content or material provided by Company constitutes Company IPR. Service Provider hereby assigns and agrees to assign to Company exclusive ownership and all right, title and interest the Company IPR. Service Provider hereby waives all right, title and interest in and to the Company IPR, including moral rights and any right to compensation or royalties including pursuant to Section 134 to the Israel Patent Law \u2013 1967. Service Provider agrees to assist Company in every proper way to obtain for Company and enforce any Intellectual Property Rights in the Company IPR in any and all countries. Service Provider hereby irrevocably designates and appoints Company and its authorized officers and agents as Service Provider\'s agent and attorney in fact, coupled with an interest to act for and on Service Providers behalf and in Service Provider\'s stead to do all lawfully permitted acts to further the prosecution and issuance of Company IPR or any other right or protection relating to any Company IPR, with the same legal force and effect as if executed by Service Provider itself. Service Provider shall ensure that all of its employees and contractors sign terms no less restrictive and no less protective of Company and Company IPR as the terms set forth in this agreement, including without limitation assignment and waiver of all right, title and interest in and to the Company IPR to the Company in a form preapproved by the Company, and shall provide Company all such signed terms upon execution.', margin, y, contentWidth);
+  }
+  y += 2;
+
+  // ── Section 5: CONFIDENTIALITY ──
+  sectionHeading('5', 'CONFIDENTIALITY');
+  if (isCast) {
+    y = drawWrappedText('This Agreement, the provision of the Services, Company IPR and all information related to the Company, its affiliates, its and their shareholders, employees, directors and agents and/or to their business, products and services are confidential information of Company ("Confidential Information"). Service Provider agrees to protect the Confidential Information with the highest degree of care and keep confidential and not disclose, disseminate, allow access to or use any Confidential Information except as required for the provision of the Services.', margin, y, contentWidth);
+  } else {
+    y = drawWrappedText('This Agreement, the provision of the Services, Company IPR and all data and information related to the Company, its affiliates, its and their shareholders, employees, directors and agents and/or to their business, products and services are confidential information of Company ("Confidential Information"). Service Provider agrees to protect the Confidential Information with the highest degree of care and keep confidential and not disclose, disseminate, allow access to or use any Confidential Information except as required for the provision of the Services and creation of the Deliverables.', margin, y, contentWidth);
+  }
+  y += 2;
+
+  // ── Section 6: WARRANTIES AND REPRESENTATIONS ──
+  sectionHeading('6', 'WARRANTIES AND REPRESENTATIONS');
+  if (isCast) {
+    y = drawWrappedText('Service Provider hereby warrants and represents that: (i) it has the requisite professional qualifications, knowledge, know-how, expertise, skill, talent and experience required in order to perform the Services in a professional and efficient manner; (ii) there are no limitations, obligations or restrictions whatsoever which restrict or prevent Service Provider from fulfilling all of its obligations or grant the rights granted to Company under this Agreement; (iii) it will perform its obligations under this Agreement in compliance with all applicable laws, rules and regulations; and (iv) it has and shall continue to obtain all applicable consents, permits, licenses, certifications and authorizations in connection with the Services.', margin, y, contentWidth);
+  } else {
+    y = drawWrappedText('Service Provider hereby warrants and represents that: (i) it has the requisite professional qualifications, knowledge, know-how, expertise, skill, talent and experience required in order to perform the Services and provide the Deliverables in a professional and efficient manner and shall perform the Services and provide the Deliverables using highest industry standards; (ii) there are no limitations, obligations or restrictions whatsoever which restrict or prevent Service Provider from fulfilling all of its obligations or grant the rights granted to Company under this Agreement; (iii) it will perform its obligations under this Agreement in compliance with all applicable laws, rules, professional standards, certifications and regulations; (iv) the Services and Deliverables: (a) shall be fit for their intended purpose, (b) do not and will not infringe any right of any third party including Intellectual Property Rights or right to privacy, (c) shall strictly comply with the Specifications; and (v) it has and shall continue to obtain all applicable consents, permits, licenses, certifications and authorizations in connection with the Services and Deliverables.', margin, y, contentWidth);
+  }
+  y += 2;
+
+  // ── Section 7: INDEMNIFICATION ──
+  sectionHeading('7', 'INDEMNIFICATION');
+  y = drawWrappedText('Service Provider shall indemnify, hold harmless, and at Company\'s first request, defend Company, its affiliates and their officers, directors, agents and employees, against all claims, liabilities, damages, losses and expenses, including attorneys\' fees, arising out of or in any way connected with or based on: (i) Service Provider\'s breach of any of its representations and warranties herein; and/or (ii) a determination by a competent authority that is contrary to Section 9.3 below.', margin, y, contentWidth);
+  y += 2;
+
+  // ── Section 8: TERM AND TERMINATION ──
+  sectionHeading('8', 'TERM AND TERMINATION');
+  subHeading('8.1', 'Term of Agreement.');
+  y = drawWrappedText('This Agreement shall be effective from the Effective Date and shall remain in effect for the duration of the Services, unless earlier terminated as provided hereunder ("Term"). The Term may be extended by the Company at its sole discretion.', margin, y, contentWidth);
+  y += 2;
+  subHeading('8.2', 'Termination for Convenience.');
+  if (isCast) {
+    y = drawWrappedText('Company may terminate this Agreement at any time for convenience upon written notice to the Service Provider.', margin, y, contentWidth);
+  } else {
+    y = drawWrappedText('Company may terminate this Agreement at any time for convenience upon five (5) days written notice to the Service Provider.', margin, y, contentWidth);
+  }
+  y += 2;
+  subHeading('8.3', 'Termination for Cause.');
+  y = drawWrappedText('Notwithstanding the above, this Agreement may be terminated by either party upon written notice to the other party if such other party breaches a material term or condition of this Agreement and fails to completely cure such breach within fourteen (14) days after receipt of said notice of such breach.', margin, y, contentWidth);
+  y += 2;
+  subHeading('8.4', 'Consequences.');
+  if (isCast) {
+    y = drawWrappedText('Upon termination or expiration of this Agreement, Service Provider shall at Company\'s option, either deliver to Company or delete/destroy all Confidential Information in its possession or under its control, in any media or form whatsoever. The provisions of Sections 1, 4, 5, 6, 7, 8.4 and 9 shall survive termination or expiration of this Agreement and shall remain in full force and effect in perpetuity.', margin, y, contentWidth);
+  } else {
+    y = drawWrappedText('Upon termination or expiration of this Agreement, Service Provider shall promptly Deliver to Company all Deliverables (whether completed or not) and at Company\'s option, either deliver to Company or delete/destroy all Confidential Information in its possession or under its control, in any media or form whatsoever. The provisions of Sections 1, 4, 5, 6, 7, 8.4 and 9 shall survive termination or expiration of this Agreement and shall remain in full force and effect in perpetuity.', margin, y, contentWidth);
+  }
+  y += 2;
+
+  // ── Section 9: MISCELLANEOUS ──
+  sectionHeading('9', 'MISCELLANEOUS');
+
+  if (!isCast) {
+    subHeading('9.1', 'Subcontracting.');
+    y = drawWrappedText('The obligation of Service Provider hereunder may not be subcontracted by Service Provider, in whole or in part without the written consent of Company and any such subcontracting without Company\'s written approval shall be deemed null and void.', margin, y, contentWidth);
+    y += 2;
+  }
+
+  subHeading(isCast ? '9.1' : '9.2', 'Assignment.');
+  y = drawWrappedText('Service Provider may not assign or transfer any of its rights or obligations hereunder to any third party without the prior written consent of Company. Company may assign its rights or obligations hereunder at its sole discretion. Any assignment without Company\'s prior written consent shall be deemed null and void.', margin, y, contentWidth);
+  y += 2;
+
+  subHeading(isCast ? '9.2' : '9.3', 'Independent Contractors.');
+  if (isCast) {
+    y = drawWrappedText('It is hereby clarified that Service Provider is an independent contractor of Company under this Agreement and nothing herein shall be construed to create a joint venture, partnership or an employer/employee relationship. Service Provider may not make any representations, warranties, covenants or undertakings on behalf of Company and may not represent Company.', margin, y, contentWidth);
+  } else {
+    y = drawWrappedText('It is hereby clarified that Service Provider is an independent contractor of Company under this Agreement and nothing herein shall be construed to create a joint venture, partnership or an employer/employee relationship. Service Provider may not make any representations, warranties, covenants or undertakings on behalf of Company and may not represent Company. Neither Service Provider nor its employees are entitled to any of the benefits or rights to which employees of Company are entitled, and Service Provider shall be solely responsible for all of its employees and agents and its labor costs and expenses arising in connection therewith.', margin, y, contentWidth);
+  }
+  y += 2;
+
+  subHeading(isCast ? '9.3' : '9.4', 'No Waiver.');
+  y = drawWrappedText('All waivers must be in writing. A waiver by either of the parties hereto shall not be construed to be a waiver of any succeeding breach thereof or of any covenant, condition, or agreement herein contained.', margin, y, contentWidth);
+  y += 2;
+
+  subHeading(isCast ? '9.4' : '9.5', 'Governing Law.');
+  y = drawWrappedText('This Agreement, including the validity, interpretation, or performance of this Agreement and any of its terms or provisions, and the rights and obligations of the parties under this Agreement shall be exclusively governed by, construed and interpreted in accordance with the laws of the State of Israel without regards to the choice of law provisions thereof. Any action arising out of or in any way connected with this Agreement shall be brought exclusively in the courts of Tel Aviv, Israel and the parties hereby submit themselves to its exclusive jurisdiction.', margin, y, contentWidth);
+  y += 2;
+
+  subHeading(isCast ? '9.5' : '9.6', 'Entire Agreement.');
+  y = drawWrappedText('This Agreement and its Exhibits constitute the entire agreement between the parties. No change, waiver, or discharge hereof shall be valid unless it is in writing and is executed by the party against whom such change, waiver, or discharge is sought to be enforced.', margin, y, contentWidth);
+  y += 2;
+
+  subHeading(isCast ? '9.6' : '9.7', 'Amendment.');
+  y = drawWrappedText('This Agreement may only be amended by an instrument in writing signed by each of the parties hereto.', margin, y, contentWidth);
+  y += 2;
+
+  subHeading(isCast ? '9.7' : '9.8', 'Notices.');
+  y = drawWrappedText('All notices and other communications given or made pursuant hereto shall be in writing and shall be deemed to have been duly given or made as of the date delivered or transmitted, and shall be effective upon receipt, if delivered personally, sent by air courier, or sent by electronic transmission, with confirmation received.', margin, y, contentWidth);
+  y += 2;
+
+  subHeading(isCast ? '9.8' : '9.9', 'Deduction/Set-Off.');
+  y = drawWrappedText('Company may at any time deduct or set-off any or all amounts which it deems it has already paid to Company.', margin, y, contentWidth);
+  y += 2;
+
+  if (!isCast) {
+    subHeading('9.10', 'No Exclusivity.');
+    y = drawWrappedText('This Agreement does not prevent Company from receiving services same or similar to the Services from any third party.', margin, y, contentWidth);
+    y += 2;
+
+    subHeading('9.11', 'Insurance.');
+    y = drawWrappedText('The Service Provider shall maintain at its sole expense insurance coverages that sufficiently cover all obligations and liabilities in Service Provider\'s performance of the Services. Service Provider will provide Company with a certificate of insurance evidencing such coverage immediately upon Company\'s request.', margin, y, contentWidth);
+    y += 2;
+  }
+
+  // ── Section 10: IN WITNESS THEREOF ──
+  sectionHeading('10', 'IN WITNESS THEREOF');
+  y = drawWrappedText('Company and Service Provider have caused this Agreement to be signed and delivered by their duly authorized officers, all as of the last date set forth below.', margin, y, contentWidth);
+  y += 6;
 
   // ── Signature Blocks ──
   addPageIfNeeded(60);
@@ -357,82 +428,78 @@ function generateContractPDF(data) {
   doc.setDrawColor(200, 200, 200);
   doc.rect(margin, y - 4, contentWidth, 55, 'S');
 
-  doc.setFontSize(11);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(3, 11, 46);
-  doc.text('SIGNATURES', margin + 3, y + 3);
-  y += 12;
-
   const halfWidth = (contentWidth - 10) / 2;
+  doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(3, 11, 46);
+  doc.text('Particle Aesthetic Science Ltd.', margin + 3, y + 2);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
+  doc.text(`By: ____________________`, margin + 3, y + 10);
+  doc.text(`Title: ___________________`, margin + 3, y + 17);
+  doc.text(`Date: ___________________`, margin + 3, y + 24);
 
-  // Company signature block
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'bold');
-  doc.text('For the Company:', margin + 3, y);
-  doc.setFont('helvetica', 'normal');
-  y += 6;
-  doc.text(PARTICLE_COMPANY.name, margin + 3, y);
-  y += 6;
-  doc.text(`Name: ${data.hocp_name || '___________'}`, margin + 3, y);
-  y += 6;
-  doc.setDrawColor(150, 150, 150);
-  doc.line(margin + 3, y + 2, margin + halfWidth - 5, y + 2);
-  doc.text('Signature', margin + 3, y + 8);
-  y += 10;
-  doc.text(`Date: ${data.effective_date || '___________'}`, margin + 3, y);
-
-  // Provider signature block
-  let yRight = y - 28;
   const rightX = margin + halfWidth + 10;
-  doc.setFont('helvetica', 'bold');
-  doc.text('Service Provider:', rightX, yRight);
-  doc.setFont('helvetica', 'normal');
-  yRight += 6;
-  doc.text(data.provider_name || '___________', rightX, yRight);
-  yRight += 6;
-  doc.text(`ID: ${data.provider_id_number || '___________'}`, rightX, yRight);
-  yRight += 6;
-  doc.line(rightX, yRight + 2, rightX + halfWidth - 10, yRight + 2);
-  doc.text('Signature', rightX, yRight + 8);
-  yRight += 10;
-  doc.text(`Date: ___________`, rightX, yRight);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+  doc.text(data.provider_name || '[Service Provider]', rightX, y + 2);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
+  doc.text(`By: ________________________`, rightX, y + 10);
+  doc.text(isCast ? `ID/Passport Number: __________` : `Title: _______________________`, rightX, y + 17);
+  doc.text(`Date: _______________________`, rightX, y + 24);
 
-  // ── Document History ──
-  if (data.documentHistory && data.documentHistory.length > 0) {
-    y += 10;
-    addPageIfNeeded(50);
-    doc.setFillColor(248, 250, 252);
-    doc.rect(margin, y - 4, contentWidth, 10, 'F');
-    doc.setFontSize(11);
+  y += 32;
+
+  // ── EXHIBIT A ──
+  y += 10;
+  addPageIfNeeded(30);
+  doc.setFillColor(240, 243, 255);
+  doc.rect(margin, y - 4, contentWidth, 10, 'F');
+  doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(37, 99, 235);
+  doc.text('Exhibit A', margin + 3, y + 3);
+  y += 14;
+  doc.setTextColor(30, 30, 30); doc.setFontSize(8.5); doc.setFont('helvetica', 'normal');
+  if (data.exhibit_a) {
+    y = drawWrappedText(data.exhibit_a, margin, y, contentWidth);
+  } else {
+    doc.text('[To be completed - description of services, deliverables, specifications, timeline and milestones]', margin, y);
+    y += 6;
+  }
+  y += 10;
+
+  // ── EXHIBIT B ──
+  addPageIfNeeded(30);
+  doc.setFillColor(240, 253, 244);
+  doc.rect(margin, y - 4, contentWidth, 10, 'F');
+  doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(22, 163, 74);
+  doc.text('Exhibit B', margin + 3, y + 3);
+  y += 14;
+  doc.setTextColor(30, 30, 30); doc.setFontSize(8.5); doc.setFont('helvetica', 'normal');
+
+  const currSymbol = data.currency === 'ILS' ? '\u20AA' : data.currency === 'EUR' ? '\u20AC' : data.currency === 'GBP' ? '\u00A3' : '$';
+  const exhibitBIntro = `In consideration for Service Provider's Services, Service Provider shall be paid the following amounts:`;
+  y = drawWrappedText(exhibitBIntro, margin, y, contentWidth);
+  y += 3;
+  if (data.fee_amount) {
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor(3, 11, 46);
-    doc.text('DOCUMENT HISTORY', margin + 3, y + 3);
-    y += 14;
-
-    doc.setFontSize(8);
+    doc.text(`Fee: ${currSymbol}${Number(data.fee_amount).toLocaleString()}`, margin, y);
     doc.setFont('helvetica', 'normal');
-    doc.setTextColor(100, 100, 100);
-
-    data.documentHistory.forEach(entry => {
-      addPageIfNeeded(8);
-      doc.setFont('helvetica', 'bold');
-      doc.text(entry.label, margin + 3, y);
-      doc.setFont('helvetica', 'normal');
-      doc.text(entry.date, margin + 80, y);
-      y += 7;
-    });
+    y += 7;
+  }
+  if (data.payment_terms) {
+    y = drawWrappedText(`Payment Terms: ${data.payment_terms}`, margin, y, contentWidth);
+    y += 3;
+  }
+  if (data.payment_method) {
+    y = drawWrappedText(`Payment Method: ${data.payment_method}`, margin, y, contentWidth);
+    y += 3;
+  }
+  if (data.exhibit_b) {
+    y = drawWrappedText(data.exhibit_b, margin, y, contentWidth);
   }
 
   // ── Footer ──
   const pageCount = doc.internal.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
-    doc.setFontSize(7);
-    doc.setTextColor(150, 150, 150);
-    doc.text(
-      `${PARTICLE_COMPANY.name} | ${PARTICLE_COMPANY.address} | Page ${i} of ${pageCount}`,
-      pageWidth / 2, 290, { align: 'center' }
-    );
+    doc.setFontSize(7); doc.setTextColor(150, 150, 150);
+    doc.text(`${PARTICLE_COMPANY.name} | ${PARTICLE_COMPANY.address} | Page ${i} of ${pageCount}`, pageWidth / 2, 290, { align: 'center' });
   }
 
   return doc;
@@ -614,7 +681,10 @@ export default function ContractModal({ production, lineItem, onClose }) {
     const introText = `This Services Agreement (the "Agreement") is entered into as of ${formattedDate} by and between:\n\nCompany: ${PARTICLE_COMPANY.name}, ${PARTICLE_COMPANY.address}\nProvider: ${[providerName, providerIdNumber ? `ID: ${providerIdNumber}` : '', providerAddress].filter(Boolean).join(', ') || '___________'}\n${providerEmail ? `Email: ${providerEmail}` : ''}`;
     setEditableIntro(introText);
 
-    const bodyText = `The Company hereby engages the Provider to perform the services described in Exhibit A below, subject to the terms and conditions set forth in this Agreement. The Provider shall perform the services in a professional and workmanlike manner, in accordance with industry standards and the Company's reasonable instructions.\n\nThe Provider represents that they are an independent contractor, not an employee of the Company. The Provider shall be solely responsible for all taxes, insurance, and other obligations arising from the compensation received under this Agreement.\n\nAll intellectual property, creative works, and deliverables produced under this Agreement shall be the exclusive property of the Company. The Provider hereby assigns all rights, title, and interest in such works to the Company.\n\nThe Provider shall maintain strict confidentiality regarding all proprietary information, trade secrets, and business information of the Company, both during and after the term of this Agreement.`;
+    const isCast = CAST_TYPES.includes(lineItem?.type);
+    const bodyText = isCast
+      ? `[Full Models/Cast contract text will be generated in the PDF]\n\nSections included:\n1. Definitions\n2. Services (Modeling)\n3. Compensation\n4. Waiver and Consent\n5. Confidentiality\n6. Warranties and Representations\n7. Indemnification\n8. Term and Termination\n9. Miscellaneous\n10. Signature Blocks`
+      : `[Full Crew/Services contract text will be generated in the PDF]\n\nSections included:\n1. Definitions\n2. Services\n3. Compensation\n4. Proprietary Rights\n5. Confidentiality\n6. Warranties and Representations\n7. Indemnification\n8. Term and Termination\n9. Miscellaneous\n10. Signature Blocks`;
     setEditableBody(bodyText);
 
     setEditableExhibitA(exhibitA);
@@ -667,6 +737,7 @@ export default function ContractModal({ production, lineItem, onClose }) {
       hocp_name: user?.name || 'Tomer Wilf Lezmy',
       logoBase64,
       documentHistory: buildDocumentHistory(),
+      isCastType: CAST_TYPES.includes(lineItem?.type),
     });
 
     const dataUrl = doc.output('datauristring');
@@ -697,6 +768,7 @@ export default function ContractModal({ production, lineItem, onClose }) {
         effective_date: effectiveDate,
         contract_pdf_base64: pdfDataUrl || '',
         status: 'pending',
+        contract_type: CAST_TYPES.includes(lineItem?.type) ? 'cast' : 'crew',
       });
 
       const result = await generateContractSignatures(contractKey, {
@@ -743,6 +815,7 @@ export default function ContractModal({ production, lineItem, onClose }) {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           to: toEmail,
+          skipDefaultCc: sandboxMode,
           subject: `${subjectPrefix}Contract for ${production.project_name} — ${toName}`,
           htmlBody: `
             <div style="font-family: Arial, sans-serif; max-width: 600px;">
@@ -821,6 +894,7 @@ export default function ContractModal({ production, lineItem, onClose }) {
       hocp_name: user?.name || 'Tomer Wilf Lezmy',
       logoBase64,
       documentHistory: buildDocumentHistory(),
+      isCastType: CAST_TYPES.includes(lineItem?.type),
     });
     doc.save(`Contract_${production.project_name}_${providerName}.pdf`);
   }
@@ -1345,23 +1419,19 @@ export default function ContractModal({ production, lineItem, onClose }) {
         ═══════════════════════════════════════════════════ */}
         {currentStep === 4 && (
           <div>
-            {/* Generate signing links if not yet done */}
-            {!signingLinks && !generating && (
-              <div className="bg-purple-50 border border-purple-200 rounded-xl p-5 mb-4 text-center">
-                <FileSignature size={28} className="mx-auto mb-3 text-purple-500" />
-                <div className="text-sm font-bold text-purple-800 mb-2">Generate Signing Link</div>
-                <div className="text-xs text-purple-600 mb-4">
-                  Create a unique signing link for the Service Provider. Particle signs automatically.
+            {/* Auto-generate signing links if not yet done */}
+            {!signingLinks && !generating && !generateError && (() => {
+              // Auto-trigger generation when arriving at step 4
+              if (providerName.trim() && providerEmail.trim()) {
+                setTimeout(() => handleGenerate(), 100);
+              }
+              return (
+                <div className="flex items-center justify-center py-8">
+                  <div className="w-6 h-6 border-2 border-purple-300 border-t-purple-600 rounded-full animate-spin mr-3" />
+                  <span className="text-sm text-gray-500">Preparing signing link...</span>
                 </div>
-                <button
-                  onClick={handleGenerate}
-                  disabled={generating || !providerName.trim() || !providerEmail.trim()}
-                  className="px-6 py-2.5 rounded-xl text-sm font-semibold bg-purple-600 hover:bg-purple-700 text-white transition-colors"
-                >
-                  Generate E-Sign Link
-                </button>
-              </div>
-            )}
+              );
+            })()}
 
             {generating && (
               <div className="flex items-center justify-center py-8">
@@ -1537,18 +1607,17 @@ export default function ContractModal({ production, lineItem, onClose }) {
                   <div className="text-center py-8 text-gray-400 mb-4">
                     <Clock size={32} className="mx-auto mb-3" />
                     <div className="text-sm font-semibold mb-1">No signatures yet</div>
-                    <div className="text-xs">Generate a signing link in Step 4 to start the signature process.</div>
-                    <button
-                      onClick={() => goToStep(4)}
-                      className="mt-3 text-xs text-blue-600 hover:text-blue-800 underline"
-                    >
-                      Go to Send for Signature
-                    </button>
+                    <div className="text-xs">Go to Step 4 to generate and send signing links.</div>
                   </div>
                 );
               }
               return null;
             })()}
+
+            {/* E-Signature link cards (same as Step 4) */}
+            {!isSigned && signingLinks && (
+              <SigningLinks signingLinks={signingLinks} onCopy={handleCopyMsg} productionName={production.project_name} />
+            )}
 
             {/* Signed & Completed banner */}
             {isSigned && (

@@ -227,6 +227,9 @@ CREATE TABLE IF NOT EXISTS contracts (
   contract_pdf_base64 TEXT,
   provider_id_number  TEXT,
   provider_address    TEXT,
+  currency            TEXT DEFAULT 'USD',
+  contract_type       TEXT DEFAULT 'crew',  -- 'crew' | 'cast'
+  effective_date      DATE,
   created_at          TIMESTAMPTZ DEFAULT NOW()
 );
 

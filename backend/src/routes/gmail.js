@@ -27,8 +27,10 @@ async function getGmailClient() {
 }
 
 // Build RFC 2822 email
-function buildEmail({ to, cc, subject, htmlBody, from }) {
-  const ccList = [ALWAYS_CC, ...(cc || [])].filter(Boolean).join(', ');
+function buildEmail({ to, cc, subject, htmlBody, from, skipDefaultCc }) {
+  const ccList = skipDefaultCc
+    ? (cc || []).filter(Boolean).join(', ')
+    : [ALWAYS_CC, ...(cc || [])].filter(Boolean).join(', ');
   const raw = [
     `From: ${from || 'tomer@particleformen.com'}`,
     `To: ${to}`,
@@ -47,7 +49,7 @@ router.use(verifyJWT);
 
 // POST /api/gmail/send — send email from connected Google account
 router.post('/send', async (req, res) => {
-  const { to, cc, subject, htmlBody, textBody } = req.body;
+  const { to, cc, subject, htmlBody, textBody, skipDefaultCc } = req.body;
   if (!to || !subject) return res.status(400).json({ error: 'to and subject required' });
 
   try {
@@ -58,6 +60,7 @@ router.post('/send', async (req, res) => {
       subject,
       htmlBody: htmlBody || `<pre>${textBody || ''}</pre>`,
       from: 'tomer@particleformen.com',
+      skipDefaultCc: !!skipDefaultCc,
     });
 
     const result = await gmail.users.messages.send({
@@ -76,10 +79,10 @@ router.post('/send', async (req, res) => {
 });
 
 module.exports = router;
-module.exports.sendEmail = async function sendEmail({ to, cc, subject, htmlBody }) {
+module.exports.sendEmail = async function sendEmail({ to, cc, subject, htmlBody, skipDefaultCc }) {
   try {
     const gmail = await getGmailClient();
-    const raw = buildEmail({ to, cc, subject, htmlBody, from: 'tomer@particleformen.com' });
+    const raw = buildEmail({ to, cc, subject, htmlBody, from: 'tomer@particleformen.com', skipDefaultCc });
     await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });
     return true;
   } catch (err) {

@@ -40,6 +40,7 @@ router.get('/sign/:id/:token', async (req, res) => {
               c.production_id, c.events, c.pdf_url,
               c.exhibit_a, c.exhibit_b, c.fee_amount, c.payment_terms,
               c.provider_id_number, c.provider_address,
+              c.currency, c.contract_type, c.effective_date,
               p.project_name, p.producer
        FROM contract_signatures cs
        JOIN contracts c ON cs.contract_id = c.id
@@ -52,7 +53,7 @@ router.get('/sign/:id/:token', async (req, res) => {
     }
     const sig = sigRows[0];
     if (sig.signed_at) {
-      return res.status(400).json({ error: 'This contract has already been signed', already_signed: true });
+      return res.status(400).json({ error: 'This contract has already been signed', already_signed: true, signed_at: sig.signed_at, signature_data: sig.signature_data, signer_name: sig.signer_name });
     }
     res.json({
       contract_id: id,
@@ -72,6 +73,9 @@ router.get('/sign/:id/:token', async (req, res) => {
       exhibit_b: sig.exhibit_b,
       fee_amount: sig.fee_amount,
       payment_terms: sig.payment_terms,
+      currency: sig.currency || 'USD',
+      contract_type: sig.contract_type || 'crew',
+      effective_date: sig.effective_date,
     });
   } catch (err) {
     console.error('GET /sign/:id/:token error:', err);
@@ -83,7 +87,7 @@ router.get('/sign/:id/:token', async (req, res) => {
 router.post('/sign/:id/:token', async (req, res) => {
   try {
     const { id, token } = req.params;
-    const { signature_data, signer_name } = req.body;
+    const { signature_data, signer_name, signer_id_number } = req.body;
 
     if (!signature_data) {
       return res.status(400).json({ error: 'Signature data is required' });
@@ -113,9 +117,9 @@ router.post('/sign/:id/:token', async (req, res) => {
     // Save signature
     await db.query(
       `UPDATE contract_signatures
-       SET signature_data = $1, signed_at = $2, signer_name = COALESCE($3, signer_name)
-       WHERE id = $4`,
-      [signature_data, now, signer_name || null, sig.id]
+       SET signature_data = $1, signed_at = $2, signer_name = COALESCE($3, signer_name), signer_id_number = COALESCE($4, signer_id_number)
+       WHERE id = $5`,
+      [signature_data, now, signer_name || null, signer_id_number || null, sig.id]
     );
 
     // Add event to contract events array
@@ -131,6 +135,33 @@ router.post('/sign/:id/:token', async (req, res) => {
       [JSON.stringify(events), id]
     );
 
+    // Auto-sign on behalf of Particle (HOCP) when provider signs
+    if (sig.signer_role === 'provider') {
+      const { rows: hocpSigs } = await db.query(
+        `SELECT * FROM contract_signatures WHERE contract_id = $1 AND signer_role = 'hocp' AND signed_at IS NULL`,
+        [id]
+      );
+      for (const hocpSig of hocpSigs) {
+        await db.query(
+          `UPDATE contract_signatures
+           SET signed_at = $1, signer_name = 'Tomer Wilf Lezmy', signer_id_number = 'Head of Creative Production'
+           WHERE id = $2`,
+          [now, hocpSig.id]
+        );
+        events.push({
+          type: 'signed',
+          role: 'hocp',
+          name: 'Tomer Wilf Lezmy',
+          title: 'Head of Creative Production',
+          at: now,
+        });
+        await db.query(
+          `UPDATE contracts SET events = $1 WHERE id = $2`,
+          [JSON.stringify(events), id]
+        );
+      }
+    }
+
     // Check if ALL signers have now signed
     const { rows: allSigs } = await db.query(
       `SELECT signed_at FROM contract_signatures WHERE contract_id = $1`,
@@ -141,7 +172,9 @@ router.post('/sign/:id/:token', async (req, res) => {
     // Slack notification — individual signer
     const roleLabel = sig.signer_role === 'hocp' ? 'HOCP' : 'provider';
     const projectLabel = sig.project_name || sig.production_id;
-    notifySlack(`\u270d\ufe0f Contract signed by ${roleLabel}: ${projectLabel} \u2014 ${signer_name || sig.signer_name}`, `${APP_BASE}/production/${sig.production_id}`);
+    const prdId = sig.production_id;
+    const prdShort = prdId && prdId.startsWith('PRD') ? prdId.split('_')[0] : prdId;
+    notifySlack(`\u270d\ufe0f Contract signed by ${roleLabel}: [${prdShort}] ${projectLabel} \u2014 ${signer_name || sig.signer_name}\nView: ${APP_BASE}/production/${prdId}`);
 
     if (allSigned) {
       // Mark contract as fully signed
@@ -151,7 +184,7 @@ router.post('/sign/:id/:token', async (req, res) => {
         [now, JSON.stringify(events), id]
       );
       // Slack notification — fully signed
-      notifySlack(`\u2705 Contract fully signed: ${projectLabel} \u2014 ${sig.provider_name || signer_name}`, `${APP_BASE}/production/${sig.production_id}`);
+      notifySlack(`\u2705 Contract fully signed: [${prdShort}] ${projectLabel} \u2014 ${sig.provider_name || signer_name}\nView: ${APP_BASE}/production/${prdId}`);
 
       // Email all parties — contract completed
       // Gather document history from events
@@ -236,6 +269,7 @@ router.put('/:production_id', async (req, res) => {
     drive_url, dropbox_url,
     exhibit_a, exhibit_b, fee_amount, payment_terms,
     provider_id_number, provider_address, contract_pdf_base64,
+    currency, contract_type, effective_date,
   } = req.body;
   try {
     const { rows } = await db.query(
@@ -243,9 +277,10 @@ router.put('/:production_id', async (req, res) => {
          production_id, provider_name, provider_email, status, sent_at, signed_at, pdf_url, events,
          drive_url, dropbox_url,
          exhibit_a, exhibit_b, fee_amount, payment_terms,
-         provider_id_number, provider_address, contract_pdf_base64
+         provider_id_number, provider_address, contract_pdf_base64,
+         currency, contract_type, effective_date
        )
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
        ON CONFLICT (production_id) DO UPDATE SET
          provider_name      = COALESCE(EXCLUDED.provider_name,      contracts.provider_name),
          provider_email     = COALESCE(EXCLUDED.provider_email,     contracts.provider_email),
@@ -262,7 +297,10 @@ router.put('/:production_id', async (req, res) => {
          payment_terms      = COALESCE(EXCLUDED.payment_terms,      contracts.payment_terms),
          provider_id_number = COALESCE(EXCLUDED.provider_id_number, contracts.provider_id_number),
          provider_address   = COALESCE(EXCLUDED.provider_address,   contracts.provider_address),
-         contract_pdf_base64= COALESCE(EXCLUDED.contract_pdf_base64,contracts.contract_pdf_base64)
+         contract_pdf_base64= COALESCE(EXCLUDED.contract_pdf_base64,contracts.contract_pdf_base64),
+         currency           = COALESCE(EXCLUDED.currency,           contracts.currency),
+         contract_type      = COALESCE(EXCLUDED.contract_type,      contracts.contract_type),
+         effective_date     = COALESCE(EXCLUDED.effective_date,     contracts.effective_date)
        RETURNING *`,
       [
         req.params.production_id,
@@ -282,6 +320,9 @@ router.put('/:production_id', async (req, res) => {
         provider_id_number || null,
         provider_address || null,
         contract_pdf_base64 || null,
+        currency || null,
+        contract_type || null,
+        effective_date || null,
       ]
     );
     res.json(rows[0]);
@@ -296,6 +337,7 @@ router.post('/:production_id/generate', async (req, res) => {
   const {
     provider_name, provider_email, hocp_name, hocp_email,
     exhibit_a, exhibit_b, fee_amount, payment_terms,
+    sandbox,
   } = req.body;
   const prodId = req.params.production_id;
 
@@ -370,15 +412,18 @@ router.post('/:production_id/generate', async (req, res) => {
     } catch (_) {}
 
     // Slack notification — contract generated/sent
-    notifySlack(`\ud83d\udcc4 Contract sent: ${projectName} \u2014 ${provider_name}\nProvider sign: ${providerSignUrl}`, `${APP_BASE}/production/${prodId}`);
+    const slackPrefix = req.body.sandbox ? '[TEST] ' : '';
+    const prdLabel = prodId.startsWith('PRD') ? prodId.split('_')[0] : prodId;
+    notifySlack(`${slackPrefix}\ud83d\udcc4 Contract sent: [${prdLabel}] ${projectName} \u2014 ${provider_name}\nView: ${APP_BASE}/production/${prodId}`);
 
     // Auto-send email to provider via Gmail API (fire-and-forget)
-    // Note: Omer is NOT CC'd on initial send — only on completion
     sendEmail({
       to: provider_email,
-      subject: `Contract for ${projectName} — ${provider_name}`,
+      skipDefaultCc: !!sandbox,
+      subject: `${sandbox ? '[TEST] ' : ''}Contract for ${projectName} — ${provider_name}`,
       htmlBody: `
         <div style="font-family: Arial, sans-serif; max-width: 600px;">
+          ${sandbox ? '<div style="background:#fef3c7;border:2px solid #f59e0b;padding:10px 16px;border-radius:8px;margin-bottom:16px;font-weight:bold;color:#92400e;">[TEST] Sandbox Mode</div>' : ''}
           <h2 style="color: #030b2e;">Contract Ready for Signature</h2>
           <p>Hi ${provider_name},</p>
           <p>A contract has been prepared for <strong>${projectName}</strong>.</p>

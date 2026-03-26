@@ -346,32 +346,7 @@ export default function ContractSign() {
         {/* ── Section 3: Full Agreement Terms ── */}
         <div className="px-6 sm:px-10 py-6 border-b border-gray-100">
           <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-4">Agreement Terms</h3>
-          <div className="text-sm text-gray-600 leading-relaxed space-y-3">
-            <p>
-              This Services Agreement (the &ldquo;Agreement&rdquo;) is entered into as of {effectiveDate} by and between{' '}
-              <strong>Particle Aesthetic Science Ltd.</strong> (&ldquo;the Company&rdquo;) and{' '}
-              <strong>{d.provider_name || 'the Service Provider'}</strong> (&ldquo;the Provider&rdquo;).
-            </p>
-            <p>
-              The Company hereby engages the Provider to perform the services described in Exhibit A below, subject to
-              the terms and conditions set forth in this Agreement. The Provider shall perform the services in a professional
-              and workmanlike manner, in accordance with industry standards and the Company&rsquo;s reasonable instructions.
-            </p>
-            <p>
-              The Provider represents that they are an independent contractor, not an employee of the Company. The Provider
-              shall be solely responsible for all taxes, insurance, and other obligations arising from the compensation
-              received under this Agreement.
-            </p>
-            <p>
-              All intellectual property, creative works, and deliverables produced under this Agreement shall be the
-              exclusive property of the Company. The Provider hereby assigns all rights, title, and interest in such
-              works to the Company.
-            </p>
-            <p>
-              The Provider shall maintain strict confidentiality regarding all proprietary information, trade secrets,
-              and business information of the Company, both during and after the term of this Agreement.
-            </p>
-          </div>
+          <FullContractText data={d} effectiveDate={effectiveDate} />
         </div>
 
         {/* ── Section 4: Exhibit A — Scope of Services ── */}
@@ -400,7 +375,7 @@ export default function ContractSign() {
                 <div className="mb-3 px-4 py-3 bg-green-50 rounded-lg">
                   <p className="text-[10px] uppercase tracking-widest text-green-600 mb-1">Total Fee</p>
                   <p className="text-xl font-bold text-green-700">
-                    {d.currency || '\u20AA'}{Number(d.fee_amount).toLocaleString()}
+                    {d.currency === 'ILS' ? '\u20AA' : d.currency === 'EUR' ? '\u20AC' : d.currency === 'GBP' ? '\u00A3' : '$'}{Number(d.fee_amount).toLocaleString()}
                   </p>
                 </div>
               )}
@@ -417,15 +392,9 @@ export default function ContractSign() {
           </div>
         )}
 
-        {/* ── Section 6: Standard Terms Summary ── */}
-        <div className="px-6 sm:px-10 py-6 border-b border-gray-100 bg-gray-50/40">
-          <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-4">Key Terms</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-gray-600">
-            <TermBadge icon={<Shield size={12} />} text="Intellectual property rights transfer to the Company upon payment." />
-            <TermBadge icon={<Shield size={12} />} text="Confidentiality obligations apply during and after the engagement." />
-            <TermBadge icon={<Shield size={12} />} text="Service Provider operates as an independent contractor." />
-          </div>
-          <p className="mt-4 text-[11px] text-gray-400 leading-relaxed">
+        {/* ── Signing Confirmation ── */}
+        <div className="px-6 sm:px-10 py-4 border-b border-gray-100 bg-gray-50/40">
+          <p className="text-[11px] text-gray-400 leading-relaxed">
             By signing below, you confirm that you have read, understood, and agree to the full terms of this
             Services Agreement, including Exhibit A (Services) and Exhibit B (Fees & Payment).
           </p>
@@ -655,11 +624,156 @@ function ExhibitCard({ color, icon, title, subtitle, content, children }) {
   );
 }
 
-function TermBadge({ icon, text }) {
+/* ═══════════════════════════════════════════════
+   Full Contract Text — renders full legal text
+   ═══════════════════════════════════════════════ */
+function FullContractText({ data: d, effectiveDate }) {
+  const isCast = (d.contract_type === 'cast');
+  const providerName = d.provider_name || '[Service Provider]';
+  const providerId = d.provider_id_number || d.provider_id || '[Please complete]';
+  const providerAddr = d.provider_address || '[Please complete]';
+
+  const S = ({ children }) => <h4 className="text-sm font-bold text-gray-800 mt-5 mb-2">{children}</h4>;
+  const Sub = ({ children }) => <h5 className="text-xs font-semibold text-gray-700 mt-3 mb-1">{children}</h5>;
+  const P = ({ children }) => <p className="text-[13px] text-gray-600 leading-relaxed mb-2">{children}</p>;
+
   return (
-    <div className="flex items-start gap-2 p-3 bg-white rounded-lg border border-gray-100">
-      <span className="text-gray-300 mt-0.5 shrink-0">{icon}</span>
-      <p className="text-[11px] leading-relaxed text-gray-500">{text}</p>
+    <div className="max-h-[500px] overflow-y-auto pr-2" style={{ scrollbarWidth: 'thin' }}>
+      {/* Preamble */}
+      <P>
+        This Services Agreement (&ldquo;Agreement&rdquo;) is made and entered into on {effectiveDate} (&ldquo;Effective Date&rdquo;), by and between Particle Aesthetic Science Ltd., a company registered in Israel, with a principal place of business at King George 48, Tel Aviv (&ldquo;Company&rdquo;), and {providerName}, ID/Passport number {providerId}, with a principal place of business at {providerAddr} (&ldquo;Service Provider&rdquo;),
+      </P>
+      <P>WHEREAS, Service Provider has the skills, resources, know-how and ability required to provide the Services and create the Deliverables (each as defined below); and</P>
+      <P>WHEREAS, based on Service Provider&rsquo;s representations hereunder, the parties desire that Service Provider provide the Services as an independent contractor of Company upon the terms and conditions hereinafter specified;</P>
+      <P>NOW, THEREFORE, the parties hereby agree as follows:</P>
+
+      {/* 1. DEFINITIONS */}
+      <S>1. DEFINITIONS</S>
+      <P>For purposes of this Agreement (including any and all amendments made to or incorporated herein now or in the future), the following capitalized terms shall have the following meaning:</P>
+      {isCast ? (
+        <P>&ldquo;Content&rdquo; shall mean any testimonials, data, personal stories and details, names, locations, videos, photos, audio, and any breakdown, definition or partition of video, film or TV clips, including images, sound footage and segments, recorded performance, interviews, likeness and voice of the Service Provider as embodied therein, and any and all other information which may be provided by the Service Provider to Company in connection with the Services.</P>
+      ) : (
+        <P>&ldquo;Deliverables&rdquo; shall mean all deliverables provided or produced as a result of the work performed under this Agreement or in connection therewith, including, without limitation, any work products, composition, photographs, videos, information, specifications, documentation, content, designs, audio, and any breakdown, definition or partition of video, film or clips, images, sound footage and segments, recorded performance, including as set forth in Exhibit A, all in any media or form whatsoever.</P>
+      )}
+      <P>&ldquo;Intellectual Property Rights&rdquo; shall mean all worldwide, whether registered or not (i) patents, patent applications and patent rights; (ii) rights associated with works of authorship, including copyrights, copyrights applications, copyrights restrictions; (iii) rights relating to the protection of trade secrets and confidential information; (iv) trademarks, logos, service marks, brands, trade names, domain names, goodwill and the right to publicity; (v) rights analogous to those set forth herein and any other proprietary rights relating to intangible property; (vi) all other intellectual and industrial property rights (of every kind and nature throughout the world and however designated) whether arising by operation of law, contract, license, or otherwise; and (vii) all registrations, initial applications, renewals, extensions, continuations, divisions or reissues thereof now or hereafter in force (including any rights in any of the foregoing).</P>
+      {!isCast && (
+        <>
+          <P>&ldquo;Services&rdquo; shall have the meaning ascribed to it in Section 2 below.</P>
+          <P>&ldquo;Specifications&rdquo; shall mean Company&rsquo;s specifications for the Deliverables attached hereto as Exhibit A or as otherwise provided to Service Provider by Company from time to time.</P>
+        </>
+      )}
+
+      {/* 2. SERVICES */}
+      <S>2. SERVICES</S>
+      {isCast ? (
+        <P>Service Provider shall provide Company with modeling services all in accordance with the Company&rsquo;s instructions, including the instructions set forth in Exhibit A attached hereto and to Company&rsquo;s full satisfaction (&ldquo;Services&rdquo;). Service Provider shall be liable for full compliance with the terms and conditions of this Agreement and for any negligent acts and omissions in connection therewith.</P>
+      ) : (
+        <P>Service Provider shall provide Company with the services and deliver the Company the Deliverables all as detailed in Exhibit A, and all in accordance with the milestones and timelines set forth therein and in accordance with Company&rsquo;s instructions and to its full satisfaction (&ldquo;Services&rdquo;). Service Provider shall be liable for full compliance with the terms and conditions of this Agreement and for any negligent acts and omissions in connection therewith. Service Provider is and shall remain solely responsible and liable for obtaining, paying for, repairing and maintaining all the equipment, hardware and services required for providing the Services.</P>
+      )}
+
+      {/* 3. COMPENSATION */}
+      <S>3. COMPENSATION</S>
+      <Sub>3.1 Consideration.</Sub>
+      <P>In consideration for the Services provided herein, Company shall pay Service Provider the fees set forth in Exhibit B attached hereto in accordance with the milestones therein. Such payments shall be the full and final consideration of Service Provider and no additional payments shall be made including without limitation payments for overtime or other. Payments shall be made net thirty (30) days after Company&rsquo;s receipt of an undisputed invoice. Company may deduct and withhold from any payments made hereunder all sums which it then may be required to deduct or withhold pursuant to any applicable statute, law, regulation or order of any jurisdiction whatsoever.</P>
+      <Sub>3.2 Taxes.</Sub>
+      <P>The consideration hereunder shall include all taxes, levies and charges however designated and levied by any state, local, or government agency (including sales taxes and VAT). Service Provider shall have sole responsibility for the payment of all of taxes, levies and charges.</P>
+      <Sub>3.3 Expenses.</Sub>
+      <P>Except for expenses pre-approved in writing by Company, which will be paid against an itemized invoice, Service Provider shall bear all of its expenses arising from the performance or obligations under this Agreement.</P>
+
+      {/* 4. PROPRIETARY RIGHTS / WAIVER AND CONSENT */}
+      {isCast ? (
+        <>
+          <S>4. WAIVER AND CONSENT</S>
+          <P>Company exclusively own and shall continue to own all right title and interest in and to the Content, Company Confidential Information (defined below) and any modifications, enhancements, improvements and derivatives thereof and all Intellectual Property Rights thereto (including without limitation, performing rights, rights to publicity and copyrights), upon creation thereof (&ldquo;Company IPR&rdquo;). Without derogating from the generality of the foregoing, Company may use and otherwise exploit the Content in any media and/or platform whatsoever (including, without limitation, websites, social media, marketing materials and streaming platforms), including, without limitation, reproduce, display, exhibit, publish, publicly make available, transmit, distribute, broadcast, create derivative works, edit, change, use in advertisements or any other marketing materials, in Company&rsquo;s current or future products, services or features, and/or otherwise use and/or exploit the Content as Company deems appropriate at its sole discretion without any restrictions. Service Provider hereby agrees to automatically assign to Company all right, title and interest in and to the Company IPR upon creation thereof.</P>
+          <P>Service Provider unconditionally and irrevocably waives, releases and forever discharges any rights, claims, charges or demands whatsoever, in the past, present or future, whether under contract, law, equity or otherwise, in respect of the Company IPR and PII (as defined below) and/or any use thereof, including, without limitation, in connection with invasion of privacy, defamation, right of publicity, performing rights, moral rights, right to receive compensation or royalties including any compensation under Section 134 the Israeli Patent Law-1967 or other applicable laws, or any liability, damages and expenses of any kind or all analogous/similar rights throughout the world or any other cause of action in respect of the Company IPR or its use. Service Provider undertakes not to contest Company&rsquo;s rights to the Company IPR. Service Provider acknowledges that nothing herein shall obligate Company to use the Content or any part thereof.</P>
+          <P>Company may collect, process and retain the Service Provider&rsquo;s personally identifiable information (&ldquo;PII&rdquo;) derived in connection with the Services. Such PII may be made available by the Company to third parties, including without limitation, to Company&rsquo;s affiliates, shareholders, partners, agents, contractors and advisors, whether local or foreign, all as part of the Content, in order to further the purposes herein. Company may also transfer PII as part of the Content to third parties in connection with a reorganization, merger, share purchase or sale of substantially all of Company&rsquo;s assets. Service Provider hereby confirms that it is not legally required to provide its PII and such PII is provided at the Service Provider&rsquo;s volition.</P>
+        </>
+      ) : (
+        <>
+          <S>4. PROPRIETARY RIGHTS</S>
+          <P>The Specifications, Deliverables, Company Confidential Information (defined below) and any and all modifications, enhancements and derivatives thereof and all Intellectual Property Rights thereto (&ldquo;Company IPR&rdquo;) are and shall be owned exclusively by Company upon their creation and shall be deemed works for hire by Service Provider for Company. Without derogating from the foregoing, any and all content or material provided by Company constitutes Company IPR. Service Provider hereby assigns and agrees to assign to Company exclusive ownership and all right, title and interest the Company IPR. Service Provider hereby waives all right, title and interest in and to the Company IPR, including moral rights and any right to compensation or royalties including pursuant to Section 134 to the Israel Patent Law &ndash; 1967. Service Provider agrees to assist Company in every proper way to obtain for Company and enforce any Intellectual Property Rights in the Company IPR in any and all countries. Service Provider hereby irrevocably designates and appoints Company and its authorized officers and agents as Service Provider&rsquo;s agent and attorney in fact, coupled with an interest to act for and on Service Providers behalf and in Service Provider&rsquo;s stead to do all lawfully permitted acts to further the prosecution and issuance of Company IPR or any other right or protection relating to any Company IPR, with the same legal force and effect as if executed by Service Provider itself. Service Provider shall ensure that all of its employees and contractors sign terms no less restrictive and no less protective of Company and Company IPR as the terms set forth in this agreement, including without limitation assignment and waiver of all right, title and interest in and to the Company IPR to the Company in a form preapproved by the Company, and shall provide Company all such signed terms upon execution.</P>
+        </>
+      )}
+
+      {/* 5. CONFIDENTIALITY */}
+      <S>5. CONFIDENTIALITY</S>
+      {isCast ? (
+        <P>This Agreement, the provision of the Services, Company IPR and all information related to the Company, its affiliates, its and their shareholders, employees, directors and agents and/or to their business, products and services are confidential information of Company (&ldquo;Confidential Information&rdquo;). Service Provider agrees to protect the Confidential Information with the highest degree of care and keep confidential and not disclose, disseminate, allow access to or use any Confidential Information except as required for the provision of the Services.</P>
+      ) : (
+        <P>This Agreement, the provision of the Services, Company IPR and all data and information related to the Company, its affiliates, its and their shareholders, employees, directors and agents and/or to their business, products and services are confidential information of Company (&ldquo;Confidential Information&rdquo;). Service Provider agrees to protect the Confidential Information with the highest degree of care and keep confidential and not disclose, disseminate, allow access to or use any Confidential Information except as required for the provision of the Services and creation of the Deliverables.</P>
+      )}
+
+      {/* 6. WARRANTIES AND REPRESENTATIONS */}
+      <S>6. WARRANTIES AND REPRESENTATIONS</S>
+      {isCast ? (
+        <P>Service Provider hereby warrants and represents that: (i) it has the requisite professional qualifications, knowledge, know-how, expertise, skill, talent and experience required in order to perform the Services in a professional and efficient manner; (ii) there are no limitations, obligations or restrictions whatsoever which restrict or prevent Service Provider from fulfilling all of its obligations or grant the rights granted to Company under this Agreement; (iii) it will perform its obligations under this Agreement in compliance with all applicable laws, rules and regulations; and (iv) it has and shall continue to obtain all applicable consents, permits, licenses, certifications and authorizations in connection with the Services.</P>
+      ) : (
+        <P>Service Provider hereby warrants and represents that: (i) it has the requisite professional qualifications, knowledge, know-how, expertise, skill, talent and experience required in order to perform the Services and provide the Deliverables in a professional and efficient manner and shall perform the Services and provide the Deliverables using highest industry standards; (ii) there are no limitations, obligations or restrictions whatsoever which restrict or prevent Service Provider from fulfilling all of its obligations or grant the rights granted to Company under this Agreement; (iii) it will perform its obligations under this Agreement in compliance with all applicable laws, rules, professional standards, certifications and regulations; (iv) the Services and Deliverables: (a) shall be fit for their intended purpose, (b) do not and will not infringe any right of any third party including Intellectual Property Rights or right to privacy, (c) shall strictly comply with the Specifications; and (v) it has and shall continue to obtain all applicable consents, permits, licenses, certifications and authorizations in connection with the Services and Deliverables.</P>
+      )}
+
+      {/* 7. INDEMNIFICATION */}
+      <S>7. INDEMNIFICATION</S>
+      <P>Service Provider shall indemnify, hold harmless, and at Company&rsquo;s first request, defend Company, its affiliates and their officers, directors, agents and employees, against all claims, liabilities, damages, losses and expenses, including attorneys&rsquo; fees, arising out of or in any way connected with or based on: (i) Service Provider&rsquo;s breach of any of its representations and warranties herein; and/or (ii) a determination by a competent authority that is contrary to Section 9.3 below.</P>
+
+      {/* 8. TERM AND TERMINATION */}
+      <S>8. TERM AND TERMINATION</S>
+      <Sub>8.1 Term of Agreement.</Sub>
+      <P>This Agreement shall be effective from the Effective Date and shall remain in effect for the duration of the Services, unless earlier terminated as provided hereunder (&ldquo;Term&rdquo;). The Term may be extended by the Company at its sole discretion.</P>
+      <Sub>8.2 Termination for Convenience.</Sub>
+      {isCast ? (
+        <P>Company may terminate this Agreement at any time for convenience upon written notice to the Service Provider.</P>
+      ) : (
+        <P>Company may terminate this Agreement at any time for convenience upon five (5) days written notice to the Service Provider.</P>
+      )}
+      <Sub>8.3 Termination for Cause.</Sub>
+      <P>Notwithstanding the above, this Agreement may be terminated by either party upon written notice to the other party if such other party breaches a material term or condition of this Agreement and fails to completely cure such breach within fourteen (14) days after receipt of said notice of such breach.</P>
+      <Sub>8.4 Consequences.</Sub>
+      {isCast ? (
+        <P>Upon termination or expiration of this Agreement, Service Provider shall at Company&rsquo;s option, either deliver to Company or delete/destroy all Confidential Information in its possession or under its control, in any media or form whatsoever. The provisions of Sections 1, 4, 5, 6, 7, 8.4 and 9 shall survive termination or expiration of this Agreement and shall remain in full force and effect in perpetuity.</P>
+      ) : (
+        <P>Upon termination or expiration of this Agreement, Service Provider shall promptly Deliver to Company all Deliverables (whether completed or not) and at Company&rsquo;s option, either deliver to Company or delete/destroy all Confidential Information in its possession or under its control, in any media or form whatsoever. The provisions of Sections 1, 4, 5, 6, 7, 8.4 and 9 shall survive termination or expiration of this Agreement and shall remain in full force and effect in perpetuity.</P>
+      )}
+
+      {/* 9. MISCELLANEOUS */}
+      <S>9. MISCELLANEOUS</S>
+      {!isCast && (
+        <>
+          <Sub>9.1 Subcontracting.</Sub>
+          <P>The obligation of Service Provider hereunder may not be subcontracted by Service Provider, in whole or in part without the written consent of Company and any such subcontracting without Company&rsquo;s written approval shall be deemed null and void.</P>
+        </>
+      )}
+      <Sub>{isCast ? '9.1' : '9.2'} Assignment.</Sub>
+      <P>Service Provider may not assign or transfer any of its rights or obligations hereunder to any third party without the prior written consent of Company. Company may assign its rights or obligations hereunder at its sole discretion. Any assignment without Company&rsquo;s prior written consent shall be deemed null and void.</P>
+      <Sub>{isCast ? '9.2' : '9.3'} Independent Contractors.</Sub>
+      {isCast ? (
+        <P>It is hereby clarified that Service Provider is an independent contractor of Company under this Agreement and nothing herein shall be construed to create a joint venture, partnership or an employer/employee relationship. Service Provider may not make any representations, warranties, covenants or undertakings on behalf of Company and may not represent Company.</P>
+      ) : (
+        <P>It is hereby clarified that Service Provider is an independent contractor of Company under this Agreement and nothing herein shall be construed to create a joint venture, partnership or an employer/employee relationship. Service Provider may not make any representations, warranties, covenants or undertakings on behalf of Company and may not represent Company. Neither Service Provider nor its employees are entitled to any of the benefits or rights to which employees of Company are entitled, and Service Provider shall be solely responsible for all of its employees and agents and its labor costs and expenses arising in connection therewith.</P>
+      )}
+      <Sub>{isCast ? '9.3' : '9.4'} No Waiver.</Sub>
+      <P>All waivers must be in writing. A waiver by either of the parties hereto shall not be construed to be a waiver of any succeeding breach thereof or of any covenant, condition, or agreement herein contained.</P>
+      <Sub>{isCast ? '9.4' : '9.5'} Governing Law.</Sub>
+      <P>This Agreement, including the validity, interpretation, or performance of this Agreement and any of its terms or provisions, and the rights and obligations of the parties under this Agreement shall be exclusively governed by, construed and interpreted in accordance with the laws of the State of Israel without regards to the choice of law provisions thereof. Any action arising out of or in any way connected with this Agreement shall be brought exclusively in the courts of Tel Aviv, Israel and the parties hereby submit themselves to its exclusive jurisdiction.</P>
+      <Sub>{isCast ? '9.5' : '9.6'} Entire Agreement.</Sub>
+      <P>This Agreement and its Exhibits constitute the entire agreement between the parties. No change, waiver, or discharge hereof shall be valid unless it is in writing and is executed by the party against whom such change, waiver, or discharge is sought to be enforced.</P>
+      <Sub>{isCast ? '9.6' : '9.7'} Amendment.</Sub>
+      <P>This Agreement may only be amended by an instrument in writing signed by each of the parties hereto.</P>
+      <Sub>{isCast ? '9.7' : '9.8'} Notices.</Sub>
+      <P>All notices and other communications given or made pursuant hereto shall be in writing and shall be deemed to have been duly given or made as of the date delivered or transmitted, and shall be effective upon receipt, if delivered personally, sent by air courier, or sent by electronic transmission, with confirmation received.</P>
+      <Sub>{isCast ? '9.8' : '9.9'} Deduction/Set-Off.</Sub>
+      <P>Company may at any time deduct or set-off any or all amounts which it deems it has already paid to Company.</P>
+      {!isCast && (
+        <>
+          <Sub>9.10 No Exclusivity.</Sub>
+          <P>This Agreement does not prevent Company from receiving services same or similar to the Services from any third party.</P>
+          <Sub>9.11 Insurance.</Sub>
+          <P>The Service Provider shall maintain at its sole expense insurance coverages that sufficiently cover all obligations and liabilities in Service Provider&rsquo;s performance of the Services. Service Provider will provide Company with a certificate of insurance evidencing such coverage immediately upon Company&rsquo;s request.</P>
+        </>
+      )}
+
+      {/* 10. IN WITNESS THEREOF */}
+      <S>10. IN WITNESS THEREOF</S>
+      <P>Company and Service Provider have caused this Agreement to be signed and delivered by their duly authorized officers, all as of the last date set forth below.</P>
     </div>
   );
 }
