@@ -503,114 +503,115 @@ export default function Settings() {
 
       {/* ── Branding tab ─────────────────────────────────────────────────────── */}
       {tab === 'branding' && (
-        <div className="max-w-2xl space-y-6">
-          {/* Logo */}
+        <div className="space-y-4">
+          {/* Logo — full width compact */}
           <section className="brand-card">
-            <div className="flex items-center gap-2 mb-4">
-              <Upload size={16} style={{ color: 'var(--brand-primary)' }} />
-              <h2 className="font-bold" style={{ color: 'var(--brand-primary)' }}>Logo</h2>
+            <div className="flex items-center gap-2 mb-3">
+              <Upload size={14} style={{ color: 'var(--brand-primary)' }} />
+              <h2 className="font-bold text-sm" style={{ color: 'var(--brand-primary)' }}>Logo</h2>
             </div>
             <div className="flex items-center gap-4">
               <div
-                className="w-32 h-12 rounded-xl flex items-center justify-center text-white font-black text-xl"
+                className="w-24 h-10 rounded-lg flex items-center justify-center text-white font-black text-lg"
                 style={{ background: 'var(--brand-primary)' }}
               >
                 {brand.name[0]}
               </div>
               <div className="flex-1">
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Logo URL</label>
                 <input
-                  className="brand-input"
+                  className="brand-input text-sm"
                   value={settings.logo_url || ''}
                   onChange={e => setSettings(s => ({ ...s, logo_url: e.target.value }))}
                   placeholder="https://… or /assets/logo.png"
                 />
-                <p className="text-xs text-gray-400 mt-1">250×50px recommended</p>
+                <p className="text-[10px] text-gray-400 mt-0.5">250x50px recommended</p>
               </div>
             </div>
           </section>
 
-          {/* Colors */}
-          <section className="brand-card">
-            <div className="flex items-center gap-2 mb-4">
-              <Palette size={16} style={{ color: 'var(--brand-primary)' }} />
-              <h2 className="font-bold" style={{ color: 'var(--brand-primary)' }}>Brand Colors</h2>
-            </div>
-            <div className="space-y-3">
-              {COLORS.map(({ key, label }) => {
-                const defaultColor = brand[key] || '#000000';
-                const currentColor = settings.colors?.[key] || defaultColor;
-                return (
-                  <div key={key} className="flex items-center gap-3">
-                    <input
-                      type="color"
-                      value={currentColor}
-                      onChange={e => handleColorChange(key, e.target.value)}
-                      className="w-10 h-10 rounded-lg cursor-pointer border border-gray-200"
-                      style={{ padding: 2 }}
-                    />
-                    <div className="flex-1">
-                      <div className="text-sm font-medium text-gray-700">{label}</div>
+          {/* 2-column grid: Colors left, Typography right */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Colors */}
+            <section className="brand-card">
+              <div className="flex items-center gap-2 mb-3">
+                <Palette size={14} style={{ color: 'var(--brand-primary)' }} />
+                <h2 className="font-bold text-sm" style={{ color: 'var(--brand-primary)' }}>Brand Colors</h2>
+              </div>
+              <div className="space-y-2">
+                {COLORS.map(({ key, label }) => {
+                  const defaultColor = brand[key] || '#000000';
+                  const currentColor = settings.colors?.[key] || defaultColor;
+                  return (
+                    <div key={key} className="flex items-center gap-2">
                       <input
-                        type="text"
+                        type="color"
                         value={currentColor}
                         onChange={e => handleColorChange(key, e.target.value)}
-                        className="text-xs font-mono border rounded px-2 py-1 w-28 outline-none mt-0.5"
-                        style={{ borderColor: 'var(--brand-border)' }}
-                        placeholder="#000000"
+                        className="w-8 h-8 rounded-lg cursor-pointer border border-gray-200 flex-shrink-0"
+                        style={{ padding: 2 }}
                       />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-medium text-gray-700">{label}</div>
+                        <input
+                          type="text"
+                          value={currentColor}
+                          onChange={e => handleColorChange(key, e.target.value)}
+                          className="text-[11px] font-mono border rounded px-1.5 py-0.5 w-24 outline-none"
+                          style={{ borderColor: 'var(--brand-border)' }}
+                          placeholder="#000000"
+                        />
+                      </div>
                     </div>
+                  );
+                })}
+              </div>
+            </section>
+
+            {/* Typography */}
+            <section className="brand-card">
+              <div className="flex items-center gap-2 mb-3">
+                <Type size={14} style={{ color: 'var(--brand-primary)' }} />
+                <h2 className="font-bold text-sm" style={{ color: 'var(--brand-primary)' }}>Typography</h2>
+              </div>
+              <div className="space-y-2">
+                {[
+                  { key: 'title',     label: 'Title Font',     desc: 'Headlines' },
+                  { key: 'secondary', label: 'Secondary Font', desc: 'Subheadings' },
+                  { key: 'body',      label: 'Body Font',      desc: 'Running text & UI' },
+                ].map(({ key, label, desc }) => (
+                  <div key={key}>
+                    <label className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1">{label}</label>
+                    <select
+                      className="brand-input text-sm"
+                      value={settings.fonts?.[key] || ''}
+                      onChange={e => setSettings(s => ({ ...s, fonts: { ...s.fonts, [key]: e.target.value } }))}
+                    >
+                      <option value="">Default</option>
+                      {FONT_OPTIONS.map(f => <option key={f} value={f}>{f}</option>)}
+                    </select>
+                    <p className="text-[10px] text-gray-400">{desc}</p>
                   </div>
-                );
-              })}
-            </div>
-          </section>
+                ))}
+              </div>
+            </section>
+          </div>
 
-          {/* Fonts */}
+          {/* Currency — compact */}
           <section className="brand-card">
-            <div className="flex items-center gap-2 mb-4">
-              <Type size={16} style={{ color: 'var(--brand-primary)' }} />
-              <h2 className="font-bold" style={{ color: 'var(--brand-primary)' }}>Typography</h2>
+            <div className="flex items-center gap-2 mb-2">
+              <Globe size={14} style={{ color: 'var(--brand-primary)' }} />
+              <h2 className="font-bold text-sm" style={{ color: 'var(--brand-primary)' }}>Currency</h2>
             </div>
-            <div className="space-y-3">
-              {[
-                { key: 'title',     label: 'Title Font',     desc: 'Used for large headlines' },
-                { key: 'secondary', label: 'Secondary Font', desc: 'Used for subheadings' },
-                { key: 'body',      label: 'Body Font',      desc: 'Used for running text and UI' },
-              ].map(({ key, label, desc }) => (
-                <div key={key}>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">{label}</label>
-                  <select
-                    className="brand-input"
-                    value={settings.fonts?.[key] || ''}
-                    onChange={e => setSettings(s => ({ ...s, fonts: { ...s.fonts, [key]: e.target.value } }))}
-                  >
-                    <option value="">Default</option>
-                    {FONT_OPTIONS.map(f => <option key={f} value={f}>{f}</option>)}
-                  </select>
-                  <p className="text-xs text-gray-400 mt-0.5">{desc}</p>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {/* Currency */}
-          <section className="brand-card">
-            <div className="flex items-center gap-2 mb-4">
-              <Globe size={16} style={{ color: 'var(--brand-primary)' }} />
-              <h2 className="font-bold" style={{ color: 'var(--brand-primary)' }}>Currency</h2>
-            </div>
-            <p className="text-sm text-gray-600">
-              Exchange rates are fetched live from{' '}
+            <p className="text-xs text-gray-600">
+              Exchange rates fetched live from{' '}
               <a href="https://open.er-api.com" target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">
                 open.er-api.com
               </a>{' '}
               on app load and cached for the session.
             </p>
-            <p className="text-xs text-gray-400 mt-1">Historical rates for past productions, live rate for future.</p>
           </section>
 
-          <button onClick={handleSave} className="btn-cta flex items-center gap-2 px-6 py-3">
+          <button onClick={handleSave} className="btn-cta flex items-center gap-2 px-6 py-2.5">
             <Save size={14} />
             {saved ? 'Saved ✓' : 'Save Settings'}
           </button>
@@ -620,21 +621,55 @@ export default function Settings() {
       {/* ── Lists tab ────────────────────────────────────────────────────────── */}
       {tab === 'lists' && (
         <div>
-          <p className="text-sm text-gray-500 mb-5">
+          <p className="text-sm text-gray-500 mb-4">
             Edit any dropdown list used across the platform. Changes apply immediately.
-            Click an item to rename it, use the arrows to reorder, or add/remove items freely.
           </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {Object.keys(LIST_META).map(key => (
-              <ListEditor
-                key={key}
-                listKey={key}
-                items={lists[key] ?? []}
-                onUpdate={items => updateList(key, items)}
-                onReset={() => resetListKey(key)}
-              />
-            ))}
-          </div>
+          {[
+            {
+              title: 'Production',
+              icon: '\uD83C\uDFAC',
+              color: '#1565C0',
+              keys: ['stages', 'productionTypes', 'productTypes'],
+            },
+            {
+              title: 'Budget',
+              icon: '\uD83D\uDCB0',
+              color: '#2E7D32',
+              keys: ['lineItemTypes', 'lineItemStatuses', 'paymentMethods', 'businessTypes'],
+            },
+            {
+              title: 'Crew',
+              icon: '\uD83D\uDC65',
+              color: '#7B1FA2',
+              keys: ['crewRoles'],
+            },
+          ].map(category => (
+            <div key={category.title} className="mb-5">
+              <div
+                className="flex items-center gap-2 px-4 py-2 rounded-t-xl text-white font-bold text-sm"
+                style={{ background: category.color }}
+              >
+                <span>{category.icon}</span>
+                {category.title}
+              </div>
+              <div
+                className="rounded-b-xl p-3"
+                style={{ borderLeft: `3px solid ${category.color}`, borderRight: '1px solid rgba(0,0,0,0.06)', borderBottom: '1px solid rgba(0,0,0,0.06)', background: 'rgba(255,255,255,0.8)' }}
+              >
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                  {category.keys.filter(k => LIST_META[k]).map(key => (
+                    <ListEditor
+                      key={key}
+                      listKey={key}
+                      items={lists[key] ?? []}
+                      onUpdate={items => updateList(key, items)}
+                      onReset={() => resetListKey(key)}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 

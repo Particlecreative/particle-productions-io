@@ -69,8 +69,9 @@ router.post('/', async (req, res) => {
       `INSERT INTO suppliers
         (full_name, role, phone, email, id_number, bank_name, account_number,
          branch, swift, business_type, company_name, tax_id,
-         food_restrictions, dietary_notes, supplier_type, notes, productions, source)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+         food_restrictions, dietary_notes, supplier_type, notes, productions, source,
+         address, transport_mode)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
        RETURNING *`,
       [
         s.full_name, s.role || null, s.phone || null, s.email || null,
@@ -80,6 +81,7 @@ router.post('/', async (req, res) => {
         s.food_restrictions || null, s.dietary_notes || null,
         s.supplier_type || 'New Supplier', s.notes || null,
         s.productions || [], s.source || 'manual',
+        s.address || null, s.transport_mode || null,
       ]
     );
     res.status(201).json(rows[0]);
@@ -156,7 +158,7 @@ router.patch('/:id', async (req, res) => {
   const allowed = [
     'full_name','role','phone','email','id_number','bank_name','account_number',
     'branch','swift','business_type','company_name','tax_id','food_restrictions',
-    'dietary_notes','supplier_type','notes','productions',
+    'dietary_notes','supplier_type','notes','productions','address','transport_mode',
   ];
   const updates = Object.entries(req.body).filter(([k]) => allowed.includes(k));
   if (!updates.length) return res.status(400).json({ error: 'No valid fields' });

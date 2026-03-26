@@ -281,6 +281,28 @@ h1, h2, h3 { letter-spacing: -0.025em; }
 .paid-row td { opacity: 0.7; }
 .paid-row:hover td { background-color: rgba(34,197,94,0.1) !important; }
 
+/* === KPI CARDS — hitech opacity style === */
+.kpi-card {
+  background: white;
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  border: 1px solid rgba(0,0,0,0.06);
+  position: relative;
+  overflow: hidden;
+  transition: all 0.2s ease;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.04);
+}
+.kpi-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(3,11,46,0.04) 0%, rgba(8,8,248,0.03) 100%);
+  pointer-events: none;
+}
+.kpi-card:hover {
+  box-shadow: 0 4px 20px rgba(0,0,0,0.06), inset 0 1px 3px rgba(0,0,0,0.04);
+}
+
 /* === ANIMATED COUNTERS === */
 @keyframes countSlideUp {
   from { opacity: 0; transform: translateY(12px); }
@@ -794,17 +816,281 @@ html.dark .skeleton {
 }
 
 /* === GANTT MODERN STYLES === */
+
+/* Phase row — alternating backgrounds + left accent bar */
+.gantt-phase-row {
+  position: relative;
+  transition: background 0.15s ease;
+}
+.gantt-phase-row:nth-child(odd) {
+  background: #ffffff;
+}
+.gantt-phase-row:nth-child(even) {
+  background: rgba(0,0,0,0.015);
+}
+.gantt-phase-row:hover {
+  background: rgba(0,0,0,0.025);
+}
+.gantt-phase-row::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--phase-color, #6b7280);
+  z-index: 6;
+}
+
+/* Phase header row */
+.gantt-phase-header {
+  position: relative;
+  transition: background 0.15s ease;
+}
+.gantt-phase-header::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--phase-color, #6b7280);
+  z-index: 11;
+}
+.gantt-phase-header:hover {
+  filter: brightness(0.97);
+}
+
+/* Event bar — pill shape with gradient */
+.gantt-event-bar {
+  border-radius: 20px;
+  cursor: grab;
+  overflow: visible;
+  user-select: none;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+  position: relative;
+}
+.gantt-event-bar:hover {
+  transform: scaleY(1.03) !important;
+  filter: brightness(1.08);
+}
+.gantt-event-bar:active {
+  cursor: grabbing;
+}
+
+/* Bar label — white text inside */
+.gantt-bar-label {
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 0 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+  letter-spacing: 0.01em;
+  border-radius: 20px;
+}
+
+/* Today label at top of the line */
+.gantt-today-label {
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--brand-accent, #3b82f6);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 25;
+  background: rgba(59,130,246,0.1);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+/* Today line — enhanced pulsing */
+.gantt-today-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--brand-accent, #3b82f6);
+  z-index: 12;
+  pointer-events: none;
+  animation: todayPulseEnhanced 2s ease-in-out infinite;
+}
+@keyframes todayPulseEnhanced {
+  0%,100% { opacity: 0.7; box-shadow: 0 0 6px rgba(59,130,246,0.3), 0 0 12px rgba(59,130,246,0.1); }
+  50%     { opacity: 1; box-shadow: 0 0 12px rgba(59,130,246,0.5), 0 0 24px rgba(59,130,246,0.2); }
+}
+
+/* Weekend columns — visible diagonal stripes */
+.gantt-weekend-col {
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 3px,
+    rgba(0,0,0,0.03) 3px,
+    rgba(0,0,0,0.03) 6px
+  ) !important;
+}
+.gantt-weekend-col-header {
+  background: repeating-linear-gradient(
+    -45deg,
+    rgba(0,0,0,0.02),
+    rgba(0,0,0,0.02) 3px,
+    rgba(0,0,0,0.05) 3px,
+    rgba(0,0,0,0.05) 6px
+  ) !important;
+}
+
+/* Grid lines — subtle vertical lines for time columns */
+.gantt-grid-cell {
+  border-right: 1px solid rgba(0,0,0,0.04);
+}
+.gantt-grid-cell-monday {
+  border-right: 1px solid rgba(0,0,0,0.08);
+}
+
+/* Gantt event tooltip */
+.gantt-tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1a1a2e;
+  color: white;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 30;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+  line-height: 1.5;
+}
+.gantt-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: #1a1a2e;
+}
+.gantt-event-bar:hover .gantt-tooltip {
+  opacity: 1;
+}
+
+/* Resize handle */
+.gantt-resize-handle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 8px;
+  height: 100%;
+  cursor: ew-resize;
+  background: rgba(0,0,0,0.12);
+  border-radius: 0 20px 20px 0;
+  z-index: 4;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.gantt-event-bar:hover .gantt-resize-handle {
+  opacity: 1;
+}
+
+/* Sticky left panel */
+.gantt-label-col {
+  position: sticky;
+  left: 0;
+  z-index: 10;
+  background: white;
+}
+.gantt-label-col-header {
+  position: sticky;
+  left: 0;
+  z-index: 20;
+  background: #f9fafb;
+}
+
+/* Collapse chevron */
+.gantt-chevron {
+  transition: transform 0.2s ease;
+}
+.gantt-chevron-collapsed {
+  transform: rotate(-90deg);
+}
+
+/* Zoom pill buttons */
+.gantt-zoom-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: 1px solid rgba(0,0,0,0.08);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  background: white;
+  color: #6b7280;
+}
+.gantt-zoom-btn:hover {
+  background: #f3f4f6;
+  border-color: rgba(0,0,0,0.12);
+}
+.gantt-zoom-btn.active {
+  background: var(--brand-primary, #030b2e);
+  color: white;
+  border-color: transparent;
+}
+
+/* Add row */
+.gantt-add-row {
+  background: #fafbfc;
+  transition: background 0.15s ease;
+}
+.gantt-add-row:hover {
+  background: #f0f4ff;
+}
+
+/* Legacy compat */
 .gantt-row:nth-child(even) > div:first-child {
-  background: #fafbfc !important;
+  background: rgba(0,0,0,0.015) !important;
 }
 .gantt-row:hover > div:first-child {
-  background: #f0f4ff !important;
+  background: rgba(0,0,0,0.03) !important;
 }
-.gantt-bar:hover {
-  filter: brightness(1.1) !important;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.2) !important;
-  transform: scaleY(1.15);
+
+/* Dark mode Gantt overrides */
+html.dark .gantt-phase-row:nth-child(odd) { background: var(--brand-card-bg, #1c2028); }
+html.dark .gantt-phase-row:nth-child(even) { background: rgba(255,255,255,0.02); }
+html.dark .gantt-phase-row:hover { background: rgba(255,255,255,0.04); }
+html.dark .gantt-label-col { background: var(--brand-card-bg, #1c2028) !important; }
+html.dark .gantt-label-col-header { background: #161b22 !important; }
+html.dark .gantt-grid-cell { border-right-color: rgba(255,255,255,0.04); }
+html.dark .gantt-grid-cell-monday { border-right-color: rgba(255,255,255,0.08); }
+html.dark .gantt-weekend-col {
+  background: repeating-linear-gradient(-45deg, transparent, transparent 3px, rgba(255,255,255,0.02) 3px, rgba(255,255,255,0.02) 6px) !important;
 }
+html.dark .gantt-add-row { background: rgba(255,255,255,0.02); }
+html.dark .gantt-add-row:hover { background: rgba(255,255,255,0.05); }
+html.dark .gantt-tooltip { background: #30363d; }
+html.dark .gantt-tooltip::after { border-top-color: #30363d; }
+html.dark .gantt-zoom-btn { background: #21262d; border-color: rgba(255,255,255,0.1); color: #8b949e; }
+html.dark .gantt-zoom-btn:hover { background: #30363d; }
+html.dark .gantt-zoom-btn.active { background: var(--brand-accent); color: white; }
+html.dark .gantt-phase-row::before,
+html.dark .gantt-phase-header::before { opacity: 0.8; }
+html.dark .gantt-today-label { background: rgba(91,125,245,0.15); color: var(--brand-accent); }
 
 /* === FROSTED DRAWER OVERLAY === */
 .drawer-overlay {

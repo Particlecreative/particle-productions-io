@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   ChevronLeft, ChevronRight, Plus, Settings2, CalendarDays, List, Table2,
   GanttChartSquare, Trash2, Pencil, X, ChevronDown, ChevronUp, GripVertical, Check,
-  Layers, LayoutList,
+  Layers, LayoutList, ZoomIn, ZoomOut,
 } from 'lucide-react';
 import {
   DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors,
@@ -25,8 +25,28 @@ import clsx from 'clsx';
 const CELL_W  = { week: 36, month: 18, day: 56 };
 const NUM_DAYS = { week: 28, month: 91, day: 21 };
 const NAV_STEP = { week: 14, month: 45, day: 7 };
-const ROW_H   = 38;
-const LABEL_W = 188;
+const ROW_H   = 36;
+const PHASE_ROW_H = 40;
+const LABEL_W = 200;
+
+// Phase accent colors for the left border bars
+const PHASE_COLORS = {
+  concepts: '#9333ea',
+  scripting: '#2563eb',
+  'pre production': '#0891b2',
+  'pre-production': '#0891b2',
+  production: '#16a34a',
+  'post production': '#ea580c',
+  'post-production': '#ea580c',
+  post: '#ea580c',
+};
+const DEFAULT_PHASE_COLOR = '#6b7280';
+
+function getPhaseAccentColor(phaseName) {
+  if (!phaseName) return DEFAULT_PHASE_COLOR;
+  const key = phaseName.toLowerCase().trim();
+  return PHASE_COLORS[key] || DEFAULT_PHASE_COLOR;
+}
 
 const PALETTE = [
   '#7c3aed','#2563eb','#0891b2','#16a34a','#d97706','#dc2626',
@@ -283,17 +303,19 @@ export default function GanttTab({ productionId, allProductions = false }) {
               <button onClick={navToday} className="px-2.5 py-1 text-xs rounded border border-gray-200 hover:bg-gray-50 font-medium">Today</button>
               <button onClick={navNext} className="p-1.5 rounded hover:bg-gray-100"><ChevronRight size={14} /></button>
             </div>
-            {/* Zoom selector — week / month / day */}
-            <div className="flex border border-gray-200 rounded overflow-hidden text-xs">
-              {['week', 'month', 'day'].map(z => (
+            {/* Zoom selector — pill buttons with icons */}
+            <div className="flex items-center gap-1">
+              <ZoomOut size={13} className="text-gray-400 mr-0.5" />
+              {['month', 'week', 'day'].map(z => (
                 <button
                   key={z}
                   onClick={() => setZoom(z)}
-                  className={clsx('px-2.5 py-1 capitalize font-medium', zoom === z ? 'bg-gray-900 text-white' : 'text-gray-500 hover:bg-gray-50')}
+                  className={clsx('gantt-zoom-btn capitalize', zoom === z && 'active')}
                 >
                   {z}
                 </button>
               ))}
+              <ZoomIn size={13} className="text-gray-400 ml-0.5" />
             </div>
             {/* Holiday toggles */}
             <div className="flex gap-1">
@@ -515,17 +537,23 @@ function DateHeaderRow({ days, cw, zoom, showIL, showUS, todayStr }) {
         return (
           <div
             key={i}
+            className={clsx(
+              'flex flex-col items-center justify-center gap-0.5',
+              isFriSatCell && 'gantt-weekend-col-header',
+              isMon && 'gantt-grid-cell-monday',
+            )}
             style={{
-              width: cw, flexShrink: 0, borderRight: '1px solid #f3f4f6',
-              ...(isFriSatCell ? {
-                background: 'repeating-linear-gradient(45deg, #f3f4f6, #f3f4f6 4px, #e9ecef 4px, #e9ecef 8px)',
-              } : isToday ? { background: '#EFF6FF' } : isMon ? { background: 'rgba(249,250,251,0.8)' } : {}),
+              width: cw, flexShrink: 0,
+              borderRight: '1px solid rgba(0,0,0,0.06)',
+              ...(isToday ? { background: 'rgba(59,130,246,0.06)' } : {}),
             }}
-            className="flex flex-col items-center justify-center gap-0.5"
             title={holTitle || undefined}
           >
             {show && (
-              <span className={clsx('text-[10px] leading-none', isToday ? 'text-blue-600 font-bold' : isFriSatCell ? 'text-gray-400' : 'text-gray-400')}>
+              <span className={clsx(
+                'text-[10px] leading-none',
+                isToday ? 'text-blue-600 font-bold' : isFriSatCell ? 'text-gray-300' : 'text-gray-400',
+              )}>
                 {zoom === 'day'
                   ? `${day.getDate()} ${DAY_NAMES_3[dayOfW]}`
                   : zoom === 'week'
@@ -560,24 +588,26 @@ function GridCellRow({ days, cw, todayOff, onCellClick }) {
     <div className="flex flex-1">
       {days.map((day, i) => {
         const dayOfW    = day.getDay();
+        const isMon     = dayOfW === 1;
         const isFriSatCell = dayOfW === 5 || dayOfW === 6;
         return (
           <div
             key={i}
+            className={clsx(
+              isFriSatCell ? 'gantt-weekend-col' : 'gantt-grid-cell',
+              isMon && 'gantt-grid-cell-monday',
+              !isFriSatCell && onCellClick && 'hover:bg-blue-50/40',
+            )}
             style={{
-              width: cw, flexShrink: 0, height: '100%', borderRight: '1px solid #f3f4f6',
+              width: cw, flexShrink: 0, height: '100%',
               cursor: onCellClick ? 'pointer' : undefined,
-              ...(isFriSatCell ? {
-                background: 'repeating-linear-gradient(45deg, #f9fafb, #f9fafb 4px, #f3f4f6 4px, #f3f4f6 8px)',
-              } : {}),
             }}
-            className={clsx(!isFriSatCell && onCellClick && 'hover:bg-blue-50/60')}
             onClick={onCellClick ? () => onCellClick(day) : undefined}
           />
         );
       })}
       {todayOff >= 0 && todayOff < days.length && (
-        <div className="today-line-pulse" style={{ position: 'absolute', left: todayOff * cw + cw / 2, top: 0, bottom: 0, width: 1, background: '#3b82f6', zIndex: 2, pointerEvents: 'none' }} />
+        <div className="gantt-today-line" style={{ left: todayOff * cw + cw / 2 }} />
       )}
     </div>
   );
@@ -595,52 +625,64 @@ function GanttView({ days, phases, cw, phaseEvts, collapsed, setCollapsed, today
   }
 
   return (
-    <div className="overflow-x-auto border border-gray-100 rounded-2xl shadow-sm">
+    <div className="overflow-x-auto border border-gray-100 rounded-2xl" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 6px 24px rgba(0,0,0,0.03)' }}>
       <div style={{ minWidth: totalW }}>
         {/* Date header */}
-        <div className="flex bg-gray-50/80 border-b border-gray-100" style={{ height: zoom === 'day' ? 48 : 36 }}>
+        <div className="flex border-b border-gray-100 relative" style={{ height: zoom === 'day' ? 50 : 38, background: '#f8f9fb' }}>
           <div
-            className="flex items-center px-3 flex-shrink-0 border-r border-gray-100"
-            style={{ width: LABEL_W, position: 'sticky', left: 0, zIndex: 20, background: '#f9fafb' }}
+            className="flex items-center px-4 flex-shrink-0 border-r border-gray-100 gantt-label-col-header"
+            style={{ width: LABEL_W }}
           >
             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Phase / Task</span>
           </div>
-          <DateHeaderRow days={days} cw={cw} zoom={zoom} showIL={showIL} showUS={showUS} todayStr={todayStr} />
+          <div className="flex flex-1 relative">
+            <DateHeaderRow days={days} cw={cw} zoom={zoom} showIL={showIL} showUS={showUS} todayStr={todayStr} />
+            {/* Today label above the line */}
+            {todayOff >= 0 && todayOff < days.length && (
+              <div className="gantt-today-label" style={{ left: todayOff * cw + cw / 2, top: 2 }}>Today</div>
+            )}
+          </div>
         </div>
 
         {/* Phase sections */}
         {phases.map(phase => {
           const evts = phaseEvts(phase.id);
           const isCollapsed = collapsed.has(phase.id);
+          const accentColor = getPhaseAccentColor(phase.name) || phase.color;
 
           return (
             <div key={phase.id}>
               {/* Phase header */}
               <div
-                className="flex items-center cursor-pointer transition-colors"
-                style={{ height: 32, background: `${phase.color}10`, borderBottom: `1px solid ${phase.color}18` }}
+                className="flex items-center cursor-pointer gantt-phase-header"
+                style={{
+                  height: PHASE_ROW_H,
+                  background: `${accentColor}08`,
+                  borderBottom: `1px solid ${accentColor}15`,
+                  '--phase-color': accentColor,
+                }}
                 onClick={() => togglePhase(phase.id)}
               >
                 <div
-                  className="flex items-center gap-1.5 flex-shrink-0 px-3"
-                  style={{ width: LABEL_W, position: 'sticky', left: 0, zIndex: 10, background: `${phase.color}15` }}
+                  className="flex items-center gap-2 flex-shrink-0 px-4 gantt-label-col"
+                  style={{ width: LABEL_W, background: `${accentColor}06` }}
                 >
-                  <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: phase.color }} />
-                  <span className="text-xs font-bold" style={{ color: phase.color }}>{phase.name}</span>
-                  {isCollapsed && evts.length > 0 && (
-                    <span
-                      className="ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold text-white"
-                      style={{ background: phase.color }}
-                    >
-                      {evts.length}
-                    </span>
-                  )}
-                  <span className="ml-auto text-[10px] text-gray-400 mr-1">{evts.length}</span>
-                  {isCollapsed ? <ChevronDown size={11} className="text-gray-400" /> : <ChevronUp size={11} className="text-gray-400" />}
+                  <ChevronDown
+                    size={13}
+                    className={clsx('gantt-chevron text-gray-400', isCollapsed && 'gantt-chevron-collapsed')}
+                  />
+                  <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: accentColor }} />
+                  <span className="gantt-phase-name" style={{ color: accentColor }}>{phase.name}</span>
+                  <span
+                    className="ml-auto px-1.5 py-0.5 rounded-full text-[9px] font-bold"
+                    style={{ background: `${accentColor}12`, color: accentColor }}
+                  >
+                    {evts.length}
+                  </span>
                 </div>
                 <div className="flex-1 relative" style={{ height: '100%' }}>
                   {todayOff >= 0 && todayOff < days.length && (
-                    <div style={{ position: 'absolute', left: todayOff * cw + cw / 2, top: 0, bottom: 0, width: 1, background: '#3b82f680' }} />
+                    <div className="gantt-today-line" style={{ left: todayOff * cw + cw / 2 }} />
                   )}
                 </div>
               </div>
@@ -653,17 +695,17 @@ function GanttView({ days, phases, cw, phaseEvts, collapsed, setCollapsed, today
                   transition: 'max-height 0.25s ease',
                 }}
               >
-                {evts.map(event => (
-                  <GanttEventRow key={event.id} event={event} phase={phase} days={days} cw={cw} todayOff={todayOff} onDrag={onDrag} onEdit={onEdit} />
+                {evts.map((event, idx) => (
+                  <GanttEventRow key={event.id} event={event} phase={phase} days={days} cw={cw} todayOff={todayOff} onDrag={onDrag} onEdit={onEdit} rowIndex={idx} accentColor={accentColor} />
                 ))}
                 {/* Add row */}
-                <div className="flex" style={{ height: 26, borderBottom: '1px solid #f3f4f6', background: '#fafafa' }}>
+                <div className="flex gantt-add-row" style={{ height: 28, borderBottom: '1px solid rgba(0,0,0,0.04)' }}>
                   <div
-                    className="flex items-center px-3 flex-shrink-0 border-r border-gray-100 cursor-pointer hover:bg-gray-100"
-                    style={{ width: LABEL_W, position: 'sticky', left: 0, zIndex: 5, background: '#fafafa' }}
+                    className="flex items-center px-4 flex-shrink-0 border-r border-gray-100 cursor-pointer hover:bg-blue-50/50 gantt-label-col"
+                    style={{ width: LABEL_W }}
                     onClick={() => onAddClick(phase.id, today)}
                   >
-                    <span className="text-[11px] text-gray-400 flex items-center gap-1">
+                    <span className="text-[11px] text-gray-400 flex items-center gap-1 hover:text-gray-600 transition-colors">
                       <Plus size={10} /> add event
                     </span>
                   </div>
@@ -767,7 +809,7 @@ function ProductionGanttView({ days, cw, today, allProdsList, prodEvts, phases, 
 
 // ─── Shared: single Gantt event row ──────────────────────────────────────────
 
-function GanttEventRow({ event, phase, days, cw, todayOff, onDrag, onEdit }) {
+function GanttEventRow({ event, phase, days, cw, todayOff, onDrag, onEdit, rowIndex = 0, accentColor }) {
   const [justDropped, setJustDropped] = useState(false);
   const prevDates = useRef(event.start_date + event.end_date);
   // Flash "just dropped" style when dates change (after drag)
@@ -787,15 +829,22 @@ function GanttEventRow({ event, phase, days, cw, todayOff, onDrag, onEdit }) {
   const barLeft  = visStart * cw;
   const barW     = Math.max(cw, (visEnd - visStart + 1) * cw);
 
-  const rowIdx = typeof arguments[0]?.rowIndex === 'number' ? arguments[0].rowIndex : 0;
+  const barColor = event.color || phase?.color || '#6366f1';
+  const phaseAccent = accentColor || getPhaseAccentColor(phase?.name) || barColor;
+  const phaseName = phase?.name || '';
+  const showLabel = barW > 80;
+
   return (
-    <div className="flex gantt-row" style={{ height: ROW_H, borderBottom: '1px solid #f0f1f3' }}>
+    <div
+      className="flex gantt-row gantt-phase-row"
+      style={{ height: ROW_H, borderBottom: '1px solid rgba(0,0,0,0.04)', '--phase-color': phaseAccent }}
+    >
       <div
-        className="flex items-center px-3 flex-shrink-0 border-r border-gray-100"
-        style={{ width: LABEL_W, position: 'sticky', left: 0, zIndex: 5, background: 'white' }}
+        className="flex items-center px-4 flex-shrink-0 border-r border-gray-100 gantt-label-col"
+        style={{ width: LABEL_W }}
       >
         <span
-          className="text-xs text-gray-600 truncate hover:text-gray-900 cursor-pointer transition-colors"
+          className="text-[12px] text-gray-600 truncate hover:text-gray-900 cursor-pointer transition-colors"
           title={event.name}
           onClick={() => onEdit(event)}
         >
@@ -805,47 +854,60 @@ function GanttEventRow({ event, phase, days, cw, todayOff, onDrag, onEdit }) {
       <div className="flex-1 relative" style={{ height: ROW_H }}>
         {days.map((day, i) => {
           const dayOfW = day.getDay();
+          const isMon  = dayOfW === 1;
           const isFriSatCell = dayOfW === 5 || dayOfW === 6;
           return (
             <div
               key={i}
+              className={clsx(
+                isFriSatCell ? 'gantt-weekend-col' : 'gantt-grid-cell',
+                isMon && 'gantt-grid-cell-monday',
+              )}
               style={{
                 position: 'absolute', left: i * cw, top: 0, width: cw, height: '100%',
-                borderRight: '1px solid #f3f4f6',
-                ...(isFriSatCell ? {
-                  background: 'repeating-linear-gradient(45deg, #fafafa, #fafafa 4px, #f3f4f6 4px, #f3f4f6 8px)',
-                } : {}),
               }}
             />
           );
         })}
         {todayOff >= 0 && todayOff < days.length && (
-          <div className="today-line-pulse" style={{ position: 'absolute', left: todayOff * cw + cw / 2, top: 0, bottom: 0, width: 2, background: '#3b82f6', zIndex: 2, pointerEvents: 'none' }} />
+          <div className="gantt-today-line" style={{ left: todayOff * cw + cw / 2 }} />
         )}
         {visible && (
           <div
-            className="gantt-bar"
+            className="gantt-event-bar"
             style={{
               position: 'absolute', left: barLeft, width: barW,
-              top: 5, height: ROW_H - 10,
-              background: `linear-gradient(135deg, ${event.color || phase?.color || '#6366f1'}, ${event.color || phase?.color || '#6366f1'}dd)`,
-              borderRadius: 20, zIndex: 3, cursor: 'grab',
-              overflow: 'hidden', userSelect: 'none',
-              transform: justDropped ? 'scale(1.03)' : 'scale(1)',
-              boxShadow: justDropped ? `0 4px 16px ${(event.color || phase?.color || '#6366f1')}40` : `0 2px 6px ${(event.color || phase?.color || '#6366f1')}25`,
-              transition: 'transform 0.3s ease, box-shadow 0.3s ease, filter 0.2s ease',
+              top: 4, height: ROW_H - 8,
+              background: `linear-gradient(135deg, ${barColor}, ${barColor}b3)`,
+              zIndex: 3,
+              transform: justDropped ? 'scaleY(1.05)' : 'scaleY(1)',
+              boxShadow: justDropped
+                ? `0 4px 16px ${barColor}50`
+                : `0 2px 8px ${barColor}40`,
             }}
             onMouseDown={e => onDrag(e, event, 'move')}
             onClick={e => { e.stopPropagation(); onEdit(event); }}
           >
-            <span
-              className="text-[11px] font-medium text-white px-1.5 truncate block"
-              style={{ lineHeight: `${ROW_H - 10}px` }}
-            >
-              {event.name}
-            </span>
+            {/* Bar label — only show when bar is wide enough */}
+            {showLabel ? (
+              <span
+                className="gantt-bar-label"
+                style={{ lineHeight: `${ROW_H - 8}px` }}
+              >
+                {event.name}
+              </span>
+            ) : (
+              <span style={{ display: 'block', height: '100%' }} />
+            )}
+            {/* Tooltip on hover */}
+            <div className="gantt-tooltip">
+              <div style={{ fontWeight: 700, marginBottom: 2 }}>{event.name}</div>
+              <div style={{ opacity: 0.7, fontSize: 10 }}>{event.start_date} - {event.end_date}</div>
+              {phaseName && <div style={{ opacity: 0.6, fontSize: 10, marginTop: 1 }}>{phaseName}</div>}
+            </div>
+            {/* Resize handle */}
             <div
-              style={{ position: 'absolute', right: 0, top: 0, width: 6, height: '100%', cursor: 'ew-resize', background: 'rgba(0,0,0,0.15)', zIndex: 4 }}
+              className="gantt-resize-handle"
               onMouseDown={e => { e.stopPropagation(); onDrag(e, event, 'resize'); }}
             />
           </div>

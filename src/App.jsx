@@ -30,6 +30,7 @@ import CastingRights from './pages/CastingRights';
 import Gantts from './pages/Gantts';
 import CallSheets from './pages/CallSheets';
 import Manual from './pages/Manual';
+import ContractSign from './pages/ContractSign';
 
 function ProtectedRoute({ children, adminOnly = false, blockForAccounting = false }) {
   const { user, loading, isAdmin, isAccounting } = useAuth();
@@ -110,6 +111,7 @@ function AppRoutes() {
         {/* Public forms — no auth required */}
         <Route path="/supplier-form/:productionId" element={<SupplierForm />} />
         <Route path="/cc-payment/:productionId" element={<CCPaymentForm />} />
+        <Route path="/sign/:contractId/:token" element={<ContractSign />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>

@@ -7,7 +7,7 @@ import {
 import { useBrand } from '../context/BrandContext';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency } from '../context/CurrencyContext';
-import { getProduction, updateProduction } from '../lib/dataService';
+import { getProduction, updateProduction, getPeopleOnSet, getLineItems, getCasting } from '../lib/dataService';
 import { fetchHistoricalRate } from '../lib/currency';
 import { useLists } from '../context/ListsContext';
 import StageBadge from '../components/ui/StageBadge';
@@ -26,6 +26,7 @@ import CCPaymentsTab from '../components/production/CCPaymentsTab';
 import ImportAccountingModal from '../components/production/ImportAccountingModal';
 import CastTab from '../components/production/CastTab';
 import CallSheetTab from '../components/production/CallSheetTab';
+import TaxiWizard from '../components/production/TaxiWizard';
 import clsx from 'clsx';
 
 const SHOOT_TYPES = ['Shoot', 'Remote Shoot'];
@@ -64,6 +65,9 @@ export default function ProductionBoard() {
   const [showAccountingImport, setShowAccountingImport] = useState(false);
   const [prodRate, setProdRate] = useState(null);
   const [showBudget, setShowBudget] = useState(false);
+  const [showTaxiWizard, setShowTaxiWizard] = useState(false);
+  const [taxiPeople, setTaxiPeople] = useState([]);
+  const [taxiCast, setTaxiCast] = useState([]);
 
   // Build tab list based on production type
   const isShootType = production && SHOOT_TYPES.includes(production.production_type);
@@ -317,7 +321,7 @@ export default function ProductionBoard() {
       <CrewBar production={production} onRefresh={refresh} />
 
       {/* ── Tabs ─────────────────────────────────────────────── */}
-      <div className="brand-tabs mb-6">
+      <div className="brand-tabs mb-6 flex items-center">
         {tabs.map(tab => (
           <button
             key={tab}
@@ -327,6 +331,27 @@ export default function ProductionBoard() {
             {tab}
           </button>
         ))}
+        {isShootType && (
+          <button
+            onClick={async () => {
+              const [p, items, c] = await Promise.all([
+                Promise.resolve(getPeopleOnSet(id)),
+                Promise.resolve(getLineItems(id)),
+                Promise.resolve(getCasting(id)),
+              ]);
+              const peopleArr = Array.isArray(p) ? p : [];
+              const crewFromBudget = (Array.isArray(items) ? items : []).filter(i => i.full_name?.trim());
+              setTaxiPeople([...peopleArr, ...crewFromBudget]);
+              setTaxiCast(Array.isArray(c) ? c : []);
+              setShowTaxiWizard(true);
+            }}
+            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-all shrink-0"
+            title="Open Taxi Wizard"
+          >
+            <MapPin size={12} />
+            Taxi Wizard
+          </button>
+        )}
       </div>
 
       {/* ── Tab Content ──────────────────────────────────────── */}
@@ -389,6 +414,16 @@ export default function ProductionBoard() {
         <ContractModal
           production={production}
           onClose={() => setShowContract(false)}
+        />
+      )}
+
+      {/* Taxi Wizard Modal */}
+      {showTaxiWizard && (
+        <TaxiWizard
+          production={production}
+          people={taxiPeople}
+          cast={taxiCast}
+          onClose={() => setShowTaxiWizard(false)}
         />
       )}
     </div>

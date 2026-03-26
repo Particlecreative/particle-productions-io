@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { Search, Plus, Pencil, Trash2, X, Settings2, ExternalLink, ClipboardCopy, Check as CheckIcon } from 'lucide-react';
+import { Search, Plus, Pencil, Trash2, X, Settings2, ExternalLink, ClipboardCopy, Check as CheckIcon, FileSpreadsheet } from 'lucide-react';
 import {
   getSuppliers, upsertSupplier, updateSupplier, deleteSupplier,
   getProductions, generateId,
@@ -7,6 +7,7 @@ import {
 import { useBrand } from '../context/BrandContext';
 import { useAuth } from '../context/AuthContext';
 import ExportMenu from '../components/ui/ExportMenu';
+import ImportSuppliersModal from '../components/shared/ImportSuppliersModal';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
   PieChart, Pie, Legend,
@@ -59,6 +60,7 @@ export default function Suppliers() {
 
   const [showModal, setShowModal] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState(null);
+  const [showImportModal, setShowImportModal] = useState(false);
 
   // Column visibility — persisted to localStorage
   const [hiddenCols, setHiddenCols] = useState(() => {
@@ -204,7 +206,17 @@ export default function Suppliers() {
         <h1 className="text-3xl font-black brand-title" style={{ color: 'var(--brand-primary)' }}>
           Suppliers
         </h1>
-        <ExportMenu rows={exportRows} columns={EXPORT_COLS} filename="suppliers" title="Suppliers" />
+        <div className="flex items-center gap-3">
+          {isEditor && (
+            <button
+              onClick={() => setShowImportModal(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-200 hover:border-blue-300 hover:bg-blue-50 text-sm font-semibold text-gray-600 hover:text-blue-700 transition-all"
+            >
+              <FileSpreadsheet size={15} /> Import Crew List
+            </button>
+          )}
+          <ExportMenu rows={exportRows} columns={EXPORT_COLS} filename="suppliers" title="Suppliers" />
+        </div>
       </div>
 
       {/* Inner tabs */}
@@ -607,6 +619,16 @@ export default function Suppliers() {
             refresh();
             setShowModal(false);
           }}
+        />
+      )}
+
+      {/* ── IMPORT CREW LIST MODAL ── */}
+      {showImportModal && (
+        <ImportSuppliersModal
+          brandId={brandId}
+          productionId={filterProd || null}
+          onClose={() => setShowImportModal(false)}
+          onImported={() => refresh()}
         />
       )}
     </div>

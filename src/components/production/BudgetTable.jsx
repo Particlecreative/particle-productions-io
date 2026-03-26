@@ -90,6 +90,14 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
     const symbol = currency === 'ILS' ? '₪' : '$';
     return `${symbol}${Math.round(num).toLocaleString()}`;
   }
+  // Compact number format ($50K, $1.2M)
+  function fmtShort(n) {
+    const num = parseFloat(n) || 0;
+    const symbol = currency === 'ILS' ? '₪' : '$';
+    if (Math.abs(num) >= 1_000_000) return `${symbol}${(num / 1_000_000).toFixed(1)}M`;
+    if (Math.abs(num) >= 1_000) return `${symbol}${(num / 1_000).toFixed(0)}K`;
+    return `${symbol}${Math.round(num).toLocaleString()}`;
+  }
   const { addNotification } = useNotifications();
   const { lists } = useLists();
   const [items, setItems] = useState([]);
@@ -98,6 +106,12 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
   const [contractFor, setContractFor] = useState(null); // lineItem object
   const [hiddenCols, setHiddenCols] = useState(() => getTablePrefs('budget').hidden);
   const [showColPanel, setShowColPanel] = useState(false);
+  const [stickyHeader, setStickyHeader] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('cp_budget_sticky') || 'true'); } catch { return true; }
+  });
+  const [compactMode, setCompactMode] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('cp_budget_compact') || 'false'); } catch { return false; }
+  });
   const [sortState, setSortState] = useState(() => {
     const prefs = getTablePrefs('budget');
     return prefs.sort.col ? prefs.sort : { col: null, dir: 'asc' };
@@ -316,6 +330,28 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
             PRD Sheet
           </button>
         )}
+        {/* Sticky toggle */}
+        <button
+          onClick={() => { const v = !stickyHeader; setStickyHeader(v); localStorage.setItem('cp_budget_sticky', JSON.stringify(v)); }}
+          className={clsx(
+            'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all',
+            stickyHeader ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-gray-200 text-gray-500 hover:text-gray-700'
+          )}
+          title={stickyHeader ? 'Disable sticky header' : 'Enable sticky header'}
+        >
+          Sticky
+        </button>
+        {/* Compact toggle */}
+        <button
+          onClick={() => { const v = !compactMode; setCompactMode(v); localStorage.setItem('cp_budget_compact', JSON.stringify(v)); }}
+          className={clsx(
+            'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all',
+            compactMode ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-gray-200 text-gray-500 hover:text-gray-700'
+          )}
+          title={compactMode ? 'Disable compact mode' : 'Enable compact mode'}
+        >
+          Compact
+        </button>
         <div className="relative">
           {showColPanel && <div className="fixed inset-0 z-10" onClick={() => setShowColPanel(false)} />}
           <button
@@ -393,8 +429,8 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
       </div>
 
       <div className="brand-card p-0 overflow-hidden">
-        <div className="table-scroll-wrapper">
-          <table className="data-table" style={{ minWidth: 1050 }}>
+        <div className="table-scroll-wrapper" style={stickyHeader ? { maxHeight: 'calc(100vh - 300px)', overflowY: 'auto' } : undefined}>
+          <table className={clsx('data-table', compactMode && 'compact-table')} style={{ minWidth: 1050 }}>
             <thead>
               <tr>
                 <BudgetTh label="Item"           colKey="item"           sortState={sortState} onSort={handleBudgetSort} minWidth={120} />

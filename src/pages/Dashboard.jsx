@@ -402,7 +402,7 @@ export default function Dashboard() {
                 <div className={clsx('grid grid-cols-2 md:grid-cols-4 p-4', compactMode ? 'gap-3' : 'gap-4')}>
 
                   {/* Total Budget */}
-                  <div className="flex flex-col justify-center">
+                  <div className="kpi-card flex flex-col justify-center">
                     <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">{selectedYear} Total Budget</div>
                     <div className="text-2xl font-black tracking-tight" style={{ color: 'var(--brand-primary)', letterSpacing: '-0.03em' }}>
                       {df(totalBudget)}
@@ -411,7 +411,7 @@ export default function Dashboard() {
                   </div>
 
                   {/* Spent */}
-                  <div className="flex flex-col justify-center">
+                  <div className="kpi-card flex flex-col justify-center">
                     <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">Spent</div>
                     <div className="text-xl font-black tracking-tight text-green-600" style={{ letterSpacing: '-0.02em' }}>
                       {df(totalSpent)}
@@ -425,7 +425,7 @@ export default function Dashboard() {
                   </div>
 
                   {/* Remaining */}
-                  <div className="flex flex-col justify-center">
+                  <div className="kpi-card flex flex-col justify-center">
                     <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">Remaining</div>
                     <div className="text-xl font-black tracking-tight" style={{ color: 'var(--brand-secondary)', letterSpacing: '-0.02em' }}>
                       {df(totalBudget - totalSpent)}
@@ -436,7 +436,7 @@ export default function Dashboard() {
                   </div>
 
                   {/* Stage Pills */}
-                  <div className="flex flex-col justify-center">
+                  <div className="kpi-card flex flex-col justify-center">
                     <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">By Stage</div>
                     <div className="flex flex-wrap gap-1">
                       {Object.entries(stageBreakdown).map(([stage, count]) => {
