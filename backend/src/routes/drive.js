@@ -17,7 +17,10 @@ router.get('/auth', verifyJWT, (req, res) => {
   const oauth2 = getOAuth2Client();
   const url = oauth2.generateAuthUrl({
     access_type: 'offline',
-    scope: ['https://www.googleapis.com/auth/drive.file'],
+    scope: [
+      'https://www.googleapis.com/auth/drive.file',
+      'https://www.googleapis.com/auth/calendar',
+    ],
     prompt: 'consent',
     state: String(req.user.id),
   });

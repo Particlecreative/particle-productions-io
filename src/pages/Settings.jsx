@@ -984,6 +984,53 @@ export default function Settings() {
               SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../xxx
             </div>
           </section>
+
+          {/* Google Calendar Sync */}
+          <section className="brand-card">
+            <div className="flex items-center gap-3 mb-3">
+              <span className="text-2xl">📅</span>
+              <h2 className="font-bold" style={{ color: 'var(--brand-primary)' }}>Google Calendar Sync</h2>
+            </div>
+            <p className="text-xs text-gray-400 mb-4">
+              Sync Gantt events with a dedicated Google Calendar. Changes in either direction are mirrored.
+              {driveConnected ? '' : ' Connect Google Drive first (with Calendar scope).'}
+            </p>
+            <div className="flex items-center gap-3 flex-wrap">
+              <button
+                onClick={async () => {
+                  try {
+                    const r = await fetch('/api/gcal/setup', {
+                      method: 'POST',
+                      headers: { 'Authorization': `Bearer ${localStorage.getItem('cp_auth_token')}`, 'Content-Type': 'application/json' },
+                    });
+                    const d = await r.json();
+                    if (d.calendarId) alert('Calendar created: ' + d.calendarId);
+                    else alert(d.error || 'Failed');
+                  } catch (e) { alert('Error: ' + e.message); }
+                }}
+                className="btn-cta text-xs px-4 py-2"
+                disabled={!driveConnected}
+              >
+                Setup Calendar
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    const token = localStorage.getItem('cp_auth_token');
+                    const h = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
+                    const r1 = await fetch('/api/gcal/sync-to-google', { method: 'POST', headers: h });
+                    const d1 = await r1.json();
+                    const r2 = await fetch('/api/gcal/sync-from-google', { method: 'POST', headers: h });
+                    const d2 = await r2.json();
+                    alert(`Sync done! To Google: ${d1.created || 0} created, ${d1.updated || 0} updated. From Google: ${d2.updated || 0} updated.`);
+                  } catch (e) { alert('Error: ' + e.message); }
+                }}
+                className="btn-secondary text-xs px-4 py-2"
+              >
+                🔄 Sync Now
+              </button>
+            </div>
+          </section>
         </div>
       )}
 

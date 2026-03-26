@@ -1106,3 +1106,17 @@ export function deleteWeeklyReport(id) {
   }
   return apiDelete(`/weekly-reports/${encodeURIComponent(id)}`);
 }
+
+// ========== GOOGLE CALENDAR ==========
+export function setupGoogleCalendar() {
+  return apiPost('/gcal/setup');
+}
+export function syncToGoogleCalendar() {
+  return apiPost('/gcal/sync-to-google');
+}
+export function syncFromGoogleCalendar() {
+  return apiPost('/gcal/sync-from-google');
+}
+export function getGCalStatus() {
+  return apiGet('/gcal/status');
+}

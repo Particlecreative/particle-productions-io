@@ -66,6 +66,7 @@ app.use('/api/cc-purchases',   require('./routes/ccPurchases'));
 app.use('/api/weekly-reports', require('./routes/weeklyReports'));
 app.use('/api/admin',          require('./routes/admin'));
 app.use('/api/drive',          require('./routes/drive'));
+app.use('/api/gcal',           require('./routes/gcal'));
 
 // Google OAuth callback redirect — the callback URL registered with Google
 // points to /api/auth/google/callback, so we redirect to the drive router
