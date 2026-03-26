@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   ChevronLeft, ChevronRight, Plus, Settings2, CalendarDays, List, Table2,
   GanttChartSquare, Trash2, Pencil, X, ChevronDown, ChevronUp, GripVertical, Check,
-  Layers, LayoutList, ZoomIn, ZoomOut,
+  Layers, LayoutList, ZoomIn, ZoomOut, Filter,
 } from 'lucide-react';
 import {
   DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors,
@@ -96,6 +96,20 @@ function toThursday(dateStr) {
   return fmtDate(d);
 }
 
+// ─── PRD prefix helper ──────────────────────────────────────────────────────
+function prdPrefix(productionId) {
+  if (!productionId || productionId === 'all' || productionId === 'general') return '';
+  // Format: PRD26-01 from e.g. "PRD26-01" or just "PRD26-01"
+  const s = String(productionId);
+  if (s.startsWith('PRD')) return `[${s}]`;
+  // Numeric fallback
+  return `[PRD26-${String(s).padStart(2, '0')}]`;
+}
+function eventDisplayName(event) {
+  const prefix = prdPrefix(event.production_id);
+  return prefix ? `${prefix} ${event.name}` : event.name;
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function GanttTab({ productionId, allProductions = false }) {
@@ -114,7 +128,19 @@ export default function GanttTab({ productionId, allProductions = false }) {
   const [calMonth,    setCalMonth]   = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
   const [sortCol,     setSortCol]    = useState('start_date');
   const [sortDir,     setSortDir]    = useState('asc');
-  const [filterProd,  setFilterProd] = useState('all');
+  const [filterProd,  setFilterProd] = useState('all');   // legacy compat
+  const [checkedProds, setCheckedProds] = useState(new Set()); // empty = all visible
+  const [showProdFilter, setShowProdFilter] = useState(false);
+  const prodFilterRef = useRef(null);
+  // Close prod filter on outside click
+  useEffect(() => {
+    if (!showProdFilter) return;
+    function onClick(e) {
+      if (prodFilterRef.current && !prodFilterRef.current.contains(e.target)) setShowProdFilter(false);
+    }
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [showProdFilter]);
 
   // Holiday toggles — persisted in localStorage
   const [showIL, setShowIL] = useState(() => readGanttPrefs().showIL ?? false);
@@ -125,6 +151,8 @@ export default function GanttTab({ productionId, allProductions = false }) {
 
   // Fri/Sat drag warning
   const [fridayWarning, setFridayWarning] = useState(null); // { id, start_date, end_date }
+  // Add-event production selection (allProductions mode)
+  const [addProdId, setAddProdId] = useState('general');
 
   // Productions list for filter dropdown and group-by-production view
   const [allProdsList, setAllProdsList] = useState([]);
@@ -155,11 +183,36 @@ export default function GanttTab({ productionId, allProductions = false }) {
   const navNext  = () => setViewStart(d => addDays(d, navStep));
   const navToday = () => setViewStart(addDays(today, -7));
 
-  // Active production filter
+  // Initialize checkedProds to all when productions list loads
+  useEffect(() => {
+    if (allProdsList.length > 0 && checkedProds.size === 0) {
+      setCheckedProds(new Set(allProdsList.map(p => p.id).concat(['general'])));
+    }
+  }, [allProdsList]); // eslint-disable-line
+
+  // Active production filter — uses multi-select checkedProds in allProductions mode
   function matchesProdFilter(e) {
     if (!allProductions) return e.production_id === productionId;
-    if (filterProd === 'all') return true;
-    return e.production_id === filterProd;
+    if (checkedProds.size === 0) return true; // none checked = show all
+    // If the event has no production_id or 'all', show if 'general' is checked
+    if (!e.production_id || e.production_id === 'all' || e.production_id === 'general') {
+      return checkedProds.has('general');
+    }
+    return checkedProds.has(e.production_id);
+  }
+
+  function toggleProdCheck(prodId) {
+    setCheckedProds(prev => {
+      const next = new Set(prev);
+      if (next.has(prodId)) next.delete(prodId); else next.add(prodId);
+      return next;
+    });
+  }
+  function checkAllProds() {
+    setCheckedProds(new Set(allProdsList.map(p => p.id).concat(['general'])));
+  }
+  function checkNoneProds() {
+    setCheckedProds(new Set());
   }
 
   // Events for a phase (with live drag override)
@@ -242,8 +295,11 @@ export default function GanttTab({ productionId, allProductions = false }) {
     e.preventDefault();
     if (!newName.trim() || !addModal) return;
     const phase = phases.find(p => p.id === addModal.phaseId);
+    const prodId = allProductions
+      ? (addProdId === 'general' ? 'all' : addProdId)
+      : (productionId || 'all');
     createGanttEvent({
-      production_id: productionId || 'all',
+      production_id: prodId,
       phase: addModal.phaseId,
       name: newName.trim(),
       start_date: addModal.date,
@@ -253,6 +309,7 @@ export default function GanttTab({ productionId, allProductions = false }) {
     refresh();
     setAddModal(null);
     setNewName('');
+    setAddProdId('general');
   }
 
   function handleDelete(id) {
@@ -317,45 +374,82 @@ export default function GanttTab({ productionId, allProductions = false }) {
               ))}
               <ZoomIn size={13} className="text-gray-400 ml-0.5" />
             </div>
-            {/* Holiday toggles */}
-            <div className="flex gap-1">
-              <button
-                title={showIL ? 'Hide Israeli holidays' : 'Show Israeli holidays'}
-                onClick={() => { const v = !showIL; setShowIL(v); writeGanttPref('showIL', v); }}
-                className={clsx(
-                  'px-2 py-1 rounded border text-xs font-medium transition-all',
-                  showIL ? 'bg-blue-50 border-blue-300 text-blue-700' : 'bg-white border-gray-200 text-gray-400 hover:bg-gray-50',
-                )}
-              >
-                🇮🇱
-              </button>
-              <button
-                title={showUS ? 'Hide American holidays' : 'Show American holidays'}
-                onClick={() => { const v = !showUS; setShowUS(v); writeGanttPref('showUS', v); }}
-                className={clsx(
-                  'px-2 py-1 rounded border text-xs font-medium transition-all',
-                  showUS ? 'bg-red-50 border-red-300 text-red-700' : 'bg-white border-gray-200 text-gray-400 hover:bg-gray-50',
-                )}
-              >
-                🇺🇸
-              </button>
-            </div>
           </>
+        )}
+
+        {/* Holiday toggles — visible in all views */}
+        {(view === 'gantt' || view === 'calendar') && (
+          <div className="flex gap-1">
+            <button
+              title={showIL ? 'Hide Israeli holidays' : 'Show Israeli holidays'}
+              onClick={() => { const v = !showIL; setShowIL(v); writeGanttPref('showIL', v); }}
+              className={clsx(
+                'px-2 py-1 rounded border text-xs font-medium transition-all',
+                showIL ? 'bg-blue-50 border-blue-300 text-blue-700' : 'bg-white border-gray-200 text-gray-400 hover:bg-gray-50',
+              )}
+            >
+              🇮🇱
+            </button>
+            <button
+              title={showUS ? 'Hide American holidays' : 'Show American holidays'}
+              onClick={() => { const v = !showUS; setShowUS(v); writeGanttPref('showUS', v); }}
+              className={clsx(
+                'px-2 py-1 rounded border text-xs font-medium transition-all',
+                showUS ? 'bg-red-50 border-red-300 text-red-700' : 'bg-white border-gray-200 text-gray-400 hover:bg-gray-50',
+              )}
+            >
+              🇺🇸
+            </button>
+          </div>
         )}
 
         {/* Master-Gantt controls */}
         {allProductions && (
           <>
-            <select
-              value={filterProd}
-              onChange={e => setFilterProd(e.target.value)}
-              className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white font-medium outline-none hover:bg-gray-50 max-w-[220px]"
-            >
-              <option value="all">All Productions</option>
-              {allProdsList.map(p => (
-                <option key={p.id} value={p.id}>{p.id} – {p.project_name}</option>
-              ))}
-            </select>
+            {/* Multi-select production filter */}
+            <div className="relative" ref={prodFilterRef}>
+              <button
+                onClick={() => setShowProdFilter(f => !f)}
+                className={clsx(
+                  'flex items-center gap-1.5 px-3 py-1.5 text-xs border rounded-lg font-medium transition-all',
+                  showProdFilter ? 'bg-gray-900 text-white border-gray-900' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50',
+                )}
+              >
+                <Filter size={11} />
+                Productions
+                {checkedProds.size > 0 && checkedProds.size < allProdsList.length + 1 && (
+                  <span className="ml-1 px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[9px] font-bold">{checkedProds.size}</span>
+                )}
+              </button>
+              {showProdFilter && (
+                <div
+                  className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-xl z-50 py-2 min-w-[260px] max-h-[320px] overflow-y-auto"
+                  onClick={e => e.stopPropagation()}
+                >
+                  <div className="flex gap-1 px-3 pb-2 border-b border-gray-100 mb-1">
+                    <button onClick={checkAllProds} className="text-[10px] font-bold text-blue-600 hover:underline">All</button>
+                    <span className="text-gray-300 text-[10px]">|</span>
+                    <button onClick={checkNoneProds} className="text-[10px] font-bold text-gray-500 hover:underline">None</button>
+                  </div>
+                  {/* General / unassigned */}
+                  <label className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50 cursor-pointer">
+                    <input type="checkbox" checked={checkedProds.has('general')} onChange={() => toggleProdCheck('general')} className="rounded border-gray-300" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-gray-400 flex-shrink-0" />
+                    <span className="text-xs text-gray-600 font-medium">General (unassigned)</span>
+                  </label>
+                  {allProdsList.map((p, idx) => {
+                    const dotColor = PROD_COLORS[idx % PROD_COLORS.length];
+                    return (
+                      <label key={p.id} className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50 cursor-pointer">
+                        <input type="checkbox" checked={checkedProds.has(p.id)} onChange={() => toggleProdCheck(p.id)} className="rounded border-gray-300" />
+                        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: dotColor }} />
+                        <span className="text-xs text-gray-700 truncate"><span className="font-bold">{p.id}</span> — {p.project_name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
 
             {/* Group by toggle — only in Gantt view */}
             {view === 'gantt' && (
@@ -423,6 +517,8 @@ export default function GanttTab({ productionId, allProductions = false }) {
           events={filteredEvts} phases={phases}
           calMonth={calMonth} setCalMonth={setCalMonth}
           today={today} onEdit={setEditEvt}
+          showIL={showIL} showUS={showUS}
+          onAddClick={(day) => { setAddModal({ phaseId: phases[0]?.id, date: fmtDate(day), endDate: fmtDate(day) }); setNewName(''); }}
         />
       )}
       {view === 'list' && (
@@ -454,6 +550,20 @@ export default function GanttTab({ productionId, allProductions = false }) {
                 <label className="label-xs">Name</label>
                 <input className="brand-input" value={newName} onChange={e => setNewName(e.target.value)} placeholder="Event name" required autoFocus />
               </div>
+              {/* Production dropdown — only in allProductions mode */}
+              {allProductions && (
+                <div>
+                  <label className="label-xs">Production</label>
+                  <select className="brand-input" value={addProdId} onChange={e => setAddProdId(e.target.value)}>
+                    <option value="general">General (not tied to a production)</option>
+                    {allProdsList
+                      .filter(p => checkedProds.size === 0 || checkedProds.has(p.id))
+                      .map(p => (
+                        <option key={p.id} value={p.id}>{p.id} — {p.project_name}</option>
+                      ))}
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="label-xs">Phase</label>
                 <select className="brand-input" value={addModal.phaseId} onChange={e => setAddModal(m => ({ ...m, phaseId: e.target.value }))}>
@@ -472,7 +582,7 @@ export default function GanttTab({ productionId, allProductions = false }) {
               </div>
               {(isFriSat(addModal.date) || isFriSat(addModal.endDate || addModal.date)) && (
                 <p className="text-xs text-orange-600 bg-orange-50 rounded-lg px-3 py-2 border border-orange-200">
-                  ⚠️ Selected date(s) fall on Friday or Saturday (non-working day in Israeli work week).
+                  Selected date(s) fall on Friday or Saturday (non-working day in Israeli work week).
                 </p>
               )}
               <div className="flex gap-2 pt-1">
@@ -582,14 +692,17 @@ function DateHeaderRow({ days, cw, zoom, showIL, showUS, todayStr }) {
   );
 }
 
-// Shared: grid-cell overlay row (Fri/Sat stripes + today line + click to add)
-function GridCellRow({ days, cw, todayOff, onCellClick }) {
+// Shared: grid-cell overlay row (Fri/Sat stripes + today line + holiday bg + click to add)
+function GridCellRow({ days, cw, todayOff, onCellClick, showIL, showUS }) {
   return (
     <div className="flex flex-1">
       {days.map((day, i) => {
         const dayOfW    = day.getDay();
         const isMon     = dayOfW === 1;
         const isFriSatCell = dayOfW === 5 || dayOfW === 6;
+        const ds = fmtDate(day);
+        const hols = (showIL || showUS) ? getHolidaysForDate(ds) : { il: [], us: [] };
+        const hasHol = (showIL && hols.il.length > 0) || (showUS && hols.us.length > 0);
         return (
           <div
             key={i}
@@ -601,7 +714,9 @@ function GridCellRow({ days, cw, todayOff, onCellClick }) {
             style={{
               width: cw, flexShrink: 0, height: '100%',
               cursor: onCellClick ? 'pointer' : undefined,
+              ...(hasHol && !isFriSatCell ? { background: 'rgba(59,130,246,0.04)' } : {}),
             }}
+            title={hasHol ? [...(showIL ? hols.il : []), ...(showUS ? hols.us : [])].join(' / ') : undefined}
             onClick={onCellClick ? () => onCellClick(day) : undefined}
           />
         );
@@ -696,7 +811,7 @@ function GanttView({ days, phases, cw, phaseEvts, collapsed, setCollapsed, today
                 }}
               >
                 {evts.map((event, idx) => (
-                  <GanttEventRow key={event.id} event={event} phase={phase} days={days} cw={cw} todayOff={todayOff} onDrag={onDrag} onEdit={onEdit} rowIndex={idx} accentColor={accentColor} />
+                  <GanttEventRow key={event.id} event={event} phase={phase} days={days} cw={cw} todayOff={todayOff} onDrag={onDrag} onEdit={onEdit} rowIndex={idx} accentColor={accentColor} showIL={showIL} showUS={showUS} />
                 ))}
                 {/* Add row */}
                 <div className="flex gantt-add-row" style={{ height: 28, borderBottom: '1px solid rgba(0,0,0,0.04)' }}>
@@ -710,7 +825,7 @@ function GanttView({ days, phases, cw, phaseEvts, collapsed, setCollapsed, today
                     </span>
                   </div>
                   <div className="flex flex-1 relative" style={{ height: '100%' }}>
-                    <GridCellRow days={days} cw={cw} todayOff={todayOff} onCellClick={day => onAddClick(phase.id, day)} />
+                    <GridCellRow days={days} cw={cw} todayOff={todayOff} onCellClick={day => onAddClick(phase.id, day)} showIL={showIL} showUS={showUS} />
                   </div>
                 </div>
               </div>
@@ -809,7 +924,7 @@ function ProductionGanttView({ days, cw, today, allProdsList, prodEvts, phases, 
                 {evts.map((event, idx) => {
                   const phase = phases.find(p => p.id === event.phase);
                   return (
-                    <GanttEventRow key={event.id} event={event} phase={phase || { color, name: '' }} days={days} cw={cw} todayOff={todayOff} onDrag={onDrag} onEdit={onEdit} rowIndex={idx} accentColor={color} />
+                    <GanttEventRow key={event.id} event={event} phase={phase || { color, name: '' }} days={days} cw={cw} todayOff={todayOff} onDrag={onDrag} onEdit={onEdit} rowIndex={idx} accentColor={color} showIL={showIL} showUS={showUS} />
                   );
                 })}
 
@@ -820,7 +935,7 @@ function ProductionGanttView({ days, cw, today, allProdsList, prodEvts, phases, 
                       <span className="text-[11px] text-gray-300 italic">No events</span>
                     </div>
                     <div className="flex-1 relative" style={{ height: '100%' }}>
-                      <GridCellRow days={days} cw={cw} todayOff={todayOff} onCellClick={null} />
+                      <GridCellRow days={days} cw={cw} todayOff={todayOff} onCellClick={null} showIL={showIL} showUS={showUS} />
                     </div>
                   </div>
                 )}
@@ -835,7 +950,7 @@ function ProductionGanttView({ days, cw, today, allProdsList, prodEvts, phases, 
 
 // ─── Shared: single Gantt event row ──────────────────────────────────────────
 
-function GanttEventRow({ event, phase, days, cw, todayOff, onDrag, onEdit, rowIndex = 0, accentColor }) {
+function GanttEventRow({ event, phase, days, cw, todayOff, onDrag, onEdit, rowIndex = 0, accentColor, showIL, showUS }) {
   const [justDropped, setJustDropped] = useState(false);
   const prevDates = useRef(event.start_date + event.end_date);
   // Flash "just dropped" style when dates change (after drag)
@@ -871,10 +986,10 @@ function GanttEventRow({ event, phase, days, cw, todayOff, onDrag, onEdit, rowIn
       >
         <span
           className="text-[12px] text-gray-600 truncate hover:text-gray-900 cursor-pointer transition-colors"
-          title={event.name}
+          title={eventDisplayName(event)}
           onClick={() => onEdit(event)}
         >
-          {event.name}
+          {eventDisplayName(event)}
         </span>
       </div>
       <div className="flex-1 relative" style={{ height: ROW_H }}>
@@ -882,6 +997,9 @@ function GanttEventRow({ event, phase, days, cw, todayOff, onDrag, onEdit, rowIn
           const dayOfW = day.getDay();
           const isMon  = dayOfW === 1;
           const isFriSatCell = dayOfW === 5 || dayOfW === 6;
+          const ds = fmtDate(day);
+          const hols = (showIL || showUS) ? getHolidaysForDate(ds) : { il: [], us: [] };
+          const hasHol = (showIL && hols.il.length > 0) || (showUS && hols.us.length > 0);
           return (
             <div
               key={i}
@@ -891,6 +1009,7 @@ function GanttEventRow({ event, phase, days, cw, todayOff, onDrag, onEdit, rowIn
               )}
               style={{
                 position: 'absolute', left: i * cw, top: 0, width: cw, height: '100%',
+                ...(hasHol && !isFriSatCell ? { background: 'rgba(59,130,246,0.04)' } : {}),
               }}
             />
           );
@@ -920,14 +1039,14 @@ function GanttEventRow({ event, phase, days, cw, todayOff, onDrag, onEdit, rowIn
                 className="gantt-bar-label"
                 style={{ lineHeight: `${ROW_H - 8}px` }}
               >
-                {event.name}
+                {eventDisplayName(event)}
               </span>
             ) : (
               <span style={{ display: 'block', height: '100%' }} />
             )}
             {/* Tooltip on hover */}
             <div className="gantt-tooltip">
-              <div style={{ fontWeight: 700, marginBottom: 2 }}>{event.name}</div>
+              <div style={{ fontWeight: 700, marginBottom: 2 }}>{eventDisplayName(event)}</div>
               <div style={{ opacity: 0.7, fontSize: 10 }}>{event.start_date} - {event.end_date}</div>
               {phaseName && <div style={{ opacity: 0.6, fontSize: 10, marginTop: 1 }}>{phaseName}</div>}
             </div>
@@ -945,13 +1064,14 @@ function GanttEventRow({ event, phase, days, cw, todayOff, onDrag, onEdit, rowIn
 
 // ─── Calendar View ────────────────────────────────────────────────────────────
 
-function CalendarView({ events, phases, calMonth, setCalMonth, today, onEdit }) {
+function CalendarView({ events, phases, calMonth, setCalMonth, today, onEdit, showIL, showUS, onAddClick }) {
   const year  = calMonth.getFullYear();
   const month = calMonth.getMonth();
 
   const firstDay = new Date(year, month, 1);
   const lastDay  = new Date(year, month + 1, 0);
-  const startPad = (firstDay.getDay() + 6) % 7;
+  // Sun-start grid: startPad = firstDay.getDay() (Sun=0)
+  const startPad = firstDay.getDay();
   const cells    = startPad + lastDay.getDate();
   const totalWeeks = Math.ceil(cells / 7);
 
@@ -973,6 +1093,8 @@ function CalendarView({ events, phases, calMonth, setCalMonth, today, onEdit }) 
   }
 
   const cells2 = dayCells();
+  // Israeli work week: Sun-Thu active, Fri-Sat grayed
+  const CAL_DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
   return (
     <div className="brand-card p-0 overflow-hidden">
@@ -986,27 +1108,55 @@ function CalendarView({ events, phases, calMonth, setCalMonth, today, onEdit }) 
         </button>
       </div>
       <div className="grid grid-cols-7 border-b border-gray-100 bg-gray-50">
-        {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d => (
-          <div key={d} className="py-2 text-center text-[11px] font-semibold text-gray-400">{d}</div>
+        {CAL_DAYS.map((d, i) => (
+          <div key={d} className={clsx('py-2 text-center text-[11px] font-semibold', i >= 5 ? 'text-gray-300' : 'text-gray-400')}>{d}</div>
         ))}
       </div>
       <div className="grid grid-cols-7">
         {cells2.map((day, i) => {
+          const colIdx = i % 7;
+          const isFriSatCol = colIdx >= 5; // Fri=5, Sat=6
           const isToday = day && fmtDate(day) === fmtDate(today);
           const dayEvts = eventsOnDay(day);
+          const ds = day ? fmtDate(day) : null;
+          const hols = ds && (showIL || showUS) ? getHolidaysForDate(ds) : { il: [], us: [] };
+          const hasIL = showIL && hols.il.length > 0;
+          const hasUS = showUS && hols.us.length > 0;
+
           return (
             <div
               key={i}
-              className={clsx('border-r border-b border-gray-100 min-h-[80px] p-1', !day && 'bg-gray-50/50')}
+              className={clsx(
+                'border-r border-b border-gray-100 min-h-[80px] p-1 transition-colors',
+                !day && 'bg-gray-50/50',
+                day && isFriSatCol && 'bg-gray-50',
+                day && !isFriSatCol && onAddClick && 'hover:bg-blue-50/30 cursor-pointer',
+              )}
+              onClick={day && !isFriSatCol && onAddClick ? () => onAddClick(day) : undefined}
             >
               {day && (
                 <>
-                  <div className={clsx(
-                    'w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold mb-1',
-                    isToday ? 'bg-blue-600 text-white' : 'text-gray-600',
-                  )}>
-                    {day.getDate()}
+                  <div className="flex items-center gap-1 mb-1">
+                    <div className={clsx(
+                      'w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold',
+                      isToday ? 'bg-blue-600 text-white' : isFriSatCol ? 'text-gray-300' : 'text-gray-600',
+                    )}>
+                      {day.getDate()}
+                    </div>
+                    {/* Holiday indicators */}
+                    {(hasIL || hasUS) && (
+                      <div className="flex gap-0.5 items-center">
+                        {hasIL && <span className="w-1.5 h-1.5 rounded-full bg-blue-500" title={hols.il.join(', ')} />}
+                        {hasUS && <span className="w-1.5 h-1.5 rounded-full bg-red-500" title={hols.us.join(', ')} />}
+                      </div>
+                    )}
                   </div>
+                  {/* Holiday label */}
+                  {(hasIL || hasUS) && (
+                    <div className="text-[9px] leading-tight mb-0.5 truncate" style={{ color: hasIL ? '#3b82f6' : '#ef4444' }}>
+                      {hasIL ? hols.il[0] : hols.us[0]}
+                    </div>
+                  )}
                   <div className="space-y-0.5">
                     {dayEvts.slice(0, 3).map(e => {
                       const phase = phases.find(p => p.id === e.phase);
@@ -1015,9 +1165,10 @@ function CalendarView({ events, phases, calMonth, setCalMonth, today, onEdit }) 
                           key={e.id}
                           className="truncate text-[10px] font-medium text-white rounded px-1 cursor-pointer"
                           style={{ background: e.color || phase?.color || '#6366f1' }}
-                          onClick={() => onEdit(e)}
+                          onClick={(ev) => { ev.stopPropagation(); onEdit(e); }}
+                          title={eventDisplayName(e)}
                         >
-                          {e.name}
+                          {eventDisplayName(e)}
                         </div>
                       );
                     })}
@@ -1088,7 +1239,7 @@ function ListView({ events, phases, sortCol, sortDir, setSortCol, setSortDir, on
                     <span className="text-xs">{phase?.name ?? e.phase}</span>
                   </span>
                 </td>
-                <td className="font-medium text-sm">{e.name}</td>
+                <td className="font-medium text-sm">{eventDisplayName(e)}</td>
                 <td className="text-sm text-gray-500 font-mono">{e.start_date}</td>
                 <td className="text-sm text-gray-500 font-mono">{e.end_date}</td>
                 <td className="text-sm text-gray-500">{dur}</td>

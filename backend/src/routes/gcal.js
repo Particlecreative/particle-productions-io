@@ -117,7 +117,7 @@ router.post('/sync-to-google', async (req, res) => {
 
     for (const evt of events) {
       const eventBody = {
-        summary: `[${evt.prod_id || ''}] ${evt.name || 'Event'}`,
+        summary: `[${evt.prod_id || 'GEN'}] ${evt.name || 'Event'}${evt.phase ? ' \u2014 ' + evt.phase : ''}`,
         description: `Phase: ${evt.phase || ''}\nProduction: ${evt.project_name || ''}\nID: ${evt.id}`,
         start: { date: evt.start_date },
         end: { date: evt.end_date || evt.start_date },
@@ -242,7 +242,7 @@ async function syncEventToGoogle(eventId) {
     const evt = rows[0];
 
     const eventBody = {
-      summary: `[${evt.prod_id || ''}] ${evt.name || 'Event'}`,
+      summary: `[${evt.prod_id || 'GEN'}] ${evt.name || 'Event'}${evt.phase ? ' \u2014 ' + evt.phase : ''}`,
       description: `Phase: ${evt.phase || ''}\nProduction: ${evt.project_name || ''}`,
       start: { date: evt.start_date },
       end: { date: evt.end_date || evt.start_date },
