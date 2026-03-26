@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import {
   upsertContract, getContract, generateContractSignatures,
-  getContractSignatures, uploadToDrive,
+  getContractSignatures, uploadToDrive, getSuppliers,
 } from '../../lib/dataService';
 import { getDownloadUrl } from '../../lib/invoiceUtils';
 import { formatIST, nowISOString } from '../../lib/timezone';
@@ -419,11 +419,33 @@ export default function ContractModal({ production, lineItem, onClose }) {
   const [currentStep, setCurrentStep] = useState(1);
   const [maxReachedStep, setMaxReachedStep] = useState(1);
 
+  // ── Supplier lookup for auto-fill ──
+  const matchedSupplier = useMemo(() => {
+    if (!lineItem?.full_name) return null;
+    try {
+      const all = getSuppliers();
+      return all.find(s =>
+        s.name?.toLowerCase() === lineItem.full_name.toLowerCase() ||
+        s.contact_name?.toLowerCase() === lineItem.full_name.toLowerCase()
+      ) || null;
+    } catch { return null; }
+  }, [lineItem?.full_name]);
+
   // ── Step 1: Provider Details ──
   const [providerName, setProviderName] = useState(existing?.provider_name || lineItem?.full_name || '');
   const [providerEmail, setProviderEmail] = useState(existing?.provider_email || lineItem?.supplier_email || '');
-  const [providerIdNumber, setProviderIdNumber] = useState(existing?.provider_id_number || lineItem?.id_number || '');
-  const [providerAddress, setProviderAddress] = useState(existing?.provider_address || '');
+  const [providerIdNumber, setProviderIdNumber] = useState(
+    existing?.provider_id_number || lineItem?.id_number || matchedSupplier?.id_number || ''
+  );
+  const [providerAddress, setProviderAddress] = useState(
+    existing?.provider_address || lineItem?.address || matchedSupplier?.address || ''
+  );
+
+  // ── Effective Date (editable) ──
+  const [effectiveDate, setEffectiveDate] = useState(() => {
+    if (existing?.effective_date) return existing.effective_date;
+    return new Date().toISOString().slice(0, 10); // YYYY-MM-DD default to today
+  });
 
   // ── Step 2: Exhibits ──
   const defaultExhibitA = useMemo(() => {
@@ -446,8 +468,19 @@ export default function ContractModal({ production, lineItem, onClose }) {
   const [paymentMethod, setPaymentMethod] = useState(lineItem?.payment_method || '');
   const [exhibitB, setExhibitB] = useState(existing?.exhibit_b || '');
 
-  // ── Step 3: PDF Preview ──
+  // ── Step 3: PDF Preview / Editable Preview ──
   const [pdfDataUrl, setPdfDataUrl] = useState(null);
+  const [editMode, setEditMode] = useState(false);
+
+  // Editable contract sections (pre-filled, user can edit before PDF generation)
+  const [editableIntro, setEditableIntro] = useState('');
+  const [editableBody, setEditableBody] = useState('');
+  const [editableExhibitA, setEditableExhibitA] = useState('');
+  const [editableExhibitB, setEditableExhibitB] = useState('');
+  const editIntroRef = useRef(null);
+  const editBodyRef = useRef(null);
+  const editExhibitARef = useRef(null);
+  const editExhibitBRef = useRef(null);
 
   // ── Step 4 & 5: Signing ──
   const [status, setStatus] = useState(existing?.status || 'pending');
@@ -498,11 +531,12 @@ export default function ContractModal({ production, lineItem, onClose }) {
 
   // ── Navigate steps ──
   function goNext() {
-    if (currentStep === 3) {
-      // Generate PDF preview before showing step 3
+    const next = Math.min(currentStep + 1, 5);
+    if (next === 3) {
+      // Populate editable sections and generate PDF preview when entering step 3
+      populateEditableSections();
       handleGeneratePdfPreview();
     }
-    const next = Math.min(currentStep + 1, 5);
     setCurrentStep(next);
     setMaxReachedStep(Math.max(maxReachedStep, next));
   }
@@ -513,21 +547,44 @@ export default function ContractModal({ production, lineItem, onClose }) {
 
   function goToStep(step) {
     if (step === 3 || step === 4) {
+      populateEditableSections();
       handleGeneratePdfPreview();
     }
     setCurrentStep(step);
     setMaxReachedStep(Math.max(maxReachedStep, step));
   }
 
+  // ── Populate editable sections ──
+  function populateEditableSections() {
+    const formattedDate = effectiveDate
+      ? new Date(effectiveDate + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+      : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+    const introText = `This Services Agreement (the "Agreement") is entered into as of ${formattedDate} by and between:\n\nCompany: ${PARTICLE_COMPANY.name}, ${PARTICLE_COMPANY.address}\nProvider: ${[providerName, providerIdNumber ? `ID: ${providerIdNumber}` : '', providerAddress].filter(Boolean).join(', ') || '___________'}\n${providerEmail ? `Email: ${providerEmail}` : ''}`;
+    setEditableIntro(introText);
+
+    const bodyText = `The Company hereby engages the Provider to perform the services described in Exhibit A below, subject to the terms and conditions set forth in this Agreement. The Provider shall perform the services in a professional and workmanlike manner, in accordance with industry standards and the Company's reasonable instructions.\n\nThe Provider represents that they are an independent contractor, not an employee of the Company. The Provider shall be solely responsible for all taxes, insurance, and other obligations arising from the compensation received under this Agreement.\n\nAll intellectual property, creative works, and deliverables produced under this Agreement shall be the exclusive property of the Company. The Provider hereby assigns all rights, title, and interest in such works to the Company.\n\nThe Provider shall maintain strict confidentiality regarding all proprietary information, trade secrets, and business information of the Company, both during and after the term of this Agreement.`;
+    setEditableBody(bodyText);
+
+    setEditableExhibitA(exhibitA);
+
+    const currencySymbol = currency === 'ILS' ? '\u20AA' : currency === 'EUR' ? '\u20AC' : currency === 'GBP' ? '\u00A3' : '$';
+    const bParts = [];
+    if (feeAmount) bParts.push(`Total Fee: ${currencySymbol}${Number(feeAmount).toLocaleString()}`);
+    if (paymentTerms) bParts.push(`Payment Terms: ${paymentTerms}`);
+    if (paymentMethod) bParts.push(`Payment Method: ${paymentMethod}`);
+    if (exhibitB) bParts.push(exhibitB);
+    setEditableExhibitB(bParts.join('\n\n'));
+  }
+
   // ── PDF Preview Generation ──
   function handleGeneratePdfPreview() {
-    const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-    const effectiveDate = production.planned_start
-      ? new Date(production.planned_start).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
-      : today;
+    const formattedDate = effectiveDate
+      ? new Date(effectiveDate + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+      : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
     const doc = generateContractPDF({
-      effective_date: effectiveDate,
+      effective_date: formattedDate,
       provider_name: providerName,
       provider_email: providerEmail,
       provider_id_number: providerIdNumber,
@@ -562,9 +619,12 @@ export default function ContractModal({ production, lineItem, onClose }) {
         exhibit_a: exhibitA,
         exhibit_b: exhibitB,
         fee_amount: feeAmount,
+        currency,
         payment_terms: paymentTerms,
+        payment_method: paymentMethod,
         provider_id_number: providerIdNumber,
         provider_address: providerAddress,
+        effective_date: effectiveDate,
         contract_pdf_base64: pdfDataUrl || '',
         status: 'pending',
       });
@@ -631,14 +691,12 @@ export default function ContractModal({ production, lineItem, onClose }) {
 
   // ── Download PDF ──
   function handleDownloadPdf() {
-    if (!pdfDataUrl) handleGeneratePdfPreview();
-    const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-    const effectiveDate = production.planned_start
-      ? new Date(production.planned_start).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
-      : today;
+    const formattedDate = effectiveDate
+      ? new Date(effectiveDate + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+      : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
     const doc = generateContractPDF({
-      effective_date: effectiveDate,
+      effective_date: formattedDate,
       provider_name: providerName,
       provider_email: providerEmail,
       provider_id_number: providerIdNumber,
@@ -748,11 +806,15 @@ export default function ContractModal({ production, lineItem, onClose }) {
                   </label>
                   <input
                     className="brand-input"
+                    style={!providerIdNumber ? { backgroundColor: '#fefce8', borderColor: '#fbbf24' } : undefined}
                     value={providerIdNumber}
                     onChange={e => setProviderIdNumber(e.target.value)}
                     placeholder="ID or passport number"
                     disabled={isSigned}
                   />
+                  {!providerIdNumber && (
+                    <div className="text-[10px] text-amber-600 mt-0.5">Provider will fill this when signing</div>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
@@ -760,11 +822,15 @@ export default function ContractModal({ production, lineItem, onClose }) {
                   </label>
                   <input
                     className="brand-input"
+                    style={!providerAddress ? { backgroundColor: '#fefce8', borderColor: '#fbbf24' } : undefined}
                     value={providerAddress}
                     onChange={e => setProviderAddress(e.target.value)}
                     placeholder="Provider address"
                     disabled={isSigned}
                   />
+                  {!providerAddress && (
+                    <div className="text-[10px] text-amber-600 mt-0.5">Provider will fill this when signing</div>
+                  )}
                 </div>
               </div>
             </div>
@@ -814,6 +880,23 @@ export default function ContractModal({ production, lineItem, onClose }) {
               </div>
             </div>
 
+            {/* Effective Date */}
+            <div className="mb-5">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-2 h-2 rounded-full bg-gray-400" />
+                <label className="text-sm font-bold text-gray-700">Effective Date</label>
+              </div>
+              <input
+                type="date"
+                className="brand-input"
+                style={{ maxWidth: 220 }}
+                value={effectiveDate}
+                onChange={e => setEffectiveDate(e.target.value)}
+                disabled={isSigned}
+              />
+              <div className="text-[10px] text-gray-400 mt-0.5">Date this agreement takes effect</div>
+            </div>
+
             {/* Exhibit B */}
             <div className="mb-5">
               <div className="flex items-center gap-2 mb-2">
@@ -826,27 +909,35 @@ export default function ContractModal({ production, lineItem, onClose }) {
                     <label className="block text-[10px] font-semibold text-green-600 uppercase tracking-wide mb-1">
                       Fee Amount *
                     </label>
-                    <div className="flex gap-2">
+                    <div className="flex items-center gap-1">
                       <select
-                        className="brand-input w-20 text-xs"
+                        className="brand-input text-xs"
+                        style={{ width: 64, padding: '6px 4px', flexShrink: 0 }}
                         value={currency}
                         onChange={e => setCurrency(e.target.value)}
                         disabled={isSigned}
                       >
-                        <option value="USD">USD</option>
-                        <option value="ILS">ILS</option>
-                        <option value="EUR">EUR</option>
-                        <option value="GBP">GBP</option>
+                        <option value="USD">$</option>
+                        <option value="ILS">&#8362;</option>
+                        <option value="EUR">&euro;</option>
+                        <option value="GBP">&pound;</option>
                       </select>
                       <input
                         type="number"
-                        className="brand-input flex-1"
+                        className="brand-input"
+                        style={{ flex: 1, minWidth: 0 }}
                         value={feeAmount}
                         onChange={e => setFeeAmount(e.target.value)}
                         placeholder="0.00"
                         disabled={isSigned}
                       />
                     </div>
+                    {feeAmount && (
+                      <div className="text-[10px] text-green-600 mt-0.5 font-semibold">
+                        {currency === 'ILS' ? '\u20AA' : currency === 'EUR' ? '\u20AC' : currency === 'GBP' ? '\u00A3' : '$'}
+                        {Number(feeAmount).toLocaleString()}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className="block text-[10px] font-semibold text-green-600 uppercase tracking-wide mb-1">
@@ -897,7 +988,7 @@ export default function ContractModal({ production, lineItem, onClose }) {
               </button>
               <div className="flex-1" />
               <button
-                onClick={() => { handleGeneratePdfPreview(); goNext(); }}
+                onClick={goNext}
                 disabled={!canProceedStep2}
                 className={clsx(
                   'flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold transition-colors',
@@ -906,7 +997,7 @@ export default function ContractModal({ production, lineItem, onClose }) {
                     : 'bg-gray-100 text-gray-400 cursor-default'
                 )}
               >
-                <Eye size={14} /> Preview PDF <ChevronRight size={14} />
+                <Eye size={14} /> Preview Contract <ChevronRight size={14} />
               </button>
             </div>
           </div>
@@ -918,13 +1009,24 @@ export default function ContractModal({ production, lineItem, onClose }) {
         {currentStep === 3 && (
           <div>
             <div className="flex items-center justify-between mb-3">
-              <div className="text-sm font-bold text-gray-700">Contract PDF Preview</div>
+              <div className="text-sm font-bold text-gray-700">Contract Preview</div>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => { setCurrentStep(2); }}
+                  onClick={() => setEditMode(!editMode)}
+                  className={clsx(
+                    'text-xs flex items-center gap-1 px-2.5 py-1 rounded border transition-colors',
+                    editMode
+                      ? 'bg-amber-50 border-amber-400 text-amber-700 font-bold'
+                      : 'border-gray-200 text-gray-600 hover:text-gray-800 hover:bg-gray-50'
+                  )}
+                >
+                  <Edit3 size={10} /> {editMode ? 'Editing ON' : 'Edit Text'}
+                </button>
+                <button
+                  onClick={() => { setEditMode(false); handleGeneratePdfPreview(); }}
                   className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 px-2 py-1 rounded border border-blue-200 hover:bg-blue-50"
                 >
-                  <Edit3 size={10} /> Edit Contract
+                  <Eye size={10} /> Refresh PDF
                 </button>
                 <button
                   onClick={handleDownloadPdf}
@@ -935,30 +1037,123 @@ export default function ContractModal({ production, lineItem, onClose }) {
               </div>
             </div>
 
-            {/* PDF Embed */}
-            {pdfDataUrl ? (
-              <div className="border border-gray-200 rounded-xl overflow-hidden mb-4" style={{ height: 450 }}>
-                <iframe
-                  ref={pdfPreviewRef}
-                  src={pdfDataUrl}
-                  className="w-full h-full"
-                  title="Contract PDF Preview"
-                />
-              </div>
-            ) : (
-              <div className="flex items-center justify-center h-64 bg-gray-50 rounded-xl border border-gray-200 mb-4">
-                <div className="text-center">
-                  <File size={32} className="mx-auto mb-2 text-gray-300" />
-                  <div className="text-sm text-gray-400">Generating preview...</div>
-                  <button
-                    onClick={handleGeneratePdfPreview}
-                    className="mt-2 text-xs text-blue-600 hover:text-blue-800 underline"
-                  >
-                    Regenerate
-                  </button>
-                </div>
+            {editMode && (
+              <div className="text-[10px] text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 mb-3">
+                Edit mode is ON. Modify the text below, then click "Refresh PDF" or "Download PDF" to generate the final document.
               </div>
             )}
+
+            {/* Editable Contract Sections */}
+            <div className="border border-gray-200 rounded-xl overflow-hidden mb-4" style={{ maxHeight: 450, overflowY: 'auto' }}>
+              {/* Letterhead */}
+              <div className="bg-[#030b2e] text-white px-5 py-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-lg font-bold tracking-wider">PARTICLE <span className="text-xs font-normal">for men</span></div>
+                  </div>
+                  <div className="text-right text-xs">
+                    <div>{PARTICLE_COMPANY.name}</div>
+                    <div>{PARTICLE_COMPANY.address}</div>
+                    <div>Date: {effectiveDate ? new Date(effectiveDate + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'Not set'}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-5">
+                {/* Title */}
+                <div className="text-center text-base font-bold text-[#030b2e] mb-4">SERVICES AGREEMENT</div>
+
+                {/* Intro section */}
+                <div
+                  ref={editIntroRef}
+                  contentEditable={editMode}
+                  suppressContentEditableWarning
+                  onBlur={e => setEditableIntro(e.currentTarget.innerText)}
+                  className={clsx(
+                    'text-sm text-gray-700 whitespace-pre-wrap mb-4 p-2 rounded outline-none',
+                    editMode && 'border-2 border-amber-300 bg-amber-50/30 focus:border-amber-500'
+                  )}
+                >
+                  {editableIntro}
+                </div>
+
+                {production.project_name && (
+                  <div className="text-sm font-bold text-[#030b2e] mb-3">Production: {production.project_name}</div>
+                )}
+
+                {/* Agreement Body */}
+                <div
+                  ref={editBodyRef}
+                  contentEditable={editMode}
+                  suppressContentEditableWarning
+                  onBlur={e => setEditableBody(e.currentTarget.innerText)}
+                  className={clsx(
+                    'text-sm text-gray-700 whitespace-pre-wrap mb-4 p-2 rounded outline-none',
+                    editMode && 'border-2 border-amber-300 bg-amber-50/30 focus:border-amber-500'
+                  )}
+                >
+                  {editableBody}
+                </div>
+
+                {/* Exhibit A */}
+                <div className="bg-blue-50 border-l-4 border-blue-400 px-3 py-2 mb-4">
+                  <div className="text-sm font-bold text-blue-700 mb-1">EXHIBIT A -- Services & Instructions</div>
+                  <div
+                    ref={editExhibitARef}
+                    contentEditable={editMode}
+                    suppressContentEditableWarning
+                    onBlur={e => {
+                      setEditableExhibitA(e.currentTarget.innerText);
+                      setExhibitA(e.currentTarget.innerText);
+                    }}
+                    className={clsx(
+                      'text-sm text-gray-700 whitespace-pre-wrap p-1 rounded outline-none',
+                      editMode && 'border-2 border-amber-300 bg-white focus:border-amber-500'
+                    )}
+                  >
+                    {editableExhibitA}
+                  </div>
+                </div>
+
+                {/* Exhibit B */}
+                <div className="bg-green-50 border-l-4 border-green-400 px-3 py-2 mb-4">
+                  <div className="text-sm font-bold text-green-700 mb-1">EXHIBIT B -- Fees & Payment</div>
+                  <div
+                    ref={editExhibitBRef}
+                    contentEditable={editMode}
+                    suppressContentEditableWarning
+                    onBlur={e => setEditableExhibitB(e.currentTarget.innerText)}
+                    className={clsx(
+                      'text-sm text-gray-700 whitespace-pre-wrap p-1 rounded outline-none',
+                      editMode && 'border-2 border-amber-300 bg-white focus:border-amber-500'
+                    )}
+                  >
+                    {editableExhibitB}
+                  </div>
+                </div>
+
+                {/* Signature Blocks */}
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mt-4">
+                  <div className="text-sm font-bold text-[#030b2e] mb-3">SIGNATURES</div>
+                  <div className="grid grid-cols-2 gap-6 text-xs text-gray-600">
+                    <div>
+                      <div className="font-semibold mb-1">For the Company:</div>
+                      <div>{PARTICLE_COMPANY.name}</div>
+                      <div>Name: {user?.name || 'Tomer Wilf Lezmy'}</div>
+                      <div className="border-b border-gray-400 mt-4 mb-1" />
+                      <div className="text-[10px] text-gray-400">Signature</div>
+                    </div>
+                    <div>
+                      <div className="font-semibold mb-1">Service Provider:</div>
+                      <div>{providerName || '___________'}</div>
+                      <div>ID: {providerIdNumber || '___________'}</div>
+                      <div className="border-b border-gray-400 mt-4 mb-1" />
+                      <div className="text-[10px] text-gray-400">Signature</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
 
             {/* Contract summary */}
             <div className="bg-gray-50 rounded-xl p-3 mb-4 text-xs">
@@ -978,6 +1173,7 @@ export default function ContractModal({ production, lineItem, onClose }) {
               <div className="flex-1" />
               <button
                 onClick={() => {
+                  setEditMode(false);
                   if (!signingLinks) handleGenerate();
                   goNext();
                 }}
