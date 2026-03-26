@@ -136,10 +136,10 @@ export default function Contracts() {
   ];
 
   return (
-    <div>
+    <div className="animate-fade-in">
       {/* Header */}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
-        <h1 className="text-3xl font-black brand-title" style={{ color: 'var(--brand-primary)' }}>
+        <h1 className="text-2xl font-black brand-title" style={{ color: 'var(--brand-primary)' }}>
           Contracts
         </h1>
         <div className="flex items-center gap-3">

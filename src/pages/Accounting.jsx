@@ -235,10 +235,10 @@ export default function Accounting() {
   ];
 
   return (
-    <div>
+    <div className="animate-fade-in">
       {/* Header */}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
-        <h1 className="text-3xl font-black brand-title" style={{ color: 'var(--brand-primary)' }}>
+        <h1 className="text-2xl font-black brand-title" style={{ color: 'var(--brand-primary)' }}>
           Accounting
         </h1>
         <ExportMenu rows={filteredItems} columns={ACCOUNTING_EXPORT_COLS} filename="accounting" title="Accounting" />
@@ -511,7 +511,7 @@ function AccountingProductionGroup({ prodId, data, fmt, isEditor, onUpdate, onPa
       </button>
 
       {expanded && (
-        <div className="mt-3 pt-3 border-t border-gray-100 overflow-x-auto">
+        <div className="mt-3 pt-3 border-t border-gray-100 table-scroll-wrapper">
           <table className="data-table" style={{ minWidth: 1300 }}>
             <thead>
               <tr>

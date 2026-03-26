@@ -1121,6 +1121,262 @@ html.dark .gantt-today-label { background: rgba(91,125,245,0.15); color: var(--b
 }
 
 /* ============================================================
+   UX POLISH — Dark Mode, Mobile, Loading, Typography
+   ============================================================ */
+
+/* === DARK MODE — additional overrides === */
+/* Brand card in dark mode */
+html.dark .brand-card {
+  background: var(--brand-card-bg, #1c2028) !important;
+  border-color: rgba(255,255,255,0.06) !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3), 0 4px 12px rgba(0,0,0,0.15) !important;
+}
+html.dark .brand-card:hover {
+  box-shadow: 0 4px 20px rgba(0,0,0,0.25) !important;
+}
+/* KPI card dark mode refinement */
+html.dark .kpi-card {
+  background: var(--brand-card-bg, #1c2028) !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.25), 0 6px 20px rgba(0,0,0,0.12) !important;
+  border: 1px solid rgba(255,255,255,0.06) !important;
+}
+html.dark .kpi-card:hover {
+  box-shadow: 0 4px 24px rgba(0,0,0,0.3) !important;
+}
+html.dark .kpi-card .kpi-label { color: #8b949e !important; }
+html.dark .kpi-card .kpi-value { color: #e6edf3; }
+
+/* Modal backgrounds in dark mode */
+html.dark .modal-panel {
+  background: var(--brand-card-bg, #1c2028) !important;
+  box-shadow: 0 25px 80px rgba(0,0,0,0.6) !important;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+html.dark .modal-overlay {
+  background: rgba(0,0,0,0.6) !important;
+}
+
+/* Table headers in dark mode */
+html.dark .data-table th {
+  background: #161b22 !important;
+  color: rgba(255,255,255,0.5) !important;
+  border-bottom-color: rgba(255,255,255,0.06) !important;
+}
+html.dark .data-table td {
+  background: var(--brand-card-bg, #1c2028) !important;
+  border-bottom-color: rgba(255,255,255,0.04) !important;
+  color: #c9d1d9;
+}
+html.dark .data-table tr:hover td {
+  background: rgba(255,255,255,0.03) !important;
+}
+
+/* Input fields in dark mode */
+html.dark .brand-input {
+  background: #21262d !important;
+  border-color: rgba(255,255,255,0.1) !important;
+  color: #e6edf3 !important;
+}
+html.dark .brand-input:focus {
+  background: #161b22 !important;
+  border-color: var(--brand-accent) !important;
+  box-shadow: 0 0 0 3px rgba(110, 142, 247, 0.12) !important;
+}
+html.dark .brand-input::placeholder {
+  color: rgba(255,255,255,0.25) !important;
+}
+
+/* Status badges dark mode */
+html.dark .stage-pre-production { background: rgba(69,39,160,0.2) !important; color: #b39ddb !important; }
+html.dark .stage-production     { background: rgba(21,101,192,0.2) !important; color: #90caf9 !important; }
+html.dark .stage-post           { background: rgba(191,54,12,0.2) !important; color: #ffab91 !important; }
+html.dark .stage-paused         { background: rgba(245,127,23,0.2) !important; color: #ffcc80 !important; }
+html.dark .stage-pending        { background: rgba(55,71,79,0.3) !important; color: #b0bec5 !important; }
+html.dark .stage-completed      { background: rgba(46,125,50,0.2) !important; color: #a5d6a7 !important; }
+
+/* Dark mode select dropdowns */
+html.dark select {
+  background: #21262d !important;
+  color: #e6edf3 !important;
+  border-color: rgba(255,255,255,0.1) !important;
+}
+
+/* Dark mode buttons */
+html.dark .btn-secondary {
+  background: #21262d !important;
+  color: #c9d1d9 !important;
+  border-color: rgba(255,255,255,0.1) !important;
+}
+html.dark .btn-secondary:hover {
+  background: #30363d !important;
+  border-color: rgba(255,255,255,0.15) !important;
+}
+
+/* Dark mode column panel */
+html.dark .bg-white {
+  background: var(--brand-card-bg, #1c2028) !important;
+}
+
+/* Dark mode skeleton */
+html.dark .skeleton {
+  background: linear-gradient(90deg, #21262d 25%, #30363d 50%, #21262d 75%) !important;
+  background-size: 200% 100% !important;
+}
+
+/* Dark mode year switcher */
+html.dark .border-gray-100 { border-color: rgba(255,255,255,0.06) !important; }
+html.dark .hover\:bg-gray-50:hover { background: rgba(255,255,255,0.04) !important; }
+
+/* Dark mode text colors */
+html.dark .text-gray-500 { color: #8b949e !important; }
+html.dark .text-gray-400 { color: #6e7681 !important; }
+html.dark .text-gray-300 { color: #484f58 !important; }
+
+/* === MOBILE RESPONSIVE FIXES === */
+@media (max-width: 768px) {
+  /* Tables: horizontal scroll */
+  .brand-card { padding: 12px; border-radius: 14px; }
+  .table-scroll-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .data-table { min-width: 700px; }
+
+  /* Modals: full-width with padding */
+  .modal-panel {
+    width: 95% !important;
+    max-width: 95vw !important;
+    padding: 20px !important;
+    border-radius: 16px !important;
+    max-height: 85vh !important;
+  }
+
+  /* Drawer: full width on mobile */
+  .drawer-panel {
+    width: 100% !important;
+    max-width: 100vw !important;
+  }
+
+  /* Forms: stack inputs */
+  .brand-input { width: 100% !important; min-width: 0 !important; }
+
+  /* KPI cards: 2-col grid */
+  .kpi-card { padding: 14px 16px; }
+  .kpi-card .kpi-value { font-size: 1.5rem; }
+
+  /* Sidebar collapse */
+  .sidebar {
+    transform: translateX(-100%);
+    position: fixed !important;
+    z-index: 40;
+    width: 240px !important;
+  }
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  /* Main content: no left margin on mobile */
+  .main-content {
+    margin-left: 0 !important;
+    padding: 16px !important;
+    padding-bottom: 80px !important;
+  }
+
+  /* Toolbar wrapping */
+  .flex-wrap { flex-wrap: wrap; }
+
+  /* Compact tab bar */
+  .brand-tabs {
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    flex-wrap: nowrap;
+    gap: 0;
+  }
+  .brand-tab { padding: 10px 14px; font-size: 12px; white-space: nowrap; }
+
+  /* Hero header mobile */
+  .text-3xl { font-size: 1.5rem !important; }
+}
+
+@media (max-width: 480px) {
+  .modal-panel {
+    width: 100% !important;
+    max-width: 100vw !important;
+    border-radius: 16px 16px 0 0 !important;
+    margin-top: auto;
+    max-height: 90vh !important;
+  }
+  .modal-overlay {
+    align-items: flex-end !important;
+  }
+  .kpi-card .kpi-value { font-size: 1.25rem; }
+  .brand-card { padding: 10px; border-radius: 12px; }
+}
+
+/* === LOADING SPINNER === */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.animate-spin {
+  animation: spin 0.8s linear infinite;
+}
+
+/* Loading skeleton pulse variant */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* === TYPOGRAPHY CONSISTENCY === */
+h1 { font-size: 1.5rem; font-weight: 900; line-height: 1.2; }
+h2 { font-size: 1.25rem; font-weight: 800; line-height: 1.25; }
+h3 { font-size: 1.1rem; font-weight: 700; line-height: 1.3; }
+
+/* KPI number consistency */
+.kpi-value {
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+}
+.kpi-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #9ca3af;
+}
+
+/* Body text consistency */
+body { line-height: 1.55; }
+p, td, li { line-height: 1.55; }
+
+/* === SMOOTH TAB TRANSITIONS === */
+.brand-tab {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.brand-tab.active::after {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* === CARD HOVER — consistent across all cards === */
+.brand-card, .kpi-card {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* === BUTTON HOVER STATES === */
+button {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.btn-cta:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.08);
+}
+.btn-cta:active {
+  transform: translateY(0);
+}
+
+/* ============================================================
    DARK MODE VARIABLES — placed at end of file to ensure
    they override :root variables after Tailwind processing
    ============================================================ */

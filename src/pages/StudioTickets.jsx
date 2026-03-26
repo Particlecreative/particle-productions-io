@@ -54,7 +54,7 @@ export default function StudioTickets() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-3xl font-black brand-title" style={{ color: 'var(--brand-primary)' }}>
+        <h1 className="text-2xl font-black brand-title" style={{ color: 'var(--brand-primary)' }}>
           Studio Tickets
         </h1>
       </div>

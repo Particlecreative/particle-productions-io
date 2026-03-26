@@ -23,6 +23,7 @@ export default function Financial() {
   const [selectedYear, setSelectedYear] = useState(2026);
   const [productions, setProductions] = useState([]);
   const [lineItems, setLineItems] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [yearlyBudget, setYearlyBudget] = useState(() =>
     Number(localStorage.getItem(`cp_yearly_budget_${brandId}_${2026}`)) || 600_000
   );
@@ -30,6 +31,7 @@ export default function Financial() {
 
   useEffect(() => {
     async function load() {
+      setLoading(true);
       const prods = await Promise.resolve(getProductions(brandId, selectedYear));
       const prodsArr = Array.isArray(prods) ? prods : [];
       setProductions(prodsArr);
@@ -38,6 +40,7 @@ export default function Financial() {
       setLineItems((Array.isArray(items) ? items : []).filter(li => prodIds.has(li.production_id)));
       const saved = Number(localStorage.getItem(`cp_yearly_budget_${brandId}_${selectedYear}`));
       setYearlyBudget(saved || 600_000);
+      setLoading(false);
     }
     load();
   }, [brandId, selectedYear]);
@@ -104,11 +107,42 @@ export default function Financial() {
       }));
   }, [productions]);
 
+  if (loading) {
+    return (
+      <div className="page-enter">
+        <div className="flex items-center justify-between mb-8">
+          <div className="skeleton h-8 w-64 rounded-lg" />
+          <div className="skeleton h-8 w-48 rounded-lg" />
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="kpi-card">
+              <div className="skeleton h-3 w-20 rounded mb-3" />
+              <div className="skeleton h-8 w-32 rounded mb-2" />
+              <div className="skeleton h-1.5 w-16 rounded" />
+            </div>
+          ))}
+        </div>
+        <div className="brand-card">
+          <div className="space-y-4">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="flex items-center gap-4">
+                <div className="skeleton h-4 w-28 rounded" />
+                <div className="skeleton h-4 flex-1 rounded" />
+                <div className="skeleton h-4 w-20 rounded" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="page-enter">
+    <div className="page-enter animate-fade-in">
       <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
         <h1
-          className="text-3xl font-black brand-title tracking-tight"
+          className="text-2xl font-black brand-title tracking-tight"
           style={{ color: 'var(--brand-primary)', letterSpacing: '-0.03em' }}
         >
           Financial Overview

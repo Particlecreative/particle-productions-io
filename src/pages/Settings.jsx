@@ -555,7 +555,7 @@ export default function Settings() {
     <div>
       {/* Page header */}
       <div className="flex items-center justify-between mb-5">
-        <h1 className="text-3xl font-black brand-title" style={{ color: 'var(--brand-primary)' }}>
+        <h1 className="text-2xl font-black brand-title" style={{ color: 'var(--brand-primary)' }}>
           Settings
         </h1>
         <span className="text-sm text-gray-400">Brand: {brand.name}</span>

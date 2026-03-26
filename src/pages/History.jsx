@@ -114,11 +114,11 @@ export default function History() {
   const hasFilters = search || filterField || filterUser || filterProd || dateFrom || dateTo;
 
   return (
-    <div>
+    <div className="animate-fade-in">
       {/* Header */}
       <div className="flex items-start justify-between mb-6 flex-wrap gap-4">
         <div>
-          <h1 className="text-3xl font-black brand-title" style={{ color: 'var(--brand-primary)' }}>
+          <h1 className="text-2xl font-black brand-title" style={{ color: 'var(--brand-primary)' }}>
             Change History
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">

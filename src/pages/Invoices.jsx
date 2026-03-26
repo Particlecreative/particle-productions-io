@@ -177,10 +177,10 @@ export default function Invoices() {
   ];
 
   return (
-    <div>
+    <div className="animate-fade-in">
       {/* Header */}
       <div className="flex items-center justify-between mb-4 flex-wrap gap-4">
-        <h1 className="text-3xl font-black brand-title" style={{ color: 'var(--brand-primary)' }}>
+        <h1 className="text-2xl font-black brand-title" style={{ color: 'var(--brand-primary)' }}>
           Invoices
         </h1>
         <ExportMenu rows={filteredItems} columns={INVOICES_EXPORT_COLS} filename="invoices" title="Invoices" />
@@ -500,7 +500,8 @@ function ReceiptsTab({ receipts, allItems, productions, fmt, isEditor, onReceipt
       </div>
 
       {/* Table */}
-      <div className="brand-card overflow-x-auto">
+      <div className="brand-card p-0 overflow-hidden">
+        <div className="table-scroll-wrapper">
         <table className="data-table" style={{ minWidth: 860 }}>
           <thead>
             <tr>
@@ -615,6 +616,7 @@ function ReceiptsTab({ receipts, allItems, productions, fmt, isEditor, onReceipt
             })}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

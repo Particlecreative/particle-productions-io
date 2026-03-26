@@ -200,10 +200,10 @@ export default function Suppliers() {
   const EXPORT_COLS = ALL_COLS.filter(c => vis(c.key));
 
   return (
-    <div>
+    <div className="animate-fade-in">
       {/* Header */}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
-        <h1 className="text-3xl font-black brand-title" style={{ color: 'var(--brand-primary)' }}>
+        <h1 className="text-2xl font-black brand-title" style={{ color: 'var(--brand-primary)' }}>
           Suppliers
         </h1>
         <div className="flex items-center gap-3">
