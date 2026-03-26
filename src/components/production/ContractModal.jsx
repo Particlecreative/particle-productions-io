@@ -830,22 +830,27 @@ export default function ContractModal({ production, lineItem, onClose }) {
         body: JSON.stringify({
           to: toEmail,
           skipDefaultCc: sandboxMode,
-          subject: `${subjectPrefix}Contract for ${production.project_name} — ${toName}`,
+          subject: `${subjectPrefix}Services Agreement - ${production.project_name}`,
           htmlBody: `
-            <div style="font-family: Arial, sans-serif; max-width: 600px;">
+            <div style="font-family: Arial, sans-serif; max-width: 600px; color: #333;">
               ${sandboxMode ? '<div style="background:#fef3c7;border:2px solid #f59e0b;padding:10px 16px;border-radius:8px;margin-bottom:16px;font-weight:bold;color:#92400e;">🧪 SANDBOX TEST — This is a test contract. No real signatures needed.</div>' : ''}
-              <h2 style="color: #030b2e;">Contract Ready for Signature</h2>
-              <p>Hi ${toName},</p>
-              <p>A contract has been prepared for <strong>${production.project_name}</strong>.</p>
-              <p>Please review and sign the contract by clicking the link below:</p>
-              <p style="margin: 24px 0;">
-                <a href="${providerLink}" style="background: #0808f8; color: white; padding: 12px 28px; border-radius: 8px; text-decoration: none; font-weight: bold;">
+              <div style="border-bottom: 3px solid #030b2e; padding-bottom: 12px; margin-bottom: 20px;">
+                <h2 style="color: #030b2e; margin: 0;">Services Agreement</h2>
+                <p style="color: #666; font-size: 13px; margin: 4px 0 0;">${production.project_name}</p>
+              </div>
+              <p>Dear ${toName},</p>
+              <p>We are pleased to share the Services Agreement for <strong>${production.project_name}</strong> between Particle Aesthetic Science Ltd. and ${providerName}.</p>
+              <p>Please review the contract details carefully and sign by clicking the button below:</p>
+              <p style="margin: 28px 0; text-align: center;">
+                <a href="${providerLink}" style="background: #030b2e; color: white; padding: 14px 36px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 15px;">
                   Review & Sign Contract
                 </a>
               </p>
-              <p style="color: #888; font-size: 13px;">If the button doesn't work, copy this link: ${providerLink}</p>
-              <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
-              <p style="color: #aaa; font-size: 11px;">Sent via CP Panel — Particle Aesthetic Science Ltd.</p>
+              <p style="color: #666; font-size: 13px;">Once both parties have signed, you will automatically receive a fully executed copy of the agreement via email.</p>
+              <p style="color: #888; font-size: 12px; margin-top: 8px;">If the button doesn't work, copy this link:<br/><a href="${providerLink}" style="color: #0808f8;">${providerLink}</a></p>
+              <hr style="border: none; border-top: 1px solid #eee; margin: 28px 0 16px;" />
+              <p style="color: #030b2e; font-weight: 600; font-size: 13px; margin-bottom: 2px;">Particle Creative Production Team</p>
+              <p style="color: #aaa; font-size: 11px; margin: 0;">Particle Aesthetic Science Ltd. · King George 48, Tel Aviv</p>
             </div>
           `,
         }),

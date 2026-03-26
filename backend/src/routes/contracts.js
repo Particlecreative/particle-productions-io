@@ -460,7 +460,7 @@ router.post('/:production_id/generate', async (req, res) => {
     sendEmail({
       to: provider_email,
       skipDefaultCc: !!sandbox,
-      subject: `${sandbox ? '[TEST] ' : ''}Contract for ${projectName} — ${provider_name}`,
+      subject: `${sandbox ? '[TEST] ' : ''}Services Agreement - ${projectName}`,
       htmlBody: `
         <div style="font-family: Arial, sans-serif; max-width: 600px;">
           ${sandbox ? '<div style="background:#fef3c7;border:2px solid #f59e0b;padding:10px 16px;border-radius:8px;margin-bottom:16px;font-weight:bold;color:#92400e;">[TEST] Sandbox Mode</div>' : ''}
