@@ -265,12 +265,16 @@ h1, h2, h3 { letter-spacing: -0.025em; }
 .data-table tr:last-child td:last-child  { border-radius: 0 0 var(--radius) 0; }
 
 /* Compact table mode — maximum density */
-.compact-table th { padding: 5px 6px; font-size: 9px; letter-spacing: 0.04em; white-space: nowrap; }
-.compact-table td { padding: 5px 6px; font-size: 11px; line-height: 1.3; }
-.compact-table td span { white-space: normal !important; word-break: break-word; }
-.compact-table select { padding: 2px 16px 2px 4px; font-size: 11px; min-width: 0; }
+.compact-table th { padding: 4px 5px; font-size: 9px; letter-spacing: 0.03em; white-space: nowrap; }
+.compact-table td { padding: 4px 5px; font-size: 11px; line-height: 1.25; max-width: 140px; }
+.compact-table td span,
+.compact-table td a { white-space: normal !important; word-break: break-word; }
+.compact-table select { padding: 1px 14px 1px 3px; font-size: 10px; min-width: 0; }
 .compact-table .whitespace-nowrap { white-space: normal !important; }
-.compact-table input { padding: 3px 6px; font-size: 11px; }
+.compact-table input { padding: 2px 4px; font-size: 10px; }
+/* Allow 2-line wrapping in compact */
+.compact-table td:nth-child(3) { max-width: 160px; }
+.compact-table td:nth-child(4) { max-width: 100px; }
 
 /* Paid rows — green tint, sinks to bottom */
 .paid-row { background: rgba(34,197,94,0.06) !important; }

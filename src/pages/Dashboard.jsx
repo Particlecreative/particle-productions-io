@@ -88,6 +88,9 @@ export default function Dashboard() {
   const [compactMode, setCompactMode] = useState(() => {
     try { return JSON.parse(localStorage.getItem('cp_dash_compact') || 'false'); } catch { return false; }
   });
+  const [summaryOpen, setSummaryOpen] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('cp_dash_summary') || 'true'); } catch { return true; }
+  });
   const [search, setSearch] = useState(() => {
     try { return JSON.parse(localStorage.getItem('cp_dash_filters') || '{}').search ?? ''; } catch { return ''; }
   });
@@ -382,93 +385,89 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── Bento Header Grid ──────────────────────────────────── */}
-      <div className={clsx('grid grid-cols-12 mb-6', compactMode ? 'gap-2' : 'gap-4')}>
-
-        {/* Left: Total Budget (spans 5 cols) */}
-        <div className="col-span-12 md:col-span-5 brand-card flex flex-col justify-center relative overflow-hidden" style={{ minHeight: compactMode ? 90 : 120 }}>
-          <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ background: 'var(--brand-gradient)' }} />
-          <div className="relative z-10">
-            <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">{selectedYear} Total Budget</div>
-            <div className={clsx(compactMode ? 'text-xl' : 'text-3xl md:text-4xl', 'font-black tracking-tight kpi-value')} style={{ color: 'var(--brand-primary)', letterSpacing: '-0.04em', lineHeight: 1 }}>
-              {df(totalBudget)}
-            </div>
-            <div className="mt-3 h-1 w-20 rounded-full overflow-hidden" style={{ background: 'rgba(0,0,0,0.06)' }}>
-              <div className="h-full rounded-full gradient-accent-line" style={{ background: 'var(--brand-gradient)', width: '100%' }} />
-            </div>
-          </div>
-        </div>
-
-        {/* Right: 3 metric cards (spans 7 cols) */}
-        <div className={clsx('col-span-12 md:col-span-7 grid grid-cols-3', compactMode ? 'gap-2' : 'gap-4')}>
-
-          {/* Actual Spent */}
-          <div className="kpi-card flex flex-col justify-between" style={{ minHeight: compactMode ? 90 : 120 }}>
-            <div className="kpi-label">Spent</div>
-            <div>
-              <div className={clsx(compactMode ? 'text-base' : 'text-lg md:text-xl', 'font-black tracking-tight text-green-600')} style={{ letterSpacing: '-0.02em', lineHeight: 1 }}>
-                {df(totalSpent)}
-              </div>
-              <div className="mt-2 h-1.5 rounded-full bg-gray-100 overflow-hidden">
-                <div className="h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${Math.min(pctSpent, 100)}%`, background: 'linear-gradient(90deg, #22c55e, #16a34a)' }} />
-              </div>
-              <div className="text-[10px] text-gray-400 mt-1 font-medium">{pctSpent}% of budget</div>
-            </div>
-          </div>
-
-          {/* Remaining */}
-          <div className="kpi-card flex flex-col justify-between" style={{ minHeight: compactMode ? 90 : 120 }}>
-            <div className="kpi-label">Remaining</div>
-            <div>
-              <div className={clsx(compactMode ? 'text-base' : 'text-lg md:text-xl', 'font-black tracking-tight')} style={{ color: 'var(--brand-secondary)', letterSpacing: '-0.02em', lineHeight: 1 }}>
-                {df(totalBudget - totalSpent)}
-              </div>
-              <div className="mt-2 text-[10px] text-gray-400 font-medium">
-                {totalBudget > 0 ? `${100 - pctSpent}% left` : ''}
-              </div>
-            </div>
-          </div>
-
-          {/* Stage Breakdown */}
-          <div className="kpi-card flex flex-col justify-between" style={{ minHeight: compactMode ? 90 : 140 }}>
-            <div className="kpi-label">By Stage</div>
-            <div className="flex flex-wrap gap-1.5 mt-2">
-              {Object.entries(stageBreakdown).map(([stage, count]) => {
-                const stageColors = {
-                  'Pending': { bg: '#f0f0ff', text: '#4527A0' },
-                  'Pre-Production': { bg: '#ede7f6', text: '#4527A0' },
-                  'Production': { bg: '#e3f2fd', text: '#1565C0' },
-                  'Post Production': { bg: '#fff3e0', text: '#e65100' },
-                  'Completed': { bg: '#e8f5e9', text: '#2e7d32' },
-                  'Paused': { bg: '#fff8e1', text: '#f57f17' },
-                };
-                const sc = stageColors[stage] || { bg: '#f3f4f6', text: '#6b7280' };
-                return (
-                  <span key={stage} className="inline-flex items-center gap-1.5 text-[11px] font-bold px-3 py-1 rounded-full" style={{ background: sc.bg, color: sc.text }}>
-                    {stage} <span className="font-black">{count}</span>
-                  </span>
-                );
-              })}
-            </div>
-            <div className="text-xl font-black mt-2 kpi-value" style={{ color: 'var(--brand-primary)', letterSpacing: '-0.03em' }}>
-              {productions.length}
-              <span className="text-xs font-medium text-gray-400 ml-1">total</span>
-            </div>
-          </div>
-        </div>
-
-        {customOrder && !search && !stageFilter && !productTypeFilter && (
-          <div className="col-span-12">
+      {/* ── Summary Strip (collapsible) ──────────────────────────── */}
+      {(() => {
+        const [showSummary, setShowSummary] = [summaryOpen, setSummaryOpen];
+        return (
+          <div className="mb-4">
             <button
-              onClick={handleSaveViewClick}
-              className="flex items-center gap-2 px-3 py-2 rounded-full text-xs font-semibold border border-green-300 text-green-700 bg-green-50 hover:bg-green-100 transition-all"
+              onClick={() => { const v = !showSummary; setSummaryOpen(v); localStorage.setItem('cp_dash_summary', JSON.stringify(v)); }}
+              className="flex items-center gap-2 text-xs font-semibold text-gray-400 hover:text-gray-600 mb-2 transition-colors"
             >
-              <Save size={13} />
-              Save This View
+              {showSummary ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              {showSummary ? 'Hide Summary' : 'Show Summary'}
             </button>
+            {showSummary && (
+              <div className="rounded-2xl overflow-hidden" style={{ background: 'linear-gradient(135deg, rgba(3,11,46,0.04) 0%, rgba(8,8,248,0.04) 100%)', border: '1px solid rgba(8,8,248,0.08)' }}>
+                <div className={clsx('grid grid-cols-2 md:grid-cols-4 p-4', compactMode ? 'gap-3' : 'gap-4')}>
+
+                  {/* Total Budget */}
+                  <div className="flex flex-col justify-center">
+                    <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">{selectedYear} Total Budget</div>
+                    <div className="text-2xl font-black tracking-tight" style={{ color: 'var(--brand-primary)', letterSpacing: '-0.03em' }}>
+                      {df(totalBudget)}
+                    </div>
+                    <div className="mt-2 h-1 w-16 rounded-full" style={{ background: 'var(--brand-accent)' }} />
+                  </div>
+
+                  {/* Spent */}
+                  <div className="flex flex-col justify-center">
+                    <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">Spent</div>
+                    <div className="text-xl font-black tracking-tight text-green-600" style={{ letterSpacing: '-0.02em' }}>
+                      {df(totalSpent)}
+                    </div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <div className="flex-1 h-1.5 rounded-full bg-gray-200 overflow-hidden" style={{ maxWidth: 80 }}>
+                        <div className="h-full rounded-full" style={{ width: `${Math.min(pctSpent, 100)}%`, background: '#22c55e' }} />
+                      </div>
+                      <span className="text-[10px] text-gray-400 font-medium">{pctSpent}%</span>
+                    </div>
+                  </div>
+
+                  {/* Remaining */}
+                  <div className="flex flex-col justify-center">
+                    <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">Remaining</div>
+                    <div className="text-xl font-black tracking-tight" style={{ color: 'var(--brand-secondary)', letterSpacing: '-0.02em' }}>
+                      {df(totalBudget - totalSpent)}
+                    </div>
+                    <div className="mt-2 text-[10px] text-gray-400 font-medium">
+                      {totalBudget > 0 ? `${100 - pctSpent}% left` : ''}
+                    </div>
+                  </div>
+
+                  {/* Stage Pills */}
+                  <div className="flex flex-col justify-center">
+                    <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">By Stage</div>
+                    <div className="flex flex-wrap gap-1">
+                      {Object.entries(stageBreakdown).map(([stage, count]) => {
+                        const sc = { 'Pending': '#6b46c1', 'Pre-Production': '#4527A0', 'Production': '#1565C0', 'Post Production': '#e65100', 'Completed': '#2e7d32', 'Paused': '#f57f17' }[stage] || '#6b7280';
+                        return (
+                          <span key={stage} className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white" style={{ background: sc }}>
+                            {stage.replace('Production', 'Prod').replace('Pre-Prod', 'Pre')} {count}
+                          </span>
+                        );
+                      })}
+                    </div>
+                    <div className="text-lg font-black mt-1" style={{ color: 'var(--brand-primary)' }}>
+                      {productions.length} <span className="text-[10px] font-medium text-gray-400">total</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        );
+      })()}
+
+      {customOrder && !search && !stageFilter && !productTypeFilter && (
+        <button
+          onClick={handleSaveViewClick}
+          className="flex items-center gap-2 px-3 py-2 mb-3 rounded-full text-xs font-semibold border border-green-300 text-green-700 bg-green-50 hover:bg-green-100 transition-all"
+        >
+          <Save size={13} />
+          Save This View
+        </button>
+      )}
 
       {/* Toolbar */}
       <div className="flex items-center gap-3 mb-4 flex-wrap">
