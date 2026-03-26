@@ -213,10 +213,26 @@ CREATE TABLE IF NOT EXISTS contracts (
   production_id  TEXT UNIQUE REFERENCES productions(id) ON DELETE CASCADE,
   provider_name  TEXT,
   provider_email TEXT,
-  status         TEXT DEFAULT 'none',   -- none | sent | signed
+  status         TEXT DEFAULT 'none',   -- none | pending | sent | signed
   sent_at        TIMESTAMPTZ,
   signed_at      TIMESTAMPTZ,
   pdf_url        TEXT,
+  events         JSONB DEFAULT '[]',
+  drive_url      TEXT,
+  dropbox_url    TEXT,
+  created_at     TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Contract e-signatures
+CREATE TABLE IF NOT EXISTS contract_signatures (
+  id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  contract_id    UUID REFERENCES contracts(id) ON DELETE CASCADE,
+  signer_role    TEXT NOT NULL,            -- 'provider' | 'hocp'
+  signer_name    TEXT,
+  signer_email   TEXT,
+  signature_data TEXT,                     -- base64 PNG
+  signed_at      TIMESTAMPTZ,
+  token          TEXT UNIQUE NOT NULL,
   created_at     TIMESTAMPTZ DEFAULT NOW()
 );
 

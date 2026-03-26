@@ -375,6 +375,38 @@ export function getContracts() {
   return apiGet('/contracts');
 }
 
+export function generateContractSignatures(productionId, data) {
+  if (IS_DEV) {
+    // In dev mode, simulate generating signing links
+    const token1 = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+    const token2 = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+    const fakeId = 'dev-' + Date.now();
+    const baseUrl = window.location.origin;
+    const contract = upsertContract({
+      production_id: productionId,
+      provider_name: data.provider_name,
+      provider_email: data.provider_email,
+      status: 'pending',
+      events: [{ type: 'created', at: new Date().toISOString() }],
+    });
+    return {
+      contract,
+      signing_links: {
+        provider: { url: `${baseUrl}/sign/${fakeId}/${token1}`, name: data.provider_name, email: data.provider_email },
+        hocp:     { url: `${baseUrl}/sign/${fakeId}/${token2}`, name: data.hocp_name || 'Omer Barak', email: data.hocp_email || 'omer@particleformen.com' },
+      },
+    };
+  }
+  return apiPost(`/contracts/${encodeURIComponent(productionId)}/generate`, data);
+}
+
+export function getContractSignatures(productionId) {
+  if (IS_DEV) {
+    return { signatures: [], contract: getContract(productionId) };
+  }
+  return apiGet(`/contracts/${encodeURIComponent(productionId)}/signatures`);
+}
+
 // ========== INVOICES ==========
 export function getInvoices(lineItemId) {
   if (IS_DEV) {

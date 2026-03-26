@@ -734,17 +734,22 @@ function ProductionGanttView({ days, cw, today, allProdsList, prodEvts, phases, 
   }
 
   return (
-    <div className="overflow-x-auto border border-gray-200 rounded-xl">
+    <div className="overflow-x-auto border border-gray-100 rounded-2xl" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.04), 0 6px 24px rgba(0,0,0,0.03)' }}>
       <div style={{ minWidth: totalW }}>
         {/* Date header */}
-        <div className="flex bg-gray-50 border-b border-gray-200" style={{ height: zoom === 'day' ? 48 : 36 }}>
+        <div className="flex border-b border-gray-100 relative" style={{ height: zoom === 'day' ? 50 : 38, background: '#f8f9fb' }}>
           <div
-            className="flex items-center px-3 flex-shrink-0 border-r border-gray-200"
-            style={{ width: LABEL_W, position: 'sticky', left: 0, zIndex: 20, background: '#f9fafb' }}
+            className="flex items-center px-4 flex-shrink-0 border-r border-gray-100 gantt-label-col-header"
+            style={{ width: LABEL_W }}
           >
-            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Production / Task</span>
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Production / Task</span>
           </div>
-          <DateHeaderRow days={days} cw={cw} zoom={zoom} showIL={showIL} showUS={showUS} todayStr={todayStr} />
+          <div className="flex flex-1 relative">
+            <DateHeaderRow days={days} cw={cw} zoom={zoom} showIL={showIL} showUS={showUS} todayStr={todayStr} />
+            {todayOff >= 0 && todayOff < days.length && (
+              <div className="gantt-today-label" style={{ left: todayOff * cw + cw / 2, top: 2 }}>Today</div>
+            )}
+          </div>
         </div>
 
         {/* Production sections */}
@@ -757,48 +762,69 @@ function ProductionGanttView({ days, cw, today, allProdsList, prodEvts, phases, 
             <div key={prod.id}>
               {/* Production header */}
               <div
-                className="flex items-center cursor-pointer"
-                style={{ height: 28, background: `${color}15`, borderBottom: `1px solid ${color}25` }}
+                className="flex items-center cursor-pointer gantt-phase-header"
+                style={{
+                  height: PHASE_ROW_H,
+                  background: `${color}08`,
+                  borderBottom: `1px solid ${color}15`,
+                  '--phase-color': color,
+                }}
                 onClick={() => toggleProd(prod.id)}
               >
                 <div
-                  className="flex items-center gap-1.5 flex-shrink-0 px-3"
-                  style={{ width: LABEL_W, position: 'sticky', left: 0, zIndex: 10, background: `${color}15` }}
+                  className="flex items-center gap-2 flex-shrink-0 px-4 gantt-label-col"
+                  style={{ width: LABEL_W, background: `${color}06` }}
                 >
-                  <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: color }} />
+                  <ChevronDown
+                    size={13}
+                    className={clsx('gantt-chevron text-gray-400', isCollapsed && 'gantt-chevron-collapsed')}
+                  />
+                  <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: color }} />
                   <span className="text-[11px] font-bold leading-tight truncate" style={{ color }}>
                     {prod.id}
                     <span className="font-normal text-gray-500 ml-1">{prod.project_name}</span>
                   </span>
-                  <span className="ml-auto text-[10px] text-gray-400 mr-1 flex-shrink-0">{evts.length}</span>
-                  {isCollapsed ? <ChevronDown size={11} className="text-gray-400" /> : <ChevronUp size={11} className="text-gray-400" />}
+                  <span
+                    className="ml-auto px-1.5 py-0.5 rounded-full text-[9px] font-bold flex-shrink-0"
+                    style={{ background: `${color}12`, color }}
+                  >
+                    {evts.length}
+                  </span>
                 </div>
                 <div className="flex-1 relative" style={{ height: '100%' }}>
                   {todayOff >= 0 && todayOff < days.length && (
-                    <div style={{ position: 'absolute', left: todayOff * cw + cw / 2, top: 0, bottom: 0, width: 1, background: '#3b82f680' }} />
+                    <div className="gantt-today-line" style={{ left: todayOff * cw + cw / 2 }} />
                   )}
                 </div>
               </div>
 
               {/* Event rows */}
-              {!isCollapsed && evts.map(event => {
-                const phase = phases.find(p => p.id === event.phase);
-                return (
-                  <GanttEventRow key={event.id} event={event} phase={phase || { color }} days={days} cw={cw} todayOff={todayOff} onDrag={onDrag} onEdit={onEdit} />
-                );
-              })}
+              <div
+                style={{
+                  overflow: 'hidden',
+                  maxHeight: isCollapsed ? 0 : (evts.length * ROW_H + 30) * 2,
+                  transition: 'max-height 0.25s ease',
+                }}
+              >
+                {evts.map((event, idx) => {
+                  const phase = phases.find(p => p.id === event.phase);
+                  return (
+                    <GanttEventRow key={event.id} event={event} phase={phase || { color, name: '' }} days={days} cw={cw} todayOff={todayOff} onDrag={onDrag} onEdit={onEdit} rowIndex={idx} accentColor={color} />
+                  );
+                })}
 
-              {/* Empty state */}
-              {!isCollapsed && evts.length === 0 && (
-                <div className="flex" style={{ height: 30, borderBottom: '1px solid #f3f4f6' }}>
-                  <div className="flex items-center px-3 flex-shrink-0 border-r border-gray-100" style={{ width: LABEL_W, position: 'sticky', left: 0, zIndex: 5, background: 'white' }}>
-                    <span className="text-[11px] text-gray-300 italic">No events</span>
+                {/* Empty state */}
+                {evts.length === 0 && (
+                  <div className="flex" style={{ height: 32, borderBottom: '1px solid rgba(0,0,0,0.04)' }}>
+                    <div className="flex items-center px-4 flex-shrink-0 border-r border-gray-100 gantt-label-col" style={{ width: LABEL_W }}>
+                      <span className="text-[11px] text-gray-300 italic">No events</span>
+                    </div>
+                    <div className="flex-1 relative" style={{ height: '100%' }}>
+                      <GridCellRow days={days} cw={cw} todayOff={todayOff} onCellClick={null} />
+                    </div>
                   </div>
-                  <div className="flex-1 relative" style={{ height: '100%' }}>
-                    <GridCellRow days={days} cw={cw} todayOff={todayOff} onCellClick={null} />
-                  </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           );
         })}
