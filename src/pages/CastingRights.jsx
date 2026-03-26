@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { User, ExternalLink, Search, X, Plus, ChevronDown, ChevronRight, Upload, Calendar, Tag } from 'lucide-react';
+import { User, ExternalLink, Search, X, Plus, ChevronDown, ChevronRight, Upload, Calendar, Tag, Play, Clock, RefreshCw } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useBrand } from '../context/BrandContext';
 import { getAllCasting, getProductions, createCastMember, updateCastMember, deleteCastMember, createGanttEvent, generateId } from '../lib/dataService';
+import { apiPost, apiGet } from '../lib/apiClient';
 import clsx from 'clsx';
 
 const ROLES   = ['Model', 'Actor', 'Actress', 'Extra'];
@@ -82,6 +83,32 @@ export default function CastingRights() {
   const [delConfirm, setDelConfirm] = useState(null);
   const [viewMode, setViewMode] = useState('By Status');
   const [photoFullscreen, setPhotoFullscreen] = useState(null);
+  const [automationRunning, setAutomationRunning] = useState(false);
+  const [automationResult, setAutomationResult] = useState(null);
+  const [lastRunTime, setLastRunTime] = useState(null);
+
+  // Fetch last automation run time
+  useEffect(() => {
+    apiGet('/api/casting-auto/last-run')
+      .then(data => { if (data?.lastRun) setLastRunTime(data.lastRun); })
+      .catch(() => {});
+  }, []);
+
+  async function handleRunAutomations() {
+    setAutomationRunning(true);
+    setAutomationResult(null);
+    try {
+      const data = await apiPost('/api/casting-auto/run-automations');
+      setAutomationResult(data.summary);
+      setLastRunTime(new Date().toISOString());
+      // Refresh cast data after automation
+      await refresh();
+    } catch (err) {
+      setAutomationResult({ errors: [err.message || 'Automation failed'] });
+    } finally {
+      setAutomationRunning(false);
+    }
+  }
 
   useEffect(() => {
     async function load() {
@@ -334,15 +361,80 @@ export default function CastingRights() {
           <h1 className="text-2xl font-black text-gray-900">Casting Rights</h1>
           <p className="text-sm text-gray-400 mt-0.5">All cast members across productions — contract status & usage rights</p>
         </div>
-        {(isEditor || isAdmin) && (
-          <button
-            onClick={() => setEditing({ ...BLANK })}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-700 transition-colors"
-          >
-            <Plus size={14} /> New Cast Member
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {isAdmin && (
+            <button
+              onClick={handleRunAutomations}
+              disabled={automationRunning}
+              className={clsx(
+                'flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold border transition-colors',
+                automationRunning
+                  ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+                  : 'bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100'
+              )}
+            >
+              {automationRunning ? <RefreshCw size={14} className="animate-spin" /> : <Play size={14} />}
+              {automationRunning ? 'Running...' : 'Run Automations'}
+            </button>
+          )}
+          {(isEditor || isAdmin) && (
+            <button
+              onClick={() => setEditing({ ...BLANK })}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-700 transition-colors"
+            >
+              <Plus size={14} /> New Cast Member
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Automation result banner */}
+      {automationResult && (
+        <div className={clsx(
+          'mb-4 rounded-xl border px-4 py-3 text-sm',
+          automationResult.errors?.length > 0
+            ? 'bg-red-50 border-red-200 text-red-700'
+            : 'bg-green-50 border-green-200 text-green-700'
+        )}>
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="font-semibold">Automation Complete</span>
+              {' — '}Checked {automationResult.checked || 0} members.
+              {automationResult.overdue?.length > 0 && (
+                <span className="ml-2 text-red-600 font-medium">
+                  Overdue: {automationResult.overdue.join(', ')}
+                </span>
+              )}
+              {automationResult.closeToOverdue?.length > 0 && (
+                <span className="ml-2 text-orange-600 font-medium">
+                  Close to Overdue: {automationResult.closeToOverdue.join(', ')}
+                </span>
+              )}
+              {automationResult.startDateNotified?.length > 0 && (
+                <span className="ml-2 text-blue-600 font-medium">
+                  Start notified: {automationResult.startDateNotified.join(', ')}
+                </span>
+              )}
+              {automationResult.errors?.length > 0 && (
+                <span className="ml-2 text-red-600 font-medium">
+                  Errors: {automationResult.errors.join('; ')}
+                </span>
+              )}
+            </div>
+            <button onClick={() => setAutomationResult(null)} className="text-gray-400 hover:text-gray-600">
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Last run info */}
+      {lastRunTime && (
+        <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-4">
+          <Clock size={11} />
+          Last automation run: {new Date(lastRunTime).toLocaleString()}
+        </div>
+      )}
 
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-4 mb-6">
