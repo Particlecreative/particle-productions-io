@@ -136,27 +136,48 @@ export default function ProductionBoard() {
 
       {/* ── Hero Header Card ─────────────────────────────────────────── */}
       <div
-        className="brand-card mb-5 overflow-hidden"
-        style={{ borderLeft: '4px solid var(--brand-accent)', borderTop: 'none' }}
+        className="brand-card mb-5 overflow-hidden relative page-enter"
+        style={{ borderTop: 'none', padding: '28px 32px' }}
       >
-        {/* Top row: back + actions */}
-        <div className="flex items-center justify-between mb-3">
-          <button
-            onClick={() => navigate('/')}
-            className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-700 transition-colors"
-          >
-            <ArrowLeft size={13} />
-            Back to Productions
-          </button>
-        </div>
+        {/* Subtle gradient background overlay */}
+        <div className="absolute inset-0 opacity-[0.025] pointer-events-none" style={{ background: 'var(--brand-gradient)' }} />
+        {/* Left accent bar */}
+        <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-[18px]" style={{ background: 'var(--brand-gradient)' }} />
 
-        {/* Project name + ID + Stage — single row */}
-        <div className="flex items-start gap-3 mb-2">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
+        <div className="relative z-10">
+          {/* Top row: back */}
+          <div className="flex items-center justify-between mb-4">
+            <button
+              onClick={() => navigate('/')}
+              className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-700 transition-colors px-3 py-1.5 rounded-full hover:bg-gray-50"
+            >
+              <ArrowLeft size={13} />
+              Back to Productions
+            </button>
+            {/* Stage */}
+            {isEditor ? (
+              <select
+                value={production.stage}
+                onChange={e => handleStageChange(e.target.value)}
+                className="text-xs font-bold border-0 rounded-full px-4 py-1.5 outline-none cursor-pointer shrink-0 transition-all"
+                style={{
+                  color: production.stage === 'Completed' ? '#16a34a' : 'var(--brand-primary)',
+                  background: production.stage === 'Completed' ? '#dcfce7' : 'rgba(0,0,0,0.04)',
+                }}
+              >
+                {lists.stages.map(s => <option key={s}>{s}</option>)}
+              </select>
+            ) : (
+              <StageBadge stage={production.stage} />
+            )}
+          </div>
+
+          {/* Project name + ID + type tags */}
+          <div className="mb-4">
+            <div className="flex items-center gap-3 flex-wrap">
               {editingName && isEditor ? (
                 <input
-                  className="brand-input text-xl font-black w-full"
+                  className="brand-input text-3xl font-black w-full"
                   style={{ color: 'var(--brand-primary)' }}
                   value={nameValue}
                   onChange={e => setNameValue(e.target.value)}
@@ -166,90 +187,130 @@ export default function ProductionBoard() {
                 />
               ) : (
                 <h1
-                  className="text-xl font-black brand-title leading-tight cursor-pointer hover:opacity-70 transition-opacity"
-                  style={{ color: 'var(--brand-primary)' }}
+                  className="text-3xl font-black brand-title leading-tight cursor-pointer hover:opacity-70 transition-opacity"
+                  style={{ color: 'var(--brand-primary)', letterSpacing: '-0.03em' }}
                   onClick={() => isEditor && setEditingName(true)}
                   title={isEditor ? 'Click to edit' : ''}
                 >
                   {production.project_name}
                 </h1>
               )}
-              <span className="text-[10px] font-mono text-gray-400 bg-gray-50 dark:bg-gray-800 px-1.5 py-0.5 rounded">
+              <span className="text-[10px] font-mono text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-full">
                 {production.id}
               </span>
               {productTypes.map(pt => (
-                <span key={pt} className="px-1.5 py-0.5 text-[10px] font-semibold rounded-full border"
-                  style={{ borderColor: 'var(--brand-accent)', color: 'var(--brand-accent)' }}>
+                <span key={pt} className="px-3 py-1 text-[11px] font-bold rounded-full"
+                  style={{ background: 'rgba(8,8,248,0.08)', color: 'var(--brand-accent)' }}>
                   {pt}
                 </span>
               ))}
             </div>
           </div>
-          {/* Stage */}
-          {isEditor ? (
-            <select
-              value={production.stage}
-              onChange={e => handleStageChange(e.target.value)}
-              className="text-xs font-bold border rounded-lg px-2.5 py-1 outline-none cursor-pointer shrink-0"
-              style={{
-                borderColor: 'var(--brand-border)',
-                color: production.stage === 'Completed' ? '#16a34a' : 'var(--brand-primary)',
-                background: production.stage === 'Completed' ? '#dcfce7' : 'transparent',
-              }}
-            >
-              {lists.stages.map(s => <option key={s}>{s}</option>)}
-            </select>
-          ) : (
-            <StageBadge stage={production.stage} />
-          )}
-        </div>
 
-        {/* Info pills — compact single row */}
-        <div className="flex items-center gap-4 flex-wrap text-xs">
-          <InfoPill icon={Film} label="Type" value={production.production_type} />
-          <InfoPill icon={Calendar} label="" value={timeline} />
-          <InfoPill icon={Tag} label="" value={production.producer} />
-          {production.shoot_dates?.length > 0 && (
-            <InfoPill icon={Clapperboard} label="Shoot" value={
-              Array.isArray(production.shoot_dates) ? production.shoot_dates.map(fmtDate).join(', ') : fmtDate(production.shoot_dates)
-            } />
-          )}
-          <InfoPill icon={Truck} label="Delivery" value={fmtDate(production.delivery_date)} />
-          <InfoPill icon={MapPin} label="Air" value={fmtDate(production.air_date)} />
-
-          {/* Budget toggle — inline compact */}
-          <button
-            onClick={() => setShowBudget(!showBudget)}
-            className="flex items-center gap-1.5 ml-auto text-xs text-gray-400 hover:text-gray-700 transition-colors"
-          >
-            <DollarSign size={12} />
-            <span className="font-semibold" style={{ color: 'var(--brand-primary)' }}>{fmt(planned)}</span>
-            <span className="text-green-600 font-medium">→ {fmt(spent)}</span>
-            <ChevronDown size={12} className={clsx('transition-transform', showBudget && 'rotate-180')} />
-          </button>
-        </div>
-
-        {/* Collapsible budget detail */}
-        {showBudget && (
-          <div className="mt-3 pt-3 border-t flex items-center gap-6 flex-wrap text-xs" style={{ borderColor: 'var(--brand-border)' }}>
-            <div><span className="text-gray-400">Planned</span> <span className="font-bold ml-1" style={{ color: 'var(--brand-primary)' }}>{fmt(planned)}</span></div>
-            <div><span className="text-gray-400">Estimated</span> <span className="font-semibold ml-1">{fmt(estimated)}</span></div>
-            <div><span className="text-gray-400">Spent</span> <span className="font-semibold text-green-600 ml-1">{fmt(spent)}</span></div>
-            <div><span className="text-gray-400">Remaining</span> <span className={clsx('font-black ml-1', remaining >= 0 ? 'text-green-600' : 'text-red-500')}>{remaining >= 0 ? '+' : ''}{fmt(remaining)}</span></div>
-            {planned > 0 && (
-              <div className="flex items-center gap-2 flex-1 min-w-[120px]">
-                <span className="text-gray-400">{pct}%</span>
-                <div className="flex-1 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                  <div className="h-full rounded-full transition-all duration-700"
-                    style={{ width: `${Math.min(pct, 100)}%`, background: pct > 100 ? '#ef4444' : pct > 80 ? '#f59e0b' : 'var(--brand-accent)' }} />
+          {/* Metadata grid — clean bento pills */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 mb-3">
+            {production.production_type && (
+              <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-800/50 rounded-xl px-3 py-2.5">
+                <Film size={14} className="text-gray-400 shrink-0" />
+                <div>
+                  <div className="text-[9px] text-gray-400 uppercase tracking-wide font-semibold">Type</div>
+                  <div className="text-xs font-bold text-gray-700 dark:text-gray-200">{production.production_type}</div>
                 </div>
               </div>
             )}
-            {prodRate && (
-              <span className="text-[10px] text-gray-400">Rate: ₪{prodRate.toFixed(2)}/$1</span>
+            {production.producer && (
+              <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-800/50 rounded-xl px-3 py-2.5">
+                <Tag size={14} className="text-gray-400 shrink-0" />
+                <div>
+                  <div className="text-[9px] text-gray-400 uppercase tracking-wide font-semibold">Producer</div>
+                  <div className="text-xs font-bold text-gray-700 dark:text-gray-200">{production.producer}</div>
+                </div>
+              </div>
+            )}
+            {timeline && (
+              <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-800/50 rounded-xl px-3 py-2.5 col-span-2 sm:col-span-1">
+                <Calendar size={14} className="text-gray-400 shrink-0" />
+                <div>
+                  <div className="text-[9px] text-gray-400 uppercase tracking-wide font-semibold">Timeline</div>
+                  <div className="text-xs font-bold text-gray-700 dark:text-gray-200">{timeline}</div>
+                </div>
+              </div>
+            )}
+            {production.shoot_dates?.length > 0 && (
+              <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-800/50 rounded-xl px-3 py-2.5">
+                <Clapperboard size={14} className="text-gray-400 shrink-0" />
+                <div>
+                  <div className="text-[9px] text-gray-400 uppercase tracking-wide font-semibold">Shoot</div>
+                  <div className="text-xs font-bold text-gray-700 dark:text-gray-200">
+                    {Array.isArray(production.shoot_dates) ? production.shoot_dates.map(fmtDate).join(', ') : fmtDate(production.shoot_dates)}
+                  </div>
+                </div>
+              </div>
+            )}
+            {production.delivery_date && (
+              <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-800/50 rounded-xl px-3 py-2.5">
+                <Truck size={14} className="text-gray-400 shrink-0" />
+                <div>
+                  <div className="text-[9px] text-gray-400 uppercase tracking-wide font-semibold">Delivery</div>
+                  <div className="text-xs font-bold text-gray-700 dark:text-gray-200">{fmtDate(production.delivery_date)}</div>
+                </div>
+              </div>
             )}
           </div>
-        )}
+
+          {/* Budget overview — collapsible */}
+          <button
+            onClick={() => setShowBudget(!showBudget)}
+            className="flex items-center gap-3 w-full text-left px-4 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 transition-all group"
+          >
+            <DollarSign size={14} className="text-gray-400 shrink-0" />
+            <div className="flex items-center gap-4 flex-1 flex-wrap text-sm">
+              <span className="font-black" style={{ color: 'var(--brand-primary)' }}>{fmt(planned)}</span>
+              <span className="text-gray-300">|</span>
+              <span className="text-green-600 font-bold">{fmt(spent)} spent</span>
+              <span className="text-gray-300">|</span>
+              <span className={clsx('font-bold', remaining >= 0 ? 'text-blue-600' : 'text-red-500')}>{fmt(remaining)} left</span>
+            </div>
+            <ChevronDown size={14} className={clsx('text-gray-400 transition-transform duration-300 group-hover:text-gray-600', showBudget && 'rotate-180')} />
+          </button>
+
+          {/* Collapsible budget detail */}
+          <div
+            className="overflow-hidden transition-all duration-300 ease-out"
+            style={{ maxHeight: showBudget ? 200 : 0, opacity: showBudget ? 1 : 0 }}
+          >
+            <div className="mt-3 pt-3 border-t grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm" style={{ borderColor: 'rgba(0,0,0,0.06)' }}>
+              <div className="bg-gray-50 dark:bg-gray-800/30 rounded-xl p-3">
+                <div className="text-[9px] text-gray-400 uppercase tracking-wide font-semibold mb-1">Planned</div>
+                <div className="text-lg font-black" style={{ color: 'var(--brand-primary)' }}>{fmt(planned)}</div>
+              </div>
+              <div className="bg-gray-50 dark:bg-gray-800/30 rounded-xl p-3">
+                <div className="text-[9px] text-gray-400 uppercase tracking-wide font-semibold mb-1">Estimated</div>
+                <div className="text-lg font-bold text-gray-700">{fmt(estimated)}</div>
+              </div>
+              <div className="bg-gray-50 dark:bg-gray-800/30 rounded-xl p-3">
+                <div className="text-[9px] text-gray-400 uppercase tracking-wide font-semibold mb-1">Spent</div>
+                <div className="text-lg font-bold text-green-600">{fmt(spent)}</div>
+              </div>
+              <div className="bg-gray-50 dark:bg-gray-800/30 rounded-xl p-3">
+                <div className="text-[9px] text-gray-400 uppercase tracking-wide font-semibold mb-1">Remaining</div>
+                <div className={clsx('text-lg font-black', remaining >= 0 ? 'text-green-600' : 'text-red-500')}>{remaining >= 0 ? '+' : ''}{fmt(remaining)}</div>
+              </div>
+            </div>
+            {planned > 0 && (
+              <div className="mt-3 flex items-center gap-3">
+                <div className="flex-1 h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+                  <div className="h-full rounded-full transition-all duration-1000 ease-out"
+                    style={{ width: `${Math.min(pct, 100)}%`, background: pct > 100 ? 'linear-gradient(90deg, #ef4444, #dc2626)' : pct > 80 ? 'linear-gradient(90deg, #f59e0b, #d97706)' : 'var(--brand-gradient)' }} />
+                </div>
+                <span className="text-xs font-bold text-gray-500 w-10">{pct}%</span>
+                {prodRate && (
+                  <span className="text-[10px] text-gray-400 ml-2">Rate: ₪{prodRate.toFixed(2)}/$1</span>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* ── Crew Bar ─────────────────────────────────────────── */}

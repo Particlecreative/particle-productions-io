@@ -105,11 +105,11 @@ export default function Financial() {
   }, [productions]);
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+    <div className="page-enter">
+      <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
         <h1
-          className="text-3xl font-black brand-title"
-          style={{ color: 'var(--brand-primary)' }}
+          className="text-3xl font-black brand-title tracking-tight"
+          style={{ color: 'var(--brand-primary)', letterSpacing: '-0.03em' }}
         >
           Financial Overview
         </h1>
@@ -155,7 +155,7 @@ export default function Financial() {
       {view === 'overview' && (
         <div>
           {/* KPI Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-5">
             <KPICard label={`${selectedYear} Planned Budget`} value={fmt(yearlyBudget)} editable
               onEdit={v => setPendingBudget({ newVal: parseFloat(v) || 0 })} />
             <KPICard label="Actual Spend to Date" value={fmt(totalActual)} />
@@ -181,8 +181,8 @@ export default function Financial() {
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Pie Chart */}
-            <div className="brand-card">
-              <h3 className="font-bold text-sm mb-4" style={{ color: 'var(--brand-primary)' }}>
+            <div className="brand-card" style={{ padding: '32px' }}>
+              <h3 className="font-bold text-sm mb-6" style={{ color: 'var(--brand-primary)' }}>
                 Spend by Category
               </h3>
               {pieData.length > 0 ? (
@@ -212,8 +212,8 @@ export default function Financial() {
             </div>
 
             {/* Bar Chart */}
-            <div className="brand-card">
-              <h3 className="font-bold text-sm mb-4" style={{ color: 'var(--brand-primary)' }}>
+            <div className="brand-card" style={{ padding: '32px' }}>
+              <h3 className="font-bold text-sm mb-6" style={{ color: 'var(--brand-primary)' }}>
                 Budget vs Actual by Stage
               </h3>
               <ResponsiveContainer width="100%" height={240}>
@@ -352,8 +352,8 @@ function KPICard({ label, value, editable, onEdit, positive }) {
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState('');
   return (
-    <div className="brand-card">
-      <div className="text-xs text-gray-400 uppercase tracking-wide mb-1">{label}</div>
+    <div className="kpi-card">
+      <div className="kpi-label">{label}</div>
       {editing ? (
         <div className="flex gap-2">
           <input
@@ -368,13 +368,13 @@ function KPICard({ label, value, editable, onEdit, positive }) {
         </div>
       ) : (
         <div
-          className={clsx('text-xl font-black', positive === false ? 'diff-negative' : positive ? 'diff-positive' : '')}
-          style={{ color: positive == null ? 'var(--brand-primary)' : undefined }}
+          className={clsx('text-3xl font-black kpi-value tracking-tighter', positive === false ? 'diff-negative' : positive ? 'diff-positive' : '')}
+          style={{ color: positive == null ? 'var(--brand-primary)' : undefined, letterSpacing: '-0.04em', lineHeight: 1 }}
           onClick={() => { if (editable) { setVal(''); setEditing(true); } }}
           title={editable ? 'Click to edit' : ''}
         >
           {value}
-          {editable && <span className="text-xs text-gray-300 ml-1">✏</span>}
+          {editable && <span className="text-xs text-gray-300 ml-1 font-normal">edit</span>}
         </div>
       )}
     </div>

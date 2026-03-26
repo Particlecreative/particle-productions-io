@@ -16,11 +16,11 @@
   --brand-sidebar-active: #0808f8;
   --brand-glow: rgba(8, 8, 248, 0.12);
   --brand-gradient: linear-gradient(135deg, #030b2e 0%, #0808f8 100%);
-  --card-shadow: 0 1px 2px rgba(0,0,0,0.03), 0 4px 16px rgba(0,0,0,0.04);
-  --card-shadow-hover: 0 2px 4px rgba(0,0,0,0.05), 0 12px 32px rgba(0,0,0,0.08);
-  --radius: 18px;
-  --radius-sm: 12px;
-  --radius-xs: 8px;
+  --card-shadow: 0 1px 3px rgba(0,0,0,0.02), 0 4px 20px rgba(0,0,0,0.04);
+  --card-shadow-hover: 0 8px 40px rgba(0,0,0,0.08);
+  --radius: 20px;
+  --radius-sm: 14px;
+  --radius-xs: 10px;
 }
 
 [data-brand="blurr"] {
@@ -179,25 +179,26 @@ h1, h2, h3 { letter-spacing: -0.025em; }
 
 /* === BRAND CTA BUTTON — clean pill === */
 .btn-cta {
-  background: var(--brand-primary);
+  background: var(--brand-gradient);
   color: white;
-  font-weight: 600;
-  padding: 10px 24px;
+  font-weight: 700;
+  padding: 11px 28px;
   border-radius: 50px;
   border: none;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   font-size: 13px;
   letter-spacing: 0.01em;
+  box-shadow: 0 2px 8px var(--brand-glow);
 }
 .btn-cta:hover {
-  background: var(--brand-secondary);
-  box-shadow: 0 4px 16px var(--brand-glow);
-  transform: translateY(-1px);
+  box-shadow: 0 6px 24px var(--brand-glow);
+  transform: translateY(-2px);
+  filter: brightness(1.08);
 }
 .btn-cta:active {
   transform: translateY(0);
-  box-shadow: none;
+  box-shadow: 0 2px 8px var(--brand-glow);
 }
 
 [data-brand="blurr"] .btn-cta {
@@ -303,11 +304,11 @@ h1, h2, h3 { letter-spacing: -0.025em; }
   border-radius: var(--radius-sm);
 }
 
-/* === STATUS BADGES — soft pill === */
-.status-working { background: #FEF9E7; color: #D4A017; border: none; font-weight: 600; border-radius: 50px; }
-.status-done { background: #ECFDF5; color: #059669; border: none; font-weight: 600; border-radius: 50px; }
-.status-stuck { background: #FEF2F2; color: #DC2626; border: none; font-weight: 600; border-radius: 50px; }
-.status-not-started { background: #F3F4F6; color: #9CA3AF; border: none; font-weight: 500; border-radius: 50px; }
+/* === STATUS BADGES — vibrant pill === */
+.status-working { background: #FEF3C7; color: #B45309; border: none; font-weight: 700; border-radius: 50px; padding: 4px 14px; font-size: 11px; letter-spacing: 0.02em; }
+.status-done { background: #D1FAE5; color: #047857; border: none; font-weight: 700; border-radius: 50px; padding: 4px 14px; font-size: 11px; letter-spacing: 0.02em; }
+.status-stuck { background: #FEE2E2; color: #B91C1C; border: none; font-weight: 700; border-radius: 50px; padding: 4px 14px; font-size: 11px; letter-spacing: 0.02em; }
+.status-not-started { background: #F3F4F6; color: #6B7280; border: none; font-weight: 600; border-radius: 50px; padding: 4px 14px; font-size: 11px; }
 
 .label-xs {
   display: block;
@@ -323,11 +324,12 @@ h1, h2, h3 { letter-spacing: -0.025em; }
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 8px;
-  border-radius: 12px;
+  padding: 3px 12px;
+  border-radius: 50px;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 700;
   white-space: nowrap;
+  letter-spacing: 0.01em;
 }
 
 /* === STAGE COLORS === */
@@ -379,17 +381,20 @@ h1, h2, h3 { letter-spacing: -0.025em; }
   color: rgba(255,255,255,0.95);
 }
 .sidebar-link.active {
-  background: var(--brand-sidebar-active);
+  background: rgba(8,8,248,0.15);
   color: white;
   font-weight: 600;
-  box-shadow: 0 2px 8px rgba(8, 8, 248, 0.3);
+  box-shadow: inset 3px 0 0 var(--brand-accent);
+  border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
 }
 
 /* === PANELS / DRAWERS === */
 .drawer-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.3);
+  background: rgba(0,0,0,0.25);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   z-index: 40;
   animation: fadeIn 0.2s ease;
 }
@@ -409,7 +414,9 @@ h1, h2, h3 { letter-spacing: -0.025em; }
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.4);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  background: rgba(0,0,0,0.3);
   z-index: 50;
   display: flex;
   align-items: center;
@@ -418,14 +425,14 @@ h1, h2, h3 { letter-spacing: -0.025em; }
 }
 .modal-panel {
   background: white;
-  border-radius: 12px;
-  padding: 28px;
+  border-radius: 20px;
+  padding: 32px;
   max-width: 520px;
   width: 90%;
   max-height: 90vh;
   overflow-y: auto;
   animation: fadeIn 0.2s ease;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+  box-shadow: 0 25px 80px rgba(0,0,0,0.18);
 }
 
 /* === PROGRESS BAR === */
@@ -483,11 +490,11 @@ h1, h2, h3 { letter-spacing: -0.025em; }
   border: none;
   padding: 24px;
   box-shadow: var(--card-shadow);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .brand-card:hover {
-  box-shadow: var(--card-shadow-hover);
-  transform: translateY(-1px);
+  box-shadow: 0 8px 40px rgba(0,0,0,0.08);
+  transform: translateY(-2px);
 }
 
 /* Summary/KPI cards — big numbers, floating bento style */
@@ -499,50 +506,41 @@ h1, h2, h3 { letter-spacing: -0.025em; }
   background: var(--brand-surface);
   box-shadow: var(--card-shadow);
   border-radius: var(--radius);
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .kpi-card .kpi-value {
-  font-size: 2.2rem;
-  font-weight: 800;
-  letter-spacing: -0.04em;
+  font-size: 2.5rem;
+  font-weight: 900;
+  letter-spacing: -0.05em;
   line-height: 1;
   animation: countSlideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .kpi-card .kpi-label {
-  font-size: 11px;
-  font-weight: 500;
+  font-size: 10px;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   color: #9ca3af;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 .kpi-card:hover {
-  box-shadow: var(--card-shadow-hover);
-  transform: translateY(-2px);
+  box-shadow: 0 8px 40px rgba(0,0,0,0.08);
+  transform: translateY(-3px);
 }
 
 /* === BUTTONS — micro-interactions === */
-.btn-cta {
-  transform: translateY(0);
-  transition: all 0.15s ease;
-}
-.btn-cta:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(8,8,248,0.25);
-}
-.btn-cta:active {
-  transform: translateY(0);
-}
 .btn-secondary:hover {
-  transform: translateY(-0.5px);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.06);
 }
 
 /* === ANIMATE — fade in for page content === */
 @keyframes fadeSlideIn {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(12px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-.animate-fadeIn {
-  animation: fadeSlideIn 0.3s ease-out;
+.animate-fadeIn, .animate-fade-in {
+  animation: fadeSlideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* === TABLE ROW — subtle accent on hover === */
@@ -562,16 +560,16 @@ h1, h2, h3 { letter-spacing: -0.025em; }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-/* === SKELETON LOADING === */
-@keyframes shimmer {
+/* === SKELETON LOADING (enhanced) === */
+@keyframes shimmer2 {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
 }
 .skeleton {
-  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background: linear-gradient(90deg, #f0f0f0 25%, #e8e8e8 50%, #f0f0f0 75%);
   background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
-  border-radius: 6px;
+  animation: shimmer2 1.5s infinite;
+  border-radius: var(--radius-sm);
 }
 html.dark .skeleton {
   background: linear-gradient(90deg, #21262d 25%, #30363d 50%, #21262d 75%);
@@ -625,8 +623,8 @@ html.dark .skeleton {
 }
 /* Gantt today-line pulse */
 @keyframes todayPulse {
-  0%,100% { opacity: 0.45; width: 1px; }
-  50%     { opacity: 0.85; width: 2px; }
+  0%,100% { opacity: 0.5; box-shadow: 0 0 4px rgba(59,130,246,0.3); }
+  50%     { opacity: 1; box-shadow: 0 0 10px rgba(59,130,246,0.5); }
 }
 .animate-count-up { animation: countUp 0.6s ease both; }
 .row-flash        { animation: rowFlash 0.7s ease; }
@@ -721,7 +719,7 @@ html.dark .skeleton {
 }
 .brand-tabs::-webkit-scrollbar { display: none; }
 .brand-tab {
-  padding: 10px 18px;
+  padding: 12px 20px;
   cursor: pointer;
   border: none;
   background: transparent;
@@ -730,17 +728,18 @@ html.dark .skeleton {
   color: rgba(0,0,0,0.4);
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
-  transition: all 0.15s ease;
+  transition: all 0.2s ease;
   white-space: nowrap;
   letter-spacing: 0;
+  position: relative;
 }
 .brand-tab:hover {
   color: var(--brand-primary);
 }
 .brand-tab.active {
   color: var(--brand-primary);
-  font-weight: 600;
-  border-bottom-color: var(--brand-accent);
+  font-weight: 700;
+  border-bottom-color: transparent;
 }
 
 /* === PRINT INVOICE === */
@@ -755,6 +754,68 @@ html.dark .skeleton {
     max-width: 100% !important;
   }
   .no-print { display: none !important; }
+}
+
+/* === PAGE ENTER ANIMATION === */
+@keyframes pageEnter {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.page-enter {
+  animation: pageEnter 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* === ANIMATED GRADIENT ACCENT LINE === */
+@keyframes gradientSlide {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+.gradient-accent-line {
+  background: linear-gradient(90deg, #030b2e, #0808f8, #4a6cf0, #0808f8, #030b2e);
+  background-size: 200% auto;
+  animation: gradientSlide 3s ease infinite;
+}
+
+/* === GANTT MODERN STYLES === */
+.gantt-row:nth-child(even) > div:first-child {
+  background: #fafbfc !important;
+}
+.gantt-row:hover > div:first-child {
+  background: #f0f4ff !important;
+}
+.gantt-bar:hover {
+  filter: brightness(1.1) !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.2) !important;
+  transform: scaleY(1.15);
+}
+
+/* === FROSTED DRAWER OVERLAY === */
+.drawer-overlay {
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+/* === ENHANCED TABS === */
+.brand-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 20%;
+  right: 20%;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: var(--brand-accent);
+}
+
+/* === SMOOTH NUMBER ENTRANCE === */
+@keyframes numberPop {
+  0% { opacity: 0; transform: scale(0.8) translateY(8px); }
+  60% { transform: scale(1.02) translateY(-1px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+.kpi-value {
+  animation: numberPop 0.6s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* ============================================================

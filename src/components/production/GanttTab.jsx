@@ -593,15 +593,15 @@ function GanttView({ days, phases, cw, phaseEvts, collapsed, setCollapsed, today
   }
 
   return (
-    <div className="overflow-x-auto border border-gray-200 rounded-xl">
+    <div className="overflow-x-auto border border-gray-100 rounded-2xl shadow-sm">
       <div style={{ minWidth: totalW }}>
         {/* Date header */}
-        <div className="flex bg-gray-50 border-b border-gray-200" style={{ height: zoom === 'day' ? 48 : 36 }}>
+        <div className="flex bg-gray-50/80 border-b border-gray-100" style={{ height: zoom === 'day' ? 48 : 36 }}>
           <div
-            className="flex items-center px-3 flex-shrink-0 border-r border-gray-200"
+            className="flex items-center px-3 flex-shrink-0 border-r border-gray-100"
             style={{ width: LABEL_W, position: 'sticky', left: 0, zIndex: 20, background: '#f9fafb' }}
           >
-            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Phase / Task</span>
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Phase / Task</span>
           </div>
           <DateHeaderRow days={days} cw={cw} zoom={zoom} showIL={showIL} showUS={showUS} todayStr={todayStr} />
         </div>
@@ -615,8 +615,8 @@ function GanttView({ days, phases, cw, phaseEvts, collapsed, setCollapsed, today
             <div key={phase.id}>
               {/* Phase header */}
               <div
-                className="flex items-center cursor-pointer"
-                style={{ height: 28, background: `${phase.color}15`, borderBottom: `1px solid ${phase.color}25` }}
+                className="flex items-center cursor-pointer transition-colors"
+                style={{ height: 32, background: `${phase.color}10`, borderBottom: `1px solid ${phase.color}18` }}
                 onClick={() => togglePhase(phase.id)}
               >
                 <div
@@ -785,14 +785,15 @@ function GanttEventRow({ event, phase, days, cw, todayOff, onDrag, onEdit }) {
   const barLeft  = visStart * cw;
   const barW     = Math.max(cw, (visEnd - visStart + 1) * cw);
 
+  const rowIdx = typeof arguments[0]?.rowIndex === 'number' ? arguments[0].rowIndex : 0;
   return (
-    <div className="flex" style={{ height: ROW_H, borderBottom: '1px solid #f3f4f6' }}>
+    <div className="flex gantt-row" style={{ height: ROW_H, borderBottom: '1px solid #f0f1f3' }}>
       <div
         className="flex items-center px-3 flex-shrink-0 border-r border-gray-100"
         style={{ width: LABEL_W, position: 'sticky', left: 0, zIndex: 5, background: 'white' }}
       >
         <span
-          className="text-xs text-gray-600 truncate hover:text-gray-900 cursor-pointer"
+          className="text-xs text-gray-600 truncate hover:text-gray-900 cursor-pointer transition-colors"
           title={event.name}
           onClick={() => onEdit(event)}
         >
@@ -817,19 +818,20 @@ function GanttEventRow({ event, phase, days, cw, todayOff, onDrag, onEdit }) {
           );
         })}
         {todayOff >= 0 && todayOff < days.length && (
-          <div style={{ position: 'absolute', left: todayOff * cw + cw / 2, top: 0, bottom: 0, width: 1, background: '#3b82f660', zIndex: 2 }} />
+          <div className="today-line-pulse" style={{ position: 'absolute', left: todayOff * cw + cw / 2, top: 0, bottom: 0, width: 2, background: '#3b82f6', zIndex: 2, pointerEvents: 'none' }} />
         )}
         {visible && (
           <div
+            className="gantt-bar"
             style={{
               position: 'absolute', left: barLeft, width: barW,
               top: 5, height: ROW_H - 10,
-              background: event.color || phase?.color || '#6366f1',
-              borderRadius: 4, zIndex: 3, cursor: 'grab',
+              background: `linear-gradient(135deg, ${event.color || phase?.color || '#6366f1'}, ${event.color || phase?.color || '#6366f1'}dd)`,
+              borderRadius: 20, zIndex: 3, cursor: 'grab',
               overflow: 'hidden', userSelect: 'none',
               transform: justDropped ? 'scale(1.03)' : 'scale(1)',
-              boxShadow: justDropped ? '0 4px 12px rgba(0,0,0,0.25)' : 'none',
-              transition: 'transform 0.3s ease, box-shadow 0.3s ease',
+              boxShadow: justDropped ? `0 4px 16px ${(event.color || phase?.color || '#6366f1')}40` : `0 2px 6px ${(event.color || phase?.color || '#6366f1')}25`,
+              transition: 'transform 0.3s ease, box-shadow 0.3s ease, filter 0.2s ease',
             }}
             onMouseDown={e => onDrag(e, event, 'move')}
             onClick={e => { e.stopPropagation(); onEdit(event); }}

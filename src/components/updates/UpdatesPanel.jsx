@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { X, Send, AtSign, Trash2, Pencil, Check, Link2, Bold, Italic, List, ListOrdered, Strikethrough, Code, Heading2, Quote, Minus, Highlighter, ExternalLink } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { X, Send, AtSign, Trash2, Pencil, Check, Link2, Bold, Italic, List, ListOrdered, Palette, ExternalLink, Paperclip, ChevronDown } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationsContext';
 import {
@@ -15,103 +15,116 @@ import { SAMPLE_USERS } from '../../lib/mockData';
 import { formatIST, nowISOString } from '../../lib/timezone';
 import clsx from 'clsx';
 
-// ─── Rich text rendering (markdown-like) ────────────────────────────────────
-function renderBody(text) {
-  if (!text) return null;
-  const lines = text.split('\n');
-  const elements = [];
-  let i = 0;
-
-  while (i < lines.length) {
-    const line = lines[i];
-
-    // Horizontal rule
-    if (/^---+$/.test(line.trim())) {
-      elements.push(<hr key={i} className="my-2 border-t" style={{ borderColor: 'var(--brand-border)' }} />);
-      i++; continue;
-    }
-    // Heading ## text
-    if (line.match(/^##\s/)) {
-      elements.push(<div key={i} className="text-sm font-bold mt-2 mb-1" style={{ color: 'var(--brand-primary)' }}>{formatInline(line.replace(/^##\s/, ''))}</div>);
-      i++; continue;
-    }
-    // Blockquote > text
-    if (line.match(/^>\s/)) {
-      elements.push(
-        <div key={i} className="border-l-3 pl-3 my-1 text-gray-500 italic" style={{ borderLeftWidth: 3, borderLeftColor: 'var(--brand-accent)' }}>
-          {formatInline(line.replace(/^>\s/, ''))}
-        </div>
-      );
-      i++; continue;
-    }
-    // Numbered list 1. text
-    if (line.match(/^\d+\.\s/)) {
-      const num = line.match(/^(\d+)\.\s/)[1];
-      elements.push(
-        <div key={i} className="flex gap-2 ml-2">
-          <span className="text-gray-400 font-mono text-xs mt-0.5 w-4 text-right shrink-0">{num}.</span>
-          <span>{formatInline(line.replace(/^\d+\.\s/, ''))}</span>
-        </div>
-      );
-      i++; continue;
-    }
-    // Bullet list - text or * text
-    if (line.match(/^[\-\*•]\s/)) {
-      elements.push(<li key={i} className="ml-4 list-disc">{formatInline(line.replace(/^[\-\*•]\s/, ''))}</li>);
-      i++; continue;
-    }
-    // Code block ```
-    if (line.trim() === '```') {
-      const codeLines = [];
-      i++;
-      while (i < lines.length && lines[i].trim() !== '```') {
-        codeLines.push(lines[i]);
-        i++;
-      }
-      elements.push(
-        <pre key={`code-${i}`} className="bg-gray-100 dark:bg-gray-800 rounded-lg px-3 py-2 my-1 text-xs font-mono overflow-x-auto" style={{ borderColor: 'var(--brand-border)', border: '1px solid var(--brand-border)' }}>
-          {codeLines.join('\n')}
-        </pre>
-      );
-      i++; continue;
-    }
-    // Regular line
-    elements.push(<div key={i}>{line ? formatInline(line) : <br />}</div>);
-    i++;
-  }
-  return elements;
+// ─── Sanitize HTML (strip script tags) ──────────────────────────────────────
+function sanitizeHTML(html) {
+  if (!html) return '';
+  return html
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/on\w+="[^"]*"/gi, '')
+    .replace(/on\w+='[^']*'/gi, '');
 }
 
-function formatInline(text) {
-  if (!text) return '';
-  const parts = [];
-  let key = 0;
-  // Order matters: longer patterns first
-  const regex = /(~~(.+?)~~|\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`|==(.+?)==|@([\w\s]+?)(?=\s|$|@)|\[(.+?)\]\((.+?)\))/g;
-  let lastIndex = 0;
-  let match;
-  while ((match = regex.exec(text)) !== null) {
-    if (match.index > lastIndex) parts.push(<span key={key++}>{text.slice(lastIndex, match.index)}</span>);
-    if (match[2]) parts.push(<span key={key++} className="line-through text-gray-400">{match[2]}</span>); // ~~strikethrough~~
-    else if (match[3]) parts.push(<strong key={key++} className="font-bold">{match[3]}</strong>); // **bold**
-    else if (match[4]) parts.push(<em key={key++} className="italic">{match[4]}</em>); // *italic*
-    else if (match[5]) parts.push(<code key={key++} className="bg-gray-100 dark:bg-gray-700 text-pink-600 dark:text-pink-400 px-1 py-0.5 rounded text-xs font-mono">{match[5]}</code>); // `code`
-    else if (match[6]) parts.push(<mark key={key++} className="bg-yellow-200 dark:bg-yellow-800/40 px-0.5 rounded">{match[6]}</mark>); // ==highlight==
-    else if (match[7]) parts.push(<span key={key++} className="text-blue-500 font-medium bg-blue-50 dark:bg-blue-900/30 rounded px-0.5">@{match[7]}</span>); // @mention
-    else if (match[8] && match[9]) parts.push(
-      <a key={key++} href={match[9]} target="_blank" rel="noopener noreferrer"
-        className="text-blue-600 hover:underline inline-flex items-center gap-0.5">
-        {match[8]} <ExternalLink size={10} />
-      </a>
-    ); // [link](url)
-    lastIndex = match.index + match[0].length;
+// ─── Color picker popover ───────────────────────────────────────────────────
+const COLORS = [
+  { name: 'Black', value: '#000000' },
+  { name: 'Red', value: '#dc2626' },
+  { name: 'Blue', value: '#2563eb' },
+  { name: 'Green', value: '#16a34a' },
+  { name: 'Orange', value: '#ea580c' },
+  { name: 'Purple', value: '#9333ea' },
+];
+
+function ColorPicker({ onSelect, onClose }) {
+  return (
+    <div className="absolute top-full left-0 mt-1 bg-white dark:bg-gray-800 border rounded-lg shadow-xl z-30 p-2 flex gap-1.5"
+      style={{ borderColor: 'var(--brand-border)' }}>
+      {COLORS.map(c => (
+        <button
+          key={c.value}
+          type="button"
+          onClick={() => { onSelect(c.value); onClose(); }}
+          className="w-6 h-6 rounded-full border-2 border-white shadow-sm hover:scale-110 transition-transform"
+          style={{ background: c.value }}
+          title={c.name}
+        />
+      ))}
+    </div>
+  );
+}
+
+// ─── Rich text formatting toolbar ───────────────────────────────────────────
+function RichFormatBar({ editorRef }) {
+  const [showColor, setShowColor] = useState(false);
+
+  function execFormat(cmd, value) {
+    document.execCommand(cmd, false, value || null);
+    editorRef.current?.focus();
   }
-  if (lastIndex < text.length) parts.push(<span key={key++}>{text.slice(lastIndex)}</span>);
-  return parts.length ? parts : text;
+
+  function handleLink() {
+    const sel = window.getSelection();
+    const selectedText = sel?.toString() || '';
+    const url = prompt('Enter URL:', 'https://');
+    if (url) {
+      if (selectedText) {
+        execFormat('createLink', url);
+        // Make the link open in new tab
+        setTimeout(() => {
+          const links = editorRef.current?.querySelectorAll('a');
+          if (links) {
+            links.forEach(a => {
+              if (a.href === url) {
+                a.setAttribute('target', '_blank');
+                a.setAttribute('rel', 'noopener noreferrer');
+              }
+            });
+          }
+        }, 0);
+      } else {
+        const label = prompt('Link text:', url);
+        execFormat('insertHTML', `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color:#2563eb;text-decoration:underline;">${label || url}</a>`);
+      }
+    }
+  }
+
+  const btnClass = "p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 transition-colors flex items-center justify-center";
+
+  return (
+    <div className="flex items-center gap-0.5 px-2 py-1 border-b flex-wrap" style={{ borderColor: 'var(--brand-border)', minHeight: 28 }}>
+      <button type="button" onClick={() => execFormat('bold')} className={btnClass} title="Bold">
+        <Bold size={13} strokeWidth={3} />
+      </button>
+      <button type="button" onClick={() => execFormat('italic')} className={btnClass} title="Italic">
+        <Italic size={13} />
+      </button>
+      <div className="w-px h-4 bg-gray-200 dark:bg-gray-600 mx-0.5" />
+      <button type="button" onClick={() => execFormat('insertUnorderedList')} className={btnClass} title="Bullet List">
+        <List size={13} />
+      </button>
+      <button type="button" onClick={() => execFormat('insertOrderedList')} className={btnClass} title="Numbered List">
+        <ListOrdered size={13} />
+      </button>
+      <div className="w-px h-4 bg-gray-200 dark:bg-gray-600 mx-0.5" />
+      <div className="relative">
+        <button type="button" onClick={() => setShowColor(s => !s)} className={btnClass} title="Text Color">
+          <Palette size={13} />
+        </button>
+        {showColor && (
+          <ColorPicker
+            onSelect={color => execFormat('foreColor', color)}
+            onClose={() => setShowColor(false)}
+          />
+        )}
+      </div>
+      <button type="button" onClick={handleLink} className={btnClass} title="Insert Link">
+        <Link2 size={13} />
+      </button>
+    </div>
+  );
 }
 
 // ─── Link attachment picker ─────────────────────────────────────────────────
-function LinkPicker({ productionId, onInsert, onClose }) {
+function LinkAttachPicker({ productionId, onAttach, onClose }) {
   const [links, setLinks] = useState([]);
   const [newUrl, setNewUrl] = useState('');
   const [newLabel, setNewLabel] = useState('');
@@ -127,35 +140,36 @@ function LinkPicker({ productionId, onInsert, onClose }) {
     load();
   }, [productionId]);
 
-  function handleInsertExisting(link) {
-    onInsert(`[${link.label || link.url}](${link.url})`);
+  function handlePickExisting(link) {
+    onAttach({ url: link.url, title: link.label || link.url });
   }
 
-  async function handleInsertNew() {
+  async function handleAddNew() {
     if (!newUrl.trim()) return;
-    const label = newLabel.trim() || newUrl;
+    const title = newLabel.trim() || newUrl;
     if (saveToTree) {
       await Promise.resolve(createLink({
         id: generateId('lnk'),
         production_id: productionId,
         url: newUrl,
-        label,
+        label: title,
         category,
         order: 0,
         created_at: nowISOString(),
       }));
     }
-    onInsert(`[${label}](${newUrl})`);
+    onAttach({ url: newUrl, title });
   }
 
   const CATEGORIES = ['General', 'Concepts', 'Scripts', 'Pre-Production', 'Production', 'Post', 'Delivery', 'Admin'];
 
   return (
-    <div className="absolute bottom-full left-0 mb-1 bg-white border rounded-xl shadow-xl z-20 w-72 max-h-64 overflow-hidden">
+    <div className="absolute bottom-full left-0 mb-1 bg-white dark:bg-gray-800 border rounded-xl shadow-xl z-20 w-72 max-h-72 overflow-hidden"
+      style={{ borderColor: 'var(--brand-border)' }}>
       {/* Tabs */}
-      <div className="flex border-b text-xs">
+      <div className="flex border-b text-xs" style={{ borderColor: 'var(--brand-border)' }}>
         <button onClick={() => setMode('existing')} className={clsx('flex-1 py-2 font-semibold', mode === 'existing' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400')}>
-          Existing Links
+          From Production Links
         </button>
         <button onClick={() => setMode('new')} className={clsx('flex-1 py-2 font-semibold', mode === 'new' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400')}>
           New Link
@@ -163,82 +177,98 @@ function LinkPicker({ productionId, onInsert, onClose }) {
       </div>
 
       {mode === 'existing' ? (
-        <div className="max-h-44 overflow-y-auto">
-          {links.length === 0 && <div className="text-xs text-gray-400 p-3 text-center">No links yet</div>}
+        <div className="max-h-48 overflow-y-auto">
+          {links.length === 0 && <div className="text-xs text-gray-400 p-3 text-center">No links in this production yet</div>}
           {links.map(l => (
-            <button key={l.id} onClick={() => handleInsertExisting(l)}
-              className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-blue-50 text-left border-b border-gray-50">
+            <button key={l.id} onClick={() => handlePickExisting(l)}
+              className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-blue-50 dark:hover:bg-blue-900/20 text-left border-b"
+              style={{ borderColor: 'var(--brand-border)' }}>
               <Link2 size={12} className="text-blue-400 shrink-0" />
-              <span className="truncate flex-1">{l.label || l.url}</span>
+              <div className="flex-1 min-w-0">
+                <div className="truncate font-medium text-gray-700 dark:text-gray-200">{l.label || l.url}</div>
+                {l.category && <div className="text-[10px] text-gray-400">{l.category}</div>}
+              </div>
             </button>
           ))}
         </div>
       ) : (
         <div className="p-3 space-y-2">
           <input className="brand-input text-xs" placeholder="URL" value={newUrl} onChange={e => setNewUrl(e.target.value)} />
-          <input className="brand-input text-xs" placeholder="Label (optional)" value={newLabel} onChange={e => setNewLabel(e.target.value)} />
-          <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+          <input className="brand-input text-xs" placeholder="Title (optional)" value={newLabel} onChange={e => setNewLabel(e.target.value)} />
+          <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400 cursor-pointer">
             <input type="checkbox" checked={saveToTree} onChange={e => setSaveToTree(e.target.checked)} className="rounded" />
-            Save to Links tab
+            Save to Link Tree?
           </label>
           {saveToTree && (
             <select className="brand-input text-xs" value={category} onChange={e => setCategory(e.target.value)}>
               {CATEGORIES.map(c => <option key={c}>{c}</option>)}
             </select>
           )}
-          <button onClick={handleInsertNew} className="btn-cta text-xs w-full py-1.5">Insert Link</button>
+          <button type="button" onClick={handleAddNew} className="btn-cta text-xs w-full py-1.5">Attach Link</button>
         </div>
       )}
 
-      <button onClick={onClose} className="w-full px-3 py-1.5 text-xs text-gray-400 hover:bg-gray-50 border-t">
+      <button onClick={onClose} className="w-full px-3 py-1.5 text-xs text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 border-t"
+        style={{ borderColor: 'var(--brand-border)' }}>
         Cancel
       </button>
     </div>
   );
 }
 
-// ─── Formatting toolbar ─────────────────────────────────────────────────────
-function FormatBar({ onInsert, textareaRef }) {
-  function wrap(before, after) {
-    const ta = textareaRef.current;
-    if (!ta) return;
-    const start = ta.selectionStart;
-    const end = ta.selectionEnd;
-    const text = ta.value;
-    const selected = text.slice(start, end) || 'text';
-    const newText = text.slice(0, start) + before + selected + (after || before) + text.slice(end);
-    onInsert(newText, start + before.length, start + before.length + selected.length);
-  }
-
-  function insertLine(prefix) {
-    const ta = textareaRef.current;
-    if (!ta) return;
-    const start = ta.selectionStart;
-    const text = ta.value;
-    const beforeCursor = text.slice(0, start);
-    const needsNewline = beforeCursor.length > 0 && !beforeCursor.endsWith('\n') ? '\n' : '';
-    const newText = beforeCursor + needsNewline + prefix + text.slice(start);
-    onInsert(newText, start + needsNewline.length + prefix.length, start + needsNewline.length + prefix.length);
-  }
-
-  const btnClass = "p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors";
-  const sep = <div className="w-px h-4 bg-gray-200 dark:bg-gray-600 mx-0.5" />;
-
+// ─── Attached link cards (shown below editor before posting) ────────────────
+function AttachedLinkCards({ links, onRemove }) {
+  if (!links.length) return null;
   return (
-    <div className="flex items-center gap-0 px-1 py-1 border-b flex-wrap" style={{ borderColor: 'var(--brand-border)' }}>
-      <button type="button" onClick={() => wrap('**')} className={btnClass} title="Bold (Ctrl+B)"><Bold size={13} /></button>
-      <button type="button" onClick={() => wrap('*')} className={btnClass} title="Italic (Ctrl+I)"><Italic size={13} /></button>
-      <button type="button" onClick={() => wrap('~~')} className={btnClass} title="Strikethrough"><Strikethrough size={13} /></button>
-      <button type="button" onClick={() => wrap('`')} className={btnClass} title="Inline Code"><Code size={13} /></button>
-      <button type="button" onClick={() => wrap('==')} className={btnClass} title="Highlight"><Highlighter size={13} /></button>
-      {sep}
-      <button type="button" onClick={() => insertLine('## ')} className={btnClass} title="Heading"><Heading2 size={13} /></button>
-      <button type="button" onClick={() => insertLine('- ')} className={btnClass} title="Bullet List"><List size={13} /></button>
-      <button type="button" onClick={() => insertLine('1. ')} className={btnClass} title="Numbered List"><ListOrdered size={13} /></button>
-      <button type="button" onClick={() => insertLine('> ')} className={btnClass} title="Quote"><Quote size={13} /></button>
-      <button type="button" onClick={() => insertLine('---')} className={btnClass} title="Divider"><Minus size={13} /></button>
+    <div className="flex flex-wrap gap-2 mt-2">
+      {links.map((link, idx) => (
+        <div key={idx}
+          className="flex items-center gap-2 border rounded-lg px-3 py-1.5 text-xs bg-gray-50 dark:bg-gray-800"
+          style={{ borderColor: 'var(--brand-border)' }}>
+          <Link2 size={11} className="text-blue-500 shrink-0" />
+          <span className="text-gray-700 dark:text-gray-300 font-medium truncate max-w-[160px]">{link.title}</span>
+          <button type="button" onClick={() => onRemove(idx)} className="text-gray-400 hover:text-red-500 ml-1">
+            <X size={11} />
+          </button>
+        </div>
+      ))}
     </div>
   );
+}
+
+// ─── Render link cards in posted updates ────────────────────────────────────
+function PostedLinkCards({ html }) {
+  // Extract link cards from the update-links div in HTML
+  const match = html?.match(/<div class="update-links">([\s\S]*?)<\/div>\s*$/);
+  if (!match) return null;
+  const linkRegex = /<a\s+href="([^"]*)"[^>]*class="update-link-card"[^>]*>([^<]*)<\/a>/g;
+  const cards = [];
+  let m;
+  while ((m = linkRegex.exec(match[1])) !== null) {
+    cards.push({ url: m[1], title: m[2] });
+  }
+  if (!cards.length) return null;
+  return (
+    <div className="flex flex-wrap gap-2 mt-2">
+      {cards.map((link, idx) => (
+        <a key={idx} href={link.url} target="_blank" rel="noopener noreferrer"
+          className="flex items-start gap-2 border rounded-lg px-3 py-2 text-xs hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors max-w-[240px]"
+          style={{ borderColor: 'var(--brand-border)' }}>
+          <Link2 size={12} className="text-blue-500 shrink-0 mt-0.5" />
+          <div className="min-w-0">
+            <div className="font-medium text-gray-700 dark:text-gray-200 truncate">{link.title}</div>
+            <div className="text-[10px] text-gray-400 truncate">{link.url}</div>
+          </div>
+        </a>
+      ))}
+    </div>
+  );
+}
+
+// ─── Get body HTML without the link cards section ───────────────────────────
+function getBodyWithoutLinks(html) {
+  if (!html) return '';
+  return html.replace(/<div class="update-links">[\s\S]*?<\/div>\s*$/, '').trim();
 }
 
 // ─── Main component ─────────────────────────────────────────────────────────
@@ -246,12 +276,13 @@ export default function UpdatesPanel({ productionId, onClose, inline = false }) 
   const { user, isAdmin } = useAuth();
   const { addNotification } = useNotifications();
   const [comments, setComments] = useState([]);
-  const [body, setBody] = useState('');
   const [editingId, setEditingId] = useState(null);
   const [editBody, setEditBody] = useState('');
   const [showMentions, setShowMentions] = useState(false);
   const [showLinks, setShowLinks] = useState(false);
-  const textareaRef = useRef(null);
+  const [attachedLinks, setAttachedLinks] = useState([]);
+  const editorRef = useRef(null);
+  const editEditorRef = useRef(null);
   const bottomRef = useRef(null);
 
   useEffect(() => {
@@ -267,12 +298,29 @@ export default function UpdatesPanel({ productionId, onClose, inline = false }) 
     setComments(Array.isArray(r) ? r : []);
   }
 
+  function getEditorHTML() {
+    return editorRef.current?.innerHTML || '';
+  }
+
+  function buildLinksHTML(links) {
+    if (!links.length) return '';
+    const anchors = links.map(l =>
+      `<a href="${l.url}" target="_blank" rel="noopener noreferrer" class="update-link-card">${l.title}</a>`
+    ).join('');
+    return `<div class="update-links">${anchors}</div>`;
+  }
+
   function handleSubmit(e) {
     e.preventDefault();
-    if (!body.trim()) return;
+    const rawHTML = getEditorHTML().trim();
+    if (!rawHTML && !attachedLinks.length) return;
 
-    const mentionMatches = body.match(/@([\w\s]+?)(?=\s|$|@)/g) || [];
+    // Extract @mentions from text content
+    const textContent = editorRef.current?.textContent || '';
+    const mentionMatches = textContent.match(/@([\w\s]+?)(?=\s|$|@)/g) || [];
     const mentions = mentionMatches.map(m => m.slice(1).trim());
+
+    const body = rawHTML + buildLinksHTML(attachedLinks);
 
     const comment = {
       id: generateId('c'),
@@ -292,17 +340,27 @@ export default function UpdatesPanel({ productionId, onClose, inline = false }) 
       }
     });
 
-    setBody('');
+    // Clear editor
+    if (editorRef.current) editorRef.current.innerHTML = '';
+    setAttachedLinks([]);
     refresh();
   }
 
   function handleEdit(id, currentBody) {
     setEditingId(id);
     setEditBody(currentBody);
+    setTimeout(() => {
+      if (editEditorRef.current) {
+        editEditorRef.current.innerHTML = getBodyWithoutLinks(currentBody);
+      }
+    }, 0);
   }
 
   function handleSaveEdit(id) {
-    updateComment(id, editBody);
+    const html = editEditorRef.current?.innerHTML || editBody;
+    // Preserve any existing link cards
+    const existingLinks = editBody.match(/<div class="update-links">[\s\S]*?<\/div>\s*$/)?.[0] || '';
+    updateComment(id, html + existingLinks);
     setEditingId(null);
     refresh();
   }
@@ -314,23 +372,40 @@ export default function UpdatesPanel({ productionId, onClose, inline = false }) 
   }
 
   function insertMention(name) {
-    setBody(b => b + `@${name} `);
+    if (editorRef.current) {
+      document.execCommand('insertHTML', false, `<span style="color:#3b82f6;font-weight:500;">@${name}</span>&nbsp;`);
+      editorRef.current.focus();
+    }
     setShowMentions(false);
-    textareaRef.current?.focus();
   }
 
-  function insertLink(markdown) {
-    setBody(b => b + ' ' + markdown + ' ');
+  function handleAttachLink(link) {
+    setAttachedLinks(prev => [...prev, link]);
     setShowLinks(false);
-    textareaRef.current?.focus();
   }
 
-  function handleFormatInsert(newFullText, selStart, selEnd) {
-    setBody(newFullText);
-    setTimeout(() => {
-      const ta = textareaRef.current;
-      if (ta) { ta.setSelectionRange(selStart, selEnd); ta.focus(); }
-    }, 0);
+  function removeAttachedLink(idx) {
+    setAttachedLinks(prev => prev.filter((_, i) => i !== idx));
+  }
+
+  function handleEditorKeyDown(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit(e);
+    }
+    if (e.key === '@') {
+      setShowMentions(true);
+    }
+    // Ctrl/Cmd+B for bold
+    if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
+      e.preventDefault();
+      document.execCommand('bold', false, null);
+    }
+    // Ctrl/Cmd+I for italic
+    if ((e.metaKey || e.ctrlKey) && e.key === 'i') {
+      e.preventDefault();
+      document.execCommand('italic', false, null);
+    }
   }
 
   const content = (
@@ -376,22 +451,29 @@ export default function UpdatesPanel({ productionId, onClose, inline = false }) 
 
               {editingId === comment.id ? (
                 <div className="mt-1">
-                  <textarea
-                    value={editBody}
-                    onChange={e => setEditBody(e.target.value)}
-                    rows={2}
-                    className="brand-input text-sm resize-none"
-                    autoFocus
-                  />
+                  <div className="border rounded-lg overflow-hidden" style={{ borderColor: 'var(--brand-border)' }}>
+                    <RichFormatBar editorRef={editEditorRef} />
+                    <div
+                      ref={editEditorRef}
+                      contentEditable
+                      className="brand-input min-h-[60px] p-3 outline-none text-sm border-0"
+                      style={{ whiteSpace: 'pre-wrap' }}
+                      suppressContentEditableWarning
+                    />
+                  </div>
                   <div className="flex gap-2 mt-2">
                     <button onClick={() => setEditingId(null)} className="btn-secondary text-xs py-1">Cancel</button>
                     <button onClick={() => handleSaveEdit(comment.id)} className="btn-cta text-xs py-1">Save</button>
                   </div>
                 </div>
               ) : (
-                <div className="text-sm text-gray-700 dark:text-gray-300 mt-1 whitespace-pre-wrap break-words leading-relaxed">
-                  {renderBody(comment.body)}
-                </div>
+                <>
+                  <div
+                    className="text-sm text-gray-700 dark:text-gray-300 mt-1 break-words leading-relaxed update-body-rendered"
+                    dangerouslySetInnerHTML={{ __html: sanitizeHTML(getBodyWithoutLinks(comment.body)) }}
+                  />
+                  <PostedLinkCards html={comment.body} />
+                </>
               )}
 
               {/* Actions */}
@@ -419,48 +501,55 @@ export default function UpdatesPanel({ productionId, onClose, inline = false }) 
         style={{ borderTop: '1px solid var(--brand-border)' }}
       >
         <form onSubmit={handleSubmit}>
-          {/* Format toolbar */}
-          <FormatBar onInsert={handleFormatInsert} textareaRef={textareaRef} />
+          <div className="border rounded-lg overflow-hidden" style={{ borderColor: 'var(--brand-border)' }}>
+            {/* Rich text toolbar */}
+            <RichFormatBar editorRef={editorRef} />
 
-          <div className="flex gap-2 items-end mt-1">
-            <div className="flex-1 relative">
-              <textarea
-                ref={textareaRef}
-                value={body}
-                onChange={e => setBody(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(e); }
-                  if (e.key === '@') setShowMentions(true);
-                  // Keyboard shortcuts for formatting
-                  if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
-                    e.preventDefault();
-                    const ta = e.target;
-                    const s = ta.selectionStart, end = ta.selectionEnd;
-                    const sel = body.slice(s, end) || 'text';
-                    setBody(body.slice(0, s) + '**' + sel + '**' + body.slice(end));
-                  }
-                  if ((e.metaKey || e.ctrlKey) && e.key === 'i') {
-                    e.preventDefault();
-                    const ta = e.target;
-                    const s = ta.selectionStart, end = ta.selectionEnd;
-                    const sel = body.slice(s, end) || 'text';
-                    setBody(body.slice(0, s) + '*' + sel + '*' + body.slice(end));
-                  }
-                }}
-                placeholder="Type an update… Ctrl+B bold, Ctrl+I italic, Shift+Enter new line"
-                rows={3}
-                className="brand-input text-sm resize-y"
-              />
+            {/* ContentEditable editor */}
+            <div
+              ref={editorRef}
+              contentEditable
+              className="min-h-[80px] p-3 outline-none text-sm bg-white dark:bg-gray-900"
+              style={{ whiteSpace: 'pre-wrap', color: 'var(--brand-text)' }}
+              onKeyDown={handleEditorKeyDown}
+              data-placeholder="Type an update... Ctrl+B bold, Ctrl+I italic, Shift+Enter new line"
+              suppressContentEditableWarning
+            />
+          </div>
+
+          {/* Attached link cards preview */}
+          <AttachedLinkCards links={attachedLinks} onRemove={removeAttachedLink} />
+
+          <div className="flex gap-2 items-center mt-2">
+            <div className="flex-1 relative flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => { setShowMentions(s => !s); setShowLinks(false); }}
+                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 transition-colors"
+                title="Mention someone"
+              >
+                <AtSign size={15} />
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowLinks(s => !s); setShowMentions(false); }}
+                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 transition-colors flex items-center gap-1"
+                title="Attach a link"
+              >
+                <Paperclip size={15} />
+                <span className="text-xs text-gray-400">Attach Link</span>
+              </button>
 
               {/* Mention Dropdown */}
               {showMentions && (
-                <div className="absolute bottom-full left-0 mb-1 bg-white border rounded-xl shadow-xl overflow-hidden z-10 w-48">
+                <div className="absolute bottom-full left-0 mb-1 bg-white dark:bg-gray-800 border rounded-xl shadow-xl overflow-hidden z-10 w-48"
+                  style={{ borderColor: 'var(--brand-border)' }}>
                   {SAMPLE_USERS.map(u => (
                     <button
                       key={u.id}
                       type="button"
                       onClick={() => insertMention(u.name)}
-                      className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-gray-50 text-left"
+                      className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-left"
                     >
                       <div
                         className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold"
@@ -474,51 +563,63 @@ export default function UpdatesPanel({ productionId, onClose, inline = false }) 
                   <button
                     type="button"
                     onClick={() => setShowMentions(false)}
-                    className="w-full px-3 py-1.5 text-xs text-gray-400 hover:bg-gray-50 border-t"
+                    className="w-full px-3 py-1.5 text-xs text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 border-t"
+                    style={{ borderColor: 'var(--brand-border)' }}
                   >
                     Cancel
                   </button>
                 </div>
               )}
 
-              {/* Link Picker */}
+              {/* Link Attachment Picker */}
               {showLinks && (
-                <LinkPicker
+                <LinkAttachPicker
                   productionId={productionId}
-                  onInsert={insertLink}
+                  onAttach={handleAttachLink}
                   onClose={() => setShowLinks(false)}
                 />
               )}
             </div>
 
-            <div className="flex flex-col gap-1 flex-shrink-0">
-              <button
-                type="button"
-                onClick={() => { setShowMentions(s => !s); setShowLinks(false); }}
-                className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
-                title="Mention someone"
-              >
-                <AtSign size={15} />
-              </button>
-              <button
-                type="button"
-                onClick={() => { setShowLinks(s => !s); setShowMentions(false); }}
-                className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
-                title="Attach a link"
-              >
-                <Link2 size={15} />
-              </button>
-              <button
-                type="submit"
-                className="p-2 rounded-lg text-white transition-colors"
-                style={{ background: 'var(--brand-accent)' }}
-              >
-                <Send size={15} />
-              </button>
-            </div>
+            <button
+              type="submit"
+              className="p-2 rounded-lg text-white transition-colors"
+              style={{ background: 'var(--brand-accent)' }}
+            >
+              <Send size={15} />
+            </button>
           </div>
         </form>
       </div>
+
+      {/* Placeholder styling for contentEditable */}
+      <style>{`
+        [contenteditable]:empty:before {
+          content: attr(data-placeholder);
+          color: #9ca3af;
+          pointer-events: none;
+        }
+        .update-body-rendered a {
+          color: #2563eb;
+          text-decoration: underline;
+        }
+        .update-body-rendered a:hover {
+          color: #1d4ed8;
+        }
+        .update-body-rendered ul {
+          list-style-type: disc;
+          padding-left: 1.5em;
+          margin: 0.25em 0;
+        }
+        .update-body-rendered ol {
+          list-style-type: decimal;
+          padding-left: 1.5em;
+          margin: 0.25em 0;
+        }
+        .update-body-rendered li {
+          margin: 0.1em 0;
+        }
+      `}</style>
     </div>
   );
 

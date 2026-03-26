@@ -358,27 +358,35 @@ export default function Dashboard() {
       <div className="grid grid-cols-12 gap-4 mb-6">
 
         {/* Left: Title + Total Budget (spans 5 cols) */}
-        <div className="col-span-12 md:col-span-5 brand-card flex flex-col justify-between" style={{ minHeight: 160 }}>
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <h1 className="text-2xl font-black brand-title" style={{ color: 'var(--brand-primary)' }}>
-                Productions
-              </h1>
+        <div className="col-span-12 md:col-span-5 brand-card flex flex-col justify-between relative overflow-hidden" style={{ minHeight: 180 }}>
+          {/* Subtle gradient accent background */}
+          <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ background: 'var(--brand-gradient)' }} />
+          <div className="relative z-10">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h1 className="text-2xl font-black brand-title" style={{ color: 'var(--brand-primary)' }}>
+                  Productions
+                </h1>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  {filtered.length} of {productions.length} · {selectedYear}
+                </p>
+              </div>
               {isEditor && (
-                <button className="btn-cta flex items-center gap-2 text-sm" onClick={() => setShowNewModal(true)}>
-                  <Plus size={14} />
-                  New
+                <button className="btn-cta flex items-center gap-2 text-sm px-6 py-2.5" onClick={() => setShowNewModal(true)}>
+                  <Plus size={15} strokeWidth={2.5} />
+                  New Production
                 </button>
               )}
             </div>
-            <p className="text-xs text-gray-400 mb-4">
-              {filtered.length} of {productions.length} · {selectedYear}
-            </p>
           </div>
-          <div>
-            <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">{selectedYear} Total Budget</div>
-            <div className="text-4xl font-black tracking-tight" style={{ color: 'var(--brand-primary)', letterSpacing: '-0.04em' }}>
+          <div className="relative z-10">
+            <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">{selectedYear} Total Budget</div>
+            <div className="text-5xl font-black tracking-tighter kpi-value" style={{ color: 'var(--brand-primary)', letterSpacing: '-0.05em', lineHeight: 1 }}>
               {fmt(totalBudget)}
+            </div>
+            {/* Animated gradient accent line */}
+            <div className="mt-3 h-1 w-24 rounded-full overflow-hidden" style={{ background: 'rgba(0,0,0,0.06)' }}>
+              <div className="h-full rounded-full gradient-accent-line" style={{ background: 'var(--brand-gradient)', width: '100%' }} />
             </div>
           </div>
         </div>
@@ -387,42 +395,56 @@ export default function Dashboard() {
         <div className="col-span-12 md:col-span-7 grid grid-cols-3 gap-4">
 
           {/* Actual Spent */}
-          <div className="brand-card flex flex-col justify-between" style={{ minHeight: 160 }}>
-            <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Spent</div>
+          <div className="kpi-card flex flex-col justify-between" style={{ minHeight: 180 }}>
+            <div className="kpi-label">Spent</div>
             <div>
-              <div className="text-3xl font-black tracking-tight text-green-600" style={{ letterSpacing: '-0.04em' }}>
+              <div className="text-4xl font-black tracking-tighter text-green-600 kpi-value" style={{ letterSpacing: '-0.05em', lineHeight: 1 }}>
                 {fmt(totalSpent)}
               </div>
-              <div className="mt-2 h-1.5 rounded-full bg-gray-100 overflow-hidden">
-                <div className="h-full rounded-full bg-green-500 transition-all duration-700" style={{ width: `${Math.min(pctSpent, 100)}%` }} />
+              <div className="mt-3 h-2 rounded-full bg-gray-100 overflow-hidden">
+                <div className="h-full rounded-full transition-all duration-1000 ease-out" style={{ width: `${Math.min(pctSpent, 100)}%`, background: 'linear-gradient(90deg, #22c55e, #16a34a)' }} />
               </div>
-              <div className="text-[10px] text-gray-400 mt-1">{pctSpent}% of budget</div>
+              <div className="text-[10px] text-gray-400 mt-1.5 font-medium">{pctSpent}% of budget</div>
             </div>
           </div>
 
           {/* Remaining */}
-          <div className="brand-card flex flex-col justify-between" style={{ minHeight: 160 }}>
-            <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Remaining</div>
+          <div className="kpi-card flex flex-col justify-between" style={{ minHeight: 180 }}>
+            <div className="kpi-label">Remaining</div>
             <div>
-              <div className="text-3xl font-black tracking-tight" style={{ color: 'var(--brand-secondary)', letterSpacing: '-0.04em' }}>
+              <div className="text-4xl font-black tracking-tighter kpi-value" style={{ color: 'var(--brand-secondary)', letterSpacing: '-0.05em', lineHeight: 1 }}>
                 {fmt(totalBudget - totalSpent)}
+              </div>
+              <div className="mt-3 text-xs text-gray-400 font-medium">
+                {totalBudget > 0 ? `${100 - pctSpent}% left` : ''}
               </div>
             </div>
           </div>
 
-          {/* Stage Breakdown - mini donut */}
-          <div className="brand-card flex flex-col justify-between" style={{ minHeight: 160 }}>
-            <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider">By Stage</div>
+          {/* Stage Breakdown */}
+          <div className="kpi-card flex flex-col justify-between" style={{ minHeight: 180 }}>
+            <div className="kpi-label">By Stage</div>
             <div className="flex flex-wrap gap-1.5 mt-2">
-              {Object.entries(stageBreakdown).map(([stage, count]) => (
-                <span key={stage} className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                  {stage} <span className="text-gray-400">{count}</span>
-                </span>
-              ))}
+              {Object.entries(stageBreakdown).map(([stage, count]) => {
+                const stageColors = {
+                  'Pending': { bg: '#f0f0ff', text: '#4527A0' },
+                  'Pre-Production': { bg: '#ede7f6', text: '#4527A0' },
+                  'Production': { bg: '#e3f2fd', text: '#1565C0' },
+                  'Post Production': { bg: '#fff3e0', text: '#e65100' },
+                  'Completed': { bg: '#e8f5e9', text: '#2e7d32' },
+                  'Paused': { bg: '#fff8e1', text: '#f57f17' },
+                };
+                const sc = stageColors[stage] || { bg: '#f3f4f6', text: '#6b7280' };
+                return (
+                  <span key={stage} className="inline-flex items-center gap-1.5 text-[11px] font-bold px-3 py-1 rounded-full" style={{ background: sc.bg, color: sc.text }}>
+                    {stage} <span className="font-black">{count}</span>
+                  </span>
+                );
+              })}
             </div>
-            <div className="text-2xl font-black mt-1" style={{ color: 'var(--brand-primary)' }}>
+            <div className="text-3xl font-black mt-2 kpi-value" style={{ color: 'var(--brand-primary)', letterSpacing: '-0.04em' }}>
               {productions.length}
-              <span className="text-xs font-medium text-gray-400 ml-1">total</span>
+              <span className="text-xs font-medium text-gray-400 ml-1.5">total</span>
             </div>
           </div>
         </div>

@@ -15,43 +15,89 @@ const TARGET_FIELDS = [
   { key: 'producer',           label: 'Producer' },
   { key: 'production_type',    label: 'Production Type' },
   { key: 'notes',              label: 'Notes' },
+  // Monday.com line-item level fields
+  { key: 'item',               label: 'Line Item Name' },
+  { key: 'full_name',          label: 'Full Name' },
+  { key: 'type',               label: 'Line Item Type' },
+  { key: 'status',             label: 'Status' },
+  { key: 'timeline_start',     label: 'Timeline Start' },
+  { key: 'timeline_end',       label: 'Timeline End' },
+  { key: 'planned_budget',     label: 'Planned Budget (item)' },
+  { key: 'actual_spent',       label: 'Actual Spent (item)' },
+  { key: 'contract',           label: 'Contract Link' },
+  { key: 'invoice_url',        label: 'Invoice URL' },
 ];
 
 // Auto-detect common Monday.com / Excel column name → CP Panel field
 const AUTO_MAP = {
-  'name':            'project_name',
+  // Production-level mappings
+  'name':            'item',
   'project name':    'project_name',
   'project':         'project_name',
-  'item':            'project_name',
   'budget':          'planned_budget_2026',
-  'planned budget':  'planned_budget_2026',
-  'planned budget $':'planned_budget_2026',
   'numbers':         'planned_budget_2026',
-  'status':          'stage',
   'stage':           'stage',
   'person':          'producer',
   'owner':           'producer',
-  'producer':        'producer',
   'start date':      'planned_start',
-  'start':           'planned_start',
-  'timeline - start':'planned_start',
   'end date':        'planned_end',
-  'end':             'planned_end',
-  'timeline - end':  'planned_end',
   'timeline':        'planned_start',
-  'type':            'production_type',
   'production type': 'production_type',
-  'notes':           'notes',
   'text':            'notes',
+  'notes':           'notes',
+
+  // Monday.com line-item level auto-mappings
+  'producer':        '_producer_skip',
+  'full name':       'full_name',
+  'type':            'type',
+  'status':          'status',
+  'timeline - start':'timeline_start',
+  'timeline - end':  'timeline_end',
+  'planned budget $':'planned_budget',
+  'planned budget':  'planned_budget',
+  'actual spent $':  'actual_spent',
+  'actual spent':    'actual_spent',
+  'price diff':      '',
+  'contract':        'contract',
+  'invoice':         'invoice_url',
+  'prd sheet':       '',
+  'dashboard':       '',
+  'prd sheet link':  '',
+  'dashboard link':  '',
 };
 
+// Monday.com section headers to skip
+const SECTION_HEADERS = [
+  'production tasks', 'production timeline', 'production budget',
+  'subitems', 'group', 'section',
+];
+
+// Map Monday.com type values to CP Panel types
+function normalizeType(raw) {
+  const s = (raw || '').trim().toLowerCase();
+  if (s.includes('actor') || s.includes('cast') || s.includes('talent') || s.includes('model')) return 'Cast';
+  if (s.includes('art department') || s.includes('art dept')) return 'Equipment';
+  if (s.includes('catering') || s.includes('transport')) return 'Catering & Transport';
+  if (s.includes('post') || s.includes('edit') || s.includes('vfx')) return 'Post';
+  if (s.includes('office') || s.includes('insurance') || s.includes('unexpected')) return 'Office';
+  if (s.includes('equipment') || s.includes('gear') || s.includes('rental') || s.includes('camera')) return 'Equipment';
+  if (s.includes('crew') || s.includes('freelance')) return 'Crew';
+  // Pass through if it matches a known type
+  const known = ['Crew', 'Equipment', 'Post', 'Office', 'Catering & Transport', 'Cast'];
+  const match = known.find(k => k.toLowerCase() === s);
+  if (match) return match;
+  return raw?.trim() || 'Crew';
+}
+
 function guessMapping(header) {
-  return AUTO_MAP[header.toLowerCase().trim()] || '';
+  const key = header.toLowerCase().trim();
+  const mapped = AUTO_MAP[key];
+  if (mapped === '_producer_skip') return ''; // producer is production-level, skip in column mapping
+  return mapped || '';
 }
 
 function parseDate(raw) {
   if (!raw) return '';
-  // Try ISO, or common formats
   const d = new Date(raw);
   if (!isNaN(d)) return d.toISOString().slice(0, 10);
   return '';
@@ -60,9 +106,41 @@ function parseDate(raw) {
 function parseValue(key, raw) {
   if (raw === null || raw === undefined) return '';
   const str = String(raw).trim();
-  if (key === 'planned_budget_2026') return parseFloat(str.replace(/[^0-9.]/g, '')) || 0;
-  if (key === 'planned_start' || key === 'planned_end') return parseDate(str);
+  if (key === 'planned_budget_2026' || key === 'planned_budget' || key === 'actual_spent') {
+    return parseFloat(str.replace(/[^0-9.-]/g, '')) || 0;
+  }
+  if (key === 'planned_start' || key === 'planned_end' || key === 'timeline_start' || key === 'timeline_end') {
+    return parseDate(str);
+  }
+  if (key === 'type') return normalizeType(str);
   return str;
+}
+
+function isUrl(val) {
+  const s = String(val || '').trim();
+  return s.startsWith('http://') || s.startsWith('https://') || s.startsWith('www.');
+}
+
+// Check if a row looks like a section header or totals row
+function shouldSkipRow(row) {
+  const firstCell = String(row[0] || '').trim();
+  // Skip rows where col 0 is empty/NaN
+  if (!firstCell || firstCell === 'NaN' || firstCell === 'undefined' || firstCell === 'null') {
+    // But also skip if it looks like a totals row (empty name but numbers exist)
+    return true;
+  }
+  // Skip section headers
+  const lower = firstCell.toLowerCase();
+  if (SECTION_HEADERS.some(h => lower === h || lower.startsWith(h))) return true;
+  return false;
+}
+
+// Clean trailing whitespace from all values in a row
+function cleanRow(row) {
+  return row.map(cell => {
+    if (typeof cell === 'string') return cell.trimEnd();
+    return cell;
+  });
 }
 
 // Download a blank Excel template the user can fill in
@@ -85,6 +163,7 @@ export default function ImportProductionsModal({ brandId, selectedYear = 2026, o
   const [mapping, setMapping] = useState({});
   const [selected, setSelected] = useState({});
   const [importing, setImporting] = useState(false);
+  const [producerName, setProducerName] = useState('');
   const fileRef = useRef();
 
   // Escape to close
@@ -109,13 +188,27 @@ export default function ImportProductionsModal({ brandId, selectedYear = 2026, o
       if (nonEmpty >= 3) { headerIdx = i; break; }
     }
     const hdrs = json[headerIdx].map(h => String(h).trim());
-    // Filter: skip empty rows, totals rows, section headers (Monday.com)
-    const SKIP_PATTERNS = /^(production budget|production tasks|production timeline|subitems|$)/i;
-    const dataRows = json.slice(headerIdx + 1).filter(r => {
-      const firstCell = String(r[0] || '').trim();
-      if (SKIP_PATTERNS.test(firstCell) && !r.slice(1).some(c => c !== '' && c != null)) return false;
-      return r.some(c => c !== '' && c != null);
-    });
+
+    // Clean rows and apply skip logic
+    const dataRows = json.slice(headerIdx + 1)
+      .map(cleanRow)
+      .filter(r => {
+        // Must have at least one non-empty cell
+        if (!r.some(c => c !== '' && c != null)) return false;
+        // Skip section headers, empty name rows, totals rows
+        if (shouldSkipRow(r)) return false;
+        return true;
+      });
+
+    // Auto-detect producer from first non-empty value in Producer column (col index 1 by name)
+    const producerIdx = hdrs.findIndex(h => h.toLowerCase().trim() === 'producer');
+    if (producerIdx >= 0) {
+      for (const row of dataRows) {
+        const val = String(row[producerIdx] || '').trim();
+        if (val && val !== 'NaN') { setProducerName(val); break; }
+      }
+    }
+
     const autoMapping = {};
     hdrs.forEach(h => { autoMapping[h] = guessMapping(h); });
     setHeaders(hdrs);
@@ -137,19 +230,36 @@ export default function ImportProductionsModal({ brandId, selectedYear = 2026, o
     const obj = { brand_id: brandId, production_year: selectedYear, timeline_mode: 'manual', stage: 'Pending', product_type: [] };
     headers.forEach((h, hi) => {
       const field = mapping[h];
-      if (field) obj[field] = parseValue(field, row[hi]);
+      if (!field) return;
+      // Handle contract/invoice — only save if value is a URL
+      if (field === 'contract') {
+        if (isUrl(row[hi])) obj.contract_url = String(row[hi]).trim();
+        return;
+      }
+      if (field === 'invoice_url') {
+        if (isUrl(row[hi])) obj.invoice_url = String(row[hi]).trim();
+        return;
+      }
+      obj[field] = parseValue(field, row[hi]);
     });
-    if (!obj.project_name) obj.project_name = `Imported Production ${idx + 1}`;
+    if (!obj.project_name) obj.project_name = obj.item || `Imported Production ${idx + 1}`;
+    if (producerName && !obj.producer) obj.producer = producerName;
     const yearSuffix = String(selectedYear).slice(2);
     obj.id = `PRD${yearSuffix}-IMP${String(idx + 1).padStart(2, '0')}`;
-    obj.estimated_budget = parseFloat(obj.planned_budget_2026) || 0;
-    obj.actual_spent = 0;
+    obj.estimated_budget = parseFloat(obj.planned_budget_2026 || obj.planned_budget) || 0;
+    obj.actual_spent = parseFloat(obj.actual_spent) || 0;
+    // Apply currency choice to line items
+    if (importCurrency === 'ILS') {
+      obj.currency_code = 'ILS';
+    }
     return obj;
   }
 
   function goToCurrency() {
     // Check if any budget columns are mapped — if so, ask about currency
-    const hasBudget = Object.values(mapping).includes('planned_budget_2026');
+    const hasBudget = Object.values(mapping).some(v =>
+      v === 'planned_budget_2026' || v === 'planned_budget' || v === 'actual_spent'
+    );
     if (hasBudget) setStep(2.5);
     else setStep(3);
   }
@@ -249,6 +359,11 @@ export default function ImportProductionsModal({ brandId, selectedYear = 2026, o
               {headers.length} columns detected in <span className="font-semibold">{rows.length}</span> row(s).
               Map each column to a CP Panel field.
             </p>
+            {producerName && (
+              <div className="mb-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700">
+                Auto-detected producer: <span className="font-bold">{producerName}</span> — will be set on all imported productions.
+              </div>
+            )}
             <div className="overflow-auto max-h-80 rounded-xl border border-gray-200">
               <table className="w-full text-xs">
                 <thead>
@@ -285,15 +400,15 @@ export default function ImportProductionsModal({ brandId, selectedYear = 2026, o
               <button onClick={() => setStep(1)} className="btn-secondary flex-1">Back</button>
               <button
                 onClick={goToCurrency}
-                disabled={!Object.values(mapping).includes('project_name')}
+                disabled={!Object.values(mapping).some(v => v === 'project_name' || v === 'item')}
                 className="btn-cta flex-1 disabled:opacity-40"
               >
                 Next
               </button>
             </div>
-            {!Object.values(mapping).includes('project_name') && (
+            {!Object.values(mapping).some(v => v === 'project_name' || v === 'item') && (
               <p className="text-xs text-red-500 mt-2 flex items-center gap-1">
-                <AlertTriangle size={11} /> Map at least one column to "Project Name" to continue.
+                <AlertTriangle size={11} /> Map at least one column to "Project Name" or "Line Item Name" to continue.
               </p>
             )}
           </div>
@@ -303,31 +418,34 @@ export default function ImportProductionsModal({ brandId, selectedYear = 2026, o
         {step === 2.5 && (
           <div>
             <div className="text-center py-6">
-              <p className="text-sm font-semibold text-gray-700 mb-4">
-                What currency are the budget values in?
+              <p className="text-sm font-semibold text-gray-700 mb-2">
+                Are budget values in $ or ₪?
+              </p>
+              <p className="text-xs text-gray-400 mb-5">
+                This will set the currency on all imported line items.
               </p>
               <div className="flex justify-center gap-4">
                 <button
                   onClick={() => { setImportCurrency('USD'); preview(); }}
                   className={clsx(
-                    'flex flex-col items-center gap-2 px-6 py-4 rounded-xl border-2 transition-all hover:shadow-md',
+                    'flex flex-col items-center gap-2 px-8 py-5 rounded-xl border-2 transition-all hover:shadow-md',
                     importCurrency === 'USD' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300'
                   )}
                 >
-                  <span className="text-3xl">🇺🇸</span>
-                  <span className="text-sm font-bold">USD ($)</span>
-                  <span className="text-[10px] text-gray-400">Values are in US Dollars</span>
+                  <span className="text-2xl font-black">$</span>
+                  <span className="text-sm font-bold">$ USD</span>
+                  <span className="text-[10px] text-gray-400">US Dollars</span>
                 </button>
                 <button
                   onClick={() => { setImportCurrency('ILS'); preview(); }}
                   className={clsx(
-                    'flex flex-col items-center gap-2 px-6 py-4 rounded-xl border-2 transition-all hover:shadow-md',
+                    'flex flex-col items-center gap-2 px-8 py-5 rounded-xl border-2 transition-all hover:shadow-md',
                     importCurrency === 'ILS' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300'
                   )}
                 >
-                  <span className="text-3xl">🇮🇱</span>
-                  <span className="text-sm font-bold">ILS (₪)</span>
-                  <span className="text-[10px] text-gray-400">Values are in Israeli Shekels</span>
+                  <span className="text-2xl font-black">₪</span>
+                  <span className="text-sm font-bold">₪ ILS</span>
+                  <span className="text-[10px] text-gray-400">Israeli Shekels</span>
                 </button>
               </div>
             </div>
@@ -342,6 +460,9 @@ export default function ImportProductionsModal({ brandId, selectedYear = 2026, o
           <div>
             <p className="text-xs text-gray-500 mb-3">
               Review the productions below. Uncheck any rows you don't want to import.
+              {importCurrency === 'ILS' && (
+                <span className="ml-1 text-blue-600 font-semibold">Currency: ₪ ILS</span>
+              )}
             </p>
             <div className="overflow-auto max-h-72 rounded-xl border border-gray-200">
               <table className="w-full text-xs">
@@ -370,6 +491,8 @@ export default function ImportProductionsModal({ brandId, selectedYear = 2026, o
                   {rows.map((row, idx) => {
                     const p = buildProduction(row, idx);
                     const isPast = p.planned_end && new Date(p.planned_end) < new Date();
+                    const sym = importCurrency === 'ILS' ? '₪' : '$';
+                    const budgetVal = parseFloat(p.planned_budget_2026 || p.planned_budget) || 0;
                     return (
                       <tr
                         key={idx}
@@ -390,15 +513,14 @@ export default function ImportProductionsModal({ brandId, selectedYear = 2026, o
                         <td className="px-3 py-2 font-mono text-gray-500">{p.id}</td>
                         <td className="px-3 py-2 font-medium text-gray-700 max-w-[200px] truncate">
                           {p.project_name}
-                          {isPast && <span className="ml-1 text-amber-500 text-[10px]">📅 past</span>}
                         </td>
                         <td className="px-3 py-2 text-gray-500">
-                          {p.planned_budget_2026 ? `$${Number(p.planned_budget_2026).toLocaleString()}` : '—'}
+                          {budgetVal ? `${sym}${Number(budgetVal).toLocaleString()}` : '—'}
                         </td>
                         <td className="px-3 py-2 text-gray-400">
-                          {p.planned_start && p.planned_end
-                            ? `${p.planned_start} → ${p.planned_end}`
-                            : p.planned_start || '—'}
+                          {(p.planned_start || p.timeline_start) && (p.planned_end || p.timeline_end)
+                            ? `${p.planned_start || p.timeline_start} → ${p.planned_end || p.timeline_end}`
+                            : p.planned_start || p.timeline_start || '—'}
                         </td>
                         <td className="px-3 py-2 text-gray-400">{p.stage || 'Pending'}</td>
                       </tr>
