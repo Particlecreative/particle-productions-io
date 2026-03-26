@@ -32,8 +32,7 @@ router.get('/callback', async (req, res) => {
     const { tokens } = await oauth2.getToken(code);
     // Store tokens in settings table
     await db.query(
-      `INSERT INTO settings (brand_id, google_tokens) VALUES ('_google', $1)
-       ON CONFLICT (brand_id) DO UPDATE SET google_tokens = $1`,
+      `UPDATE settings SET google_tokens = $1 WHERE brand_id = 'particle'`,
       [JSON.stringify(tokens)]
     );
     // Redirect back to app
@@ -50,7 +49,7 @@ router.post('/upload', verifyJWT, async (req, res) => {
 
   try {
     // Get stored tokens
-    const { rows } = await db.query("SELECT google_tokens FROM settings WHERE brand_id = '_google'");
+    const { rows } = await db.query("SELECT google_tokens FROM settings WHERE brand_id = 'particle'");
     if (!rows[0]?.google_tokens) {
       return res.status(401).json({ error: 'Google Drive not connected. Go to Settings to connect.' });
     }
@@ -66,7 +65,7 @@ router.post('/upload', verifyJWT, async (req, res) => {
       const { credentials } = await oauth2.refreshAccessToken();
       oauth2.setCredentials(credentials);
       await db.query(
-        "UPDATE settings SET google_tokens = $1 WHERE brand_id = '_google'",
+        "UPDATE settings SET google_tokens = $1 WHERE brand_id = 'particle'",
         [JSON.stringify(credentials)]
       );
     }
@@ -132,7 +131,7 @@ router.post('/upload', verifyJWT, async (req, res) => {
 // ── GET /api/drive/status — check if Google Drive is connected ───────────────
 router.get('/status', verifyJWT, async (req, res) => {
   try {
-    const { rows } = await db.query("SELECT google_tokens FROM settings WHERE brand_id = '_google'");
+    const { rows } = await db.query("SELECT google_tokens FROM settings WHERE brand_id = 'particle'");
     res.json({ connected: !!rows[0]?.google_tokens });
   } catch (err) {
     res.json({ connected: false });
