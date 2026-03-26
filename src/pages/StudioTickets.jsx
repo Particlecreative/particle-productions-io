@@ -14,7 +14,7 @@ const SIZE_PRESETS = [
 const DEFAULTS = {
   videoFormUrl:  'https://forms.monday.com/forms/3338cd016ac8f73b819a90f49f0dabfe?r=use1',
   designFormUrl: 'https://forms.monday.com/forms/c5c62bf4ebeb9af33f52be5ba9216ebc?r=use1',
-  embedUrl:      'https://particle-for-men.monday.com/overviews/overview_sharing_open?token=eyJhbGciOiJIUzI1NiJ9.eyJleHAiOjIwODg4NTM5MjMsImRhdCI6eyJldCI6Im92ZXJ2aWV3IiwiZWlkIjozNjA2NDc3NywidWlkIjo2MDk4MDc2NiwiY2F0IjoiMjAyNi0wMy0xMVQxMzoxMjowMyswMDowMCJ9fQ.9qwgpNkhdw12fYlV_pF0L483fYM8cmq-07z4QV30XSk',
+  embedUrl:      '', // Set via Settings — Monday.com embed URL goes here
 };
 
 function loadSettings() {

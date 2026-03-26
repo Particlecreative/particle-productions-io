@@ -76,6 +76,7 @@ export default function Dashboard() {
   const [pastProdDialog, setPastProdDialog] = useState(null); // production to show past-dialog for
 
   const [productions, setProductions] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   // Load filters from localStorage on mount
   const [hideCompleted, setHideCompleted] = useState(() => {
@@ -135,12 +136,14 @@ export default function Dashboard() {
 
   useEffect(() => {
     async function load() {
+      setLoading(true);
       const prods = await Promise.resolve(getProductions(brandId, selectedYear));
       setProductions(Array.isArray(prods) ? prods : []);
       if (user) {
         const saved = await Promise.resolve(getViewOrder(`dashboard_${brandId}`, user.id));
         if (saved) setCustomOrder(saved);
       }
+      setLoading(false);
     }
     load();
   }, [brandId, user, selectedYear]);
@@ -402,18 +405,18 @@ export default function Dashboard() {
                 <div className={clsx('grid grid-cols-2 md:grid-cols-4 p-4', compactMode ? 'gap-3' : 'gap-4')}>
 
                   {/* Total Budget */}
-                  <div className="kpi-card flex flex-col justify-center">
-                    <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">{selectedYear} Total Budget</div>
-                    <div className="text-2xl font-black tracking-tight" style={{ color: 'var(--brand-primary)', letterSpacing: '-0.03em' }}>
+                  <div className="kpi-card flex flex-col justify-center min-w-0">
+                    <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1 kpi-label">{selectedYear} Total Budget</div>
+                    <div className="text-lg sm:text-xl md:text-2xl font-black tracking-tight truncate kpi-value" style={{ color: 'var(--brand-primary)', letterSpacing: '-0.03em' }}>
                       {df(totalBudget)}
                     </div>
                     <div className="mt-2 h-1 w-16 rounded-full" style={{ background: 'var(--brand-accent)' }} />
                   </div>
 
                   {/* Spent */}
-                  <div className="kpi-card flex flex-col justify-center">
-                    <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">Spent</div>
-                    <div className="text-xl font-black tracking-tight text-green-600" style={{ letterSpacing: '-0.02em' }}>
+                  <div className="kpi-card flex flex-col justify-center min-w-0">
+                    <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1 kpi-label">Spent</div>
+                    <div className="text-lg sm:text-xl font-black tracking-tight text-green-600 truncate kpi-value" style={{ letterSpacing: '-0.02em' }}>
                       {df(totalSpent)}
                     </div>
                     <div className="mt-2 flex items-center gap-2">
@@ -425,9 +428,9 @@ export default function Dashboard() {
                   </div>
 
                   {/* Remaining */}
-                  <div className="kpi-card flex flex-col justify-center">
-                    <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">Remaining</div>
-                    <div className="text-xl font-black tracking-tight" style={{ color: 'var(--brand-secondary)', letterSpacing: '-0.02em' }}>
+                  <div className="kpi-card flex flex-col justify-center min-w-0">
+                    <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1 kpi-label">Remaining</div>
+                    <div className="text-lg sm:text-xl font-black tracking-tight truncate kpi-value" style={{ color: 'var(--brand-secondary)', letterSpacing: '-0.02em' }}>
                       {df(totalBudget - totalSpent)}
                     </div>
                     <div className="mt-2 text-[10px] text-gray-400 font-medium">
@@ -436,8 +439,8 @@ export default function Dashboard() {
                   </div>
 
                   {/* Stage Pills */}
-                  <div className="kpi-card flex flex-col justify-center">
-                    <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">By Stage</div>
+                  <div className="kpi-card flex flex-col justify-center min-w-0">
+                    <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5 kpi-label">By Stage</div>
                     <div className="flex flex-wrap gap-1">
                       {Object.entries(stageBreakdown).map(([stage, count]) => {
                         const sc = { 'Pending': '#6b46c1', 'Pre-Production': '#4527A0', 'Production': '#1565C0', 'Post Production': '#e65100', 'Completed': '#2e7d32', 'Paused': '#f57f17' }[stage] || '#6b7280';
@@ -666,7 +669,20 @@ export default function Dashboard() {
       </div>
 
       {/* Table */}
-      {activeTab === 'productions' && <div className="brand-card p-0 overflow-hidden">
+      {activeTab === 'productions' && loading && (
+        <div className="brand-card p-6 space-y-4">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="flex items-center gap-4">
+              <div className="skeleton h-4 w-16 rounded" />
+              <div className="skeleton h-4 flex-1 rounded" />
+              <div className="skeleton h-4 w-24 rounded" />
+              <div className="skeleton h-4 w-20 rounded" />
+              <div className="skeleton h-4 w-16 rounded" />
+            </div>
+          ))}
+        </div>
+      )}
+      {activeTab === 'productions' && !loading && <div className="brand-card p-0 overflow-hidden">
         <div className="table-scroll-wrapper" style={stickyHeader ? { maxHeight: 'calc(100vh - 260px)', overflowY: 'auto' } : {}}>
           <table className={clsx('data-table', compactMode && 'compact-table')} style={{ minWidth: compactMode ? 700 : 1200 }}>
             <thead>

@@ -19,8 +19,11 @@ app.use(cors({
   origin: (origin, cb) => {
     // Allow requests with no origin (server-to-server, curl, mobile)
     if (!origin) return cb(null, true);
-    // If no allowlist configured, allow all (dev mode)
-    if (!allowedList) return cb(null, true);
+    // If no allowlist configured, allow only localhost (dev mode)
+    if (!allowedList) {
+      if (origin && (origin.includes('localhost') || origin.includes('127.0.0.1'))) return cb(null, true);
+      return cb(null, false);
+    }
     if (allowedList.includes(origin)) return cb(null, origin);
     // Block: return false (no Access-Control-Allow-Origin header)
     cb(null, false);
@@ -38,6 +41,16 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many login attempts, please try again later' },
 });
+
+// General API rate limiter (100 requests per minute per IP)
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please slow down' },
+});
+app.use('/api', apiLimiter);
 
 // ── Routes ──────────────────────────────────────────
 app.use('/api/auth', authLimiter, require('./routes/auth'));

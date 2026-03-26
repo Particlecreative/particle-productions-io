@@ -118,9 +118,14 @@ export default function ProductionBoard() {
 
   if (!production) {
     return (
-      <div className="flex items-center justify-center py-20 text-gray-400">
-        Production not found.
-        <button onClick={() => navigate('/')} className="ml-2 text-blue-500 underline">Back</button>
+      <div className="flex items-center justify-center py-20 animate-fade-in">
+        <div className="text-center">
+          <div className="flex justify-center mb-4">
+            <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-200" style={{ borderTopColor: 'var(--brand-accent)' }} />
+          </div>
+          <p className="text-gray-400 text-sm">Loading production...</p>
+          <button onClick={() => navigate('/')} className="mt-3 text-xs text-blue-500 hover:underline">Back to Productions</button>
+        </div>
       </div>
     );
   }
