@@ -338,8 +338,9 @@ export default function ContractSign() {
           <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-4">Service Provider Details</h3>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <DetailPill icon={<User size={13} />} label="Name" value={d.provider_name || '\u2014'} />
-            <DetailPill icon={<Hash size={13} />} label="ID Number" value={d.provider_id || d.signer_id_number || '\u2014'} />
+            <DetailPill icon={<Hash size={13} />} label="ID / Company Number" value={d.provider_id_number || d.provider_id || d.signer_id_number || '\u2014'} />
             <DetailPill icon={<FileText size={13} />} label="Production" value={d.project_name || '\u2014'} />
+            {d.provider_address && <DetailPill icon={<FileText size={13} />} label="Address" value={d.provider_address} />}
           </div>
         </div>
 
@@ -375,7 +376,7 @@ export default function ContractSign() {
                 <div className="mb-3 px-4 py-3 bg-green-50 rounded-lg">
                   <p className="text-[10px] uppercase tracking-widest text-green-600 mb-1">Total Fee</p>
                   <p className="text-xl font-bold text-green-700">
-                    {d.currency === 'ILS' ? '\u20AA' : d.currency === 'EUR' ? '\u20AC' : d.currency === 'GBP' ? '\u00A3' : '$'}{Number(d.fee_amount).toLocaleString()}
+                    {Number(d.fee_amount).toLocaleString()} {d.currency === 'ILS' ? 'ILS (Israeli New Shekel)' : d.currency === 'EUR' ? 'EUR (Euro)' : d.currency === 'GBP' ? 'GBP (British Pound)' : 'USD (US Dollar)'}
                   </p>
                 </div>
               )}

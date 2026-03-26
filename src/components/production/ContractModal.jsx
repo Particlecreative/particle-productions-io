@@ -703,9 +703,9 @@ export default function ContractModal({ production, lineItem, onClose }) {
 
     setEditableExhibitA(exhibitA);
 
-    const currencySymbol = currency === 'ILS' ? '\u20AA' : currency === 'EUR' ? '\u20AC' : currency === 'GBP' ? '\u00A3' : '$';
+    const currencyName = currency === 'ILS' ? 'ILS' : currency === 'EUR' ? 'EUR' : currency === 'GBP' ? 'GBP' : 'USD';
     const bParts = [];
-    if (feeAmount) bParts.push(`Total Fee: ${currencySymbol}${Number(feeAmount).toLocaleString()}`);
+    if (feeAmount) bParts.push(`Total Fee: ${Number(feeAmount).toLocaleString()} ${currencyName}`);
     if (paymentTerms) bParts.push(`Payment Terms: ${paymentTerms}`);
     if (paymentMethod) bParts.push(`Payment Method: ${paymentMethod}`);
     if (exhibitB) bParts.push(exhibitB);
@@ -1173,8 +1173,7 @@ export default function ContractModal({ production, lineItem, onClose }) {
                     </div>
                     {feeAmount && (
                       <div className="text-[10px] text-green-600 mt-0.5 font-semibold">
-                        {currency === 'ILS' ? '\u20AA' : currency === 'EUR' ? '\u20AC' : currency === 'GBP' ? '\u00A3' : '$'}
-                        {Number(feeAmount).toLocaleString()}
+                        {Number(feeAmount).toLocaleString()} {currency === 'ILS' ? 'ILS' : currency === 'EUR' ? 'EUR' : currency === 'GBP' ? 'GBP' : 'USD'}
                       </div>
                     )}
                   </div>
