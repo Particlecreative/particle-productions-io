@@ -8,6 +8,21 @@ function generateToken() {
   return crypto.randomBytes(32).toString('hex');
 }
 
+// ── Slack webhook helper ──────────────────────────────
+async function notifySlack(message) {
+  const webhookUrl = process.env.SLACK_WEBHOOK_URL;
+  if (!webhookUrl) return;
+  try {
+    await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: message }),
+    });
+  } catch (e) {
+    console.warn('Slack notification failed:', e.message);
+  }
+}
+
 // ════════════════════════════════════════════════════════
 // PUBLIC endpoints — no JWT required (must be BEFORE verifyJWT)
 // ════════════════════════════════════════════════════════
@@ -109,6 +124,10 @@ router.post('/sign/:id/:token', async (req, res) => {
     );
     const allSigned = allSigs.every(s => s.signed_at !== null);
 
+    // Slack notification — individual signer
+    const roleLabel = sig.signer_role === 'hocp' ? 'HOCP' : 'provider';
+    notifySlack(`✍️ Contract signed by ${roleLabel}: ${id} — ${signer_name || sig.signer_name}`);
+
     if (allSigned) {
       // Mark contract as fully signed
       events.push({ type: 'completed', at: now });
@@ -116,6 +135,8 @@ router.post('/sign/:id/:token', async (req, res) => {
         `UPDATE contracts SET status = 'signed', signed_at = $1, events = $2 WHERE id = $3`,
         [now, JSON.stringify(events), id]
       );
+      // Slack notification — fully signed
+      notifySlack(`✅ Contract fully signed: ${id} — ${signer_name || sig.signer_name}`);
     }
 
     res.json({ success: true, all_signed: allSigned });
@@ -243,6 +264,9 @@ router.post('/:production_id/generate', async (req, res) => {
     const baseUrl = process.env.APP_URL || req.headers.origin || 'http://localhost:5173';
     const providerSignUrl = `${baseUrl}/sign/${contract.id}/${providerToken}`;
     const hocpSignUrl     = `${baseUrl}/sign/${contract.id}/${hocpToken}`;
+
+    // Slack notification — contract generated
+    notifySlack(`📄 Contract generated: ${prodId} — ${provider_name}`);
 
     res.json({
       contract,

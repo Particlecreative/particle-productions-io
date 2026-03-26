@@ -407,6 +407,19 @@ export function getContractSignatures(productionId) {
   return apiGet(`/contracts/${encodeURIComponent(productionId)}/signatures`);
 }
 
+// ========== GOOGLE DRIVE ==========
+export function getDriveAuthUrl() {
+  return apiGet('/drive/auth');
+}
+
+export function getDriveStatus() {
+  return apiGet('/drive/status');
+}
+
+export function uploadToDrive({ fileName, fileContent, mimeType, subfolder }) {
+  return apiPost('/drive/upload', { fileName, fileContent, mimeType, subfolder });
+}
+
 // ========== INVOICES ==========
 export function getInvoices(lineItemId) {
   if (IS_DEV) {

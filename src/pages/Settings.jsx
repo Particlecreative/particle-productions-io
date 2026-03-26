@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { Save, Upload, Palette, Type, Globe, List, Plus, X, Check, ChevronUp, ChevronDown, RotateCcw, Clock, Wrench, Trash2, Building2, Pencil, ServerCog, Mail } from 'lucide-react';
+import { Save, Upload, Palette, Type, Globe, List, Plus, X, Check, ChevronUp, ChevronDown, RotateCcw, Clock, Wrench, Trash2, Building2, Pencil, ServerCog, Mail, Link2, CheckCircle, AlertCircle } from 'lucide-react';
 import { useBrand } from '../context/BrandContext';
 import { useLists } from '../context/ListsContext';
 import { useAuth } from '../context/AuthContext';
-import { getSettings, updateSettings, getImprovementTickets, createImprovementTicket, updateImprovementTicket, deleteImprovementTicket, generateId, getBrands, createBrand, updateBrand, deleteBrand, getProductions, bulkCreateLineItems, bulkCreateCastMembers } from '../lib/dataService';
+import { getSettings, updateSettings, getImprovementTickets, createImprovementTicket, updateImprovementTicket, deleteImprovementTicket, generateId, getBrands, createBrand, updateBrand, deleteBrand, getProductions, bulkCreateLineItems, bulkCreateCastMembers, getDriveAuthUrl, getDriveStatus } from '../lib/dataService';
 import { LIST_META } from '../lib/listService';
 import clsx from 'clsx';
 
@@ -333,6 +333,10 @@ export default function Settings() {
   const [ticketFilter, setTicketFilter] = useState('all');
   const [ticketSubmitted, setTicketSubmitted] = useState(false);
 
+  // Google Drive integration state
+  const [driveConnected, setDriveConnected] = useState(false);
+  const [driveLoading, setDriveLoading]     = useState(false);
+
   // System Update state
   const [sysVersion, setSysVersion]   = useState(null);
   const [sysFile, setSysFile]         = useState(null);
@@ -361,6 +365,21 @@ export default function Settings() {
 
   useEffect(() => {
     Promise.resolve(getImprovementTickets()).then(t => setTickets(t || [])).catch(() => {});
+  }, []);
+
+  // Check Google Drive connection status
+  useEffect(() => {
+    getDriveStatus().then(r => setDriveConnected(!!r?.connected)).catch(() => {});
+    // If redirected back from Google OAuth, switch to integrations tab
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('google') === 'connected') {
+      setDriveConnected(true);
+      setTab('integrations');
+      window.history.replaceState({}, '', '/settings');
+    } else if (params.get('google') === 'error') {
+      setTab('integrations');
+      window.history.replaceState({}, '', '/settings');
+    }
   }, []);
 
   // Fetch current app version for super admin
@@ -488,6 +507,7 @@ export default function Settings() {
           { key: 'brands',        label: 'Brands',         icon: <Building2 size={13} />,   show: isSuperAdmin },
           { key: 'improvements',  label: 'Improvements',   icon: <Wrench size={13} />,      show: true },
           { key: 'data-import',   label: 'Data Import',    icon: <Upload size={13} />,      show: isAdmin || isSuperAdmin },
+          { key: 'integrations',  label: 'Integrations',   icon: <Link2 size={13} />,       show: isAdmin || isSuperAdmin },
           { key: 'changelog',     label: 'Changelog',      icon: <Clock size={13} />,       show: true },
           { key: 'system',        label: 'System Update',  icon: <ServerCog size={13} />,   show: isSuperAdmin },
         ].filter(t => t.show).map(({ key, label, icon }) => (
@@ -891,6 +911,80 @@ export default function Settings() {
       {/* ── Brands tab ───────────────────────────────────────────────────────── */}
       {tab === 'brands' && isSuperAdmin && (
         <BrandsTab refreshBrands={refreshBrands} />
+      )}
+
+      {/* ── Integrations tab ──────────────────────────────────────────────────── */}
+      {tab === 'integrations' && (isAdmin || isSuperAdmin) && (
+        <div className="max-w-xl space-y-5">
+          {/* Google Drive */}
+          <section className="brand-card">
+            <div className="flex items-center gap-2 mb-1">
+              <svg width="18" height="18" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
+                <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8H0c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
+                <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3L1.2 48.35C.4 49.75 0 51.3 0 52.85h27.5z" fill="#00ac47"/>
+                <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75L86.1 57.5c.8-1.4 1.2-2.95 1.2-4.5H59.8l5.95 11.35z" fill="#ea4335"/>
+                <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2H34.4c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
+                <path d="M59.8 53H27.5L13.75 76.8c1.35.8 2.9 1.2 4.5 1.2H69.3c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
+                <path d="M73.4 26.5 60.15 3.5c-.8-1.4-1.95-2.5-3.3-3.3L43.1 24.1l16.6 28.75H87.3c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
+              </svg>
+              <h2 className="font-bold" style={{ color: 'var(--brand-primary)' }}>Google Drive</h2>
+            </div>
+            <p className="text-xs text-gray-400 mb-4">
+              Connect Google Drive to auto-upload signed contracts to a shared folder.
+            </p>
+            <div className="flex items-center gap-3">
+              {driveConnected ? (
+                <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-xl px-4 py-2.5 flex-1">
+                  <CheckCircle size={14} className="text-green-600" />
+                  <span className="font-semibold">Connected</span>
+                  <span className="text-xs text-green-500 ml-1">— signed contracts will auto-upload</span>
+                </div>
+              ) : (
+                <button
+                  onClick={async () => {
+                    setDriveLoading(true);
+                    try {
+                      const data = await getDriveAuthUrl();
+                      if (data?.url) window.location.href = data.url;
+                    } catch (e) {
+                      alert('Failed to start Google auth. Make sure the backend is running.');
+                    }
+                    setDriveLoading(false);
+                  }}
+                  disabled={driveLoading}
+                  className="btn-cta flex items-center gap-2 text-sm"
+                >
+                  <Link2 size={13} />
+                  {driveLoading ? 'Connecting...' : 'Connect Google Drive'}
+                </button>
+              )}
+            </div>
+          </section>
+
+          {/* Slack Webhook */}
+          <section className="brand-card">
+            <div className="flex items-center gap-2 mb-1">
+              <svg width="18" height="18" viewBox="0 0 127 127" xmlns="http://www.w3.org/2000/svg">
+                <path d="M27.2 80c0 7.3-5.9 13.2-13.2 13.2S.8 87.3.8 80s5.9-13.2 13.2-13.2h13.2V80z" fill="#E01E5A"/>
+                <path d="M33.8 80c0-7.3 5.9-13.2 13.2-13.2s13.2 5.9 13.2 13.2v33c0 7.3-5.9 13.2-13.2 13.2s-13.2-5.9-13.2-13.2V80z" fill="#E01E5A"/>
+                <path d="M47 27c-7.3 0-13.2-5.9-13.2-13.2S39.7.6 47 .6s13.2 5.9 13.2 13.2V27H47z" fill="#36C5F0"/>
+                <path d="M47 33.6c7.3 0 13.2 5.9 13.2 13.2S54.3 60 47 60H14c-7.3 0-13.2-5.9-13.2-13.2S6.7 33.6 14 33.6h33z" fill="#36C5F0"/>
+                <path d="M99.9 46.8c0-7.3 5.9-13.2 13.2-13.2s13.2 5.9 13.2 13.2-5.9 13.2-13.2 13.2H99.9V46.8z" fill="#2EB67D"/>
+                <path d="M93.3 46.8c0 7.3-5.9 13.2-13.2 13.2s-13.2-5.9-13.2-13.2V14c0-7.3 5.9-13.2 13.2-13.2s13.2 5.9 13.2 13.2v32.8z" fill="#2EB67D"/>
+                <path d="M80.1 99.7c7.3 0 13.2 5.9 13.2 13.2s-5.9 13.2-13.2 13.2-13.2-5.9-13.2-13.2V99.7h13.2z" fill="#ECB22E"/>
+                <path d="M80.1 93.1c-7.3 0-13.2-5.9-13.2-13.2s5.9-13.2 13.2-13.2h33c7.3 0 13.2 5.9 13.2 13.2s-5.9 13.2-13.2 13.2h-33z" fill="#ECB22E"/>
+              </svg>
+              <h2 className="font-bold" style={{ color: 'var(--brand-primary)' }}>Slack Notifications</h2>
+            </div>
+            <p className="text-xs text-gray-400 mb-4">
+              Set the <code className="bg-gray-100 rounded px-1">SLACK_WEBHOOK_URL</code> environment variable on the server to receive contract notifications in Slack.
+              Notifications are sent when contracts are generated, signed by a provider, and fully signed.
+            </p>
+            <div className="text-xs text-gray-500 bg-gray-50 rounded-lg p-3 font-mono">
+              SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../xxx
+            </div>
+          </section>
+        </div>
       )}
 
       {/* ── Changelog tab ────────────────────────────────────────────────────── */}

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { X, ExternalLink, Download, FileSignature, CheckCircle, Clock, Send, MessageCircle, Mail, Copy, Link2, Plus, AlertCircle } from 'lucide-react';
-import { upsertContract, getContract, generateContractSignatures, getContractSignatures } from '../../lib/dataService';
+import { upsertContract, getContract, generateContractSignatures, getContractSignatures, uploadToDrive } from '../../lib/dataService';
 import { getDownloadUrl } from '../../lib/invoiceUtils';
 import { formatIST, nowISOString } from '../../lib/timezone';
 import { useAuth } from '../../context/AuthContext';
@@ -247,10 +247,10 @@ export default function ContractModal({ production, lineItem, onClose }) {
     window.open(hellosignUrl, '_blank');
   }
 
-  function handleMarkSigned() {
+  async function handleMarkSigned() {
     const now = nowISOString();
     const newEvents = [...events, { type: 'completed', at: now }];
-    upsertContract({
+    const updatedContract = {
       production_id: contractKey,
       provider_name: providerName,
       provider_email: providerEmail,
@@ -258,7 +258,31 @@ export default function ContractModal({ production, lineItem, onClose }) {
       signed_at: now,
       pdf_url: pdfUrl,
       events: newEvents,
-    });
+    };
+
+    // Attempt Google Drive auto-upload if we have a PDF URL with base64 content
+    // (skip if it's just a link — only upload if we have actual file content)
+    if (pdfUrl && !driveUrl) {
+      try {
+        const subfolder = `${new Date().getFullYear()}/${production.id} ${production.project_name}`;
+        const fileName = `[Signed] ${lineItem?.item || production.project_name} - ${providerName}.pdf`;
+
+        // If pdfUrl is a data URI (base64), extract and upload
+        if (pdfUrl.startsWith('data:')) {
+          const base64 = pdfUrl.split(',')[1];
+          const result = await uploadToDrive({ fileName, fileContent: base64, mimeType: 'application/pdf', subfolder });
+          if (result?.viewLink) {
+            updatedContract.drive_url = result.viewLink;
+            setDriveUrl(result.viewLink);
+          }
+        }
+        // Otherwise, skip auto-upload (user can paste Drive URL manually)
+      } catch (e) {
+        console.warn('Drive auto-upload failed (non-blocking):', e.message);
+      }
+    }
+
+    upsertContract(updatedContract);
     setEvents(newEvents);
     addNotification('contract_signed', `Contract signed for ${production.project_name}`, production.id);
     setStatus('signed');

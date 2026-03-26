@@ -65,6 +65,14 @@ app.use('/api/call-sheets',    require('./routes/callSheets'));
 app.use('/api/cc-purchases',   require('./routes/ccPurchases'));
 app.use('/api/weekly-reports', require('./routes/weeklyReports'));
 app.use('/api/admin',          require('./routes/admin'));
+app.use('/api/drive',          require('./routes/drive'));
+
+// Google OAuth callback redirect — the callback URL registered with Google
+// points to /api/auth/google/callback, so we redirect to the drive router
+app.get('/api/auth/google/callback', (req, res) => {
+  const qs = new URLSearchParams(req.query).toString();
+  res.redirect(`/api/drive/callback?${qs}`);
+});
 
 // ── Public form endpoints (no auth required) ─────────
 app.use('/api/public',           require('./routes/publicForms'));
