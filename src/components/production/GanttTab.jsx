@@ -528,7 +528,9 @@ function DateHeaderRow({ days, cw, zoom, showIL, showUS, todayStr }) {
               <span className={clsx('text-[10px] leading-none', isToday ? 'text-blue-600 font-bold' : isFriSatCell ? 'text-gray-400' : 'text-gray-400')}>
                 {zoom === 'day'
                   ? `${day.getDate()} ${DAY_NAMES_3[dayOfW]}`
-                  : cw >= 30 ? day.getDate() : fmtShort(day)
+                  : zoom === 'week'
+                    ? (cw >= 30 ? `${day.getDate()} ${DAY_NAMES_3[dayOfW]}` : fmtShort(day))
+                    : (cw >= 30 ? day.getDate() : fmtShort(day))
                 }
               </span>
             )}

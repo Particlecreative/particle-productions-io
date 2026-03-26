@@ -502,7 +502,7 @@ export default function Dashboard() {
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search…"
-            className="brand-input pl-8"
+            className="brand-input pl-10"
             style={{ width: 220 }}
           />
         </div>

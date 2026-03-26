@@ -7,7 +7,9 @@ import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationsContext';
 import clsx from 'clsx';
 
-const HELLOSIGN_URL = 'https://app.hellosign.com/prep-and-send/0046a5d88cefaf98f1aa8ad6c9b100569e016979/recipients';
+const HELLOSIGN_CAST = 'https://app.hellosign.com/prep-and-send/b0b7d49634c1963b10b86f62ed80aced3d9d9eae/recipients';
+const HELLOSIGN_CREW = 'https://app.hellosign.com/prep-and-send/bc5114dd429e77ad9f54c5ae74a0f23f81cfc166/recipients';
+const CAST_TYPES = ['Cast', 'Actor', 'Model', 'Talent', 'Actress'];
 
 // Pre-defined signer roles for Particle contracts
 const SIGNER_ROLES = {
@@ -78,7 +80,8 @@ export default function ContractModal({ production, lineItem, onClose }) {
     });
     addNotification('contract_sent', `Contract sent for ${production.project_name}`, production.id);
     setStatus('sent');
-    window.open(HELLOSIGN_URL, '_blank');
+    const hellosignUrl = CAST_TYPES.includes(lineItem?.type) ? HELLOSIGN_CAST : HELLOSIGN_CREW;
+    window.open(hellosignUrl, '_blank');
   }
 
   function handleMarkSigned() {
@@ -232,7 +235,17 @@ export default function ContractModal({ production, lineItem, onClose }) {
         {/* HelloSign signer details — copyable for easy fill */}
         {(isSent || isPending) && !isSigned && (
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-5 text-sm">
-            <div className="font-bold text-blue-800 mb-3">📋 Copy these into HelloSign:</div>
+            <div className="flex items-center justify-between mb-3">
+              <div className="font-bold text-blue-800">Copy these into Dropbox Sign:</div>
+              <span className={clsx(
+                'text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full',
+                CAST_TYPES.includes(lineItem?.type)
+                  ? 'bg-purple-100 text-purple-700'
+                  : 'bg-amber-100 text-amber-700'
+              )}>
+                {CAST_TYPES.includes(lineItem?.type) ? 'Cast Template' : 'Crew Template'}
+              </span>
+            </div>
             <div className="grid grid-cols-1 gap-2.5">
               {[
                 { label: 'Creative Producer', name: production?.producer || 'Omer Barak', email: 'omer@particleformen.com' },

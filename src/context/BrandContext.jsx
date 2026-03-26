@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { getBrands } from '../lib/dataService';
+import { getBrands, getSettings } from '../lib/dataService';
 
 const IS_DEV = import.meta.env.DEV;
 
@@ -51,6 +51,23 @@ export function BrandProvider({ children }) {
   useEffect(() => {
     localStorage.setItem('cp_brand', brandId);
     document.documentElement.setAttribute('data-brand', brandId);
+
+    // Apply saved brand colors from settings as CSS variables
+    try {
+      const result = getSettings(brandId);
+      const applyColors = (s) => {
+        if (s?.colors) {
+          Object.entries(s.colors).forEach(([key, value]) => {
+            if (value) document.documentElement.style.setProperty(`--brand-${key}`, value);
+          });
+        }
+      };
+      if (result && typeof result.then === 'function') {
+        result.then(applyColors).catch(() => {});
+      } else {
+        applyColors(result);
+      }
+    } catch {}
   }, [brandId]);
 
   // Derive the active brand object from loaded list (fall back to static BRANDS)

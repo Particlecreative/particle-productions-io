@@ -140,4 +140,37 @@ router.post('/forgot-password', async (req, res) => {
   }
 });
 
+// POST /api/auth/set-password — first-login forced password change
+router.post('/set-password', verifyJWT, async (req, res) => {
+  const { password } = req.body || {};
+  if (!password || password.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  }
+
+  try {
+    const hash = await bcrypt.hash(password, 10);
+    await db.query(
+      'UPDATE users SET password_hash = $1, must_change_password = false, updated_at = NOW() WHERE id = $2',
+      [hash, req.user.id]
+    );
+
+    // Notify all admins
+    const admins = await db.query(
+      "SELECT id FROM users WHERE role = 'Admin' AND id != $1",
+      [req.user.id]
+    );
+    for (const admin of admins.rows) {
+      await db.query(
+        "INSERT INTO notifications (user_id, type, message, production_id) VALUES ($1, 'system', $2, null)",
+        [admin.id, `${req.user.name} has changed their password`]
+      );
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Set password error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;

@@ -54,7 +54,17 @@ export default function Login() {
     setChangingPw(true);
     setError('');
     try {
-      await resetPassword(email, newPw);
+      const token = localStorage.getItem('cp_token');
+      const res = await fetch('/api/auth/set-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ password: newPw }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || 'Failed to set password'); setChangingPw(false); return; }
       setForceChange(false);
       navigate('/');
     } catch (err) {

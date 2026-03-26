@@ -92,6 +92,7 @@ export default function InvoiceModal({ lineItemId, productionId, initialStep = '
   const [item, setItem] = useState(null);
   const [production, setProduction] = useState(null);
   const [dealerType, setDealerType] = useState(null);
+  const [supplierFound, setSupplierFound] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -107,9 +108,18 @@ export default function InvoiceModal({ lineItemId, productionId, initialStep = '
       setProduction(prod || null);
 
       if (found) {
-        const supplier = (Array.isArray(allSuppliers) ? allSuppliers : []).find(s => s.full_name && s.full_name === found.full_name);
+        const supplier = (Array.isArray(allSuppliers) ? allSuppliers : []).find(
+          s => s.full_name && found.full_name && s.full_name.toLowerCase() === found.full_name.toLowerCase()
+        );
         const dt = supplier?.dealer_type || found.dealer_type || null;
         setDealerType(dt);
+
+        // Auto-fill phone and email from supplier record
+        if (supplier) {
+          if (supplier.phone) setPhone(supplier.phone);
+          if (supplier.email) setEmail(supplier.email);
+          setSupplierFound(true);
+        }
 
         // Set invoice type based on dealer type
         if (dt === 'osek_patur') setInvoiceType('receipt');
@@ -212,6 +222,14 @@ export default function InvoiceModal({ lineItemId, productionId, initialStep = '
                 style={{ background: DEALER_BADGE[dealerType].color + '18', color: DEALER_BADGE[dealerType].color, border: `1px solid ${DEALER_BADGE[dealerType].color}40` }}
               >
                 {DEALER_BADGE[dealerType].label}
+              </span>
+            )}
+            {supplierFound && (
+              <span
+                className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                style={{ background: '#dcfce7', color: '#16a34a', border: '1px solid #bbf7d0' }}
+              >
+                &#10003; Supplier found
               </span>
             )}
           </div>

@@ -342,8 +342,22 @@ export default function Settings() {
   const sysInputRef = useRef(null);
 
   useEffect(() => {
-    Promise.resolve(getSettings(brandId)).then(s => { if (s) setSettings(s); }).catch(() => {});
-  }, [brandId]);
+    Promise.resolve(getSettings(brandId)).then(s => {
+      if (s) {
+        // If settings.colors is empty, fall back to brand table colors
+        const hasColors = s.colors && Object.keys(s.colors).length > 0;
+        const mergedColors = hasColors
+          ? s.colors
+          : { bg: brand.bg, primary: brand.primary, secondary: brand.secondary, accent: brand.accent };
+        const merged = { ...s, colors: mergedColors };
+        setSettings(merged);
+        // Apply saved colors as CSS variables so they take effect on load
+        Object.entries(mergedColors).forEach(([key, value]) => {
+          if (value) document.documentElement.style.setProperty(`--brand-${key}`, value);
+        });
+      }
+    }).catch(() => {});
+  }, [brandId, brand]);
 
   useEffect(() => {
     Promise.resolve(getImprovementTickets()).then(t => setTickets(t || [])).catch(() => {});

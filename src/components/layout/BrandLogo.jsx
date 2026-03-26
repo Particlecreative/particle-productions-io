@@ -1,10 +1,14 @@
 import { useBrand } from '../../context/BrandContext';
 import { getSettings } from '../../lib/dataService';
 
+const DEFAULT_LOGOS = {
+  particle: 'https://www.particleformen.com/wp-content/themes/particleformen/assets/images/particle-for-men-logo.png',
+};
+
 export default function BrandLogo({ compact = false, dark = false }) {
   const { brand, brandId } = useBrand();
   const settings = getSettings(brandId);
-  const logoUrl = settings?.logo_url;
+  const logoUrl = settings?.logo_url || DEFAULT_LOGOS[brandId] || null;
 
   if (compact) {
     if (logoUrl) {
