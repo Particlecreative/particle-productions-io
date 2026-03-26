@@ -860,12 +860,15 @@ const PROD_TYPE_STYLE = {
 };
 
 const STATUS_ROW_COLORS = {
-  'Completed':      'bg-green-100',
-  'Production':     'bg-blue-100',
-  'Pre Production': 'bg-yellow-100',
-  'Post':           'bg-purple-100',
-  'Paused':         'bg-orange-100',
-  'Pending':        'bg-gray-100',
+  'Completed':       'bg-green-100',
+  'Production':      'bg-blue-100',
+  'Pre Production':  'bg-yellow-100',
+  'Pre-Production':  'bg-yellow-100',
+  'Post':            'bg-purple-100',
+  'Post Production': 'bg-purple-100',
+  'Paused':          'bg-orange-100',
+  'Pending':         'bg-gray-100',
+  'On Hold':         'bg-orange-100',
 };
 
 function ProductionRow({

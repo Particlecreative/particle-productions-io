@@ -267,7 +267,7 @@ export default function CCPaymentsTab({ productionId, production }) {
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Search…"
-              className="pl-8 pr-3 py-1.5 border rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-300 w-36"
+              className="pl-10 pr-3 py-1.5 border rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-300 w-36"
             />
             {search && (
               <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500">

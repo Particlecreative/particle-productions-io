@@ -478,7 +478,7 @@ export default function CastingRights() {
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search cast member…"
-            className="pl-8 pr-3 py-1.5 border rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-300 w-44"
+            className="pl-10 pr-3 py-1.5 border rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-300 w-44"
           />
           {search && <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500"><X size={11} /></button>}
         </div>
