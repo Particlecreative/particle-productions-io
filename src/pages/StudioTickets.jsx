@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { ExternalLink, Pencil, Check, X, Maximize2, Minimize2 } from 'lucide-react';
+import { ExternalLink, Pencil, Check, X, Maximize2, Minimize2, RefreshCw, LayoutGrid, Loader2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import clsx from 'clsx';
 
@@ -14,8 +14,19 @@ const SIZE_PRESETS = [
 const DEFAULTS = {
   videoFormUrl:  'https://forms.monday.com/forms/3338cd016ac8f73b819a90f49f0dabfe?r=use1',
   designFormUrl: 'https://forms.monday.com/forms/c5c62bf4ebeb9af33f52be5ba9216ebc?r=use1',
-  embedUrl:      '', // Paste Monday.com embed URL via the edit button (✏️) below
+  embedUrl:      '', // Paste Monday.com embed URL via the edit button below
 };
+
+const BOARD_COLORS = [
+  'linear-gradient(135deg, #6366f1, #8b5cf6)',
+  'linear-gradient(135deg, #ec4899, #f43f5e)',
+  'linear-gradient(135deg, #14b8a6, #06b6d4)',
+  'linear-gradient(135deg, #f59e0b, #f97316)',
+  'linear-gradient(135deg, #3b82f6, #6366f1)',
+  'linear-gradient(135deg, #10b981, #14b8a6)',
+  'linear-gradient(135deg, #f43f5e, #fb923c)',
+  'linear-gradient(135deg, #8b5cf6, #a855f7)',
+];
 
 function loadSettings() {
   try {
@@ -29,13 +40,35 @@ function saveSettings(patch) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...current, ...patch }));
 }
 
+async function fetchMondayBoards(token) {
+  const res = await fetch('/api/monday/query', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      query: `{ boards(limit: 30) { id name state board_kind items_count description } }`,
+    }),
+  });
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+  const json = await res.json();
+  if (json.errors) throw new Error(json.errors[0]?.message || 'Monday.com query failed');
+  return json.data?.boards || [];
+}
+
 export default function StudioTickets() {
-  const { isEditor } = useAuth();
+  const { isEditor, token } = useAuth();
   const [settings, setSettings] = useState(loadSettings);
   const [sizeId, setSizeId] = useState('standard');
   const [editingEmbed, setEditingEmbed] = useState(false);
   const [embedDraft, setEmbedDraft] = useState('');
   const iframeKey = useRef(0);
+
+  // Monday.com boards state
+  const [boards, setBoards] = useState([]);
+  const [boardsLoading, setBoardsLoading] = useState(false);
+  const [boardsError, setBoardsError] = useState(null);
 
   const iframeHeight = SIZE_PRESETS.find(p => p.id === sizeId)?.height || '72vh';
 
@@ -50,6 +83,27 @@ export default function StudioTickets() {
     setEditingEmbed(false);
     iframeKey.current += 1;
   }
+
+  // Fetch boards on mount (only when no embed URL is set, or always as supplementary)
+  useEffect(() => {
+    loadBoards();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function loadBoards() {
+    setBoardsLoading(true);
+    setBoardsError(null);
+    try {
+      const data = await fetchMondayBoards(token);
+      setBoards(data);
+    } catch (err) {
+      setBoardsError(err.message);
+    } finally {
+      setBoardsLoading(false);
+    }
+  }
+
+  const activeBoards = boards.filter(b => b.state === 'active');
+  const totalItems = activeBoards.reduce((sum, b) => sum + (b.items_count || 0), 0);
 
   return (
     <div>
@@ -79,32 +133,43 @@ export default function StudioTickets() {
         />
       </div>
 
-      {/* Studio Overview / Iframe embed */}
+      {/* Studio Overview */}
       <div className="brand-card">
-        {/* Iframe toolbar */}
+        {/* Toolbar */}
         <div className="flex items-center gap-3 mb-4 flex-wrap">
           <div className="text-sm font-bold" style={{ color: 'var(--brand-primary)' }}>
             Studio Overview
           </div>
 
-          {/* Size presets */}
-          <div className="flex gap-1 bg-gray-100 rounded-xl p-1 ml-2">
-            {SIZE_PRESETS.map(p => (
-              <button
-                key={p.id}
-                onClick={() => setSizeId(p.id)}
-                className={clsx(
-                  'px-2.5 py-1 rounded-lg text-xs font-semibold transition-all',
-                  sizeId === p.id ? 'bg-white shadow text-gray-800' : 'text-gray-500 hover:text-gray-700'
-                )}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
+          {/* Size presets (shown when iframe embed is active) */}
+          {settings.embedUrl && (
+            <div className="flex gap-1 bg-gray-100 rounded-xl p-1 ml-2">
+              {SIZE_PRESETS.map(p => (
+                <button
+                  key={p.id}
+                  onClick={() => setSizeId(p.id)}
+                  className={clsx(
+                    'px-2.5 py-1 rounded-lg text-xs font-semibold transition-all',
+                    sizeId === p.id ? 'bg-white shadow text-gray-800' : 'text-gray-500 hover:text-gray-700'
+                  )}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          )}
 
-          {/* Open + Edit buttons */}
+          {/* Action buttons */}
           <div className="ml-auto flex items-center gap-2">
+            {!settings.embedUrl && (
+              <button
+                onClick={loadBoards}
+                disabled={boardsLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-200 bg-white text-gray-600 hover:border-gray-300 transition-all"
+              >
+                <RefreshCw size={12} className={boardsLoading ? 'animate-spin' : ''} /> Refresh
+              </button>
+            )}
             {settings.embedUrl && (
               <a
                 href={settings.embedUrl}
@@ -112,7 +177,7 @@ export default function StudioTickets() {
                 rel="noopener noreferrer"
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-200 bg-white text-gray-600 hover:border-gray-300 transition-all"
               >
-                <ExternalLink size={12} /> Open ↗
+                <ExternalLink size={12} /> Open
               </a>
             )}
             {isEditor && !editingEmbed && (
@@ -134,7 +199,7 @@ export default function StudioTickets() {
               className="brand-input flex-1 text-sm"
               value={embedDraft}
               onChange={e => setEmbedDraft(e.target.value)}
-              placeholder="Paste embed URL (Monday, Notion, Airtable, Google Sheets…)"
+              placeholder="Paste embed URL (Monday, Notion, Airtable, Google Sheets...) or leave empty for API dashboard"
               autoFocus
               onKeyDown={e => {
                 if (e.key === 'Enter') handleEmbedSave();
@@ -148,55 +213,172 @@ export default function StudioTickets() {
           </div>
         )}
 
-        {/* Test Embed button */}
-        {settings.embedUrl && (
-          <div className="flex items-center gap-2 mb-3">
-            <a
-              href={settings.embedUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[11px] text-gray-400 hover:text-blue-500 underline"
-            >
-              Test embed URL in new tab ↗
-            </a>
-            <span className="text-[10px] text-gray-300">If iframe is blank, the URL may need refreshing from Monday.com</span>
-          </div>
-        )}
-
-        {/* Iframe */}
+        {/* Iframe fallback — show if admin has set a valid embed URL */}
         {settings.embedUrl ? (
-          <div style={{ position: 'relative' }}>
-            <iframe
-              key={iframeKey.current}
-              src={settings.embedUrl}
-              title="Studio Overview"
-              style={{ width: '100%', height: iframeHeight, border: 'none', borderRadius: 8 }}
-              allowFullScreen
-              onError={() => console.warn('Studio embed iframe failed to load')}
-            />
-          </div>
-        ) : (
-          <div
-            style={{ height: iframeHeight }}
-            className="flex flex-col items-center justify-center bg-gray-50 rounded-xl border-2 border-dashed border-gray-200 text-gray-400"
-          >
-            <Maximize2 size={28} className="mb-3 opacity-40" />
-            <div className="text-sm">No embed URL set.</div>
-            {isEditor && (
-              <button
-                onClick={() => { setEmbedDraft(''); setEditingEmbed(true); }}
-                className="mt-3 flex items-center gap-1 text-xs text-blue-500 hover:underline"
+          <>
+            <div className="flex items-center gap-2 mb-3">
+              <a
+                href={settings.embedUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[11px] text-gray-400 hover:text-blue-500 underline"
               >
-                <Pencil size={12} /> Add embed URL
-              </button>
-            )}
-          </div>
+                Test embed URL in new tab
+              </a>
+              <span className="text-[10px] text-gray-300">If iframe is blank, the URL may need refreshing from Monday.com</span>
+            </div>
+            <div style={{ position: 'relative' }}>
+              <iframe
+                key={iframeKey.current}
+                src={settings.embedUrl}
+                title="Studio Overview"
+                style={{ width: '100%', height: iframeHeight, border: 'none', borderRadius: 8 }}
+                allowFullScreen
+                onError={() => console.warn('Studio embed iframe failed to load')}
+              />
+            </div>
+          </>
+        ) : (
+          /* Native API-powered Monday.com dashboard */
+          <MondayBoardsDashboard
+            boards={activeBoards}
+            totalItems={totalItems}
+            loading={boardsLoading}
+            error={boardsError}
+            onRetry={loadBoards}
+            isEditor={isEditor}
+            onSetEmbed={() => { setEmbedDraft(''); setEditingEmbed(true); }}
+          />
         )}
       </div>
     </div>
   );
 }
 
+/* ─── Monday.com Native Dashboard ─────────────────────── */
+function MondayBoardsDashboard({ boards, totalItems, loading, error, onRetry, isEditor, onSetEmbed }) {
+  if (loading && boards.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+        <Loader2 size={28} className="animate-spin mb-3 opacity-60" />
+        <div className="text-sm">Loading Monday.com boards...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+        <div className="text-sm text-red-400 mb-2">Failed to load boards</div>
+        <div className="text-xs text-gray-400 mb-4">{error}</div>
+        <button onClick={onRetry} className="btn-cta text-xs px-4 py-2">Retry</button>
+      </div>
+    );
+  }
+
+  if (boards.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+        <LayoutGrid size={28} className="mb-3 opacity-40" />
+        <div className="text-sm mb-1">No Monday.com boards found</div>
+        <div className="text-xs text-gray-300 mb-4">
+          Make sure MONDAY_API_TOKEN is configured on the server
+        </div>
+        {isEditor && (
+          <button onClick={onSetEmbed} className="flex items-center gap-1 text-xs text-blue-500 hover:underline">
+            <Pencil size={12} /> Or set an embed URL instead
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {/* Summary bar */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+        <SummaryCard label="Active Boards" value={boards.length} />
+        <SummaryCard label="Total Items" value={totalItems} />
+        <SummaryCard
+          label="Main Boards"
+          value={boards.filter(b => b.board_kind === 'public').length}
+        />
+        <SummaryCard
+          label="Private Boards"
+          value={boards.filter(b => b.board_kind === 'private').length}
+        />
+      </div>
+
+      {/* Board cards grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {boards.map((board, idx) => (
+          <BoardCard key={board.id} board={board} colorIndex={idx} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SummaryCard({ label, value }) {
+  return (
+    <div className="bg-gray-50 rounded-xl p-3 text-center">
+      <div className="text-2xl font-black" style={{ color: 'var(--brand-primary)' }}>
+        {typeof value === 'number' ? value.toLocaleString() : value}
+      </div>
+      <div className="text-[11px] text-gray-400 font-semibold mt-0.5">{label}</div>
+    </div>
+  );
+}
+
+function BoardCard({ board, colorIndex }) {
+  const gradient = BOARD_COLORS[colorIndex % BOARD_COLORS.length];
+  const mondayUrl = `https://monday.com/boards/${board.id}`;
+
+  return (
+    <a
+      href={mondayUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="group block rounded-xl border border-gray-100 hover:border-gray-200 hover:shadow-md transition-all overflow-hidden"
+    >
+      {/* Color strip */}
+      <div className="h-1.5" style={{ background: gradient }} />
+
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-2 mb-2">
+          <div className="font-bold text-sm text-gray-800 group-hover:text-gray-900 leading-tight line-clamp-2">
+            {board.name}
+          </div>
+          <ExternalLink size={12} className="text-gray-300 group-hover:text-gray-500 shrink-0 mt-0.5" />
+        </div>
+
+        {board.description && (
+          <div className="text-[11px] text-gray-400 mb-3 line-clamp-2 leading-relaxed">
+            {board.description}
+          </div>
+        )}
+
+        <div className="flex items-center gap-3 text-[11px]">
+          <span className="font-semibold text-gray-600">
+            {(board.items_count || 0).toLocaleString()} items
+          </span>
+          <span className={clsx(
+            'px-2 py-0.5 rounded-full font-semibold',
+            board.board_kind === 'public'
+              ? 'bg-blue-50 text-blue-600'
+              : board.board_kind === 'private'
+              ? 'bg-purple-50 text-purple-600'
+              : 'bg-gray-100 text-gray-500'
+          )}>
+            {board.board_kind === 'public' ? 'Main' : board.board_kind === 'private' ? 'Private' : board.board_kind}
+          </span>
+        </div>
+      </div>
+    </a>
+  );
+}
+
+/* ─── Request Card (unchanged) ────────────────────────── */
 function RequestCard({ icon, title, subtitle, url, isEditor, onSaveUrl }) {
   const [editingUrl, setEditingUrl] = useState(false);
   const [draft, setDraft] = useState('');
@@ -232,7 +414,7 @@ function RequestCard({ icon, title, subtitle, url, isEditor, onSaveUrl }) {
             className="brand-input text-sm"
             value={draft}
             onChange={e => setDraft(e.target.value)}
-            placeholder="https://forms.example.com/…"
+            placeholder="https://forms.example.com/..."
             autoFocus
             onKeyDown={e => {
               if (e.key === 'Enter') handleSave();
@@ -255,7 +437,7 @@ function RequestCard({ icon, title, subtitle, url, isEditor, onSaveUrl }) {
         </a>
       ) : (
         <div className="text-xs text-gray-300 text-center py-2">
-          {isEditor ? 'Click ✏ to add a form URL' : 'No form URL set.'}
+          {isEditor ? 'Click pencil to add a form URL' : 'No form URL set.'}
         </div>
       )}
     </div>

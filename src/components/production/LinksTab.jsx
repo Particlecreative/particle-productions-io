@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Plus, Copy, Pencil, Trash2, ExternalLink, Check, LayoutGrid, List,
-         ChevronUp, ChevronDown, Settings, X } from 'lucide-react';
+         ChevronUp, ChevronDown, Settings, X, Upload } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import {
   getLinks, createLink, updateLink, deleteLink, generateId,
   getLinkCategories, saveLinkCategories, DEFAULT_LINK_CATEGORIES,
 } from '../../lib/dataService';
+import FileUploadButton from '../shared/FileUploadButton';
 
 // Kept for backward-compat (Links.jsx imports this)
 export const LINK_CATEGORIES = DEFAULT_LINK_CATEGORIES;
@@ -142,6 +143,7 @@ export default function LinksTab({ productionId }) {
                   onTitle={setNewTitle} onUrl={setNewUrl}
                   onAdd={() => handleAdd(cat.id)}
                   onCancel={() => setAddingTo(null)}
+                  productionId={productionId}
                 />
               )}
             </div>
@@ -372,14 +374,28 @@ function ViewToggle({ mode, onChange }) {
 }
 
 /* ─── Add Form ─────────────────────────────────────────────── */
-function AddForm({ title, url, onTitle, onUrl, onAdd, onCancel }) {
+function AddForm({ title, url, onTitle, onUrl, onAdd, onCancel, productionId }) {
   return (
     <div className="mt-2 space-y-2">
       <input className="brand-input text-xs" value={title} onChange={e => onTitle(e.target.value)}
         placeholder="Link title" autoFocus />
       <input className="brand-input text-xs" value={url} onChange={e => onUrl(e.target.value)}
-        placeholder="https://…"
+        placeholder="https://… or upload a file below"
         onKeyDown={e => { if (e.key === 'Enter') onAdd(); if (e.key === 'Escape') onCancel(); }} />
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] text-gray-400 uppercase tracking-wide">or</span>
+        <FileUploadButton
+          category="links"
+          subfolder={productionId ? `${new Date().getFullYear()}/${productionId}` : ''}
+          accept="*/*"
+          label="Upload File"
+          size="sm"
+          onUploaded={(data) => {
+            const link = data?.drive?.viewLink || data?.dropbox?.link || '';
+            if (link) onUrl(link);
+          }}
+        />
+      </div>
       <div className="flex gap-2">
         <button onClick={onCancel} className="btn-secondary flex-1 text-xs py-1.5">Cancel</button>
         <button onClick={onAdd} className="btn-cta flex-1 text-xs py-1.5">Add</button>

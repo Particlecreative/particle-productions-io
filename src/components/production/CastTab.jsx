@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { getCasting, createCastMember, updateCastMember, deleteCastMember, createGanttEvent, generateId, getLineItems, createLineItem } from '../../lib/dataService';
 import ContractModal from './ContractModal';
 import InvoiceModal from './InvoiceModal';
+import FileUploadButton from '../shared/FileUploadButton';
 import clsx from 'clsx';
 
 const ROLES   = ['Model', 'Actor', 'Actress', 'Extra'];
@@ -188,19 +189,41 @@ export default function CastTab({ productionId, production }) {
                 <tr key={m.id}>
                   {/* Photo */}
                   <td>
-                    {m.photo_url ? (
-                      <img
-                        src={m.photo_url}
-                        alt={m.name}
-                        className="w-9 h-9 rounded-full object-cover border border-gray-200 cursor-pointer"
-                        onClick={() => setPhotoFullscreen(m.photo_url)}
-                        onError={e => { e.target.style.display='none'; }}
-                      />
-                    ) : (
-                      <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center">
-                        <User size={16} className="text-gray-400" />
-                      </div>
-                    )}
+                    <div className="flex items-center gap-1.5">
+                      {m.photo_url ? (
+                        <img
+                          src={m.photo_url}
+                          alt={m.name}
+                          className="w-9 h-9 rounded-full object-cover border border-gray-200 cursor-pointer hover:opacity-80 transition-opacity"
+                          style={{ maxHeight: 80 }}
+                          onClick={() => setPhotoFullscreen(m.photo_url)}
+                          onError={e => { e.target.style.display='none'; }}
+                          title="Click to view full size"
+                        />
+                      ) : (
+                        <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center">
+                          <User size={16} className="text-gray-400" />
+                        </div>
+                      )}
+                      {(isEditor || isAdmin) && (
+                        <FileUploadButton
+                          category="cast-photos"
+                          subfolder={`${new Date().getFullYear()}/${productionId}${production?.project_name ? ' ' + production.project_name : ''}`}
+                          fileName={`${m.name || 'Cast'} - Headshot.jpg`}
+                          accept="image/*"
+                          label=""
+                          size="sm"
+                          className="opacity-40 hover:opacity-100 transition-opacity"
+                          onUploaded={async (data) => {
+                            const link = data?.drive?.viewLink || data?.dropbox?.link || '';
+                            if (link) {
+                              await Promise.resolve(updateCastMember(m.id, { photo_url: link }));
+                              refresh();
+                            }
+                          }}
+                        />
+                      )}
+                    </div>
                   </td>
                   <td className="font-semibold text-sm">{m.name || '—'}</td>
                   <td>
@@ -294,6 +317,8 @@ export default function CastTab({ productionId, production }) {
           initial={editing}
           onSave={handleSave}
           onClose={closeModal}
+          productionId={productionId}
+          production={production}
         />
       )}
 
@@ -489,7 +514,7 @@ function RenewRightsModal({ member, productionId, production, onClose, onOpenCon
 }
 
 // ─── Cast Member Modal ────────────────────────────────────────────────────────
-function CastMemberModal({ initial, onSave, onClose }) {
+function CastMemberModal({ initial, onSave, onClose, productionId, production }) {
   const [form, setForm] = useState({ ...initial });
   const [photoPreview, setPhotoPreview] = useState(initial.photo_url || '');
   const fileInputRef = useRef(null);
@@ -587,7 +612,7 @@ function CastMemberModal({ initial, onSave, onClose }) {
                   onClick={() => fileInputRef.current?.click()}
                   className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 font-medium"
                 >
-                  <Upload size={11} /> Upload Photo (≤2MB)
+                  <Upload size={11} /> Local Photo (≤2MB)
                 </button>
                 <input
                   ref={fileInputRef}
@@ -595,6 +620,21 @@ function CastMemberModal({ initial, onSave, onClose }) {
                   accept="image/*"
                   className="hidden"
                   onChange={e => handlePhotoFile(e.target.files?.[0])}
+                />
+                <FileUploadButton
+                  category="cast-photos"
+                  subfolder={productionId ? `${new Date().getFullYear()}/${productionId}${production?.project_name ? ' ' + production.project_name : ''}` : ''}
+                  fileName={form.name ? `${form.name} - Headshot.jpg` : 'Cast-Headshot.jpg'}
+                  accept="image/*"
+                  label="Upload to Cloud"
+                  size="sm"
+                  onUploaded={(data) => {
+                    const link = data?.drive?.viewLink || data?.dropbox?.link || '';
+                    if (link) {
+                      setForm(prev => ({ ...prev, photo_url: link }));
+                      setPhotoPreview(link);
+                    }
+                  }}
                 />
                 <input
                   type="url"

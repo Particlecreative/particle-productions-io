@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, MessageCircle, Mail, Send, Printer } from 'lucide-react';
 import { getLineItems, getProduction, getSuppliers, createInvoice, updateLineItem, generateId, createReceipt } from '../../lib/dataService';
+import FileUploadButton from '../shared/FileUploadButton';
 import { useNotifications } from '../../context/NotificationsContext';
 import { nowISOString } from '../../lib/timezone';
 
@@ -377,8 +378,46 @@ export default function InvoiceModal({ lineItemId, productionId, initialStep = '
                   autoFocus
                 />
                 <p className="text-xs text-gray-400 mt-1">
-                  Google Drive or Dropbox links will get a download button automatically.
+                  Paste a link, or upload the file directly:
                 </p>
+                <div className="mt-2">
+                  <FileUploadButton
+                    category="invoices"
+                    subfolder={`${new Date().getFullYear()}/${productionId}${production?.project_name ? ' ' + production.project_name : ''}`}
+                    fileName={`Invoice - ${item.full_name || 'Supplier'} - ${item.item || 'Item'}.pdf`}
+                    accept="application/pdf,image/*,.doc,.docx,.xls,.xlsx"
+                    label="Upload Invoice"
+                    onUploaded={(data) => {
+                      const link = data?.drive?.viewLink || data?.dropbox?.link || '';
+                      if (link) setInvoiceUrl(link);
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Payment Proof Upload */}
+              <div className="mt-3">
+                <label className="block text-sm font-bold text-gray-700 mb-1.5">
+                  Payment Proof <span className="text-xs font-normal text-gray-400">(optional)</span>
+                </label>
+                <FileUploadButton
+                  category="payment-proofs"
+                  subfolder={`${new Date().getFullYear()}/${productionId}${production?.project_name ? ' ' + production.project_name : ''}`}
+                  fileName={`Proof - ${item.full_name || 'Supplier'} - ${item.item || 'Item'}.pdf`}
+                  accept="application/pdf,image/*"
+                  label="Upload Payment Proof"
+                  onUploaded={(data) => {
+                    const link = data?.drive?.viewLink || data?.dropbox?.link || '';
+                    if (link) {
+                      // Store in notes for now (payment_proof_url field may not exist yet)
+                      const existingNotes = item.notes || '';
+                      const proofNote = `[Payment Proof: ${link}]`;
+                      if (!existingNotes.includes('[Payment Proof:')) {
+                        updateLineItem(lineItemId, { notes: existingNotes ? existingNotes + '\n' + proofNote : proofNote });
+                      }
+                    }
+                  }}
+                />
               </div>
 
               <div className="bg-gray-50 rounded-xl p-3 mt-3 text-xs text-gray-500">
