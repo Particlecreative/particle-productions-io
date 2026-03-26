@@ -374,7 +374,7 @@ export default function Dashboard() {
           <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ background: 'var(--brand-gradient)' }} />
           <div className="relative z-10">
             <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">{selectedYear} Total Budget</div>
-            <div className="text-2xl md:text-3xl font-black tracking-tight kpi-value" style={{ color: 'var(--brand-primary)', letterSpacing: '-0.03em', lineHeight: 1 }}>
+            <div className="text-3xl md:text-4xl font-black tracking-tight kpi-value" style={{ color: 'var(--brand-primary)', letterSpacing: '-0.04em', lineHeight: 1 }}>
               {fmt(totalBudget)}
             </div>
             <div className="mt-3 h-1 w-20 rounded-full overflow-hidden" style={{ background: 'rgba(0,0,0,0.06)' }}>
@@ -390,7 +390,7 @@ export default function Dashboard() {
           <div className="kpi-card flex flex-col justify-between" style={{ minHeight: 120 }}>
             <div className="kpi-label">Spent</div>
             <div>
-              <div className="text-xl md:text-2xl font-black tracking-tight text-green-600 kpi-value" style={{ letterSpacing: '-0.02em', lineHeight: 1 }}>
+              <div className="text-lg md:text-xl font-black tracking-tight text-green-600" style={{ letterSpacing: '-0.02em', lineHeight: 1 }}>
                 {fmt(totalSpent)}
               </div>
               <div className="mt-2 h-1.5 rounded-full bg-gray-100 overflow-hidden">
@@ -404,7 +404,7 @@ export default function Dashboard() {
           <div className="kpi-card flex flex-col justify-between" style={{ minHeight: 120 }}>
             <div className="kpi-label">Remaining</div>
             <div>
-              <div className="text-xl md:text-2xl font-black tracking-tight kpi-value" style={{ color: 'var(--brand-secondary)', letterSpacing: '-0.02em', lineHeight: 1 }}>
+              <div className="text-lg md:text-xl font-black tracking-tight" style={{ color: 'var(--brand-secondary)', letterSpacing: '-0.02em', lineHeight: 1 }}>
                 {fmt(totalBudget - totalSpent)}
               </div>
               <div className="mt-2 text-[10px] text-gray-400 font-medium">
@@ -603,8 +603,8 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Tab Bar + New Production */}
-      <div className="flex items-center gap-1 border-b border-gray-100 mb-4 sticky top-0 z-30 bg-[var(--brand-bg)] py-2 -mx-1 px-1">
+      {/* Tab Bar */}
+      <div className="flex items-center gap-1 border-b border-gray-100 mb-4">
         {[
           { id: 'productions', label: '📋 Productions' },
           { id: 'weekly',      label: '📅 Weekly' },
@@ -619,18 +619,23 @@ export default function Dashboard() {
             {t.label}
           </button>
         ))}
-        {/* New Production — right-aligned in tab bar */}
-        {isEditor && (
-          <button className="btn-cta flex items-center gap-2 text-xs px-4 py-1.5 ml-auto" onClick={() => setShowNewModal(true)}>
-            <Plus size={13} strokeWidth={2.5} />
-            New Production
-          </button>
-        )}
       </div>
+
+      {/* Floating New Production button — bottom right */}
+      {isEditor && (
+        <button
+          className="btn-cta fixed bottom-6 right-6 z-50 flex items-center gap-2 text-sm px-6 py-3 shadow-lg hover:shadow-xl transition-all"
+          style={{ animation: 'floatUp 0.4s cubic-bezier(0.16, 1, 0.3, 1)' }}
+          onClick={() => setShowNewModal(true)}
+        >
+          <Plus size={16} strokeWidth={2.5} />
+          New Production
+        </button>
+      )}
 
       {/* Table */}
       {activeTab === 'productions' && <div className="brand-card p-0 overflow-hidden">
-        <div className="table-scroll-wrapper">
+        <div className="table-scroll-wrapper" style={{ maxHeight: 'calc(100vh - 280px)', overflowY: 'auto' }}>
           <table className="data-table" style={{ minWidth: 1400 }}>
             <thead>
               <tr>

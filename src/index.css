@@ -542,6 +542,10 @@ h1, h2, h3 { letter-spacing: -0.025em; }
 .animate-fadeIn, .animate-fade-in {
   animation: fadeSlideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
+@keyframes floatUp {
+  from { opacity: 0; transform: translateY(40px) scale(0.9); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
 
 /* === TABLE ROW — subtle accent on hover === */
 .data-table tbody tr {
