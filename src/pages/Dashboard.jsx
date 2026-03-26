@@ -85,6 +85,9 @@ export default function Dashboard() {
   const [stickyHeader, setStickyHeader] = useState(() => {
     try { return JSON.parse(localStorage.getItem('cp_dash_sticky') || 'true'); } catch { return true; }
   });
+  const [compactMode, setCompactMode] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('cp_dash_compact') || 'false'); } catch { return false; }
+  });
   const [search, setSearch] = useState(() => {
     try { return JSON.parse(localStorage.getItem('cp_dash_filters') || '{}').search ?? ''; } catch { return ''; }
   });
@@ -347,6 +350,16 @@ export default function Dashboard() {
   const totalBudget = productions.reduce((s, p) => s + (parseFloat(p.planned_budget_2026) || 0), 0);
   const totalSpent = productions.reduce((s, p) => s + (parseFloat(p.actual_spent) || 0), 0);
   const canSaveForAll = isAdmin || isEditor;
+
+  // Compact number formatter: $50,000 → $50K, $1,200,000 → $1.2M
+  function fmtShort(amount) {
+    const n = parseFloat(amount) || 0;
+    const prefix = currency === 'ILS' ? '₪' : '$';
+    if (Math.abs(n) >= 1000000) return `${prefix}${(n / 1000000).toFixed(1)}M`;
+    if (Math.abs(n) >= 1000) return `${prefix}${(n / 1000).toFixed(0)}K`;
+    return `${prefix}${n.toLocaleString()}`;
+  }
+  const df = compactMode ? fmtShort : fmt; // display formatter
 
   const pctSpent = totalBudget ? Math.round((totalSpent / totalBudget) * 100) : 0;
   const stageBreakdown = productions.reduce((m, p) => {
@@ -615,7 +628,7 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Tab Bar */}
+      {/* Tab Bar + New Production */}
       <div className="flex items-center gap-1 border-b border-gray-100 mb-4">
         {[
           { id: 'productions', label: '📋 Productions' },
@@ -631,24 +644,32 @@ export default function Dashboard() {
             {t.label}
           </button>
         ))}
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={() => setCompactMode(v => { const n = !v; localStorage.setItem('cp_dash_compact', JSON.stringify(n)); return n; })}
+            className={clsx(
+              'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all',
+              compactMode ? 'bg-violet-50 border-violet-200 text-violet-700' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'
+            )}
+          >
+            {compactMode ? '⊟' : '⊞'} {compactMode ? 'Compact' : 'Fit'}
+          </button>
+          {isEditor && (
+            <button
+              className="btn-cta flex items-center gap-1.5 text-xs px-4 py-1.5"
+              onClick={() => setShowNewModal(true)}
+            >
+              <Plus size={13} strokeWidth={2.5} />
+              New Production
+            </button>
+          )}
+        </div>
       </div>
-
-      {/* Floating New Production button — bottom right, above mobile nav */}
-      {isEditor && (
-        <button
-          className="btn-cta fixed bottom-20 md:bottom-6 right-6 z-50 flex items-center gap-2 text-sm px-5 py-2.5 shadow-lg hover:shadow-xl transition-all rounded-full"
-          style={{ animation: 'floatUp 0.4s cubic-bezier(0.16, 1, 0.3, 1)' }}
-          onClick={() => setShowNewModal(true)}
-        >
-          <Plus size={15} strokeWidth={2.5} />
-          New Production
-        </button>
-      )}
 
       {/* Table */}
       {activeTab === 'productions' && <div className="brand-card p-0 overflow-hidden">
         <div className="table-scroll-wrapper" style={stickyHeader ? { maxHeight: 'calc(100vh - 260px)', overflowY: 'auto' } : {}}>
-          <table className="data-table" style={{ minWidth: 1200 }}>
+          <table className={clsx('data-table', compactMode && 'compact-table')} style={{ minWidth: compactMode ? 900 : 1200 }}>
             <thead>
               <tr>
                 <th style={{ width: 32 }}></th>
@@ -705,6 +726,7 @@ export default function Dashboard() {
                   hiddenCols={hiddenCols}
                   colorByStatus={colorByStatus}
                   orderedCols={orderedCols}
+                  compactMode={compactMode}
                 />
               ))}
             </tbody>
@@ -835,7 +857,7 @@ function ProductionRow({
   prod, fmt, onOpen, onUpdates, onStageChange, onProductionTypeChange, isEditor,
   editingRow, setEditingRow, onSaveRow, onInlineEdit,
   dragId, dragOverId, onDragStart, onDragOver, onDrop, onDragEnd, canDrag,
-  hiddenCols = [], colorByStatus = true, orderedCols = [],
+  hiddenCols = [], colorByStatus = true, orderedCols = [], compactMode = false,
 }) {
   const { lists } = useLists();
   const [pendingEdits, setPendingEdits] = useState({});
@@ -851,6 +873,14 @@ function ProductionRow({
     if (!isEditingThisRow) setPendingEdits({});
   }, [isEditingThisRow]);
 
+  // Compact formatter for row values
+  function fmtC(amount) {
+    if (!compactMode) return fmt(amount);
+    const n = parseFloat(amount) || 0;
+    if (Math.abs(n) >= 1000000) return `$${(n / 1000000).toFixed(1)}M`;
+    if (Math.abs(n) >= 1000) return `$${(n / 1000).toFixed(0)}K`;
+    return fmt(n);
+  }
   function getVal(field) {
     return field in pendingEdits ? pendingEdits[field] : prod[field];
   }
@@ -1193,18 +1223,18 @@ function ProductionRow({
                 onClick={e => e.stopPropagation()}
               />
             ) : (
-              <span className="font-semibold text-gray-700 whitespace-nowrap">{fmt(prod.planned_budget_2026)}</span>
+              <span className="font-semibold text-gray-700 whitespace-nowrap">{fmtC(prod.planned_budget_2026)}</span>
             )}
           </td>
         );
         if (key === 'est_budget') return (
           <td key={key}>
-            <span className="text-gray-400 whitespace-nowrap text-sm">{fmt(prod.estimated_budget)}</span>
+            <span className="text-gray-400 whitespace-nowrap text-sm">{fmtC(prod.estimated_budget)}</span>
           </td>
         );
         if (key === 'actual_spent') return (
           <td key={key}>
-            <span className="text-gray-400 whitespace-nowrap text-sm">{fmt(prod.actual_spent)}</span>
+            <span className="text-gray-400 whitespace-nowrap text-sm">{fmtC(prod.actual_spent)}</span>
           </td>
         );
         if (key === 'stage') return (
