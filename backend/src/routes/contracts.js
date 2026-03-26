@@ -11,10 +11,17 @@ function generateToken() {
 
 // ── Slack webhook helper ──────────────────────────────
 const APP_BASE = process.env.APP_URL || 'https://particlepdio.particleface.com';
-async function notifySlack(message, link) {
+async function notifySlack(message, link, { sandbox = false } = {}) {
+  const text = link ? `${message}\n<${link}|View in CP Panel>` : message;
+
+  if (sandbox) {
+    // In sandbox/test mode → DM to Tomer via Slack Bot
+    return slackDM(text);
+  }
+
+  // Normal mode → post to #cp-contracts channel via webhook
   const webhookUrl = process.env.SLACK_WEBHOOK_URL;
   if (!webhookUrl) return;
-  const text = link ? `${message}\n<${link}|View in CP Panel>` : message;
   try {
     await fetch(webhookUrl, {
       method: 'POST',
@@ -23,6 +30,39 @@ async function notifySlack(message, link) {
     });
   } catch (e) {
     console.warn('Slack notification failed:', e.message);
+  }
+}
+
+// Send DM to Tomer via Slack Bot API
+async function slackDM(text) {
+  const token = process.env.SLACK_BOT_TOKEN;
+  if (!token) { console.warn('Slack DM skipped: SLACK_BOT_TOKEN missing'); return; }
+  try {
+    // Find Tomer's Slack user ID by email
+    const lookupRes = await fetch('https://slack.com/api/users.lookupByEmail?' + new URLSearchParams({ email: 'tomer@particleformen.com' }), {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const lookup = await lookupRes.json();
+    if (!lookup.ok) { console.warn('Slack user lookup failed:', lookup.error); return; }
+    const userId = lookup.user.id;
+
+    // Open DM channel
+    const openRes = await fetch('https://slack.com/api/conversations.open', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ users: userId }),
+    });
+    const open = await openRes.json();
+    if (!open.ok) { console.warn('Slack DM open failed:', open.error); return; }
+
+    // Send message
+    await fetch('https://slack.com/api/chat.postMessage', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channel: open.channel.id, text }),
+    });
+  } catch (e) {
+    console.warn('Slack DM failed:', e.message);
   }
 }
 
@@ -414,7 +454,7 @@ router.post('/:production_id/generate', async (req, res) => {
     // Slack notification — contract generated/sent
     const slackPrefix = req.body.sandbox ? '[TEST] ' : '';
     const prdLabel = prodId.startsWith('PRD') ? prodId.split('_')[0] : prodId;
-    notifySlack(`${slackPrefix}\ud83d\udcc4 Contract sent: [${prdLabel}] ${projectName} \u2014 ${provider_name}\nView: ${APP_BASE}/production/${prodId}`);
+    notifySlack(`${slackPrefix}\ud83d\udcc4 Contract sent: [${prdLabel}] ${projectName} \u2014 ${provider_name}`, `${APP_BASE}/production/${prodId}`, { sandbox: !!req.body.sandbox });
 
     // Auto-send email to provider via Gmail API (fire-and-forget)
     sendEmail({
