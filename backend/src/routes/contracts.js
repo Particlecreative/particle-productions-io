@@ -10,14 +10,16 @@ function generateToken() {
 }
 
 // ── Slack webhook helper ──────────────────────────────
-async function notifySlack(message) {
+const APP_BASE = process.env.APP_URL || 'https://particlepdio.particleface.com';
+async function notifySlack(message, link) {
   const webhookUrl = process.env.SLACK_WEBHOOK_URL;
   if (!webhookUrl) return;
+  const text = link ? `${message}\n<${link}|View in CP Panel>` : message;
   try {
     await fetch(webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: message }),
+      body: JSON.stringify({ text },
     });
   } catch (e) {
     console.warn('Slack notification failed:', e.message);
@@ -139,7 +141,7 @@ router.post('/sign/:id/:token', async (req, res) => {
     // Slack notification — individual signer
     const roleLabel = sig.signer_role === 'hocp' ? 'HOCP' : 'provider';
     const projectLabel = sig.project_name || sig.production_id;
-    notifySlack(`\u270d\ufe0f Contract signed by ${roleLabel}: ${projectLabel} \u2014 ${signer_name || sig.signer_name}`);
+    notifySlack(`\u270d\ufe0f Contract signed by ${roleLabel}: ${projectLabel} \u2014 ${signer_name || sig.signer_name}`, `${APP_BASE}/production/${sig.production_id}`);
 
     if (allSigned) {
       // Mark contract as fully signed
@@ -149,7 +151,7 @@ router.post('/sign/:id/:token', async (req, res) => {
         [now, JSON.stringify(events), id]
       );
       // Slack notification — fully signed
-      notifySlack(`\u2705 Contract fully signed: ${projectLabel} \u2014 ${sig.provider_name || signer_name}`);
+      notifySlack(`\u2705 Contract fully signed: ${projectLabel} \u2014 ${sig.provider_name || signer_name}`, `${APP_BASE}/production/${sig.production_id}`);
 
       // Email all parties — contract completed
       const completedSubject = `Contract Signed: ${projectLabel} — ${sig.provider_name}`;
@@ -343,7 +345,7 @@ router.post('/:production_id/generate', async (req, res) => {
     } catch (_) {}
 
     // Slack notification — contract generated/sent
-    notifySlack(`\ud83d\udcc4 Contract sent: ${projectName} \u2014 ${provider_name}`);
+    notifySlack(`\ud83d\udcc4 Contract sent: ${projectName} \u2014 ${provider_name}\nProvider sign: ${providerSignUrl}`, `${APP_BASE}/production/${prodId}`);
 
     // Auto-send email to provider via Gmail API (fire-and-forget)
     sendEmail({
