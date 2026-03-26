@@ -328,7 +328,7 @@ export default function ContractSign() {
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-            <PartyCard label="The Company" name="Particle Aesthetic Science Ltd." role="Company" />
+            <PartyCard label="The Company" name="Particle Aesthetic Science Ltd." subtitle="Tomer Wilf Lezmy — Head of Creative Production" role="Company" />
             <PartyCard label="Service Provider" name={d.provider_name || '\u2014'} role={d.signer_role === 'hocp' ? 'HOCP' : 'Provider'} />
           </div>
         </div>
@@ -578,11 +578,12 @@ function SubmitButton({ canSubmit, submitting, onClick }) {
   );
 }
 
-function PartyCard({ label, name, role }) {
+function PartyCard({ label, name, subtitle, role }) {
   return (
     <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
       <p className="text-[10px] uppercase tracking-[2px] text-gray-400 mb-1">{label}</p>
       <p className="text-sm font-semibold text-gray-900">{name}</p>
+      {subtitle && <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>}
       <span className="inline-block mt-1.5 px-2 py-0.5 text-[10px] font-medium bg-gray-200 text-gray-600 rounded">
         {role}
       </span>

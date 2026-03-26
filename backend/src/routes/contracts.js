@@ -494,6 +494,18 @@ router.post('/:production_id/generate', async (req, res) => {
   }
 });
 
+// POST /api/contracts/notify-slack — send a Slack notification from the frontend
+router.post('/notify-slack', async (req, res) => {
+  try {
+    const { message, sandbox, link } = req.body;
+    await notifySlack(message || 'Contract notification', link, { sandbox: !!sandbox });
+    res.json({ ok: true });
+  } catch (err) {
+    console.warn('POST /contracts/notify-slack error:', err.message);
+    res.json({ ok: false, error: err.message });
+  }
+});
+
 // GET /api/contracts/:production_id/signatures — get signature status
 router.get('/:production_id/signatures', async (req, res) => {
   try {
