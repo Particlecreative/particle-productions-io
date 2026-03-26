@@ -23,6 +23,8 @@ services:
       DATABASE_URL: postgres://${DB_USER:-cpanel}:${DB_PASSWORD}@db:5432/${DB_NAME:-cpanel}
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      MASTER_KEY: ${MASTER_KEY:-}
       PORT: 3001
       NODE_ENV: production
     depends_on:
