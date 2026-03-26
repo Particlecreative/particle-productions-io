@@ -155,7 +155,7 @@ function SigningLinks({ signingLinks, onCopy }) {
 }
 
 export default function ContractModal({ production, lineItem, onClose }) {
-  const { isEditor } = useAuth();
+  const { isEditor, user } = useAuth();
   const { addNotification } = useNotifications();
   const contractKey = lineItem ? `${production.id}_li_${lineItem.id}` : production.id;
 
@@ -211,8 +211,8 @@ export default function ContractModal({ production, lineItem, onClose }) {
       const result = await generateContractSignatures(contractKey, {
         provider_name: providerName,
         provider_email: providerEmail,
-        hocp_name: 'Omer Barak',
-        hocp_email: 'omer@particleformen.com',
+        hocp_name: user?.name || 'Tomer Wilf Lezmy',
+        hocp_email: user?.email || 'tomer@particleformen.com',
       });
       if (result?.signing_links) {
         setSigningLinks(result.signing_links);
@@ -493,7 +493,7 @@ export default function ContractModal({ production, lineItem, onClose }) {
               {[
                 { label: 'Creative Producer', name: production?.producer || 'Omer Barak', email: 'omer@particleformen.com' },
                 { label: 'Service Provider', name: providerName || '—', email: providerEmail || '—' },
-                { label: 'Particle HOCP', name: 'Omer Barak', email: 'omer@particleformen.com' },
+                { label: 'Particle HOCP', name: user?.name || 'Tomer Wilf Lezmy', email: user?.email || 'tomer@particleformen.com' },
               ].map(s => (
                 <div key={s.label} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-blue-100">
                   <div>
