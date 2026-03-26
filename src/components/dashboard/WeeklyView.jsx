@@ -1224,12 +1224,12 @@ function AddEventModal({ initialDate, initialHour, productions, onSave, onClose 
   const [saving, setSaving] = useState(false);
 
   async function handleSave() {
-    if (!title.trim() || !productionId) return;
+    if (!title.trim()) return;
     setSaving(true);
     try {
       await createGanttEvent({
-        production_id: productionId,
-        name: title.trim(),
+        production_id: productionId || productions[0]?.id || 'general',
+        name: productionId ? title.trim() : `[General] ${title.trim()}`,
         start_date: startDate,
         end_date: endDate || startDate,
         phase: 'Custom',
@@ -1330,9 +1330,9 @@ function AddEventModal({ initialDate, initialHour, productions, onSave, onClose 
               onChange={e => setProductionId(e.target.value)}
               className="brand-input w-full"
             >
-              <option value="">Select production\u2026</option>
+              <option value="">📌 General (all productions)</option>
               {productions.map(p => (
-                <option key={p.id} value={p.id}>{p.project_name}</option>
+                <option key={p.id} value={p.id}>{p.id} — {p.project_name}</option>
               ))}
             </select>
           </div>
@@ -1342,7 +1342,7 @@ function AddEventModal({ initialDate, initialHour, productions, onSave, onClose 
             <button onClick={onClose} className="btn-secondary text-sm px-4 py-2">Cancel</button>
             <button
               onClick={handleSave}
-              disabled={!title.trim() || !productionId || saving}
+              disabled={!title.trim() || saving}
               className="btn-cta text-sm px-5 py-2 disabled:opacity-50"
             >
               {saving ? 'Saving\u2026' : 'Save Event'}
@@ -1431,12 +1431,20 @@ function CalendarTab({ productions, brandId }) {
   }, [productions]);
 
   // Load all calendar events
+  const [ganttEvents, setGanttEvents] = useState([]);
+  useEffect(() => {
+    async function loadGantt() {
+      const ge = await Promise.resolve(getAllGanttEvents());
+      setGanttEvents(Array.isArray(ge) ? ge : []);
+    }
+    loadGantt();
+  }, []);
+
   const calendarEvents = useMemo(() => {
     const events = [];
 
     // Gantt events
-    const gantt = getAllGanttEvents();
-    gantt.forEach(ge => {
+    ganttEvents.forEach(ge => {
       if (!visibleProdIds.has(ge.production_id)) return;
       events.push({
         id: ge.id,

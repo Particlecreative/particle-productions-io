@@ -14,7 +14,7 @@ const SIZE_PRESETS = [
 const DEFAULTS = {
   videoFormUrl:  'https://forms.monday.com/forms/3338cd016ac8f73b819a90f49f0dabfe?r=use1',
   designFormUrl: 'https://forms.monday.com/forms/c5c62bf4ebeb9af33f52be5ba9216ebc?r=use1',
-  embedUrl:      '', // Set via Settings — Monday.com embed URL goes here
+  embedUrl:      '', // Paste Monday.com embed URL via the edit button (✏️) below
 };
 
 function loadSettings() {

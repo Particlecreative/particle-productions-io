@@ -218,25 +218,33 @@ router.post('/:production_id/generate', async (req, res) => {
   const prodId = req.params.production_id;
 
   try {
-    // Upsert the contract record
-    const { rows: contractRows } = await db.query(
-      `INSERT INTO contracts (production_id, provider_name, provider_email, status, events)
-       VALUES ($1, $2, $3, 'pending', $4)
-       ON CONFLICT (production_id) DO UPDATE SET
-         provider_name  = EXCLUDED.provider_name,
-         provider_email = EXCLUDED.provider_email,
-         status         = CASE WHEN contracts.status = 'signed' THEN contracts.status ELSE 'pending' END,
-         events         = contracts.events || $5::jsonb
-       RETURNING *`,
-      [
-        prodId,
-        provider_name,
-        provider_email,
-        JSON.stringify([{ type: 'created', at: new Date().toISOString() }]),
-        JSON.stringify({ type: 'created', at: new Date().toISOString() }),
-      ]
+    // Check if contract already exists for this production key
+    const { rows: existing } = await db.query(
+      'SELECT * FROM contracts WHERE production_id = $1', [prodId]
     );
-    const contract = contractRows[0];
+    let contract;
+    const now = new Date().toISOString();
+    if (existing[0]) {
+      // Update existing
+      const newEvent = JSON.stringify({ type: 'regenerated', at: now });
+      const { rows } = await db.query(
+        `UPDATE contracts SET
+           provider_name = $2, provider_email = $3,
+           status = CASE WHEN status = 'signed' THEN status ELSE 'pending' END,
+           events = COALESCE(events, '[]'::jsonb) || $4::jsonb
+         WHERE production_id = $1 RETURNING *`,
+        [prodId, provider_name, provider_email, newEvent]
+      );
+      contract = rows[0];
+    } else {
+      // Create new
+      const { rows } = await db.query(
+        `INSERT INTO contracts (production_id, provider_name, provider_email, status, events)
+         VALUES ($1, $2, $3, 'pending', $4) RETURNING *`,
+        [prodId, provider_name, provider_email, JSON.stringify([{ type: 'created', at: now }])]
+      );
+      contract = rows[0];
+    }
 
     // Delete old unsigned signatures for this contract (keep signed ones)
     await db.query(
