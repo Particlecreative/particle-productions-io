@@ -103,8 +103,9 @@ export default function Invoices() {
   // Summary stats
   const pendingItems  = useMemo(() => allItems.filter(i => !i.invoice_status || i.invoice_status === 'Pending'), [allItems]);
   const receivedItems = useMemo(() => allItems.filter(i => i.invoice_status === 'Received'), [allItems]);
-  const pendingTotal  = useMemo(() => pendingItems.reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0), [pendingItems]);
-  const receivedTotal = useMemo(() => receivedItems.reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0), [receivedItems]);
+  const getAmount = (i) => parseFloat(i.actual_spent) || parseFloat(i.planned_budget) || 0;
+  const pendingTotal  = useMemo(() => pendingItems.reduce((s, i) => s + getAmount(i), 0), [pendingItems]);
+  const receivedTotal = useMemo(() => receivedItems.reduce((s, i) => s + getAmount(i), 0), [receivedItems]);
 
   // Filtered items
   const filteredItems = useMemo(() => {
@@ -358,7 +359,7 @@ export default function Invoices() {
 
 function InvoiceProductionGroup({ data, fmt, isEditor, receipts = [], onStatusChange, onInvoiceUrlUpdate, onAction }) {
   const [expanded, setExpanded] = useState(true);
-  const total = data.items.reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0);
+  const total = data.items.reduce((s, i) => s + (parseFloat(i.actual_spent) || parseFloat(i.planned_budget) || 0), 0);
   const invoicedCount = data.items.filter(i => i.invoice_url || i.invoice_status).length;
 
   return (
@@ -754,7 +755,7 @@ function InvoiceRow({ item, productionName, fmt, isEditor, showProduction, recei
       <td className="text-gray-600 text-sm">{item.item || '—'}</td>
 
       {/* Amount */}
-      <td className="font-semibold">{fmt(item.actual_spent)}</td>
+      <td className="font-semibold">{fmt(parseFloat(item.actual_spent) || parseFloat(item.planned_budget) || 0)}</td>
 
       {/* Invoice — state driven, merged with old Actions */}
       <td><InvoiceCell /></td>

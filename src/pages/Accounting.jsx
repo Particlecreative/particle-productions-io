@@ -175,9 +175,10 @@ export default function Accounting() {
   const paid = useMemo(() => allItems.filter(i => i.payment_status === 'Paid'), [allItems]);
   const notPaid = useMemo(() => allItems.filter(i => !i.payment_status || i.payment_status === 'Not Paid'), [allItems]);
   const pending = useMemo(() => allItems.filter(i => i.payment_status === 'Pending'), [allItems]);
-  const paidTotal = useMemo(() => paid.reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0), [paid]);
-  const notPaidTotal = useMemo(() => notPaid.reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0), [notPaid]);
-  const pendingTotal = useMemo(() => pending.reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0), [pending]);
+  const getAmt = (i) => parseFloat(i.actual_spent) || parseFloat(i.planned_budget) || 0;
+  const paidTotal = useMemo(() => paid.reduce((s, i) => s + getAmt(i), 0), [paid]);
+  const notPaidTotal = useMemo(() => notPaid.reduce((s, i) => s + getAmt(i), 0), [notPaid]);
+  const pendingTotal = useMemo(() => pending.reduce((s, i) => s + getAmt(i), 0), [pending]);
 
   // Filtered items
   const filteredItems = useMemo(() => {
@@ -491,8 +492,8 @@ export default function Accounting() {
 
 function AccountingProductionGroup({ prodId, data, fmt, isEditor, onUpdate, onPaymentStatusChange, paymentBlockedId, receipts = [], onReceiptUpdate }) {
   const [expanded, setExpanded] = useState(true);
-  const total = data.items.reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0);
-  const paidTotal = data.items.filter(i => i.payment_status === 'Paid').reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0);
+  const total = data.items.reduce((s, i) => s + (parseFloat(i.actual_spent) || parseFloat(i.planned_budget) || 0), 0);
+  const paidTotal = data.items.filter(i => i.payment_status === 'Paid').reduce((s, i) => s + (parseFloat(i.actual_spent) || parseFloat(i.planned_budget) || 0), 0);
   const notPaidTotal = total - paidTotal;
 
   return (
@@ -631,7 +632,7 @@ function AccountingRow({ item, fmt, isEditor, showProduction, productionName, on
       <td className="text-gray-600 text-sm">{item.item || '—'}</td>
 
       {/* Amount */}
-      <td className="font-semibold">{fmt(item.actual_spent)}</td>
+      <td className="font-semibold">{fmt(parseFloat(item.actual_spent) || parseFloat(item.planned_budget) || 0)}</td>
 
       {/* Invoice URL — read-only; set via InvoiceModal on production board */}
       <td>
