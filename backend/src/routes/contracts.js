@@ -3,6 +3,7 @@ const db     = require('../db');
 const crypto = require('crypto');
 const { verifyJWT } = require('../middleware/auth');
 const { sendEmail } = require('./gmail');
+const driveRouter = require('./drive');
 
 // ── Token helper ──────────────────────────────────────
 function generateToken() {
@@ -229,8 +230,42 @@ router.post('/sign/:id/:token', async (req, res) => {
         `UPDATE contracts SET status = 'signed', signed_at = $1, events = $2 WHERE id = $3`,
         [now, JSON.stringify(events), id]
       );
-      // Slack notification — fully signed
-      notifySlack(`\u2705 Contract fully signed: [${prdShort}] ${projectLabel} \u2014 ${sig.provider_name || signer_name}\nView: ${APP_BASE}/production/${prdId}`);
+      // Upload PDF to Google Drive + Dropbox
+      let driveUrl = null;
+      let dropboxUrl = null;
+      try {
+        const { rows: cInfo } = await db.query('SELECT contract_pdf_base64 FROM contracts WHERE id = $1', [id]);
+        const pdfBase64 = cInfo[0]?.contract_pdf_base64;
+        if (pdfBase64 && driveRouter.uploadDual) {
+          // Strip data URL prefix if present
+          const cleanBase64 = pdfBase64.replace(/^data:[^;]+;base64,/, '');
+          const year = new Date().getFullYear();
+          const subfolder = `${year}/${prdShort} ${projectLabel}`;
+          const uploadResult = await driveRouter.uploadDual({
+            fileName: `Contract - ${sig.provider_name || signer_name}.pdf`,
+            fileContent: cleanBase64,
+            mimeType: 'application/pdf',
+            subfolder,
+            category: 'contracts',
+          });
+          driveUrl = uploadResult.drive?.viewLink || null;
+          dropboxUrl = uploadResult.dropbox?.link || null;
+          // Save URLs to contract
+          if (driveUrl || dropboxUrl) {
+            await db.query(
+              'UPDATE contracts SET drive_url = COALESCE($1, drive_url), dropbox_url = COALESCE($2, dropbox_url) WHERE id = $3',
+              [driveUrl, dropboxUrl, id]
+            );
+          }
+          console.log('Contract PDF uploaded:', driveUrl ? 'Drive OK' : 'Drive skipped', dropboxUrl ? 'Dropbox OK' : 'Dropbox skipped');
+        }
+      } catch (uploadErr) {
+        console.error('Contract PDF upload failed:', uploadErr.message);
+      }
+
+      // Slack notification — fully signed (with PDF link)
+      const pdfLink = driveUrl || dropboxUrl || `${APP_BASE}/production/${prdId}`;
+      notifySlack(`Contract fully signed: [${prdShort}] ${projectLabel} - ${sig.provider_name || signer_name}`, pdfLink);
 
       // Email all parties — contract completed
       // Gather document history from events
@@ -240,9 +275,7 @@ router.post('/sign/:id/:token', async (req, res) => {
       const signedEvents = allEvents.filter(e => e.type === 'signed');
       const completedEvent = allEvents.find(e => e.type === 'completed');
 
-      // Fetch drive_url for PDF link
-      const { rows: contractInfo } = await db.query('SELECT drive_url FROM contracts WHERE id = $1', [id]);
-      const driveUrl = contractInfo[0]?.drive_url;
+      // driveUrl already set from upload above
 
       const formatDate = (d) => d ? new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'N/A';
 

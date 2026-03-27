@@ -283,4 +283,68 @@ router.get('/status', verifyJWT, async (req, res) => {
   }
 });
 
+// ── Exported helper: upload file to Drive + Dropbox (for internal use) ────────
+async function uploadDual({ fileName, fileContent, mimeType, subfolder, category }) {
+  const results = { drive: null, dropbox: null };
+
+  // Drive
+  try {
+    const { rows } = await db.query("SELECT google_tokens FROM settings WHERE brand_id = 'particle'");
+    if (rows[0]?.google_tokens) {
+      const tokens = typeof rows[0].google_tokens === 'string' ? JSON.parse(rows[0].google_tokens) : rows[0].google_tokens;
+      const oauth2 = getOAuth2Client();
+      oauth2.setCredentials(tokens);
+      if (tokens.expiry_date && tokens.expiry_date < Date.now()) {
+        const { credentials } = await oauth2.refreshAccessToken();
+        oauth2.setCredentials(credentials);
+        await db.query("UPDATE settings SET google_tokens = $1 WHERE brand_id = 'particle'", [JSON.stringify(credentials)]);
+      }
+      const drive = google.drive({ version: 'v3', auth: oauth2 });
+      const catFolders = { contracts: 'Contracts', invoices: 'Invoices', 'payment-proofs': 'Payment Proofs' };
+      const driveSub = [catFolders[category] || category, subfolder].filter(Boolean).join('/');
+      let parentId = DRIVE_FOLDER_ID;
+      if (driveSub) {
+        for (const part of driveSub.split('/')) {
+          const existing = await drive.files.list({ q: `'${parentId}' in parents AND name = '${part.replace(/'/g, "\\'")}' AND mimeType = 'application/vnd.google-apps.folder' AND trashed = false`, fields: 'files(id)' });
+          if (existing.data.files.length > 0) { parentId = existing.data.files[0].id; }
+          else { const f = await drive.files.create({ resource: { name: part, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] }, fields: 'id' }); parentId = f.data.id; }
+        }
+      }
+      const buffer = Buffer.from(fileContent, 'base64');
+      const { Readable } = require('stream');
+      const stream = new Readable(); stream.push(buffer); stream.push(null);
+      const file = await drive.files.create({ resource: { name: fileName, parents: [parentId] }, media: { mimeType: mimeType || 'application/pdf', body: stream }, fields: 'id, webViewLink' });
+      await drive.permissions.create({ fileId: file.data.id, resource: { role: 'reader', type: 'anyone' } });
+      results.drive = { fileId: file.data.id, viewLink: file.data.webViewLink };
+    }
+  } catch (e) { console.error('uploadDual Drive:', e.message); }
+
+  // Dropbox
+  const DROPBOX_TOKEN = process.env.DROPBOX_ACCESS_TOKEN;
+  if (DROPBOX_TOKEN) {
+    try {
+      const catPaths = { contracts: 'Contracts', invoices: 'Invoices', 'payment-proofs': 'Payment Proofs' };
+      const catFolder = catPaths[category] || category || 'Uploads';
+      const dropboxPath = `/CP Panel/${catFolder}${subfolder ? '/' + subfolder : ''}/${fileName}`;
+      const buffer = Buffer.from(fileContent, 'base64');
+      const dropboxRes = await fetch('https://content.dropboxapi.com/2/files/upload', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${DROPBOX_TOKEN}`, 'Content-Type': 'application/octet-stream', 'Dropbox-API-Arg': JSON.stringify({ path: dropboxPath, mode: 'add', autorename: true }) },
+        body: buffer,
+      });
+      if (dropboxRes.ok) {
+        const data = await dropboxRes.json();
+        try {
+          const linkRes = await fetch('https://api.dropboxapi.com/2/sharing/create_shared_link_with_settings', { method: 'POST', headers: { Authorization: `Bearer ${DROPBOX_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ path: data.path_display, settings: { requested_visibility: 'public' } }) });
+          const linkData = await linkRes.json();
+          results.dropbox = { path: data.path_display, link: linkData.url };
+        } catch { results.dropbox = { path: data.path_display }; }
+      }
+    } catch (e) { console.error('uploadDual Dropbox:', e.message); }
+  }
+
+  return results;
+}
+
+router.uploadDual = uploadDual;
 module.exports = router;
