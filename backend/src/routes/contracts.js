@@ -78,7 +78,7 @@ router.get('/sign/:id/:token', async (req, res) => {
               p.project_name, p.producer
        FROM contract_signatures cs
        JOIN contracts c ON cs.contract_id = c.id
-       LEFT JOIN productions p ON c.production_id = p.id
+       LEFT JOIN productions p ON p.id = split_part(c.production_id, '_li_', 1)
        WHERE cs.contract_id = $1 AND cs.token = $2`,
       [id, token]
     );
@@ -131,10 +131,11 @@ router.post('/sign/:id/:token', async (req, res) => {
     const { rows: sigRows } = await db.query(
       `SELECT cs.*, c.events, c.status AS contract_status, c.production_id,
               c.provider_name, c.provider_email,
+              c.fee_amount, c.currency,
               p.project_name, p.producer
        FROM contract_signatures cs
        JOIN contracts c ON cs.contract_id = c.id
-       LEFT JOIN productions p ON c.production_id = p.id
+       LEFT JOIN productions p ON p.id = split_part(c.production_id, '_li_', 1)
        WHERE cs.contract_id = $1 AND cs.token = $2`,
       [id, token]
     );
@@ -217,11 +218,11 @@ router.post('/sign/:id/:token', async (req, res) => {
     const allSigned = allSigs.every(s => s.signed_at !== null);
 
     // Slack notification — individual signer
-    const roleLabel = sig.signer_role === 'hocp' ? 'HOCP' : 'provider';
     const projectLabel = sig.project_name || sig.production_id;
     const prdId = sig.production_id;
-    const prdShort = prdId && prdId.startsWith('PRD') ? prdId.split('_')[0] : prdId;
-    notifySlack(`\u270d\ufe0f Contract signed by ${roleLabel}: [${prdShort}] ${projectLabel} \u2014 ${signer_name || sig.signer_name}\nView: ${APP_BASE}/production/${prdId}`);
+    const prdShort = prdId ? prdId.split('_li_')[0] : prdId;
+    const feeDisplay = sig.fee_amount ? `${Number(sig.fee_amount).toLocaleString()} ${sig.currency || 'USD'}` : 'N/A';
+    notifySlack(`Contract signed by ${signer_name || sig.signer_name} for ${projectLabel}\nAmount: ${feeDisplay}\nRef: ${prdId}`, `${APP_BASE}/production/${prdShort}`);
 
     if (allSigned) {
       // Mark contract as fully signed
@@ -231,6 +232,9 @@ router.post('/sign/:id/:token', async (req, res) => {
         [now, JSON.stringify(events), id]
       );
       // Upload PDF to Google Drive + Dropbox
+      // TODO: The PDF uploaded here is the UNSIGNED preview (contract_pdf_base64 from initial generation).
+      // Future versions should embed the actual signatures from contract_signatures.signature_data
+      // into the PDF before uploading, so the Drive/Dropbox copy is the fully-signed document.
       let driveUrl = null;
       let dropboxUrl = null;
       try {
@@ -264,8 +268,8 @@ router.post('/sign/:id/:token', async (req, res) => {
       }
 
       // Slack notification — fully signed (with PDF link)
-      const pdfLink = driveUrl || dropboxUrl || `${APP_BASE}/production/${prdId}`;
-      notifySlack(`Contract fully signed: [${prdShort}] ${projectLabel} - ${sig.provider_name || signer_name}`, pdfLink);
+      const pdfLink = driveUrl || dropboxUrl || `${APP_BASE}/production/${prdShort}`;
+      notifySlack(`Contract completed for ${sig.provider_name || signer_name} for ${projectLabel}\nAmount: ${feeDisplay}\nRef: ${prdId}`, pdfLink);
 
       // Email all parties — contract completed
       // Gather document history from events
@@ -300,10 +304,19 @@ router.post('/sign/:id/:token', async (req, res) => {
           <p style="color: #aaa; font-size: 11px;">Sent via CP Panel — Particle Aesthetic Science Ltd.</p>
         </div>
       `;
-      // Send to provider + Tomer + Omer
-      sendEmail({ to: sig.provider_email, subject: completedSubject, htmlBody: completedBody }).catch(() => {});
-      sendEmail({ to: 'tomer@particleformen.com', subject: completedSubject, htmlBody: completedBody }).catch(() => {});
-      sendEmail({ to: 'omer@particleformen.com', subject: completedSubject, htmlBody: completedBody }).catch(() => {});
+      // Detect sandbox: if provider_email is an internal/test address
+      const isSandboxContract = sig.provider_email &&
+        (sig.provider_email.endsWith('@particleformen.com') || sig.provider_email === 'tomerlez1994@gmail.com');
+      if (isSandboxContract) {
+        // Sandbox: send to the sandbox email + tomer
+        sendEmail({ to: sig.provider_email, subject: completedSubject, htmlBody: completedBody }).catch(() => {});
+        if (sig.provider_email !== 'tomer@particleformen.com') {
+          sendEmail({ to: 'tomer@particleformen.com', subject: completedSubject, htmlBody: completedBody }).catch(() => {});
+        }
+      } else {
+        // Real mode: send to supplier, CC omer
+        sendEmail({ to: sig.provider_email, cc: 'omer@particleformen.com', subject: completedSubject, htmlBody: completedBody }).catch(() => {});
+      }
     }
 
     res.json({ success: true, all_signed: allSigned });
@@ -490,16 +503,17 @@ router.post('/:production_id/generate', async (req, res) => {
     const hocpSignUrl     = `${baseUrl}/sign/${contract.id}/${hocpToken}`;
 
     // Get production name for notifications
+    const prdShort = prodId ? prodId.split('_li_')[0] : prodId;
     let projectName = prodId;
     try {
-      const { rows: prodRows } = await db.query('SELECT project_name FROM productions WHERE id = $1', [prodId]);
+      const { rows: prodRows } = await db.query('SELECT project_name FROM productions WHERE id = $1', [prdShort]);
       if (prodRows[0]) projectName = prodRows[0].project_name;
     } catch (_) {}
 
     // Slack notification — contract generated/sent
     const slackPrefix = req.body.sandbox ? '[TEST] ' : '';
-    const prdLabel = prodId.startsWith('PRD') ? prodId.split('_')[0] : prodId;
-    notifySlack(`${slackPrefix}\ud83d\udcc4 Contract sent: [${prdLabel}] ${projectName} \u2014 ${provider_name}`, `${APP_BASE}/production/${prodId}`, { sandbox: !!req.body.sandbox });
+    const feeLabel = fee_amount ? `${Number(fee_amount).toLocaleString()} ${currency || 'USD'}` : 'N/A';
+    notifySlack(`${slackPrefix}Contract sent to ${provider_name} for ${projectName}\nAmount: ${feeLabel}\nRef: ${prodId}`, `${APP_BASE}/production/${prdShort}`, { sandbox: !!req.body.sandbox });
 
     // Auto-send email to provider via Gmail API (fire-and-forget)
     sendEmail({

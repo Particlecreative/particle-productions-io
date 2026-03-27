@@ -144,24 +144,9 @@ function SigningLinks({ signingLinks, onCopy, productionName }) {
 }
 
 // ── Logo fetch helper ────────────────────────────────────────────
-const PARTICLE_LOGO_URL = 'https://www.particleformen.com/wp-content/themes/particleformen/assets/images/particle-for-men-logo.png';
-let _cachedLogoBase64 = null;
-
-async function fetchLogoBase64() {
-  if (_cachedLogoBase64) return _cachedLogoBase64;
-  try {
-    const response = await fetch(PARTICLE_LOGO_URL);
-    const blob = await response.blob();
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onloadend = () => { _cachedLogoBase64 = reader.result; resolve(reader.result); };
-      reader.onerror = () => resolve(null);
-      reader.readAsDataURL(blob);
-    });
-  } catch {
-    return null;
-  }
-}
+// Hardcoded Particle logo (WebP ~3.6KB base64). Paste content from /tmp/particle_logo_b64.txt below.
+// jsPDF cannot render WebP; the PDF header uses text fallback. This base64 is for in-app HTML preview.
+const PARTICLE_LOGO_BASE64 = 'data:image/webp;base64,PASTE_BASE64_HERE';
 
 // ── PDF Generation — Full Legal Text ─────────────────────────────
 function generateContractPDF(data) {
@@ -216,12 +201,17 @@ function generateContractPDF(data) {
   // ── Header / Letterhead ──
   doc.setFillColor(3, 11, 46);
   doc.rect(0, 0, pageWidth, 35, 'F');
+  // Logo in PDF: jsPDF doesn't support WebP, so try addImage but always fall back to navy text.
+  // Use 50mm x 10mm (5:1 ratio for ~250x50px logo) at position (14, 10).
+  let logoRendered = false;
   if (data.logoBase64) {
-    try { doc.addImage(data.logoBase64, 'PNG', margin, 6, 40, 22); } catch {
-      doc.setTextColor(255, 255, 255); doc.setFontSize(20); doc.setFont('helvetica', 'bold');
-      doc.text('PARTICLE', margin, 18); doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.text('for men', margin + 52, 18);
+    try { doc.addImage(data.logoBase64, 'WEBP', 14, 10, 50, 10); logoRendered = true; } catch { /* WebP not supported, fall through */ }
+    if (!logoRendered) {
+      try { doc.addImage(data.logoBase64, 'PNG', 14, 10, 50, 10); logoRendered = true; } catch { /* PNG attempt also failed */ }
     }
-  } else {
+  }
+  if (!logoRendered) {
+    // Text fallback — "PARTICLE" in white on the navy header
     doc.setTextColor(255, 255, 255); doc.setFontSize(20); doc.setFont('helvetica', 'bold');
     doc.text('PARTICLE', margin, 18); doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.text('for men', margin + 52, 18);
   }
@@ -520,10 +510,11 @@ export default function ContractModal({ production, lineItem, onClose }) {
   // ── Sandbox mode (Tomer only) ──
   const isTomer = user?.email?.toLowerCase() === 'tomer@particleformen.com';
   const [sandboxMode, setSandboxMode] = useState(false);
+  const [sandboxEmail, setSandboxEmail] = useState('tomerlez1994@gmail.com');
 
-  // In sandbox: override provider to Tomer, skip CC, Slack → Tomer's DM only
-  const effectiveProviderName = sandboxMode ? (user?.name || 'Tomer Wilf Lezmy') : providerName;
-  const effectiveProviderEmail = sandboxMode ? 'tomer@particleformen.com' : providerEmail;
+  // In sandbox: override email to sandbox email, skip CC, Slack → Tomer's DM only
+  const effectiveProviderName = providerName;
+  const effectiveProviderEmail = sandboxMode ? (sandboxEmail || 'tomerlez1994@gmail.com') : providerEmail;
 
   // ── Step navigation ──
   const [currentStep, setCurrentStep] = useState(1);
@@ -605,11 +596,10 @@ export default function ContractModal({ production, lineItem, onClose }) {
   const [generateError, setGenerateError] = useState('');
   const [copyMsg, setCopyMsg] = useState('');
 
-  // ── Logo for PDF ──
-  const [logoBase64, setLogoBase64] = useState(null);
+  // ── Logo for PDF (hardcoded base64, no fetch needed) ──
+  const [logoBase64] = useState(PARTICLE_LOGO_BASE64);
   const [tomerSignature, setTomerSignature] = useState(null);
   useEffect(() => {
-    fetchLogoBase64().then(b64 => setLogoBase64(b64));
     // Load Tomer's saved signature from localStorage
     const saved = localStorage.getItem('cp_tomer_signature');
     if (saved) setTomerSignature(saved);
@@ -786,8 +776,8 @@ export default function ContractModal({ production, lineItem, onClose }) {
       });
 
       const result = await generateContractSignatures(contractKey, {
-        provider_name: sandboxMode ? (user?.name || 'Tomer Wilf Lezmy') : providerName,
-        provider_email: sandboxMode ? 'tomer@particleformen.com' : providerEmail,
+        provider_name: providerName,
+        provider_email: sandboxMode ? (sandboxEmail || 'tomerlez1994@gmail.com') : providerEmail,
         hocp_name: user?.name || 'Tomer Wilf Lezmy',
         hocp_email: user?.email || 'tomer@particleformen.com',
         sandbox: sandboxMode,
@@ -805,7 +795,6 @@ export default function ContractModal({ production, lineItem, onClose }) {
         setStatus('pending');
         const newEvents = [...events, { type: 'generated', at: new Date().toISOString() }];
         setEvents(newEvents);
-        addNotification('contract_generated', `E-sign links generated for ${production.project_name}`, production.id);
       }
     } catch (e) {
       const msg = e?.message || 'Failed to generate signing links. Make sure the backend is running.';
@@ -822,8 +811,8 @@ export default function ContractModal({ production, lineItem, onClose }) {
     const token = localStorage.getItem('cp_auth_token');
     const API = import.meta.env.VITE_API_URL || '';
 
-    const toEmail = sandboxMode ? 'tomer@particleformen.com' : providerEmail;
-    const toName = sandboxMode ? (user?.name || 'Tomer') : providerName;
+    const toEmail = sandboxMode ? (sandboxEmail || 'tomerlez1994@gmail.com') : providerEmail;
+    const toName = providerName || 'Service Provider';
     const subjectPrefix = sandboxMode ? '[TEST] ' : '';
 
     try {
@@ -964,7 +953,7 @@ export default function ContractModal({ production, lineItem, onClose }) {
 
         {/* Sandbox toggle — Tomer only */}
         {isTomer && (
-          <div className="flex items-center justify-end mb-2">
+          <div className="flex items-center justify-end gap-2 mb-2">
             <button
               type="button"
               onClick={() => setSandboxMode(v => !v)}
@@ -977,11 +966,21 @@ export default function ContractModal({ production, lineItem, onClose }) {
             >
               🧪 {sandboxMode ? 'Sandbox ON — sends to you only' : 'Test Mode'}
             </button>
+            {sandboxMode && (
+              <input
+                type="email"
+                className="text-xs border border-amber-300 rounded-full px-3 py-1.5 bg-amber-50 text-amber-800 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                style={{ width: 220 }}
+                value={sandboxEmail}
+                onChange={e => setSandboxEmail(e.target.value)}
+                placeholder="Sandbox email"
+              />
+            )}
           </div>
         )}
         {sandboxMode && (
           <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 mb-3 text-xs text-amber-800">
-            <strong>🧪 Sandbox Mode:</strong> Contract will be sent to <strong>tomer@particleformen.com</strong> only. No CC to Omer. Slack notification goes to your DM. You can test the full signing flow as both sides.
+            <strong>🧪 Sandbox Mode:</strong> Contract will be sent to <strong>{sandboxEmail || 'tomerlez1994@gmail.com'}</strong> only. No CC to Omer. Slack notification goes to your DM. You can test the full signing flow as both sides.
           </div>
         )}
 

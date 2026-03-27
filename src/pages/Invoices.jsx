@@ -9,6 +9,7 @@ import { getDownloadUrl } from '../lib/invoiceUtils';
 import { formatDateIST } from '../lib/timezone';
 import InvoiceModal from '../components/production/InvoiceModal';
 import ExportMenu from '../components/ui/ExportMenu';
+import { CloudLinks, detectCloudUrl } from '../components/shared/FileUploadButton';
 import clsx from 'clsx';
 
 const INVOICE_STATUS = ['Pending', 'Received'];
@@ -669,24 +670,7 @@ function InvoiceRow({ item, productionName, fmt, isEditor, showProduction, recei
             </span>
           )}
           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-            <a
-              href={invUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-0.5 text-xs text-blue-600 hover:underline"
-            >
-              <ExternalLink size={10} /> View
-            </a>
-            {dlUrl && (
-              <a
-                href={dlUrl}
-                download
-                className="flex items-center gap-0.5 text-xs text-gray-500 hover:text-gray-700"
-                title="Download invoice"
-              >
-                <Download size={10} /> DL
-              </a>
-            )}
+            <CloudLinks {...detectCloudUrl(invUrl)} />
             {isEditor && (
               <button
                 onClick={() => { setUrlVal(invUrl); setEditingUrl(true); }}

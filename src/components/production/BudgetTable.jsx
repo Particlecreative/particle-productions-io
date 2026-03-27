@@ -24,6 +24,7 @@ import { getTablePrefs, toggleColumnVisibility, updateSort } from '../../lib/tab
 import { useLists } from '../../context/ListsContext';
 import InvoiceModal from './InvoiceModal';
 import ContractModal from './ContractModal';
+import { CloudLinks, detectCloudUrl, getDriveThumbnail } from '../shared/FileUploadButton';
 import clsx from 'clsx';
 
 const TYPE_CLASSES = {
@@ -746,27 +747,8 @@ function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEd
           {item.invoice_type && (
             <span className="text-[10px] text-gray-400">{item.invoice_type}</span>
           )}
-          <div className="flex items-center gap-2 mt-0.5">
-            <a
-              href={invUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={e => e.stopPropagation()}
-              className="flex items-center gap-0.5 text-xs text-blue-600 hover:underline"
-            >
-              <ExternalLink size={10} /> View
-            </a>
-            {dlUrl && (
-              <a
-                href={dlUrl}
-                download
-                onClick={e => e.stopPropagation()}
-                className="flex items-center gap-0.5 text-xs text-gray-500 hover:text-gray-700"
-                title="Download invoice"
-              >
-                <Download size={10} />
-              </a>
-            )}
+          <div className="flex items-center gap-2 mt-0.5" onClick={e => e.stopPropagation()}>
+            <CloudLinks {...detectCloudUrl(invUrl)} />
             {isEditor && (
               <button
                 onClick={e => { e.stopPropagation(); onInvoice(item.id, 'receive'); }}
@@ -844,10 +826,11 @@ function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEd
           {item.type === 'Cast' && (
             item.cast_photo_url ? (
               <img
-                src={item.cast_photo_url}
+                src={getDriveThumbnail(item.cast_photo_url, 200) || item.cast_photo_url}
                 alt={item.full_name || 'cast'}
                 className="w-7 h-7 rounded-full object-cover cursor-pointer shrink-0 border border-gray-200"
                 onClick={e => { e.stopPropagation(); onPhotoFullscreen?.(item.cast_photo_url); }}
+                onError={e => { if (e.target.src !== item.cast_photo_url) e.target.src = item.cast_photo_url; }}
               />
             ) : (
               <div className="w-7 h-7 rounded-full bg-gray-100 border border-gray-200 flex items-center justify-center shrink-0">
@@ -964,10 +947,7 @@ function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEd
                contract.status === 'sent'   ? '⏳ Sent' : 'Pending'}
             </button>
             {contract.pdf_url && contract.status === 'signed' && (
-              <a href={contract.pdf_url} target="_blank" rel="noopener noreferrer"
-                className="text-[10px] text-blue-500 hover:underline flex items-center gap-0.5">
-                <ExternalLink size={9} /> View
-              </a>
+              <CloudLinks {...detectCloudUrl(contract.pdf_url)} />
             )}
           </div>
         ) : (

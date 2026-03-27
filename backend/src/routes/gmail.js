@@ -34,6 +34,7 @@ function buildEmail({ to, cc, subject, htmlBody, from, skipDefaultCc }) {
   const raw = [
     `From: ${from || 'tomer@particleformen.com'}`,
     `To: ${to}`,
+    'Reply-To: omer@particleformen.com',
     ccList ? `Cc: ${ccList}` : '',
     `Subject: ${subject}`,
     'MIME-Version: 1.0',

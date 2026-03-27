@@ -7,6 +7,7 @@ import { getContracts, getProductions } from '../lib/dataService';
 import { getDownloadUrl } from '../lib/invoiceUtils';
 import { formatIST } from '../lib/timezone';
 import ContractModal from '../components/production/ContractModal';
+import { CloudLinks, detectCloudUrl } from '../components/shared/FileUploadButton';
 import clsx from 'clsx';
 
 const STATUS_OPTIONS = ['All', 'pending', 'sent', 'signed'];
@@ -262,7 +263,12 @@ export default function Contracts() {
                     </td>
                     <td className="text-sm">{c.provider_name || '—'}</td>
                     <td className="text-xs text-gray-500">{c.provider_email || '—'}</td>
-                    <td>{statusBadge(status)}</td>
+                    <td>
+                      <div className="flex items-center gap-1.5">
+                        {statusBadge(status)}
+                        <CloudLinks driveUrl={c.drive_url} dropboxUrl={c.dropbox_url} />
+                      </div>
+                    </td>
                     <td className="text-xs whitespace-nowrap">
                       {c.sent_at ? (
                         <span title={formatIST(c.sent_at)} className="text-gray-500">
@@ -290,16 +296,7 @@ export default function Contracts() {
                           >
                             <ExternalLink size={10} /> View
                           </a>
-                          {dl && (
-                            <a
-                              href={dl}
-                              download
-                              className="flex items-center gap-0.5 text-xs text-gray-400 hover:text-gray-600"
-                              title="Download"
-                            >
-                              <Download size={10} />
-                            </a>
-                          )}
+                          <CloudLinks {...detectCloudUrl(c.pdf_url)} />
                         </div>
                       ) : (
                         <span className="text-gray-300 text-xs">—</span>

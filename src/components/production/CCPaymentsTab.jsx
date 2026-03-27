@@ -7,6 +7,7 @@ import {
   getLineItems, getLineItemByCcPurchaseId, getLineItem,
   updateLineItem, createInvoice, generateId,
 } from '../../lib/dataService';
+import FileUploadButton, { CloudLinks, detectCloudUrl } from '../shared/FileUploadButton';
 import clsx from 'clsx';
 
 const STATUS_COLORS = {
@@ -361,10 +362,25 @@ export default function CCPaymentsTab({ productionId, production }) {
                   </td>
                   <td>
                     {p.receipt_url ? (
-                      <a href={p.receipt_url} target="_blank" rel="noopener noreferrer"
-                        className="flex items-center gap-1 text-xs text-blue-600 hover:underline">
-                        <ExternalLink size={11} /> View
-                      </a>
+                      <div className="flex items-center gap-1">
+                        <CloudLinks {...detectCloudUrl(p.receipt_url)} />
+                      </div>
+                    ) : (isEditor || isAdmin) ? (
+                      <FileUploadButton
+                        category="payment-proofs"
+                        subfolder={`${new Date().getFullYear()}/${productionId}${production?.project_name ? ' ' + production.project_name : ''}`}
+                        fileName={`Receipt-${p.store_name || 'CC'}-${p.id}.pdf`}
+                        accept="image/*,application/pdf"
+                        label="Upload"
+                        size="sm"
+                        onUploaded={async (data) => {
+                          const link = data?.drive?.viewLink || data?.dropbox?.link || '';
+                          if (link) {
+                            await Promise.resolve(updateCCPurchase(p.id, { receipt_url: link }));
+                            refresh();
+                          }
+                        }}
+                      />
                     ) : <span className="text-gray-300 text-xs">—</span>}
                   </td>
                   <td>

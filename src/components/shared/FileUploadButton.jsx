@@ -200,6 +200,71 @@ export default function FileUploadButton({
   );
 }
 
+/* ─── Reusable Cloud Link Icons ──────────────────────────────────────────────── */
+
+export { DriveIcon, DropboxIcon };
+
+/**
+ * Convert a Google Drive view URL to a thumbnail URL.
+ * Input:  https://drive.google.com/file/d/FILE_ID/view?…
+ * Output: https://drive.google.com/thumbnail?id=FILE_ID&sz=w{size}
+ */
+export function getDriveThumbnail(url, size = 200) {
+  if (!url) return null;
+  const m = url.match(/drive\.google\.com\/file\/d\/([^/]+)/);
+  if (m) return `https://drive.google.com/thumbnail?id=${m[1]}&sz=w${size}`;
+  // Also handle open?id= format
+  const m2 = url.match(/drive\.google\.com\/open\?id=([^&]+)/);
+  if (m2) return `https://drive.google.com/thumbnail?id=${m2[1]}&sz=w${size}`;
+  return null;
+}
+
+/**
+ * Detect if a URL is a Google Drive or Dropbox link and return
+ * structured props for CloudLinks.
+ */
+export function detectCloudUrl(url) {
+  if (!url) return {};
+  const isDrive = url.includes('drive.google.com') || url.includes('docs.google.com');
+  const isDropbox = url.includes('dropbox.com');
+  return {
+    driveUrl: isDrive ? url : null,
+    dropboxUrl: isDropbox ? url : null,
+    downloadUrl: url,
+  };
+}
+
+/**
+ * CloudLinks — renders Drive / Dropbox / Download icons for any URL set.
+ * Can be used standalone wherever cloud file links need to be shown.
+ */
+export function CloudLinks({ driveUrl, dropboxUrl, downloadUrl, size = 'sm' }) {
+  if (!driveUrl && !dropboxUrl && !downloadUrl) return null;
+  const iconSize = size === 'sm' ? 14 : 16;
+  return (
+    <span className="inline-flex items-center gap-1">
+      {driveUrl && (
+        <a href={driveUrl} target="_blank" rel="noopener noreferrer"
+           className="inline-flex items-center p-1 rounded hover:bg-gray-100 transition-colors" title="Google Drive">
+          <DriveIcon size={iconSize} />
+        </a>
+      )}
+      {dropboxUrl && (
+        <a href={dropboxUrl} target="_blank" rel="noopener noreferrer"
+           className="inline-flex items-center p-1 rounded hover:bg-gray-100 transition-colors" title="Dropbox">
+          <DropboxIcon size={iconSize} />
+        </a>
+      )}
+      {(downloadUrl || driveUrl) && (
+        <a href={downloadUrl || driveUrl} target="_blank" rel="noopener noreferrer"
+           className="inline-flex items-center p-1 rounded hover:bg-gray-100 transition-colors" title="Download">
+          <Download size={iconSize} className="text-gray-500" />
+        </a>
+      )}
+    </span>
+  );
+}
+
 /** Read a File as base64 (without the data:… prefix) */
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {

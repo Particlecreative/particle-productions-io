@@ -4,7 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { getCasting, createCastMember, updateCastMember, deleteCastMember, createGanttEvent, generateId, getLineItems, createLineItem } from '../../lib/dataService';
 import ContractModal from './ContractModal';
 import InvoiceModal from './InvoiceModal';
-import FileUploadButton from '../shared/FileUploadButton';
+import FileUploadButton, { CloudLinks, detectCloudUrl, getDriveThumbnail } from '../shared/FileUploadButton';
 import clsx from 'clsx';
 
 const ROLES   = ['Model', 'Actor', 'Actress', 'Extra'];
@@ -192,12 +192,12 @@ export default function CastTab({ productionId, production }) {
                     <div className="flex items-center gap-1.5">
                       {m.photo_url ? (
                         <img
-                          src={m.photo_url}
+                          src={getDriveThumbnail(m.photo_url, 200) || m.photo_url}
                           alt={m.name}
                           className="w-9 h-9 rounded-full object-cover border border-gray-200 cursor-pointer hover:opacity-80 transition-opacity"
                           style={{ maxHeight: 80 }}
                           onClick={() => setPhotoFullscreen(m.photo_url)}
-                          onError={e => { e.target.style.display='none'; }}
+                          onError={e => { if (e.target.src !== m.photo_url) e.target.src = m.photo_url; else e.target.style.display='none'; }}
                           title="Click to view full size"
                         />
                       ) : (
@@ -254,10 +254,7 @@ export default function CastTab({ productionId, production }) {
                   </td>
                   <td>
                     {m.signed_contract_url ? (
-                      <a href={m.signed_contract_url} target="_blank" rel="noopener noreferrer"
-                        className="flex items-center gap-1 text-xs text-blue-600 hover:underline">
-                        <ExternalLink size={11} /> View
-                      </a>
+                      <CloudLinks {...detectCloudUrl(m.signed_contract_url)} />
                     ) : <span className="text-gray-300 text-xs">—</span>}
                   </td>
                   <td className="text-sm text-gray-600">{m.contract_manager_name || <span className="text-gray-300">—</span>}</td>
@@ -359,10 +356,11 @@ export default function CastTab({ productionId, production }) {
           onClick={() => setPhotoFullscreen(null)}
         >
           <img
-            src={photoFullscreen}
+            src={getDriveThumbnail(photoFullscreen, 1200) || photoFullscreen}
             alt="Cast member"
             className="max-w-2xl max-h-screen rounded-xl shadow-2xl object-contain"
             onClick={e => e.stopPropagation()}
+            onError={e => { if (e.target.src !== photoFullscreen) e.target.src = photoFullscreen; }}
           />
           <button className="absolute top-4 right-4 text-white/70 hover:text-white text-2xl" onClick={() => setPhotoFullscreen(null)}>✕</button>
         </div>

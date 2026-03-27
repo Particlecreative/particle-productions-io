@@ -9,6 +9,7 @@ import { getProductions, getAllLineItems, updateLineItem, createReceipt, updateR
 import { getDownloadUrl } from '../lib/invoiceUtils';
 import { formatDateIST } from '../lib/timezone';
 import { useLists } from '../context/ListsContext';
+import { CloudLinks, detectCloudUrl } from '../components/shared/FileUploadButton';
 import clsx from 'clsx';
 
 const PAYMENT_STATUS = ['Paid', 'Not Paid', 'Pending'];
@@ -636,19 +637,8 @@ function AccountingRow({ item, fmt, isEditor, showProduction, productionName, on
       <td>
         {item.invoice_url ? (
           <div className="flex items-center gap-1">
-            <a href={item.invoice_url} target="_blank" rel="noopener noreferrer" className="text-xs text-green-600 underline flex items-center gap-0.5">
-              <ExternalLink size={10} /> View ✓
-            </a>
-            {getDownloadUrl(item.invoice_url) && (
-              <a
-                href={getDownloadUrl(item.invoice_url)}
-                download
-                className="text-gray-400 hover:text-gray-600 flex items-center gap-0.5 text-xs"
-                title="Download invoice"
-              >
-                <Download size={10} />
-              </a>
-            )}
+            <span className="text-xs text-green-600 font-semibold">✓</span>
+            <CloudLinks {...detectCloudUrl(item.invoice_url)} />
           </div>
         ) : (
           <span className="text-gray-300 text-xs">—</span>
@@ -660,10 +650,8 @@ function AccountingRow({ item, fmt, isEditor, showProduction, productionName, on
         {item.invoice_type === 'cheshbon_iska' && item.payment_status === 'Paid' ? (
           receipt?.receipt_url ? (
             <div className="flex items-center gap-1">
-              <a href={receipt.receipt_url} target="_blank" rel="noopener noreferrer"
-                className="text-xs text-green-600 underline flex items-center gap-0.5">
-                <Download size={10} /> Doc ✓
-              </a>
+              <span className="text-xs text-green-600 font-semibold">✓</span>
+              <CloudLinks {...detectCloudUrl(receipt.receipt_url)} />
               {isEditor && (
                 <button onClick={() => setEditingReceiptUrl(true)} className="text-gray-300 hover:text-gray-500 ml-1 text-xs">✏</button>
               )}
@@ -832,10 +820,8 @@ function AccountingRow({ item, fmt, isEditor, showProduction, productionName, on
           />
         ) : item.payment_screenshot_url ? (
           <div className="flex items-center gap-1">
-            <a href={item.payment_screenshot_url} target="_blank" rel="noopener noreferrer"
-              className="text-xs text-green-600 underline flex items-center gap-0.5">
-              <ExternalLink size={10} /> View ✓
-            </a>
+            <span className="text-xs text-green-600 font-semibold">✓</span>
+            <CloudLinks {...detectCloudUrl(item.payment_screenshot_url)} />
             {isEditor && (
               <button onClick={() => setEditingScreenshot(true)} className="text-gray-300 hover:text-gray-500 ml-1 text-xs">✏</button>
             )}
