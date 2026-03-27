@@ -8,6 +8,51 @@ const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const GOOGLE_REDIRECT_URI  = process.env.GOOGLE_REDIRECT_URI  || 'https://particlepdio.particleface.com/api/auth/google/callback';
 const DRIVE_FOLDER_ID      = process.env.DRIVE_FOLDER_ID;
 
+// Dropbox OAuth
+const DROPBOX_APP_KEY      = process.env.DROPBOX_APP_KEY;
+const DROPBOX_APP_SECRET   = process.env.DROPBOX_APP_SECRET;
+const DROPBOX_REDIRECT_URI = process.env.DROPBOX_REDIRECT_URI || 'https://particlepdio.particleface.com/api/drive/dropbox-callback';
+
+// Helper: get a valid Dropbox access token (auto-refresh if needed)
+async function getDropboxToken() {
+  const { rows } = await db.query("SELECT dropbox_tokens FROM settings WHERE brand_id = 'particle'");
+  const tokens = rows[0]?.dropbox_tokens;
+  if (!tokens) {
+    // Fall back to env var (short-lived)
+    return process.env.DROPBOX_ACCESS_TOKEN || null;
+  }
+  const parsed = typeof tokens === 'string' ? JSON.parse(tokens) : tokens;
+  // Check if expired (expires_at is unix ms)
+  if (parsed.expires_at && parsed.expires_at < Date.now() && parsed.refresh_token) {
+    // Refresh
+    const body = new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: parsed.refresh_token,
+    });
+    const res = await fetch('https://api.dropboxapi.com/oauth2/token', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Basic ' + Buffer.from(`${DROPBOX_APP_KEY}:${DROPBOX_APP_SECRET}`).toString('base64'),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body,
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const updated = {
+        access_token: data.access_token,
+        refresh_token: parsed.refresh_token, // refresh token doesn't change
+        expires_at: Date.now() + (data.expires_in * 1000),
+      };
+      await db.query("UPDATE settings SET dropbox_tokens = $1 WHERE brand_id = 'particle'", [JSON.stringify(updated)]);
+      return updated.access_token;
+    }
+    console.error('Dropbox refresh failed:', res.status);
+    return null;
+  }
+  return parsed.access_token;
+}
+
 function getOAuth2Client() {
   return new google.auth.OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI);
 }
@@ -18,7 +63,7 @@ router.get('/auth', verifyJWT, (req, res) => {
   const url = oauth2.generateAuthUrl({
     access_type: 'offline',
     scope: [
-      'https://www.googleapis.com/auth/drive.file',
+      'https://www.googleapis.com/auth/drive',
       'https://www.googleapis.com/auth/calendar',
       'https://www.googleapis.com/auth/gmail.send',
     ],
@@ -85,6 +130,7 @@ router.post('/upload', verifyJWT, async (req, res) => {
         const existing = await drive.files.list({
           q: `'${parentId}' in parents AND name = '${part.replace(/'/g, "\\'")}' AND mimeType = 'application/vnd.google-apps.folder' AND trashed = false`,
           fields: 'files(id)',
+          supportsAllDrives: true, includeItemsFromAllDrives: true,
         });
         if (existing.data.files.length > 0) {
           parentId = existing.data.files[0].id;
@@ -93,6 +139,7 @@ router.post('/upload', verifyJWT, async (req, res) => {
           const folder = await drive.files.create({
             resource: { name: part, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] },
             fields: 'id',
+            supportsAllDrives: true,
           });
           parentId = folder.data.id;
         }
@@ -110,12 +157,14 @@ router.post('/upload', verifyJWT, async (req, res) => {
       resource: { name: fileName, parents: [parentId] },
       media: { mimeType: mimeType || 'application/pdf', body: stream },
       fields: 'id, webViewLink, webContentLink',
+      supportsAllDrives: true,
     });
 
     // Make file accessible via link
     await drive.permissions.create({
       fileId: file.data.id,
       resource: { role: 'reader', type: 'anyone' },
+      supportsAllDrives: true,
     });
 
     res.json({
@@ -177,6 +226,7 @@ router.post('/upload-dual', verifyJWT, async (req, res) => {
           const existing = await drive.files.list({
             q: `'${parentId}' in parents AND name = '${part.replace(/'/g, "\\'")}' AND mimeType = 'application/vnd.google-apps.folder' AND trashed = false`,
             fields: 'files(id)',
+            supportsAllDrives: true, includeItemsFromAllDrives: true,
           });
           if (existing.data.files.length > 0) {
             parentId = existing.data.files[0].id;
@@ -184,6 +234,7 @@ router.post('/upload-dual', verifyJWT, async (req, res) => {
             const folder = await drive.files.create({
               resource: { name: part, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] },
               fields: 'id',
+              supportsAllDrives: true,
             });
             parentId = folder.data.id;
           }
@@ -200,11 +251,13 @@ router.post('/upload-dual', verifyJWT, async (req, res) => {
         resource: { name: fileName, parents: [parentId] },
         media: { mimeType: mimeType || 'application/pdf', body: stream },
         fields: 'id, webViewLink, webContentLink',
+        supportsAllDrives: true,
       });
 
       await drive.permissions.create({
         fileId: file.data.id,
         resource: { role: 'reader', type: 'anyone' },
+        supportsAllDrives: true,
       });
 
       results.drive = {
@@ -218,7 +271,7 @@ router.post('/upload-dual', verifyJWT, async (req, res) => {
   }
 
   // 2. Upload to Dropbox
-  const DROPBOX_TOKEN = process.env.DROPBOX_ACCESS_TOKEN;
+  const DROPBOX_TOKEN = await getDropboxToken();
   if (DROPBOX_TOKEN) {
     try {
       const categoryPaths = {
@@ -273,13 +326,59 @@ router.post('/upload-dual', verifyJWT, async (req, res) => {
   res.json(results);
 });
 
+// ── GET /api/drive/dropbox-auth — redirect to Dropbox OAuth ─────────────────
+router.get('/dropbox-auth', verifyJWT, (req, res) => {
+  if (!DROPBOX_APP_KEY) return res.status(500).json({ error: 'DROPBOX_APP_KEY not configured' });
+  const url = `https://www.dropbox.com/oauth2/authorize?client_id=${DROPBOX_APP_KEY}&redirect_uri=${encodeURIComponent(DROPBOX_REDIRECT_URI)}&response_type=code&token_access_type=offline`;
+  res.json({ url });
+});
+
+// ── GET /api/drive/dropbox-callback — handle Dropbox OAuth callback ─────────
+router.get('/dropbox-callback', async (req, res) => {
+  const { code } = req.query;
+  if (!code) return res.redirect('/settings?dropbox=error');
+  try {
+    const body = new URLSearchParams({
+      code,
+      grant_type: 'authorization_code',
+      redirect_uri: DROPBOX_REDIRECT_URI,
+    });
+    const tokenRes = await fetch('https://api.dropboxapi.com/oauth2/token', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Basic ' + Buffer.from(`${DROPBOX_APP_KEY}:${DROPBOX_APP_SECRET}`).toString('base64'),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body,
+    });
+    const data = await tokenRes.json();
+    if (!tokenRes.ok) {
+      console.error('Dropbox OAuth error:', data);
+      return res.redirect('/settings?dropbox=error');
+    }
+    const tokens = {
+      access_token: data.access_token,
+      refresh_token: data.refresh_token,
+      expires_at: Date.now() + (data.expires_in * 1000),
+    };
+    await db.query("UPDATE settings SET dropbox_tokens = $1 WHERE brand_id = 'particle'", [JSON.stringify(tokens)]);
+    res.redirect('/settings?dropbox=connected');
+  } catch (err) {
+    console.error('Dropbox OAuth error:', err);
+    res.redirect('/settings?dropbox=error');
+  }
+});
+
 // ── GET /api/drive/status — check if Google Drive is connected ───────────────
 router.get('/status', verifyJWT, async (req, res) => {
   try {
-    const { rows } = await db.query("SELECT google_tokens FROM settings WHERE brand_id = 'particle'");
-    res.json({ connected: !!rows[0]?.google_tokens });
+    const { rows } = await db.query("SELECT google_tokens, dropbox_tokens FROM settings WHERE brand_id = 'particle'");
+    res.json({
+      connected: !!rows[0]?.google_tokens,
+      dropbox: !!rows[0]?.dropbox_tokens,
+    });
   } catch (err) {
-    res.json({ connected: false });
+    res.json({ connected: false, dropbox: false });
   }
 });
 
@@ -305,22 +404,22 @@ async function uploadDual({ fileName, fileContent, mimeType, subfolder, category
       let parentId = DRIVE_FOLDER_ID;
       if (driveSub) {
         for (const part of driveSub.split('/')) {
-          const existing = await drive.files.list({ q: `'${parentId}' in parents AND name = '${part.replace(/'/g, "\\'")}' AND mimeType = 'application/vnd.google-apps.folder' AND trashed = false`, fields: 'files(id)' });
+          const existing = await drive.files.list({ q: `'${parentId}' in parents AND name = '${part.replace(/'/g, "\\'")}' AND mimeType = 'application/vnd.google-apps.folder' AND trashed = false`, fields: 'files(id)', supportsAllDrives: true, includeItemsFromAllDrives: true });
           if (existing.data.files.length > 0) { parentId = existing.data.files[0].id; }
-          else { const f = await drive.files.create({ resource: { name: part, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] }, fields: 'id' }); parentId = f.data.id; }
+          else { const f = await drive.files.create({ resource: { name: part, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] }, fields: 'id', supportsAllDrives: true }); parentId = f.data.id; }
         }
       }
       const buffer = Buffer.from(fileContent, 'base64');
       const { Readable } = require('stream');
       const stream = new Readable(); stream.push(buffer); stream.push(null);
-      const file = await drive.files.create({ resource: { name: fileName, parents: [parentId] }, media: { mimeType: mimeType || 'application/pdf', body: stream }, fields: 'id, webViewLink' });
-      await drive.permissions.create({ fileId: file.data.id, resource: { role: 'reader', type: 'anyone' } });
+      const file = await drive.files.create({ resource: { name: fileName, parents: [parentId] }, media: { mimeType: mimeType || 'application/pdf', body: stream }, fields: 'id, webViewLink', supportsAllDrives: true });
+      await drive.permissions.create({ fileId: file.data.id, resource: { role: 'reader', type: 'anyone' }, supportsAllDrives: true });
       results.drive = { fileId: file.data.id, viewLink: file.data.webViewLink };
     }
   } catch (e) { console.error('uploadDual Drive:', e.message); }
 
   // Dropbox
-  const DROPBOX_TOKEN = process.env.DROPBOX_ACCESS_TOKEN;
+  const DROPBOX_TOKEN = await getDropboxToken();
   if (DROPBOX_TOKEN) {
     try {
       const catPaths = { contracts: 'Contracts', invoices: 'Invoices', 'payment-proofs': 'Payment Proofs' };

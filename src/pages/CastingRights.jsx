@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { User, ExternalLink, Search, X, Plus, ChevronDown, ChevronRight, Upload, Calendar, Tag, Play, Clock, RefreshCw } from 'lucide-react';
+import FileUploadButton, { CloudLinks, detectCloudUrl } from '../components/shared/FileUploadButton';
 import { useAuth } from '../context/AuthContext';
 import { useBrand } from '../context/BrandContext';
 import { getAllCasting, getProductions, createCastMember, updateCastMember, deleteCastMember, createGanttEvent, generateId } from '../lib/dataService';
@@ -294,10 +295,7 @@ export default function CastingRights() {
         </td>
         <td>
           {m.signed_contract_url ? (
-            <a href={m.signed_contract_url} target="_blank" rel="noopener noreferrer"
-              className="flex items-center gap-1 text-xs text-blue-600 hover:underline">
-              <ExternalLink size={11} /> View
-            </a>
+            <CloudLinks {...detectCloudUrl(m.signed_contract_url)} size="sm" />
           ) : <span className="text-gray-300 text-xs">—</span>}
         </td>
         <td className="text-sm text-gray-600">{m.contract_manager_name || <span className="text-gray-300">—</span>}</td>
@@ -741,19 +739,17 @@ function CastingModal({ initial, productions, onSave, onClose }) {
                 </div>
               )}
               <div className="flex-1 space-y-2">
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 font-medium"
-                >
-                  <Upload size={11} /> Upload Photo (≤2MB)
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
+                <FileUploadButton
                   accept="image/*"
-                  className="hidden"
-                  onChange={e => handlePhotoFile(e.target.files?.[0])}
+                  category="cast-photos"
+                  subfolder={form.production_id || ''}
+                  fileName={`${form.full_name || 'cast'}-photo`}
+                  label="Upload Photo"
+                  size="sm"
+                  onUploaded={(data) => {
+                    const link = data?.drive?.viewLink || data?.dropbox?.link;
+                    if (link) set('photo_url', link);
+                  }}
                 />
                 <input
                   type="url"
@@ -762,6 +758,9 @@ function CastingModal({ initial, productions, onSave, onClose }) {
                   value={form.photo_url?.startsWith('data:') ? '' : (form.photo_url || '')}
                   onChange={e => handlePhotoUrlChange(e.target.value)}
                 />
+                {form.photo_url && !form.photo_url.startsWith('data:') && (
+                  <CloudLinks {...detectCloudUrl(form.photo_url)} size="sm" />
+                )}
               </div>
             </div>
           </div>
@@ -838,8 +837,21 @@ function CastingModal({ initial, productions, onSave, onClose }) {
           {/* Signed contract + manager */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-semibold text-gray-600 block mb-1">Signed Contract URL</label>
-              <input type="url" className="brand-input w-full" placeholder="Drive link" value={form.signed_contract_url} onChange={e => set('signed_contract_url', e.target.value)} />
+              <label className="text-xs font-semibold text-gray-600 block mb-1">Signed Contract</label>
+              <FileUploadButton
+                accept=".pdf,image/*"
+                category="contracts"
+                subfolder={`casting/${form.full_name || 'contract'}`}
+                fileName={`Signed-Contract-${form.full_name || 'cast'}`}
+                label="Upload Contract"
+                size="sm"
+                onUploaded={(data) => {
+                  const link = data?.drive?.viewLink || data?.dropbox?.link;
+                  if (link) set('signed_contract_url', link);
+                }}
+              />
+              <input type="url" className="brand-input w-full mt-1" placeholder="Or paste Drive link" value={form.signed_contract_url} onChange={e => set('signed_contract_url', e.target.value)} />
+              {form.signed_contract_url && <CloudLinks {...detectCloudUrl(form.signed_contract_url)} size="sm" />}
             </div>
             <div>
               <label className="text-xs font-semibold text-gray-600 block mb-1">Contract Manager</label>

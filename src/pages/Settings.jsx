@@ -399,6 +399,10 @@ export default function Settings() {
   const [driveConnected, setDriveConnected] = useState(false);
   const [driveLoading, setDriveLoading]     = useState(false);
 
+  // Dropbox integration state
+  const [dropboxConnected, setDropboxConnected] = useState(false);
+  const [dropboxLoading, setDropboxLoading]     = useState(false);
+
   // System Update state
   const [sysVersion, setSysVersion]   = useState(null);
   const [sysFile, setSysFile]         = useState(null);
@@ -429,16 +433,26 @@ export default function Settings() {
     Promise.resolve(getImprovementTickets()).then(t => setTickets(t || [])).catch(() => {});
   }, []);
 
-  // Check Google Drive connection status
+  // Check Google Drive + Dropbox connection status
   useEffect(() => {
-    getDriveStatus().then(r => setDriveConnected(!!r?.connected)).catch(() => {});
-    // If redirected back from Google OAuth, switch to integrations tab
+    getDriveStatus().then(r => {
+      setDriveConnected(!!r?.connected);
+      setDropboxConnected(!!r?.dropbox);
+    }).catch(() => {});
+    // If redirected back from Google/Dropbox OAuth, switch to integrations tab
     const params = new URLSearchParams(window.location.search);
     if (params.get('google') === 'connected') {
       setDriveConnected(true);
       setTab('integrations');
       window.history.replaceState({}, '', '/settings');
     } else if (params.get('google') === 'error') {
+      setTab('integrations');
+      window.history.replaceState({}, '', '/settings');
+    } else if (params.get('dropbox') === 'connected') {
+      setDropboxConnected(true);
+      setTab('integrations');
+      window.history.replaceState({}, '', '/settings');
+    } else if (params.get('dropbox') === 'error') {
       setTab('integrations');
       window.history.replaceState({}, '', '/settings');
     }
@@ -1033,6 +1047,45 @@ export default function Settings() {
                 >
                   <Link2 size={13} />
                   {driveLoading ? 'Connecting...' : 'Connect Google Drive'}
+                </button>
+              )}
+            </div>
+          </section>
+
+          {/* Dropbox */}
+          <section className="brand-card">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-xl">📦</span>
+              <h2 className="font-bold" style={{ color: 'var(--brand-primary)' }}>Dropbox</h2>
+            </div>
+            <p className="text-xs text-gray-400 mb-4">
+              Connect Dropbox to backup uploaded files (invoices, contracts, receipts).
+            </p>
+            <div className="flex items-center gap-4">
+              {dropboxConnected ? (
+                <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-xs text-green-700 font-medium">
+                  <span className="text-green-500">✓</span> Connected
+                  <span className="text-gray-400 ml-2">— files will auto-backup</span>
+                </div>
+              ) : (
+                <button
+                  onClick={async () => {
+                    setDropboxLoading(true);
+                    try {
+                      const token = localStorage.getItem('cp_auth_token');
+                      const r = await fetch('/api/drive/dropbox-auth', { headers: { Authorization: `Bearer ${token}` } });
+                      const data = await r.json();
+                      if (data?.url) window.location.href = data.url;
+                    } catch (e) {
+                      alert('Failed to start Dropbox auth.');
+                    }
+                    setDropboxLoading(false);
+                  }}
+                  disabled={dropboxLoading}
+                  className="btn-cta flex items-center gap-2 text-sm"
+                >
+                  <Link2 size={13} />
+                  {dropboxLoading ? 'Connecting...' : 'Connect Dropbox'}
                 </button>
               )}
             </div>
