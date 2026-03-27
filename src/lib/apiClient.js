@@ -29,6 +29,14 @@ export async function api(path, options = {}) {
     return;
   }
 
+  if (res.status === 429) {
+    throw new Error('Too many requests. Please wait a moment and try again.');
+  }
+
+  if (res.status === 502 || res.status === 503 || res.status === 504) {
+    throw new Error('SYSTEM_UPDATING');
+  }
+
   if (!res.ok) {
     const text = await res.text().catch(() => 'Unknown error');
     throw new Error(text || `HTTP ${res.status}`);

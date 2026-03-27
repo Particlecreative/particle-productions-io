@@ -43,7 +43,18 @@ export default function Login() {
         navigate('/');
       }
     } else {
-      setError(result.error);
+      // Parse error - handle JSON strings and system states
+      let errMsg = result.error || 'Login failed';
+      try { const parsed = JSON.parse(errMsg); errMsg = parsed.error || errMsg; } catch {}
+      if (errMsg === 'SYSTEM_UPDATING' || errMsg.includes('502') || errMsg.includes('503')) {
+        setError('__UPDATING__');
+        // Auto-retry after 10 seconds
+        setTimeout(() => { setError(''); handleSubmit(e); }, 10000);
+      } else if (errMsg.includes('Too many') || errMsg.includes('slow down')) {
+        setError('Too many login attempts. Please wait 30 seconds and try again.');
+      } else {
+        setError(errMsg);
+      }
     }
   }
 
@@ -199,11 +210,19 @@ export default function Login() {
                     minLength={6}
                   />
                 </div>
-                {error && (
+                {error === '__UPDATING__' ? (
+                  <div className="text-center py-4">
+                    <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-blue-50 mb-3">
+                      <svg className="animate-spin h-6 w-6 text-blue-600" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                    </div>
+                    <div className="text-sm font-semibold text-blue-700">System Updating</div>
+                    <div className="text-xs text-gray-400 mt-1">Please wait, reconnecting automatically...</div>
+                  </div>
+                ) : error ? (
                   <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">
                     {error}
                   </div>
-                )}
+                ) : null}
                 <button
                   type="submit"
                   disabled={changingPw}
@@ -249,11 +268,19 @@ export default function Login() {
                     autoComplete="current-password"
                   />
                 </div>
-                {error && (
+                {error === '__UPDATING__' ? (
+                  <div className="text-center py-4">
+                    <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-blue-50 mb-3">
+                      <svg className="animate-spin h-6 w-6 text-blue-600" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                    </div>
+                    <div className="text-sm font-semibold text-blue-700">System Updating</div>
+                    <div className="text-xs text-gray-400 mt-1">Please wait, reconnecting automatically...</div>
+                  </div>
+                ) : error ? (
                   <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">
                     {error}
                   </div>
-                )}
+                ) : null}
                 <button
                   type="submit"
                   disabled={loading}
@@ -294,11 +321,19 @@ export default function Login() {
                     autoFocus
                   />
                 </div>
-                {error && (
+                {error === '__UPDATING__' ? (
+                  <div className="text-center py-4">
+                    <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-blue-50 mb-3">
+                      <svg className="animate-spin h-6 w-6 text-blue-600" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                    </div>
+                    <div className="text-sm font-semibold text-blue-700">System Updating</div>
+                    <div className="text-xs text-gray-400 mt-1">Please wait, reconnecting automatically...</div>
+                  </div>
+                ) : error ? (
                   <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">
                     {error}
                   </div>
-                )}
+                ) : null}
                 <button type="submit" className="btn-cta w-full py-3 text-sm rounded-xl">
                   Continue
                 </button>
@@ -360,11 +395,19 @@ export default function Login() {
                     required
                   />
                 </div>
-                {error && (
+                {error === '__UPDATING__' ? (
+                  <div className="text-center py-4">
+                    <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-blue-50 mb-3">
+                      <svg className="animate-spin h-6 w-6 text-blue-600" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                    </div>
+                    <div className="text-sm font-semibold text-blue-700">System Updating</div>
+                    <div className="text-xs text-gray-400 mt-1">Please wait, reconnecting automatically...</div>
+                  </div>
+                ) : error ? (
                   <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">
                     {error}
                   </div>
-                )}
+                ) : null}
                 <button type="submit" className="btn-cta w-full py-3 text-sm rounded-xl">
                   Save Password
                 </button>
