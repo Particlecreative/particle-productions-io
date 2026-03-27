@@ -52,6 +52,7 @@ export default function ContractSign() {
   // Form fields
   const [signerName, setSignerName] = useState('');
   const [signerId, setSignerId] = useState('');
+  const [signerAddress, setSignerAddress] = useState('');
   const [signDate] = useState(
     new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
   );
@@ -78,7 +79,8 @@ export default function ContractSign() {
         }
         setContractData(data);
         setSignerName(data.signer_name || '');
-        setSignerId(data.signer_id_number || '');
+        setSignerId(data.signer_id_number || data.provider_id_number || '');
+        setSignerAddress(data.provider_address || '');
       } catch {
         setError('Unable to connect. Please check your internet and try again.');
       }
@@ -191,6 +193,7 @@ export default function ContractSign() {
           signature_data: signatureBase64,
           signer_name: signerName.trim(),
           signer_id_number: signerId.trim(),
+          signer_address: signerAddress.trim(),
         }),
       });
       const data = await res.json();
@@ -333,14 +336,35 @@ export default function ContractSign() {
           </div>
         </div>
 
-        {/* ── Section 2: Service Provider Details ── */}
+        {/* ── Production Banner ── */}
+        <div className="mx-6 sm:mx-10 mt-6 mb-2 bg-blue-50 border border-blue-200 rounded-xl p-5 text-center">
+          <div className="text-xs font-semibold text-blue-500 uppercase tracking-wider mb-1">This Agreement Is For</div>
+          <div className="text-xl font-bold text-blue-900">{d.project_name || 'Production'}</div>
+        </div>
+
+        {/* ── Section 2: Service Provider Details (fillable) ── */}
         <div className="px-6 sm:px-10 py-6 bg-gray-50/60 border-b border-gray-100">
           <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-4">Service Provider Details</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <DetailPill icon={<User size={13} />} label="Name" value={d.provider_name || '\u2014'} />
-            <DetailPill icon={<Hash size={13} />} label="ID / Company Number" value={d.provider_id_number || d.provider_id || d.signer_id_number || '\u2014'} />
-            <DetailPill icon={<FileText size={13} />} label="Production" value={d.project_name || '\u2014'} />
-            {d.provider_address && <DetailPill icon={<FileText size={13} />} label="Address" value={d.provider_address} />}
+            <div>
+              <label className="text-[10px] font-semibold text-yellow-700 uppercase tracking-wider mb-1 block">ID / Passport / Company Number *</label>
+              <input
+                className="w-full bg-yellow-50 border-2 border-yellow-300 focus:border-yellow-500 rounded-lg px-4 py-3 text-sm font-medium outline-none transition-colors"
+                value={signerId}
+                onChange={e => setSignerId(e.target.value)}
+                placeholder="Enter your ID, passport, or company number"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="text-[10px] font-semibold text-yellow-700 uppercase tracking-wider mb-1 block">Place of Business / Address *</label>
+              <input
+                className="w-full bg-yellow-50 border-2 border-yellow-300 focus:border-yellow-500 rounded-lg px-4 py-3 text-sm font-medium outline-none transition-colors"
+                value={signerAddress}
+                onChange={e => setSignerAddress(e.target.value)}
+                placeholder="Enter your business address"
+              />
+            </div>
           </div>
         </div>
 

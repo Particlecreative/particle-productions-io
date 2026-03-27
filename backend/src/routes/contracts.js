@@ -25,7 +25,7 @@ async function notifySlack(message, link, { sandbox = false } = {}) {
   try {
     await fetch(webhookUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-type': 'application/json' },
       body: JSON.stringify({ text }),
     });
   } catch (e) {
@@ -34,23 +34,16 @@ async function notifySlack(message, link, { sandbox = false } = {}) {
 }
 
 // Send DM to Tomer via Slack Bot API
+const TOMER_SLACK_ID = 'U07466D6Y9E';
 async function slackDM(text) {
   const token = process.env.SLACK_BOT_TOKEN;
   if (!token) { console.warn('Slack DM skipped: SLACK_BOT_TOKEN missing'); return; }
   try {
-    // Find Tomer's Slack user ID by email
-    const lookupRes = await fetch('https://slack.com/api/users.lookupByEmail?' + new URLSearchParams({ email: 'tomer@particleformen.com' }), {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    const lookup = await lookupRes.json();
-    if (!lookup.ok) { console.warn('Slack user lookup failed:', lookup.error); return; }
-    const userId = lookup.user.id;
-
-    // Open DM channel
+    // Open DM channel with Tomer's known user ID
     const openRes = await fetch('https://slack.com/api/conversations.open', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ users: userId }),
+      headers: { Authorization: `Bearer ${token}`, 'Content-type': 'application/json' },
+      body: JSON.stringify({ users: TOMER_SLACK_ID }),
     });
     const open = await openRes.json();
     if (!open.ok) { console.warn('Slack DM open failed:', open.error); return; }
@@ -58,7 +51,7 @@ async function slackDM(text) {
     // Send message
     await fetch('https://slack.com/api/chat.postMessage', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: { Authorization: `Bearer ${token}`, 'Content-type': 'application/json' },
       body: JSON.stringify({ channel: open.channel.id, text }),
     });
   } catch (e) {
@@ -127,7 +120,7 @@ router.get('/sign/:id/:token', async (req, res) => {
 router.post('/sign/:id/:token', async (req, res) => {
   try {
     const { id, token } = req.params;
-    const { signature_data, signer_name, signer_id_number } = req.body;
+    const { signature_data, signer_name, signer_id_number, signer_address } = req.body;
 
     if (!signature_data) {
       return res.status(400).json({ error: 'Signature data is required' });
@@ -161,6 +154,19 @@ router.post('/sign/:id/:token', async (req, res) => {
        WHERE id = $5`,
       [signature_data, now, signer_name || null, signer_id_number || null, sig.id]
     );
+
+    // Update main contract with provider-filled details (ID + address)
+    if (sig.signer_role === 'provider' && (signer_id_number || signer_address)) {
+      const updates = [];
+      const vals = [];
+      let idx = 1;
+      if (signer_id_number) { updates.push(`provider_id_number = $${idx}`); vals.push(signer_id_number); idx++; }
+      if (signer_address) { updates.push(`provider_address = $${idx}`); vals.push(signer_address); idx++; }
+      if (updates.length) {
+        vals.push(id);
+        await db.query(`UPDATE contracts SET ${updates.join(', ')} WHERE id = $${idx}`, vals);
+      }
+    }
 
     // Add event to contract events array
     const events = Array.isArray(sig.events) ? sig.events : [];
