@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const db     = require('../db');
 const crypto = require('crypto');
+const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
 const { verifyJWT } = require('../middleware/auth');
 const { sendEmail } = require('./gmail');
 const driveRouter = require('./drive');
@@ -231,23 +232,171 @@ router.post('/sign/:id/:token', async (req, res) => {
         `UPDATE contracts SET status = 'signed', signed_at = $1, events = $2 WHERE id = $3`,
         [now, JSON.stringify(events), id]
       );
-      // Upload PDF to Google Drive + Dropbox
-      // TODO: The PDF uploaded here is the UNSIGNED preview (contract_pdf_base64 from initial generation).
-      // Future versions should embed the actual signatures from contract_signatures.signature_data
-      // into the PDF before uploading, so the Drive/Dropbox copy is the fully-signed document.
+
+      // ── Generate signed PDF with embedded signatures & document history ──
+      let signedPdfBase64 = null;
+      try {
+        // Get the base contract PDF + contract details
+        const { rows: cInfo } = await db.query(
+          `SELECT contract_pdf_base64, exhibit_a, exhibit_b, fee_amount, currency,
+                  effective_date, provider_name, provider_address, provider_id_number
+           FROM contracts WHERE id = $1`,
+          [id]
+        );
+        const contractData = cInfo[0];
+
+        // Get all signatures
+        const { rows: signatures } = await db.query(
+          `SELECT signer_role, signer_name, signature_data, signed_at
+           FROM contract_signatures WHERE contract_id = $1 ORDER BY signed_at ASC`,
+          [id]
+        );
+
+        // Create a new PDF with signatures page
+        const pdfDoc = await PDFDocument.create();
+        const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+        const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+        // If we have the original PDF base64, merge it
+        if (contractData?.contract_pdf_base64) {
+          try {
+            const existingPdfBytes = Buffer.from(
+              contractData.contract_pdf_base64.replace(/^data:[^;]+;base64,/, ''),
+              'base64'
+            );
+            const existingPdf = await PDFDocument.load(existingPdfBytes);
+            const pages = await pdfDoc.copyPages(existingPdf, existingPdf.getPageIndices());
+            pages.forEach(p => pdfDoc.addPage(p));
+          } catch (e) {
+            console.error('Could not merge original PDF:', e.message);
+            // Fallback: create a simple title page
+            const page = pdfDoc.addPage([595, 842]); // A4
+            page.drawText('SERVICES AGREEMENT', { x: 50, y: 780, size: 20, font: boldFont, color: rgb(0.01, 0.04, 0.18) });
+            page.drawText(`${contractData?.provider_name || 'Service Provider'}`, { x: 50, y: 750, size: 14, font });
+            page.drawText(`Effective Date: ${contractData?.effective_date || 'N/A'}`, { x: 50, y: 730, size: 12, font });
+          }
+        }
+
+        // Add SIGNATURES PAGE
+        const sigPage = pdfDoc.addPage([595, 842]);
+        let y = 780;
+
+        // Title
+        sigPage.drawText('SIGNATURES', { x: 50, y, size: 16, font: boldFont, color: rgb(0.01, 0.04, 0.18) });
+        y -= 30;
+
+        sigPage.drawText('The parties have executed this Agreement as of the dates set forth below.', { x: 50, y, size: 10, font, color: rgb(0.3, 0.3, 0.3) });
+        y -= 40;
+
+        // Company signature block
+        sigPage.drawText('For the Company:', { x: 50, y, size: 11, font: boldFont });
+        y -= 18;
+        sigPage.drawText('Particle Aesthetic Science Ltd.', { x: 50, y, size: 10, font });
+        y -= 15;
+        sigPage.drawText('Name: Tomer Wilf Lezmy', { x: 50, y, size: 10, font });
+        y -= 15;
+        sigPage.drawText('Title: Head of Creative Production', { x: 50, y, size: 10, font });
+        y -= 15;
+
+        // Find HOCP signature
+        const hocpSig = signatures.find(s => s.signer_role === 'hocp');
+        if (hocpSig?.signature_data) {
+          try {
+            const sigBytes = Buffer.from(hocpSig.signature_data.replace(/^data:[^;]+;base64,/, ''), 'base64');
+            const sigImage = await pdfDoc.embedPng(sigBytes);
+            const sigDims = sigImage.scale(0.3);
+            sigPage.drawImage(sigImage, { x: 50, y: y - sigDims.height, width: sigDims.width, height: sigDims.height });
+            y -= sigDims.height + 10;
+          } catch (e) {
+            sigPage.drawText('[Digitally Signed]', { x: 50, y, size: 10, font, color: rgb(0, 0.4, 0) });
+            y -= 15;
+          }
+        }
+        sigPage.drawText(`Date: ${hocpSig?.signed_at ? new Date(hocpSig.signed_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A'}`, { x: 50, y, size: 10, font });
+        y -= 50;
+
+        // Provider signature block
+        sigPage.drawText('For the Service Provider:', { x: 50, y, size: 11, font: boldFont });
+        y -= 18;
+        sigPage.drawText(`Name: ${contractData?.provider_name || 'N/A'}`, { x: 50, y, size: 10, font });
+        y -= 15;
+        if (contractData?.provider_id_number) {
+          sigPage.drawText(`ID/Passport: ${contractData.provider_id_number}`, { x: 50, y, size: 10, font });
+          y -= 15;
+        }
+        if (contractData?.provider_address) {
+          sigPage.drawText(`Address: ${contractData.provider_address}`, { x: 50, y, size: 10, font });
+          y -= 15;
+        }
+
+        const providerSig = signatures.find(s => s.signer_role === 'provider');
+        if (providerSig?.signature_data) {
+          try {
+            const sigBytes = Buffer.from(providerSig.signature_data.replace(/^data:[^;]+;base64,/, ''), 'base64');
+            const sigImage = await pdfDoc.embedPng(sigBytes);
+            const sigDims = sigImage.scale(0.3);
+            sigPage.drawImage(sigImage, { x: 50, y: y - sigDims.height, width: sigDims.width, height: sigDims.height });
+            y -= sigDims.height + 10;
+          } catch (e) {
+            sigPage.drawText('[Digitally Signed]', { x: 50, y, size: 10, font, color: rgb(0, 0.4, 0) });
+            y -= 15;
+          }
+        }
+        sigPage.drawText(`Date: ${providerSig?.signed_at ? new Date(providerSig.signed_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A'}`, { x: 50, y, size: 10, font });
+        y -= 60;
+
+        // DOCUMENT HISTORY section
+        sigPage.drawText('DOCUMENT HISTORY', { x: 50, y, size: 12, font: boldFont, color: rgb(0.3, 0.3, 0.3) });
+        y -= 5;
+        sigPage.drawLine({ start: { x: 50, y }, end: { x: 545, y }, thickness: 0.5, color: rgb(0.8, 0.8, 0.8) });
+        y -= 18;
+
+        const formatDt = (d) => d ? new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+        for (const evt of events) {
+          let label = evt.type;
+          if (evt.type === 'created') label = 'Contract Created';
+          if (evt.type === 'sent') label = 'Sent for Signature';
+          if (evt.type === 'signed') label = `Signed by ${evt.name || evt.role || 'Party'}`;
+          if (evt.type === 'completed') label = 'All Parties Signed \u2014 Completed';
+          if (evt.type === 'regenerated') label = 'Links Regenerated';
+
+          sigPage.drawText(`${label}`, { x: 50, y, size: 9, font: boldFont });
+          sigPage.drawText(`${formatDt(evt.at)}`, { x: 300, y, size: 9, font, color: rgb(0.5, 0.5, 0.5) });
+          y -= 16;
+          if (y < 50) break;
+        }
+
+        // Save the final signed PDF
+        const signedPdfBytes = await pdfDoc.save();
+        signedPdfBase64 = Buffer.from(signedPdfBytes).toString('base64');
+
+        // Save back to contract record
+        await db.query(
+          'UPDATE contracts SET contract_pdf_base64 = $1 WHERE id = $2',
+          ['data:application/pdf;base64,' + signedPdfBase64, id]
+        );
+        console.log('Signed PDF generated with embedded signatures and document history');
+      } catch (pdfErr) {
+        console.error('Signed PDF generation failed:', pdfErr.message);
+      }
+
+      // Upload signed PDF to Google Drive + Dropbox
       let driveUrl = null;
       let dropboxUrl = null;
       try {
-        const { rows: cInfo } = await db.query('SELECT contract_pdf_base64 FROM contracts WHERE id = $1', [id]);
-        const pdfBase64 = cInfo[0]?.contract_pdf_base64;
-        if (pdfBase64 && driveRouter.uploadDual) {
-          // Strip data URL prefix if present
-          const cleanBase64 = pdfBase64.replace(/^data:[^;]+;base64,/, '');
+        // Use the newly generated signed PDF, or fall back to the original
+        let uploadBase64 = signedPdfBase64;
+        if (!uploadBase64) {
+          const { rows: cInfo } = await db.query('SELECT contract_pdf_base64 FROM contracts WHERE id = $1', [id]);
+          const pdfBase64 = cInfo[0]?.contract_pdf_base64;
+          if (pdfBase64) uploadBase64 = pdfBase64.replace(/^data:[^;]+;base64,/, '');
+        }
+        if (uploadBase64 && driveRouter.uploadDual) {
           const year = new Date().getFullYear();
           const subfolder = `${year}/${prdShort} ${projectLabel}`;
           const uploadResult = await driveRouter.uploadDual({
             fileName: `Contract - ${sig.provider_name || signer_name}.pdf`,
-            fileContent: cleanBase64,
+            fileContent: uploadBase64,
             mimeType: 'application/pdf',
             subfolder,
             category: 'contracts',
