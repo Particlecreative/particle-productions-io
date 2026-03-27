@@ -383,7 +383,7 @@ router.post('/:production_id/generate', async (req, res) => {
   const {
     provider_name, provider_email, hocp_name, hocp_email,
     exhibit_a, exhibit_b, fee_amount, payment_terms,
-    sandbox,
+    sandbox, currency, contract_type, effective_date,
   } = req.body;
   const prodId = req.params.production_id;
 
@@ -405,20 +405,26 @@ router.post('/:production_id/generate', async (req, res) => {
            exhibit_a = COALESCE($5, exhibit_a),
            exhibit_b = COALESCE($6, exhibit_b),
            fee_amount = COALESCE($7, fee_amount),
-           payment_terms = COALESCE($8, payment_terms)
+           payment_terms = COALESCE($8, payment_terms),
+           currency = COALESCE($9, currency),
+           contract_type = COALESCE($10, contract_type),
+           effective_date = COALESCE($11, effective_date)
          WHERE production_id = $1 RETURNING *`,
         [prodId, provider_name, provider_email, newEvent,
-         exhibit_a || null, exhibit_b || null, fee_amount || null, payment_terms || null]
+         exhibit_a || null, exhibit_b || null, fee_amount || null, payment_terms || null,
+         currency || null, contract_type || null, effective_date || null]
       );
       contract = rows[0];
     } else {
       // Create new
       const { rows } = await db.query(
         `INSERT INTO contracts (production_id, provider_name, provider_email, status, events,
-                                exhibit_a, exhibit_b, fee_amount, payment_terms)
-         VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7, $8) RETURNING *`,
+                                exhibit_a, exhibit_b, fee_amount, payment_terms,
+                                currency, contract_type, effective_date)
+         VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
         [prodId, provider_name, provider_email, JSON.stringify([{ type: 'created', at: now }]),
-         exhibit_a || null, exhibit_b || null, fee_amount || null, payment_terms || null]
+         exhibit_a || null, exhibit_b || null, fee_amount || null, payment_terms || null,
+         currency || 'USD', contract_type || 'crew', effective_date || null]
       );
       contract = rows[0];
     }

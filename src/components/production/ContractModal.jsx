@@ -795,6 +795,9 @@ export default function ContractModal({ production, lineItem, onClose }) {
         exhibit_b: exhibitB,
         fee_amount: feeAmount,
         payment_terms: paymentTerms,
+        currency,
+        contract_type: CAST_TYPES.includes(lineItem?.type) ? 'cast' : 'crew',
+        effective_date: effectiveDate,
       });
 
       if (result?.signing_links) {
@@ -821,7 +824,7 @@ export default function ContractModal({ production, lineItem, onClose }) {
 
     const toEmail = sandboxMode ? 'tomer@particleformen.com' : providerEmail;
     const toName = sandboxMode ? (user?.name || 'Tomer') : providerName;
-    const subjectPrefix = sandboxMode ? '🧪 [TEST] ' : '';
+    const subjectPrefix = sandboxMode ? '[TEST] ' : '';
 
     try {
       const res = await fetch(`${API}/api/gmail/send`, {
@@ -888,9 +891,9 @@ export default function ContractModal({ production, lineItem, onClose }) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({
-        message: `\ud83d\udcc4 Contract sent via email: [${production.id}] ${production.project_name} \u2014 ${providerName}`,
+        message: `Contract sent via email: [${production.id}] ${production.project_name} - ${providerName}`,
         sandbox: sandboxMode,
-        link: `${window.location.origin}/production/${production.id}`,
+        link: providerLink || `${window.location.origin}/production/${production.id}`,
       }),
     }).catch(() => {});
 
@@ -1542,9 +1545,9 @@ export default function ContractModal({ production, lineItem, onClose }) {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${waToken}` },
                           body: JSON.stringify({
-                            message: `\ud83d\udcf1 Contract sent via WhatsApp: [${production.id}] ${production.project_name} \u2014 ${providerName}`,
+                            message: `Contract sent via WhatsApp: [${production.id}] ${production.project_name} - ${providerName}`,
                             sandbox: sandboxMode,
-                            link: `${window.location.origin}/production/${production.id}`,
+                            link: signingLinks?.provider?.url || `${window.location.origin}/production/${production.id}`,
                           }),
                         }).catch(() => {});
                       }}
@@ -1729,9 +1732,9 @@ export default function ContractModal({ production, lineItem, onClose }) {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${waToken2}` },
                       body: JSON.stringify({
-                        message: `\ud83d\udcf1 Contract resent via WhatsApp: [${production.id}] ${production.project_name} \u2014 ${providerName}`,
+                        message: `Contract resent via WhatsApp: [${production.id}] ${production.project_name} - ${providerName}`,
                         sandbox: sandboxMode,
-                        link: `${window.location.origin}/production/${production.id}`,
+                        link: signingLinks?.provider?.url || `${window.location.origin}/production/${production.id}`,
                       }),
                     }).catch(() => {});
                   }}

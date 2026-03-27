@@ -371,7 +371,7 @@ export default function ContractSign() {
         {/* ── Section 3: Full Agreement Terms ── */}
         <div className="px-6 sm:px-10 py-6 border-b border-gray-100">
           <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-4">Agreement Terms</h3>
-          <FullContractText data={d} effectiveDate={effectiveDate} />
+          <FullContractText data={d} effectiveDate={effectiveDate} liveId={signerId} liveAddress={signerAddress} />
         </div>
 
         {/* ── Section 4: Exhibit A — Scope of Services ── */}
@@ -653,11 +653,11 @@ function ExhibitCard({ color, icon, title, subtitle, content, children }) {
 /* ═══════════════════════════════════════════════
    Full Contract Text — renders full legal text
    ═══════════════════════════════════════════════ */
-function FullContractText({ data: d, effectiveDate }) {
+function FullContractText({ data: d, effectiveDate, liveId, liveAddress }) {
   const isCast = (d.contract_type === 'cast');
   const providerName = d.provider_name || '[Service Provider]';
-  const providerId = d.provider_id_number || d.provider_id || '[Please complete]';
-  const providerAddr = d.provider_address || '[Please complete]';
+  const providerId = liveId || d.provider_id_number || d.provider_id || '[Please complete]';
+  const providerAddr = liveAddress || d.provider_address || '[Please complete]';
 
   const S = ({ children }) => <h4 className="text-sm font-bold text-gray-800 mt-5 mb-2">{children}</h4>;
   const Sub = ({ children }) => <h5 className="text-xs font-semibold text-gray-700 mt-3 mb-1">{children}</h5>;
