@@ -1,8 +1,53 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useBrand } from '../context/BrandContext';
 import BrandSwitcher from '../components/layout/BrandSwitcher';
+
+/* ── Countdown circle for rate-limit lockout ── */
+function CountdownTimer({ seconds, onComplete }) {
+  const [remaining, setRemaining] = useState(seconds);
+  const intervalRef = useRef(null);
+
+  useEffect(() => {
+    intervalRef.current = setInterval(() => {
+      setRemaining(prev => {
+        if (prev <= 1) {
+          clearInterval(intervalRef.current);
+          onComplete?.();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(intervalRef.current);
+  }, []);
+
+  const progress = remaining / seconds;
+  const radius = 20;
+  const circumference = 2 * Math.PI * radius;
+  const dashOffset = circumference * (1 - progress);
+
+  return (
+    <div className="flex items-center gap-3 justify-center py-2">
+      <div className="relative w-12 h-12">
+        <svg className="w-12 h-12 -rotate-90" viewBox="0 0 48 48">
+          <circle cx="24" cy="24" r={radius} fill="none" stroke="#fee2e2" strokeWidth="3" />
+          <circle cx="24" cy="24" r={radius} fill="none" stroke="#dc2626" strokeWidth="3"
+            strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={dashOffset}
+            style={{ transition: 'stroke-dashoffset 1s linear' }} />
+        </svg>
+        <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-red-600">
+          {remaining}
+        </span>
+      </div>
+      <div className="text-left">
+        <div className="text-xs font-semibold text-red-600">Too many attempts</div>
+        <div className="text-xs text-gray-400">Try again in {remaining}s</div>
+      </div>
+    </div>
+  );
+}
 
 // Master key is now validated server-side via /api/auth/forgot-password
 
@@ -11,6 +56,7 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [cooldown, setCooldown] = useState(false);
 
   // Force change password flow (after login with must_change_password)
   const [forceChange, setForceChange] = useState(false);
@@ -51,7 +97,8 @@ export default function Login() {
         // Auto-retry after 10 seconds
         setTimeout(() => { setError(''); handleSubmit(e); }, 10000);
       } else if (errMsg.includes('Too many') || errMsg.includes('slow down')) {
-        setError('Too many login attempts. Please wait 30 seconds and try again.');
+        setCooldown(true);
+        setError('');
       } else {
         setError(errMsg);
       }
@@ -268,7 +315,11 @@ export default function Login() {
                     autoComplete="current-password"
                   />
                 </div>
-                {error === '__UPDATING__' ? (
+                {cooldown ? (
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-3">
+                    <CountdownTimer seconds={30} onComplete={() => setCooldown(false)} />
+                  </div>
+                ) : error === '__UPDATING__' ? (
                   <div className="text-center py-4">
                     <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-blue-50 mb-3">
                       <svg className="animate-spin h-6 w-6 text-blue-600" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
@@ -283,11 +334,11 @@ export default function Login() {
                 ) : null}
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || cooldown}
                   className="btn-cta w-full py-3 text-sm rounded-xl mt-2"
-                  style={{ opacity: loading ? 0.7 : 1 }}
+                  style={{ opacity: (loading || cooldown) ? 0.5 : 1 }}
                 >
-                  {loading ? 'Signing in…' : 'Sign in'}
+                  {loading ? 'Signing in…' : cooldown ? 'Please wait…' : 'Sign in'}
                 </button>
               </form>
               <div className="mt-4 text-center">
