@@ -15,6 +15,7 @@ import {
 } from '../lib/dataService';
 import { getGanttEvents } from '../lib/ganttService';
 import { useLists } from '../context/ListsContext';
+import { getListItemColor } from '../lib/listService';
 import UpdatesPanel from '../components/updates/UpdatesPanel';
 import NewProductionModal from '../components/dashboard/NewProductionModal';
 import ImportProductionsModal from '../components/dashboard/ImportProductionsModal';
@@ -1255,23 +1256,35 @@ function ProductionRow({
             <span className="text-gray-400 whitespace-nowrap text-sm">{fmtC(prod.actual_spent)}</span>
           </td>
         );
-        if (key === 'stage') return (
+        if (key === 'stage') {
+          const stageColor = colorByStatus && getListItemColor('stages', prod.stage);
+          return (
           <td key={key} onClick={e => e.stopPropagation()}>
             {isEditor ? (
               <select
                 value={prod.stage}
                 onChange={e => onStageChange(prod.id, e.target.value)}
                 className="text-xs border-0 bg-transparent font-semibold outline-none cursor-pointer"
-                style={{ color: 'inherit' }}
+                style={stageColor ? { color: stageColor } : { color: 'inherit' }}
                 onClick={e => e.stopPropagation()}
               >
                 {lists.stages.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             ) : (
-              <StageBadge stage={prod.stage} />
+              <span
+                className="badge"
+                style={stageColor ? {
+                  backgroundColor: stageColor + '20',
+                  color: stageColor,
+                  borderColor: stageColor + '40',
+                } : {}}
+              >
+                {prod.stage}
+              </span>
             )}
           </td>
         );
+        }
         if (key === 'shoot_date') return (
           <td key={key} onClick={e => e.stopPropagation()}>
             {isEditingThisRow ? (

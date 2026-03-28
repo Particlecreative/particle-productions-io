@@ -137,6 +137,10 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
     try { return localStorage.getItem('cp_budget_colors') !== 'false'; } catch { return true; }
   });
 
+  // Smart add menu
+  const [showAddMenu, setShowAddMenu] = useState(false);
+  const addMenuRef = useRef(null);
+
   // CC purchase sub-rows
   const [ccPurchases, setCcPurchases] = useState([]);
   const [expandedRows, setExpandedRows] = useState(new Set());
@@ -172,6 +176,16 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isEditor]);
+
+  // Close add-menu on outside click
+  useEffect(() => {
+    if (!showAddMenu) return;
+    function handleClickOutside(e) {
+      if (addMenuRef.current && !addMenuRef.current.contains(e.target)) setShowAddMenu(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showAddMenu]);
 
   // CC purchases grouped by parent line item
   const ccByLineItem = useMemo(() => {
@@ -698,21 +712,68 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
 
           {/* Add Line — right under the table */}
           {isEditor && (
-            <button
-              onClick={addRow}
-              className="group mt-0 flex items-center gap-3 w-full px-4 py-3 text-sm
-                         border-t border-dashed border-gray-200
-                         text-gray-400 hover:text-blue-600 hover:bg-blue-50/50
-                         transition-all duration-200"
-            >
-              <div className="w-7 h-7 rounded-lg bg-gray-100 group-hover:bg-blue-100 flex items-center justify-center transition-colors">
-                <Plus size={14} className="text-gray-400 group-hover:text-blue-600 transition-colors" />
-              </div>
-              <span className="font-medium">Add Line Item</span>
-              <kbd className="ml-auto hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-gray-100 text-[10px] text-gray-400 font-mono group-hover:bg-blue-100 group-hover:text-blue-500 transition-colors">
-                Alt+N
-              </kbd>
-            </button>
+            <div className="relative" ref={addMenuRef}>
+              <button
+                onClick={() => setShowAddMenu(!showAddMenu)}
+                className="group mt-0 flex items-center gap-3 w-full px-4 py-3 text-sm
+                           border-t border-dashed border-gray-200
+                           text-gray-400 hover:text-blue-600 hover:bg-blue-50/50
+                           transition-all duration-200"
+              >
+                <div className="w-7 h-7 rounded-lg bg-gray-100 group-hover:bg-blue-100 flex items-center justify-center transition-colors">
+                  <Plus size={14} className="text-gray-400 group-hover:text-blue-600 transition-colors" />
+                </div>
+                <span className="font-medium">Add Line Item</span>
+                <kbd className="ml-auto hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-gray-100 text-[10px] text-gray-400 font-mono group-hover:bg-blue-100 group-hover:text-blue-500 transition-colors">
+                  Alt+N
+                </kbd>
+              </button>
+
+              {showAddMenu && (
+                <div className="absolute bottom-full left-0 right-0 mb-1 bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden z-20 max-h-64 overflow-y-auto">
+                  <div className="px-3 py-2 text-[10px] font-semibold text-gray-400 uppercase tracking-wider border-b bg-gray-50">
+                    Quick add by role
+                  </div>
+                  {(lists?.crewRoles || []).map(role => (
+                    <button
+                      key={role}
+                      onClick={() => {
+                        const id = generateId('li');
+                        const item = {
+                          id,
+                          production_id: productionId,
+                          item: role,
+                          full_name: '',
+                          planned_budget: 0,
+                          type: 'Crew',
+                          status: 'Not Started',
+                          actual_spent: 0,
+                        };
+                        Promise.resolve(createLineItem(item)).then(() => {
+                          setNewRowId(id);
+                          refresh();
+                          setTimeout(() => { setNewRowId(null); setEditingCell({ itemId: id, field: 'full_name' }); }, 300);
+                        });
+                        setShowAddMenu(false);
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors flex items-center gap-2"
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-gray-300" />
+                      {role}
+                    </button>
+                  ))}
+                  <div className="border-t">
+                    <button
+                      onClick={() => { addRow(); setShowAddMenu(false); }}
+                      className="w-full text-left px-4 py-2.5 text-sm font-medium text-blue-600 hover:bg-blue-50 transition-colors flex items-center gap-2"
+                    >
+                      <Plus size={12} />
+                      Blank line item
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>

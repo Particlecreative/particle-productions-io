@@ -4,7 +4,7 @@ import { useBrand } from '../context/BrandContext';
 import { useLists } from '../context/ListsContext';
 import { useAuth } from '../context/AuthContext';
 import { getSettings, updateSettings, getImprovementTickets, createImprovementTicket, updateImprovementTicket, deleteImprovementTicket, generateId, getBrands, createBrand, updateBrand, deleteBrand, getProductions, bulkCreateLineItems, bulkCreateCastMembers, getDriveAuthUrl, getDriveStatus } from '../lib/dataService';
-import { LIST_META } from '../lib/listService';
+import { LIST_META, getListItemColor } from '../lib/listService';
 import clsx from 'clsx';
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -31,16 +31,19 @@ function ListEditor({ listKey, items, onUpdate, onReset }) {
     onUpdate(next);
   }
 
+  const getLabel = (item) => typeof item === 'object' ? item.label : item;
+
   function startEdit(idx) {
     setEditingIdx(idx);
-    setEditValue(items[idx]);
+    setEditValue(getLabel(items[idx]));
     setShowAdd(false);
   }
 
   function saveEdit() {
     if (editValue.trim() && editingIdx !== null) {
       const next = [...items];
-      next[editingIdx] = editValue.trim();
+      const prev = next[editingIdx];
+      next[editingIdx] = typeof prev === 'object' ? { ...prev, label: editValue.trim() } : editValue.trim();
       onUpdate(next);
     }
     setEditingIdx(null);
@@ -53,7 +56,7 @@ function ListEditor({ listKey, items, onUpdate, onReset }) {
   function handleAdd() {
     const v = addValue.trim();
     if (!v) return;
-    if (!items.map(i => i.toLowerCase()).includes(v.toLowerCase())) {
+    if (!items.map(i => getLabel(i).toLowerCase()).includes(v.toLowerCase())) {
       onUpdate([...items, v]);
     }
     setAddValue('');
@@ -104,6 +107,23 @@ function ListEditor({ listKey, items, onUpdate, onReset }) {
               </button>
             </div>
 
+            {/* Color picker */}
+            <input
+              type="color"
+              value={getListItemColor(listKey, getLabel(item)) || '#6b7280'}
+              onChange={e => {
+                const next = items.map((it, i) => {
+                  if (i !== idx) return it;
+                  const lbl = getLabel(it);
+                  return { label: lbl, color: e.target.value, ...(typeof it === 'object' ? it : {}), label: lbl, color: e.target.value };
+                });
+                onUpdate(next);
+              }}
+              className="w-5 h-5 rounded-full border border-gray-200 cursor-pointer p-0 flex-shrink-0"
+              style={{ appearance: 'none', WebkitAppearance: 'none' }}
+              title="Change color"
+            />
+
             {/* Item label / inline edit */}
             {editingIdx === idx ? (
               <input
@@ -123,7 +143,7 @@ function ListEditor({ listKey, items, onUpdate, onReset }) {
                 onClick={() => startEdit(idx)}
                 title="Click to edit"
               >
-                {item}
+                {getLabel(item)}
               </span>
             )}
 
