@@ -729,7 +729,7 @@ export default function Settings() {
           { key: 'brands',        label: 'Brands',         icon: <Building2 size={13} />,   show: isSuperAdmin },
           { key: 'improvements',  label: 'Improvements',   icon: <Wrench size={13} />,      show: true },
           { key: 'data-import',   label: 'Data Import',    icon: <Upload size={13} />,      show: isAdmin || isSuperAdmin },
-          { key: 'integrations',  label: 'Integrations',   icon: <Link2 size={13} />,       show: isAdmin || isSuperAdmin },
+          { key: 'integrations',  label: 'Integrations',   icon: <Link2 size={13} />,       show: isSuperAdmin },
           { key: 'changelog',     label: 'Changelog',      icon: <Clock size={13} />,       show: true },
           { key: 'system',        label: 'System Update',  icon: <ServerCog size={13} />,   show: isSuperAdmin },
         ].filter(t => t.show).map(({ key, label, icon }) => (
@@ -1136,7 +1136,7 @@ export default function Settings() {
       )}
 
       {/* ── Integrations tab ──────────────────────────────────────────────────── */}
-      {tab === 'integrations' && (isAdmin || isSuperAdmin) && (
+      {tab === 'integrations' && isSuperAdmin && (
         <div className="max-w-xl space-y-5">
           {/* Google Drive */}
           <section className="brand-card">
