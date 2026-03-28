@@ -1069,7 +1069,7 @@ export default function ContractModal({ production, lineItem, onClose }) {
                 </div>
                 <div>
                   <div className="text-[10px] text-gray-400">Signer (Particle)</div>
-                  <div className="font-semibold text-gray-700 text-xs">{companySignerName || 'Select in Step 2'}</div>
+                  <div className="font-semibold text-gray-700 text-xs">{companySignerName || 'Select below'}</div>
                   <div className="text-[10px] text-gray-400">{companySignerEmail}</div>
                 </div>
               </div>
@@ -1135,6 +1135,49 @@ export default function ContractModal({ production, lineItem, onClose }) {
                     <div className="text-[10px] text-amber-600 mt-0.5">Provider will fill this when signing</div>
                   )}
                 </div>
+              </div>
+            </div>
+
+            {/* Who signs on behalf of Particle? */}
+            <div className="mt-5 p-4 bg-indigo-50 border border-indigo-200 rounded-xl">
+              <div className="text-sm font-bold text-indigo-800 mb-3 flex items-center gap-1.5">
+                <PenTool size={13} /> Who signs on behalf of Particle?
+              </div>
+              <div className="space-y-2">
+                {[
+                  { id: 'omer', label: 'Omer Barak', sub: 'Creative Producer — signs in Step 3 (no external link)', email: 'omer@particleformen.com' },
+                  { id: 'tomer', label: 'Tomer Wilf Lezmy', sub: 'HOCP — receives signing link via email', email: 'tomer@particleformen.com' },
+                  { id: 'custom', label: 'Someone else', sub: 'Enter name and email below' },
+                ].map(opt => (
+                  <label key={opt.id} className={clsx(
+                    'flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all',
+                    companySigner === opt.id
+                      ? 'border-indigo-400 bg-white shadow-sm'
+                      : 'border-transparent hover:bg-white/50'
+                  )}>
+                    <input
+                      type="radio"
+                      name="companySigner"
+                      value={opt.id}
+                      checked={companySigner === opt.id}
+                      onChange={() => setCompanySigner(opt.id)}
+                      className="mt-1 accent-indigo-600"
+                      disabled={isSigned}
+                    />
+                    <div>
+                      <div className="text-sm font-semibold text-gray-800">{opt.label}</div>
+                      <div className="text-[10px] text-gray-500">{opt.sub}</div>
+                      {opt.email && <div className="text-[10px] text-indigo-500 mt-0.5">{opt.email}</div>}
+                    </div>
+                  </label>
+                ))}
+                {companySigner === 'custom' && (
+                  <div className="grid grid-cols-2 gap-2 mt-2 pl-8">
+                    <input className="brand-input text-sm" placeholder="Full name" value={customSignerName} onChange={e => setCustomSignerName(e.target.value)} disabled={isSigned} />
+                    <input className="brand-input text-sm" placeholder="Email" type="email" value={customSignerEmail} onChange={e => setCustomSignerEmail(e.target.value)} disabled={isSigned} />
+                    <input className="brand-input text-sm col-span-2" placeholder="Title (e.g., Production Manager)" value={customSignerTitle} onChange={e => setCustomSignerTitle(e.target.value)} disabled={isSigned} />
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1303,48 +1346,6 @@ export default function ContractModal({ production, lineItem, onClose }) {
               </button>
             </div>
 
-            {/* Who signs on behalf of Particle? */}
-            <div className="mt-5 p-4 bg-indigo-50 border border-indigo-200 rounded-xl">
-              <div className="text-sm font-bold text-indigo-800 mb-3 flex items-center gap-1.5">
-                <PenTool size={13} /> Who signs on behalf of Particle?
-              </div>
-              <div className="space-y-2">
-                {[
-                  { id: 'omer', label: 'Omer Barak', sub: 'Creative Producer — signs in Step 3 (no external link)', email: 'omer@particleformen.com' },
-                  { id: 'tomer', label: 'Tomer Wilf Lezmy', sub: 'HOCP — receives signing link via email', email: 'tomer@particleformen.com' },
-                  { id: 'custom', label: 'Someone else', sub: 'Enter name and email below' },
-                ].map(opt => (
-                  <label key={opt.id} className={clsx(
-                    'flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all',
-                    companySigner === opt.id
-                      ? 'border-indigo-400 bg-white shadow-sm'
-                      : 'border-transparent hover:bg-white/50'
-                  )}>
-                    <input
-                      type="radio"
-                      name="companySigner"
-                      value={opt.id}
-                      checked={companySigner === opt.id}
-                      onChange={() => setCompanySigner(opt.id)}
-                      className="mt-1 accent-indigo-600"
-                      disabled={isSigned}
-                    />
-                    <div>
-                      <div className="text-sm font-semibold text-gray-800">{opt.label}</div>
-                      <div className="text-[10px] text-gray-500">{opt.sub}</div>
-                      {opt.email && <div className="text-[10px] text-indigo-500 mt-0.5">{opt.email}</div>}
-                    </div>
-                  </label>
-                ))}
-                {companySigner === 'custom' && (
-                  <div className="grid grid-cols-2 gap-2 mt-2 pl-8">
-                    <input className="brand-input text-sm" placeholder="Full name" value={customSignerName} onChange={e => setCustomSignerName(e.target.value)} disabled={isSigned} />
-                    <input className="brand-input text-sm" placeholder="Email" type="email" value={customSignerEmail} onChange={e => setCustomSignerEmail(e.target.value)} disabled={isSigned} />
-                    <input className="brand-input text-sm col-span-2" placeholder="Title (e.g., Production Manager)" value={customSignerTitle} onChange={e => setCustomSignerTitle(e.target.value)} disabled={isSigned} />
-                  </div>
-                )}
-              </div>
-            </div>
           </div>
         )}
 

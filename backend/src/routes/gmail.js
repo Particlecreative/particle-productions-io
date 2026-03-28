@@ -6,7 +6,8 @@ const { verifyJWT } = require('../middleware/auth');
 const GOOGLE_CLIENT_ID     = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const GOOGLE_REDIRECT_URI  = process.env.GOOGLE_REDIRECT_URI;
-const ALWAYS_CC = 'omer@particleformen.com';
+// No default CC — Slack notifications are sufficient
+const ALWAYS_CC = null;
 
 function getOAuth2Client() {
   return new google.auth.OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI);
@@ -31,12 +32,13 @@ function buildEmail({ to, cc, subject, htmlBody, from, skipDefaultCc }) {
   const ccList = skipDefaultCc
     ? (cc || []).filter(Boolean).join(', ')
     : [ALWAYS_CC, ...(cc || [])].filter(Boolean).join(', ');
+  // MIME-encode subject for UTF-8 safety (handles accented names, special chars)
+  const encodedSubject = `=?UTF-8?B?${Buffer.from(subject).toString('base64')}?=`;
   const raw = [
     `From: ${from || 'tomer@particleformen.com'}`,
     `To: ${to}`,
-    'Reply-To: omer@particleformen.com',
     ccList ? `Cc: ${ccList}` : '',
-    `Subject: ${subject}`,
+    `Subject: ${encodedSubject}`,
     'MIME-Version: 1.0',
     'Content-Type: text/html; charset=UTF-8',
     '',

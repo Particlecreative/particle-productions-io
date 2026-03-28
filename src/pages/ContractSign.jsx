@@ -303,7 +303,7 @@ export default function ContractSign() {
     return () => clearTimeout(timer);
   }, [allSigned, completedData, pdfUploaded]);
 
-  const canSubmit = hasSignature && signerName.trim() && agreedToTerms && !submitting;
+  const canSubmit = hasSignature && signerName.trim() && (isInternal || agreedToTerms) && !submitting;
 
   /* ─────────── Render states ─────────── */
 
@@ -569,6 +569,7 @@ export default function ContractSign() {
 
   /* ─────────── Main signing view ─────────── */
   const d = contractData;
+  const isInternal = d?.signer_role === 'hocp';
   const effectiveDate = d.effective_date
     ? new Date(d.effective_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
     : signDate;
@@ -609,30 +610,53 @@ export default function ContractSign() {
             <DetailPill icon={<User size={13} />} label="Name" value={d.provider_name || '\u2014'} />
             <div>
               <label className="text-[10px] font-semibold text-yellow-700 uppercase tracking-wider mb-1 block">ID / Passport / Company Number *</label>
-              <input
-                className="w-full bg-yellow-50 border-2 border-yellow-300 focus:border-yellow-500 rounded-lg px-4 py-3 text-sm font-medium outline-none transition-colors"
-                value={signerId}
-                onChange={e => setSignerId(e.target.value)}
-                placeholder="Enter your ID, passport, or company number"
-              />
+              {isInternal ? (
+                <div className="px-4 py-3 text-sm text-gray-400 bg-gray-50 border border-gray-200 rounded-lg">
+                  Supplier will fill this field
+                </div>
+              ) : (
+                <input
+                  className="w-full bg-yellow-50 border-2 border-yellow-300 focus:border-yellow-500 rounded-lg px-4 py-3 text-sm font-medium outline-none transition-colors"
+                  value={signerId}
+                  onChange={e => setSignerId(e.target.value)}
+                  placeholder="Enter your ID, passport, or company number"
+                />
+              )}
             </div>
             <div className="sm:col-span-2">
               <label className="text-[10px] font-semibold text-yellow-700 uppercase tracking-wider mb-1 block">Place of Business / Address *</label>
-              <input
-                className="w-full bg-yellow-50 border-2 border-yellow-300 focus:border-yellow-500 rounded-lg px-4 py-3 text-sm font-medium outline-none transition-colors"
-                value={signerAddress}
-                onChange={e => setSignerAddress(e.target.value)}
-                placeholder="Enter your business address"
-              />
+              {isInternal ? (
+                <div className="px-4 py-3 text-sm text-gray-400 bg-gray-50 border border-gray-200 rounded-lg">
+                  Supplier will fill this field
+                </div>
+              ) : (
+                <input
+                  className="w-full bg-yellow-50 border-2 border-yellow-300 focus:border-yellow-500 rounded-lg px-4 py-3 text-sm font-medium outline-none transition-colors"
+                  value={signerAddress}
+                  onChange={e => setSignerAddress(e.target.value)}
+                  placeholder="Enter your business address"
+                />
+              )}
             </div>
           </div>
         </div>
 
         {/* ── Section 3: Full Agreement Terms ── */}
-        <div className="px-6 sm:px-10 py-6 border-b border-gray-100">
-          <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-4">Agreement Terms</h3>
-          <FullContractText data={d} effectiveDate={effectiveDate} liveId={signerId} liveAddress={signerAddress} />
-        </div>
+        {isInternal ? (
+          <details className="border-b border-gray-100">
+            <summary className="px-6 sm:px-10 py-4 cursor-pointer text-sm font-semibold text-gray-600 hover:text-gray-800 bg-gray-50/50">
+              Show Full Agreement Terms
+            </summary>
+            <div className="px-6 sm:px-10 py-6">
+              <FullContractText data={d} effectiveDate={effectiveDate} liveId={signerId} liveAddress={signerAddress} />
+            </div>
+          </details>
+        ) : (
+          <div className="px-6 sm:px-10 py-6 border-b border-gray-100">
+            <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-4">Agreement Terms</h3>
+            <FullContractText data={d} effectiveDate={effectiveDate} liveId={signerId} liveAddress={signerAddress} />
+          </div>
+        )}
 
         {/* ── Section 4: Exhibit A — Scope of Services ── */}
         {d.exhibit_a && (
@@ -678,25 +702,27 @@ export default function ContractSign() {
         )}
 
         {/* ── Signing Confirmation + Agreement Checkbox ── */}
-        <div className="px-6 sm:px-10 py-5 border-b border-gray-100 bg-gray-50/40">
-          <label className="flex items-start gap-3 cursor-pointer group">
-            <input
-              type="checkbox"
-              checked={agreedToTerms}
-              onChange={e => setAgreedToTerms(e.target.checked)}
-              className="mt-0.5 w-5 h-5 rounded border-2 border-gray-300 text-blue-600 focus:ring-blue-500 shrink-0 cursor-pointer"
-            />
-            <span className="text-sm text-gray-600 leading-relaxed group-hover:text-gray-800 transition-colors">
-              I have read and agree to all terms and conditions set forth in this Services Agreement,
-              including Exhibit A (Services) and Exhibit B (Fees & Payment).
-            </span>
-          </label>
-          {!agreedToTerms && (
-            <div className="mt-2 ml-8 text-[10px] text-amber-600 font-medium">
-              You must agree to the terms before signing
-            </div>
-          )}
-        </div>
+        {!isInternal && (
+          <div className="px-6 sm:px-10 py-5 border-b border-gray-100 bg-gray-50/40">
+            <label className="flex items-start gap-3 cursor-pointer group">
+              <input
+                type="checkbox"
+                checked={agreedToTerms}
+                onChange={e => setAgreedToTerms(e.target.checked)}
+                className="mt-0.5 w-5 h-5 rounded border-2 border-gray-300 text-blue-600 focus:ring-blue-500 shrink-0 cursor-pointer"
+              />
+              <span className="text-sm text-gray-600 leading-relaxed group-hover:text-gray-800 transition-colors">
+                I have read and agree to all terms and conditions set forth in this Services Agreement,
+                including Exhibit A (Services) and Exhibit B (Fees & Payment).
+              </span>
+            </label>
+            {!agreedToTerms && (
+              <div className="mt-2 ml-8 text-[10px] text-amber-600 font-medium">
+                You must agree to the terms before signing
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ── Section 7: Signature Section ── */}
         <div ref={signSectionRef} className="px-6 sm:px-10 py-8">
@@ -735,15 +761,21 @@ export default function ContractSign() {
                 <label className="block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1.5">
                   ID / Passport Number
                 </label>
-                <input
-                  type="text"
-                  value={signerId}
-                  onChange={e => setSignerId(e.target.value)}
-                  placeholder="ID or passport number"
-                  className="w-full px-4 py-3 text-sm font-medium text-gray-900 bg-yellow-50 border-2 border-yellow-300
-                             rounded-lg outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200
-                             placeholder:text-yellow-400/70 transition-all"
-                />
+                {isInternal ? (
+                  <div className="px-4 py-3 text-sm text-gray-400 bg-gray-50 border border-gray-200 rounded-lg">
+                    Supplier will fill this field
+                  </div>
+                ) : (
+                  <input
+                    type="text"
+                    value={signerId}
+                    onChange={e => setSignerId(e.target.value)}
+                    placeholder="ID or passport number"
+                    className="w-full px-4 py-3 text-sm font-medium text-gray-900 bg-yellow-50 border-2 border-yellow-300
+                               rounded-lg outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200
+                               placeholder:text-yellow-400/70 transition-all"
+                  />
+                )}
               </div>
             </div>
 
@@ -760,10 +792,10 @@ export default function ContractSign() {
             </div>
 
             {/* ── Signature Pad ── */}
-            <div className={`mb-6 ${!agreedToTerms ? 'opacity-40 pointer-events-none' : ''}`}>
+            <div className={`mb-6 ${!isInternal && !agreedToTerms ? 'opacity-40 pointer-events-none' : ''}`}>
               <label className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-2">
                 <PenTool size={12} /> Signature <span className="text-red-400">*</span>
-                {!agreedToTerms && <span className="text-amber-500 font-normal normal-case ml-1">(agree to terms first)</span>}
+                {!isInternal && !agreedToTerms && <span className="text-amber-500 font-normal normal-case ml-1">(agree to terms first)</span>}
               </label>
               <div className="relative border-2 border-dashed border-gray-300 rounded-xl bg-white overflow-hidden
                               hover:border-gray-400 transition-colors">
