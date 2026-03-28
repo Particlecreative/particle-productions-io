@@ -623,6 +623,7 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
                     onContract={() => setContractFor(item)}
                     lineItemTypes={lists.lineItemTypes}
                     lineItemStatuses={lists.lineItemStatuses}
+                    crewRoles={lists.crewRoles}
                     hiddenCols={hiddenCols}
                     customCols={customCols}
                     onOpenCastModal={setCastModalItem}
@@ -868,7 +869,7 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
   );
 }
 
-function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEditingCell, onUpdate, onDelete, onInvoice, onContract, lineItemTypes, lineItemStatuses, hiddenCols = [], customCols = [], onOpenCastModal, onPhotoFullscreen, ccChildren = [], isExpanded, onToggleExpand, isNew }) {
+function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEditingCell, onUpdate, onDelete, onInvoice, onContract, lineItemTypes, lineItemStatuses, crewRoles = [], hiddenCols = [], customCols = [], onOpenCastModal, onPhotoFullscreen, ccChildren = [], isExpanded, onToggleExpand, isNew }) {
   const vis = key => !hiddenCols.includes(key);
   const diff = (parseFloat(item.planned_budget) || 0) - (parseFloat(item.actual_spent) || 0);
   const isEditing = (field) => editingCell?.itemId === item.id && editingCell?.field === field;
@@ -896,6 +897,7 @@ function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEd
             value={item[field]}
             onSave={v => onUpdate(item.id, field, v)}
             type={field === 'planned_budget' || field === 'actual_spent' ? 'number' : 'text'}
+            suggestions={field === 'item' ? crewRoles : []}
           />
         ) : children}
       </td>
@@ -1491,18 +1493,27 @@ function CastModalFromBudget({ item, production, onSave, onClose }) {
   );
 }
 
-function InlineEdit({ value, onSave, type = 'text' }) {
+function InlineEdit({ value, onSave, type = 'text', suggestions = [] }) {
   const [val, setVal] = useState(String(value ?? ''));
+  const dlId = useMemo(() => suggestions.length > 0 ? `dl-${Math.random().toString(36).slice(2)}` : null, []);
   return (
-    <input
-      type={type}
-      value={val}
-      onChange={e => setVal(e.target.value)}
-      onBlur={() => onSave(type === 'number' ? parseFloat(val) || 0 : val)}
-      onKeyDown={e => { if (e.key === 'Enter') onSave(type === 'number' ? parseFloat(val) || 0 : val); }}
-      autoFocus
-      className="w-full border-b-2 outline-none bg-transparent text-sm"
-      style={{ borderColor: 'var(--brand-accent)', minWidth: 60 }}
-    />
+    <>
+      <input
+        type={type}
+        value={val}
+        onChange={e => setVal(e.target.value)}
+        onBlur={() => onSave(type === 'number' ? parseFloat(val) || 0 : val)}
+        onKeyDown={e => { if (e.key === 'Enter') onSave(type === 'number' ? parseFloat(val) || 0 : val); }}
+        autoFocus
+        className="w-full border-b-2 outline-none bg-transparent text-sm"
+        style={{ borderColor: 'var(--brand-accent)', minWidth: 60 }}
+        list={dlId || undefined}
+      />
+      {dlId && (
+        <datalist id={dlId}>
+          {suggestions.map(s => <option key={s} value={s} />)}
+        </datalist>
+      )}
+    </>
   );
 }

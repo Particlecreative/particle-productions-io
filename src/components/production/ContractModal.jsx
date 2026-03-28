@@ -519,6 +519,13 @@ export default function ContractModal({ production, lineItem, onClose }) {
   const [customSignerEmail, setCustomSignerEmail] = useState(existing?.company_signer_email || '');
   const [customSignerTitle, setCustomSignerTitle] = useState(existing?.company_signer_title || '');
 
+  // Creator signature (when Omer signs in Step 3)
+  const [creatorSignature, setCreatorSignature] = useState(null);
+  const creatorCanvasRef = useRef(null);
+  const [creatorStrokes, setCreatorStrokes] = useState([]);
+  const [creatorCurrentStroke, setCreatorCurrentStroke] = useState([]);
+  const [creatorHasSignature, setCreatorHasSignature] = useState(false);
+
   // Derived values
   const signerIsCreator = companySigner === 'omer'; // Omer signs in Step 3, no external link
   const companySignerName = companySigner === 'omer' ? 'Omer Barak'
@@ -684,6 +691,68 @@ export default function ContractModal({ production, lineItem, onClose }) {
     setMaxReachedStep(Math.max(maxReachedStep, step));
   }
 
+  // ── Creator Signature Canvas Helpers ──
+  function initCreatorCanvas() {
+    const canvas = creatorCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+  }
+
+  function handleCreatorPointerDown(e) {
+    e.preventDefault();
+    const canvas = creatorCanvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const x = (clientX - rect.left) * (canvas.width / rect.width);
+    const y = (clientY - rect.top) * (canvas.height / rect.height);
+    setCreatorCurrentStroke([{ x, y }]);
+    const ctx = canvas.getContext('2d');
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+  }
+
+  function handleCreatorPointerMove(e) {
+    if (creatorCurrentStroke.length === 0) return;
+    e.preventDefault();
+    const canvas = creatorCanvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const x = (clientX - rect.left) * (canvas.width / rect.width);
+    const y = (clientY - rect.top) * (canvas.height / rect.height);
+    setCreatorCurrentStroke(prev => [...prev, { x, y }]);
+    const ctx = canvas.getContext('2d');
+    ctx.lineTo(x, y);
+    ctx.stroke();
+    setCreatorHasSignature(true);
+  }
+
+  function handleCreatorPointerUp() {
+    if (creatorCurrentStroke.length > 0) {
+      setCreatorStrokes(prev => [...prev, creatorCurrentStroke]);
+      setCreatorCurrentStroke([]);
+    }
+  }
+
+  function clearCreatorSignature() {
+    const canvas = creatorCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setCreatorStrokes([]);
+    setCreatorCurrentStroke([]);
+    setCreatorHasSignature(false);
+    setCreatorSignature(null);
+  }
+
   // ── Populate editable sections ──
   function populateEditableSections() {
     const formattedDate = effectiveDate
@@ -791,6 +860,12 @@ export default function ContractModal({ production, lineItem, onClose }) {
         contract_type: !CREW_TYPES.includes(lineItem?.type) ? 'cast' : 'crew',
       });
 
+      // If creator signs in Step 3, capture signature
+      let creatorSigBase64 = null;
+      if (signerIsCreator && creatorCanvasRef.current) {
+        creatorSigBase64 = creatorCanvasRef.current.toDataURL('image/png');
+      }
+
       const result = await generateContractSignatures(contractKey, {
         provider_name: providerName,
         provider_email: providerEmail,
@@ -808,6 +883,7 @@ export default function ContractModal({ production, lineItem, onClose }) {
         company_signer_email: companySignerEmail,
         company_signer_title: companySignerTitle,
         require_hocp_signature: !signerIsCreator, // true when Tomer/custom signs externally
+        creator_signature: creatorSigBase64,
       });
 
       if (result?.signing_links) {
@@ -1466,6 +1542,44 @@ export default function ContractModal({ production, lineItem, onClose }) {
               </div>
             </div>
 
+            {/* Creator signature canvas (when Omer signs in Step 3) */}
+            {signerIsCreator && (
+              <div className="mt-6 p-4 bg-indigo-50 border border-indigo-200 rounded-xl">
+                <div className="text-sm font-bold text-indigo-800 mb-2 flex items-center gap-2">
+                  <PenTool size={14} /> Sign as {companySignerName}
+                </div>
+                <div className="text-[10px] text-indigo-600 mb-3">
+                  Your signature will be embedded in the contract before sending to the supplier.
+                </div>
+                <div className="relative border-2 border-dashed border-indigo-300 rounded-xl bg-white overflow-hidden">
+                  <canvas
+                    ref={creatorCanvasRef}
+                    width={600}
+                    height={200}
+                    className="w-full cursor-crosshair touch-none block"
+                    style={{ height: 120 }}
+                    onMouseDown={handleCreatorPointerDown}
+                    onMouseMove={handleCreatorPointerMove}
+                    onMouseUp={handleCreatorPointerUp}
+                    onMouseLeave={handleCreatorPointerUp}
+                    onTouchStart={handleCreatorPointerDown}
+                    onTouchMove={handleCreatorPointerMove}
+                    onTouchEnd={handleCreatorPointerUp}
+                  />
+                  <div className="absolute bottom-6 left-6 right-6 border-b border-dashed border-gray-300 pointer-events-none" />
+                  {!creatorHasSignature && (
+                    <div className="absolute bottom-2 left-6 text-[10px] text-gray-300 pointer-events-none">Draw your signature above</div>
+                  )}
+                </div>
+                <div className="flex gap-2 mt-2">
+                  <button type="button" onClick={clearCreatorSignature}
+                    className="text-xs px-3 py-1 rounded border border-gray-200 text-gray-500 hover:bg-gray-50">
+                    Clear
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Navigation */}
             <div className="flex gap-3 mt-4">
               <button onClick={goBack} className="btn-secondary flex items-center gap-1">
@@ -1478,9 +1592,15 @@ export default function ContractModal({ production, lineItem, onClose }) {
                   if (!signingLinks) handleGenerate();
                   goNext();
                 }}
-                className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold bg-purple-600 hover:bg-purple-700 text-white transition-colors"
+                disabled={signerIsCreator && !creatorHasSignature}
+                className={clsx(
+                  'flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold transition-colors',
+                  (signerIsCreator && !creatorHasSignature)
+                    ? 'bg-gray-200 text-gray-400 cursor-default'
+                    : 'bg-purple-600 hover:bg-purple-700 text-white'
+                )}
               >
-                <Send size={14} /> Proceed to Send <ChevronRight size={14} />
+                <Send size={14} /> {signerIsCreator ? 'Sign & Send to Supplier' : 'Proceed to Send'} <ChevronRight size={14} />
               </button>
             </div>
           </div>
@@ -1493,7 +1613,6 @@ export default function ContractModal({ production, lineItem, onClose }) {
           <div>
             {/* Auto-generate signing links if not yet done */}
             {!signingLinks && !generating && !generateError && (() => {
-              // Auto-trigger generation when arriving at step 4
               if (providerName.trim() && providerEmail.trim()) {
                 setTimeout(() => handleGenerate(), 100);
               }
@@ -1533,72 +1652,211 @@ export default function ContractModal({ production, lineItem, onClose }) {
               </div>
             )}
 
-            {/* Service Provider signing link */}
-            <SigningLinks signingLinks={signingLinks} onCopy={handleCopyMsg} productionName={production.project_name} />
-
-            {signingLinks && (
+            {/* ── Status Dashboard ── */}
+            {signingLinks && signerIsCreator && (
               <>
-                {/* Primary: Send Contract */}
-                <button
-                  onClick={handleSendContract}
-                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white transition-colors mb-3"
-                >
-                  <Send size={14} />
-                  Send Contract
-                </button>
+                {/* Creator already signed in Step 3 — show confirmation */}
+                <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
+                      <CheckCircle size={16} className="text-green-600" />
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-bold text-green-500 uppercase tracking-wide">Company Signature</div>
+                      <div className="text-sm font-semibold text-green-800">Signed by {companySignerName}</div>
+                      <div className="text-[10px] text-green-600">Signature embedded in contract</div>
+                    </div>
+                  </div>
+                </div>
 
-                {/* WhatsApp send — needs phone number */}
-                {signingLinks.provider && (
-                  <div className="mb-4">
-                    {!providerPhone && (
-                      <div className="flex items-center gap-2 mb-2">
+                {/* Supplier signing — send link */}
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                      <Send size={16} className="text-blue-600" />
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-bold text-blue-500 uppercase tracking-wide">Supplier Signature</div>
+                      <div className="text-sm font-semibold text-blue-800">Send to {providerName}</div>
+                      <div className="text-[10px] text-blue-600">{providerEmail}</div>
+                    </div>
+                  </div>
+                  {signingLinks.provider && (
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => { navigator.clipboard.writeText(signingLinks.provider.url); handleCopyMsg('Signing link copied!'); }}
+                        className="text-xs px-3 py-1.5 rounded-lg border border-blue-200 text-blue-600 hover:bg-blue-100 flex items-center gap-1.5"
+                      >
+                        <Copy size={10} /> Copy Link
+                      </button>
+                      <button
+                        onClick={handleSendContract}
+                        className="text-xs px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-1.5"
+                      >
+                        <Mail size={10} /> Send via Email
+                      </button>
+                      {providerPhone ? (
+                        <button
+                          onClick={() => {
+                            const text = `Hi ${providerName},\n\nPlease sign the contract for ${production.project_name}:\n${signingLinks.provider.url}\n\nThank you!`;
+                            const phone = providerPhone.replace(/[^0-9+]/g, '');
+                            window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
+                          }}
+                          className="text-xs px-3 py-1.5 rounded-lg bg-green-600 text-white hover:bg-green-700 flex items-center gap-1.5"
+                        >
+                          <MessageCircle size={10} /> WhatsApp
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="tel"
+                            className="brand-input text-xs"
+                            style={{ width: 140, padding: '4px 8px' }}
+                            placeholder="Phone for WhatsApp"
+                            value={providerPhone}
+                            onChange={e => setProviderPhone(e.target.value)}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="text-[10px] text-gray-400 text-center mb-4">
+                  Once the supplier signs, the contract will be fully executed and saved.
+                </div>
+              </>
+            )}
+
+            {signingLinks && !signerIsCreator && (
+              <>
+                {/* Phase 1: Company signer */}
+                {(() => {
+                  const hocpSig = signatures.find(s => s.signer_role === 'hocp');
+                  const hocpSigned = hocpSig?.signed_at;
+                  return (
+                    <div className={clsx(
+                      'rounded-xl p-4 mb-4 border',
+                      hocpSigned ? 'bg-green-50 border-green-200' : 'bg-orange-50 border-orange-200'
+                    )}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className={clsx(
+                            'w-8 h-8 rounded-full flex items-center justify-center',
+                            hocpSigned ? 'bg-green-100' : 'bg-orange-100'
+                          )}>
+                            {hocpSigned
+                              ? <CheckCircle size={16} className="text-green-600" />
+                              : <Clock size={16} className="text-orange-500" />
+                            }
+                          </div>
+                          <div>
+                            <div className="text-[10px] font-bold uppercase tracking-wide" style={{ color: hocpSigned ? '#16a34a' : '#ea580c' }}>
+                              Step 1 of 2: Company Signature
+                            </div>
+                            <div className="text-sm font-semibold text-gray-800">{companySignerName}</div>
+                            <div className="text-[10px] text-gray-500">{companySignerEmail}</div>
+                            {hocpSigned && <div className="text-[10px] text-green-600">Signed {formatIST(hocpSig.signed_at)}</div>}
+                          </div>
+                        </div>
+                        <span className={clsx(
+                          'text-[10px] font-bold px-2 py-0.5 rounded-full',
+                          hocpSigned ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'
+                        )}>
+                          {hocpSigned ? 'SIGNED' : 'WAITING'}
+                        </span>
+                      </div>
+                      {!hocpSigned && signingLinks.hocp && (
+                        <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-orange-200">
+                          <button
+                            onClick={() => { navigator.clipboard.writeText(signingLinks.hocp.url); handleCopyMsg('Signer link copied!'); }}
+                            className="text-xs px-3 py-1.5 rounded-lg border border-orange-200 text-orange-600 hover:bg-orange-100 flex items-center gap-1.5"
+                          >
+                            <Copy size={10} /> Copy Link
+                          </button>
+                          <button
+                            onClick={() => {
+                              const mailLink = `mailto:${companySignerEmail}?subject=${encodeURIComponent(`Sign: ${production.project_name} Contract`)}&body=${encodeURIComponent(`Please sign the contract:\n${signingLinks.hocp.url}`)}`;
+                              window.open(mailLink, '_blank');
+                            }}
+                            className="text-xs px-3 py-1.5 rounded-lg border border-orange-200 text-orange-600 hover:bg-orange-100 flex items-center gap-1.5"
+                          >
+                            <Mail size={10} /> Email Signer
+                          </button>
+                        </div>
+                      )}
+                      {!hocpSigned && (
+                        <div className="text-[10px] text-orange-500 mt-2">
+                          Next: Once {companySignerName} signs, the contract will auto-send to {providerName}.
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Phase 2: Supplier */}
+                <div className={clsx(
+                  'rounded-xl p-4 mb-4 border',
+                  signatures.find(s => s.signer_role === 'hocp')?.signed_at
+                    ? 'bg-blue-50 border-blue-200'
+                    : 'bg-gray-50 border-gray-200 opacity-60'
+                )}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className={clsx(
+                        'w-8 h-8 rounded-full flex items-center justify-center',
+                        signatures.find(s => s.signer_role === 'hocp')?.signed_at ? 'bg-blue-100' : 'bg-gray-100'
+                      )}>
+                        <Send size={16} className={signatures.find(s => s.signer_role === 'hocp')?.signed_at ? 'text-blue-600' : 'text-gray-400'} />
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-bold uppercase tracking-wide text-blue-500">
+                          Step 2 of 2: Supplier Signature
+                        </div>
+                        <div className="text-sm font-semibold text-gray-800">{providerName}</div>
+                        <div className="text-[10px] text-gray-500">{providerEmail}</div>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">PENDING</span>
+                  </div>
+                  {signatures.find(s => s.signer_role === 'hocp')?.signed_at && signingLinks.provider && (
+                    <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-blue-200">
+                      <button
+                        onClick={() => { navigator.clipboard.writeText(signingLinks.provider.url); handleCopyMsg('Supplier link copied!'); }}
+                        className="text-xs px-3 py-1.5 rounded-lg border border-blue-200 text-blue-600 hover:bg-blue-100 flex items-center gap-1.5"
+                      >
+                        <Copy size={10} /> Copy Link
+                      </button>
+                      <button
+                        onClick={handleSendContract}
+                        className="text-xs px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-1.5"
+                      >
+                        <Mail size={10} /> Send via Email
+                      </button>
+                      {providerPhone ? (
+                        <button
+                          onClick={() => {
+                            const text = `Hi ${providerName},\n\nPlease sign the contract for ${production.project_name}:\n${signingLinks.provider.url}\n\nThank you!`;
+                            const phone = providerPhone.replace(/[^0-9+]/g, '');
+                            window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
+                          }}
+                          className="text-xs px-3 py-1.5 rounded-lg bg-green-600 text-white hover:bg-green-700 flex items-center gap-1.5"
+                        >
+                          <MessageCircle size={10} /> WhatsApp
+                        </button>
+                      ) : (
                         <input
                           type="tel"
-                          className="brand-input flex-1 text-sm"
-                          placeholder="Provider phone (e.g. +972...)"
+                          className="brand-input text-xs"
+                          style={{ width: 140, padding: '4px 8px' }}
+                          placeholder="Phone for WhatsApp"
                           value={providerPhone}
                           onChange={e => setProviderPhone(e.target.value)}
                         />
-                      </div>
-                    )}
-                    <button
-                      onClick={() => {
-                        const text = `Hi ${providerName},\n\nPlease sign the contract for ${production.project_name}:\n${signingLinks.provider.url}\n\nThank you!`;
-                        const phone = providerPhone.replace(/[^0-9+]/g, '');
-                        window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
-                        // Slack notification — contract sent via WhatsApp
-                        const waToken = localStorage.getItem('cp_auth_token');
-                        const waAPI = import.meta.env.VITE_API_URL || '';
-                        fetch(`${waAPI}/api/contracts/notify-slack`, {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${waToken}` },
-                          body: JSON.stringify({
-                            message: `Contract sent via WhatsApp: [${production.id}] ${production.project_name} - ${providerName}`,
-                            link: signingLinks?.provider?.url || `${window.location.origin}/production/${production.id}`,
-                          }),
-                        }).catch(() => {});
-                      }}
-                      disabled={!providerPhone.trim()}
-                      className={clsx(
-                        'w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-colors',
-                        providerPhone.trim()
-                          ? 'bg-green-600 hover:bg-green-700 text-white'
-                          : 'bg-gray-100 text-gray-400 cursor-default'
                       )}
-                    >
-                      <MessageCircle size={14} />
-                      Send via WhatsApp
-                    </button>
-                    {providerPhone && (
-                      <button
-                        onClick={() => setProviderPhone('')}
-                        className="text-[10px] text-gray-400 hover:text-gray-600 mt-1"
-                      >
-                        Change phone number
-                      </button>
-                    )}
-                  </div>
-                )}
+                    </div>
+                  )}
+                </div>
               </>
             )}
 
@@ -1623,7 +1881,7 @@ export default function ContractModal({ production, lineItem, onClose }) {
         ═══════════════════════════════════════════════════ */}
         {currentStep === 5 && (
           <div>
-            {/* Contract status badge */}
+            {/* Overall contract status badge */}
             {isSigned ? (
               <div className="flex items-center gap-3 bg-green-50 border border-green-300 rounded-xl px-4 py-3 mb-4">
                 <span className="text-lg">&#9989;</span>
@@ -1645,35 +1903,72 @@ export default function ContractModal({ production, lineItem, onClose }) {
               </div>
             ) : null}
 
-            {/* Provider signature status */}
+            {/* ── Full Progress: Both Signer Statuses ── */}
+            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-2">Signing Progress</div>
+
+            {/* Company Signer Status */}
+            {(() => {
+              const hocpSig = signatures.find(s => s.signer_role === 'hocp');
+              const hocpSigned = signerIsCreator ? true : hocpSig?.signed_at;
+              return (
+                <div className={clsx(
+                  'flex items-center justify-between p-3 rounded-xl border mb-3',
+                  hocpSigned ? 'bg-green-50 border-green-200' : 'bg-orange-50 border-orange-200'
+                )}>
+                  <div className="flex items-center gap-3">
+                    <div className={clsx(
+                      'w-8 h-8 rounded-full flex items-center justify-center',
+                      hocpSigned ? 'bg-green-100' : 'bg-orange-100'
+                    )}>
+                      {hocpSigned
+                        ? <CheckCircle size={16} className="text-green-600" />
+                        : <Clock size={16} className="text-orange-500" />
+                      }
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-gray-800">Company — {companySignerName}</div>
+                      <div className="text-xs text-gray-500">{companySignerEmail}</div>
+                      {signerIsCreator && <div className="text-[10px] text-green-600">Signed in Step 3 (embedded)</div>}
+                      {!signerIsCreator && hocpSig?.signed_at && <div className="text-[10px] text-green-600">Signed {formatIST(hocpSig.signed_at)}</div>}
+                    </div>
+                  </div>
+                  <span className={clsx(
+                    'text-[10px] font-bold px-2 py-0.5 rounded-full',
+                    hocpSigned ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'
+                  )}>
+                    {hocpSigned ? 'SIGNED' : 'WAITING'}
+                  </span>
+                </div>
+              );
+            })()}
+
+            {/* Provider/Supplier Status */}
             {(() => {
               const providerSig = signatures.find(s => s.signer_role === 'provider');
-              if (providerSig) {
-                return (
-                  <div
-                    className={clsx(
-                      'flex items-center justify-between p-3 rounded-xl border mb-4',
-                      providerSig.signed_at
-                        ? 'bg-green-50 border-green-200'
-                        : 'bg-orange-50 border-orange-200'
-                    )}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={clsx(
-                        'w-8 h-8 rounded-full flex items-center justify-center',
-                        providerSig.signed_at ? 'bg-green-100' : 'bg-orange-100'
-                      )}>
-                        {providerSig.signed_at ? <CheckCircle size={16} className="text-green-600" /> : <Clock size={16} className="text-orange-500" />}
-                      </div>
-                      <div>
-                        <div className="text-sm font-semibold text-gray-800">Service Provider</div>
-                        <div className="text-xs text-gray-500">{providerSig.signer_name} ({providerSig.signer_email})</div>
-                        {providerSig.signed_at && (
-                          <div className="text-[10px] text-green-600">Signed {formatIST(providerSig.signed_at)}</div>
-                        )}
-                      </div>
+              const providerSigned = providerSig?.signed_at;
+              return (
+                <div className={clsx(
+                  'flex items-center justify-between p-3 rounded-xl border mb-4',
+                  providerSigned ? 'bg-green-50 border-green-200' : 'bg-orange-50 border-orange-200'
+                )}>
+                  <div className="flex items-center gap-3">
+                    <div className={clsx(
+                      'w-8 h-8 rounded-full flex items-center justify-center',
+                      providerSigned ? 'bg-green-100' : 'bg-orange-100'
+                    )}>
+                      {providerSigned
+                        ? <CheckCircle size={16} className="text-green-600" />
+                        : <Clock size={16} className="text-orange-500" />
+                      }
                     </div>
-                    {!providerSig.signed_at && providerSig.sign_url && (
+                    <div>
+                      <div className="text-sm font-semibold text-gray-800">Supplier — {providerName}</div>
+                      <div className="text-xs text-gray-500">{providerEmail}</div>
+                      {providerSigned && <div className="text-[10px] text-green-600">Signed {formatIST(providerSig.signed_at)}</div>}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {!providerSigned && providerSig?.sign_url && (
                       <button
                         onClick={() => { navigator.clipboard.writeText(providerSig.sign_url); handleCopyMsg('Link copied!'); }}
                         className="text-xs text-purple-600 px-2 py-1 rounded border border-purple-200 hover:bg-purple-50 flex items-center gap-1"
@@ -1681,60 +1976,23 @@ export default function ContractModal({ production, lineItem, onClose }) {
                         <Copy size={10} /> Copy Link
                       </button>
                     )}
+                    <span className={clsx(
+                      'text-[10px] font-bold px-2 py-0.5 rounded-full',
+                      providerSigned ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'
+                    )}>
+                      {providerSigned ? 'SIGNED' : 'WAITING'}
+                    </span>
                   </div>
-                );
-              }
-              // No signatures at all
-              if (signatures.length === 0) {
-                return (
-                  <div className="text-center py-8 text-gray-400 mb-4">
-                    <Clock size={32} className="mx-auto mb-3" />
-                    <div className="text-sm font-semibold mb-1">No signatures yet</div>
-                    <div className="text-xs">Go to Step 4 to generate and send signing links.</div>
-                  </div>
-                );
-              }
-              return null;
+                </div>
+              );
             })()}
 
-            {/* E-Signature link cards (same as Step 4) */}
-            {!isSigned && signingLinks && (
-              <SigningLinks signingLinks={signingLinks} onCopy={handleCopyMsg} productionName={production.project_name} />
-            )}
-
-            {/* Signed & Completed banner */}
-            {isSigned && (
-              <div className="bg-green-100 border border-green-300 rounded-xl p-4 text-center mb-4">
-                <CheckCircle size={28} className="mx-auto mb-2 text-green-600" />
-                <div className="text-sm font-bold text-green-800">Signed & Completed</div>
-                <div className="text-xs text-green-600 mt-1">The contract has been signed and is complete.</div>
-                {existing?.signed_at && (
-                  <div className="text-[10px] text-green-500 mt-1">Signed on {formatIST(existing.signed_at)}</div>
-                )}
-              </div>
-            )}
-
-            {/* Saved documents — Google Drive & Dropbox links */}
-            {isSigned && (existing?.drive_url || existing?.dropbox_url) && (
-              <div className="bg-gray-50 rounded-xl p-3 mb-4">
-                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-2">Saved Documents</div>
-                <div className="text-xs text-gray-500 mb-2">PDF saved to Google Drive & Dropbox</div>
-                {existing?.drive_url && (
-                  <div className="flex items-center gap-2 text-xs mb-1">
-                    <FolderOpen size={12} className="text-blue-500" />
-                    <a href={existing.drive_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline truncate flex-1">
-                      Google Drive
-                    </a>
-                  </div>
-                )}
-                {existing?.dropbox_url && (
-                  <div className="flex items-center gap-2 text-xs">
-                    <FolderOpen size={12} className="text-green-500" />
-                    <a href={existing.dropbox_url} target="_blank" rel="noopener noreferrer" className="text-green-600 hover:underline truncate flex-1">
-                      Dropbox
-                    </a>
-                  </div>
-                )}
+            {/* No signatures at all */}
+            {signatures.length === 0 && (
+              <div className="text-center py-8 text-gray-400 mb-4">
+                <Clock size={32} className="mx-auto mb-3" />
+                <div className="text-sm font-semibold mb-1">No signatures yet</div>
+                <div className="text-xs">Go to Step 4 to generate and send signing links.</div>
               </div>
             )}
 
@@ -1752,7 +2010,6 @@ export default function ContractModal({ production, lineItem, onClose }) {
                     const text = `Hi ${providerName},\n\nPlease sign the contract for ${production.project_name}:\n${signingLinks.provider.url}\n\nThank you!`;
                     const phone = providerPhone.replace(/[^0-9+]/g, '');
                     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
-                    // Slack notification — contract resent via WhatsApp
                     const waToken2 = localStorage.getItem('cp_auth_token');
                     const waAPI2 = import.meta.env.VITE_API_URL || '';
                     fetch(`${waAPI2}/api/contracts/notify-slack`, {
@@ -1782,6 +2039,30 @@ export default function ContractModal({ production, lineItem, onClose }) {
               <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-4 py-3 mb-4 text-sm text-green-700 font-semibold">
                 <CheckCircle size={16} className="text-green-600" />
                 {sendSuccess}
+              </div>
+            )}
+
+            {/* Saved documents — Google Drive & Dropbox links */}
+            {isSigned && (existing?.drive_url || existing?.dropbox_url) && (
+              <div className="bg-gray-50 rounded-xl p-3 mb-4">
+                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-2">Saved Documents</div>
+                <div className="text-xs text-gray-500 mb-2">PDF saved to Google Drive & Dropbox</div>
+                {existing?.drive_url && (
+                  <div className="flex items-center gap-2 text-xs mb-1">
+                    <FolderOpen size={12} className="text-blue-500" />
+                    <a href={existing.drive_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline truncate flex-1">
+                      Google Drive
+                    </a>
+                  </div>
+                )}
+                {existing?.dropbox_url && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <FolderOpen size={12} className="text-green-500" />
+                    <a href={existing.dropbox_url} target="_blank" rel="noopener noreferrer" className="text-green-600 hover:underline truncate flex-1">
+                      Dropbox
+                    </a>
+                  </div>
+                )}
               </div>
             )}
 

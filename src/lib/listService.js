@@ -58,3 +58,35 @@ export function getAllLists() {
     Object.keys(LIST_DEFAULTS).map(k => [k, getList(k)])
   );
 }
+
+const DEFAULT_COLORS = {
+  // Status-like (progress: gray → orange → red → green)
+  'Not Started': '#9ca3af',
+  'Working on it': '#f59e0b',
+  'Stuck': '#ef4444',
+  'Done': '#22c55e',
+  // Stages
+  'Pre Production': '#6366f1',
+  'Production': '#f59e0b',
+  'Post': '#8b5cf6',
+  'Paused': '#9ca3af',
+  'Pending': '#d1d5db',
+  'Completed': '#22c55e',
+  // Types (brand palette)
+  'Crew': '#1e3a5f',
+  'Equipment': '#3b82f6',
+  'Cast': '#8b5cf6',
+  'Office': '#64748b',
+  'Catering & Transport': '#f97316',
+};
+
+export function getListItemColor(listKey, label) {
+  const list = getList(listKey);
+  // If list stores objects with color, use that
+  if (Array.isArray(list)) {
+    const item = list.find(i => (typeof i === 'object' ? i.label : i) === label);
+    if (typeof item === 'object' && item?.color) return item.color;
+  }
+  // Fallback to defaults
+  return DEFAULT_COLORS[label] || null;
+}
