@@ -78,6 +78,7 @@ router.patch('/:id', async (req, res) => {
     'supplier_type','invoice_status','invoice_url','invoice_type',
     'timeline_start','timeline_end','receipt_required','paid_at',
     'notes','supplier','id_number','currency_code','custom_fields','cc_purchase_id',
+    'drive_url','dropbox_url','payment_proof_url','payment_proof_drive_url','payment_proof_dropbox_url',
   ];
 
   const updates = Object.entries(req.body).filter(([k]) => allowed.includes(k));
@@ -101,28 +102,78 @@ router.patch('/:id', async (req, res) => {
   }
 });
 
-// DELETE /api/line-items/:id
+// DELETE /api/line-items/:id  — cascade delete with options
 router.delete('/:id', async (req, res) => {
   try {
-    const { rows } = await db.query(
-      'DELETE FROM production_line_items WHERE id = $1 RETURNING production_id',
-      [req.params.id]
+    // First fetch the item to get details before deleting
+    const { rows: itemRows } = await db.query(
+      'SELECT * FROM production_line_items WHERE id = $1', [req.params.id]
     );
-    if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+    if (!itemRows[0]) return res.status(404).json({ error: 'Not found' });
+    const item = itemRows[0];
 
-    // Clean up associated contract + signatures
-    const contractKey = `${rows[0].production_id}_li_${req.params.id}`;
-    try {
-      const { rows: cRows } = await db.query('SELECT id FROM contracts WHERE production_id = $1', [contractKey]);
-      if (cRows[0]) {
-        await db.query('DELETE FROM contract_signatures WHERE contract_id = $1', [cRows[0].id]);
-        await db.query('DELETE FROM contracts WHERE id = $1', [cRows[0].id]);
+    // Parse cascade options from query params (or body)
+    const opts = {
+      deleteContract: req.query.deleteContract !== 'false',
+      deleteCast: req.query.deleteCast !== 'false',
+      deleteDriveFiles: req.query.deleteDriveFiles === 'true',
+    };
+
+    const deleted = { lineItem: true, contract: false, cast: false, driveFiles: 0 };
+
+    // Delete line item
+    await db.query('DELETE FROM production_line_items WHERE id = $1', [req.params.id]);
+
+    // Clean up contract + signatures
+    if (opts.deleteContract) {
+      const contractKey = `${item.production_id}_li_${req.params.id}`;
+      try {
+        const { rows: cRows } = await db.query('SELECT id, drive_url FROM contracts WHERE production_id = $1', [contractKey]);
+        if (cRows[0]) {
+          await db.query('DELETE FROM contract_signatures WHERE contract_id = $1', [cRows[0].id]);
+          await db.query('DELETE FROM contracts WHERE id = $1', [cRows[0].id]);
+          deleted.contract = true;
+        }
+      } catch (_) {}
+    }
+
+    // Clean up cast member
+    if (opts.deleteCast && item.full_name) {
+      try {
+        const { rowCount } = await db.query(
+          'DELETE FROM production_cast WHERE production_id = $1 AND name = $2',
+          [item.production_id, item.full_name]
+        );
+        if (rowCount > 0) deleted.cast = true;
+      } catch (_) {}
+    }
+
+    // Delete files from Google Drive
+    if (opts.deleteDriveFiles) {
+      const driveUrls = [item.invoice_url, item.drive_url, item.receipt_url, item.photo_url].filter(Boolean);
+      for (const url of driveUrls) {
+        const m = url.match(/drive\.google\.com\/file\/d\/([^/]+)/);
+        if (m) {
+          try {
+            const { rows: settRows } = await db.query("SELECT google_tokens FROM settings WHERE brand_id = 'particle'");
+            if (settRows[0]?.google_tokens) {
+              const { google } = require('googleapis');
+              const tokens = typeof settRows[0].google_tokens === 'string' ? JSON.parse(settRows[0].google_tokens) : settRows[0].google_tokens;
+              const oauth2 = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET);
+              oauth2.setCredentials(tokens);
+              const drive = google.drive({ version: 'v3', auth: oauth2 });
+              await drive.files.delete({ fileId: m[1], supportsAllDrives: true });
+              deleted.driveFiles++;
+            }
+          } catch (e) { console.error('Drive file delete:', e.message); }
+        }
       }
-    } catch (_) { /* non-critical */ }
+    }
 
-    await syncTotals(rows[0].production_id);
-    res.json({ success: true });
+    await syncTotals(item.production_id);
+    res.json({ success: true, deleted });
   } catch (err) {
+    console.error('Delete line item error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });

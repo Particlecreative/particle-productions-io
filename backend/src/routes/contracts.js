@@ -1,10 +1,26 @@
-const router = require('express').Router();
-const db     = require('../db');
-const crypto = require('crypto');
+const router    = require('express').Router();
+const db        = require('../db');
+const crypto    = require('crypto');
+const path      = require('path');
+const fs        = require('fs');
+const rateLimit = require('express-rate-limit');
 const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
 const { verifyJWT } = require('../middleware/auth');
 const { sendEmail } = require('./gmail');
 const driveRouter = require('./drive');
+
+// Rate limit for signing endpoints (10 attempts per IP per minute)
+const signLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  message: { error: 'Too many signing attempts. Please try again in a minute.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Tomer's signature image — loaded once at startup
+const TOMER_SIG_PATH = path.join(__dirname, '..', 'assets', 'tomer-signature.png');
+const TOMER_SIGNATURE_PNG = fs.existsSync(TOMER_SIG_PATH) ? fs.readFileSync(TOMER_SIG_PATH) : null;
 
 // ── Token helper ──────────────────────────────────────
 function generateToken() {
@@ -13,15 +29,10 @@ function generateToken() {
 
 // ── Slack webhook helper ──────────────────────────────
 const APP_BASE = process.env.APP_URL || 'https://particlepdio.particleface.com';
-async function notifySlack(message, link, { sandbox = false } = {}) {
+async function notifySlack(message, link) {
   const text = link ? `${message}\n<${link}|View in CP Panel>` : message;
 
-  if (sandbox) {
-    // In sandbox/test mode → DM to Tomer via Slack Bot
-    return slackDM(text);
-  }
-
-  // Normal mode → post to #cp-contracts channel via webhook
+  // Always post to #cp-contracts channel via webhook
   const webhookUrl = process.env.SLACK_WEBHOOK_URL;
   if (!webhookUrl) return;
   try {
@@ -87,9 +98,31 @@ router.get('/sign/:id/:token', async (req, res) => {
       return res.status(404).json({ error: 'Invalid or expired signing link' });
     }
     const sig = sigRows[0];
+    // Token expiry: 30 days from creation
+    const tokenAge = Date.now() - new Date(sig.created_at).getTime();
+    if (tokenAge > 30 * 24 * 60 * 60 * 1000) {
+      return res.status(410).json({ error: 'This signing link has expired (30 days). Please request a new contract.' });
+    }
     if (sig.signed_at) {
       return res.status(400).json({ error: 'This contract has already been signed', already_signed: true, signed_at: sig.signed_at, signature_data: sig.signature_data, signer_name: sig.signer_name });
     }
+    // Fetch HOCP signature status (to show on supplier's signing page)
+    let hocpSignature = null;
+    try {
+      const { rows: hocpRows } = await db.query(
+        `SELECT signer_name, signature_data, signed_at FROM contract_signatures
+         WHERE contract_id = $1 AND signer_role = 'hocp' LIMIT 1`,
+        [id]
+      );
+      if (hocpRows[0]?.signed_at) {
+        hocpSignature = {
+          signer_name: hocpRows[0].signer_name,
+          signature_data: hocpRows[0].signature_data,
+          signed_at: hocpRows[0].signed_at,
+        };
+      }
+    } catch (_) {}
+
     res.json({
       contract_id: id,
       signer_role: sig.signer_role,
@@ -111,6 +144,7 @@ router.get('/sign/:id/:token', async (req, res) => {
       currency: sig.currency || 'USD',
       contract_type: sig.contract_type || 'crew',
       effective_date: sig.effective_date,
+      hocp_signature: hocpSignature,
     });
   } catch (err) {
     console.error('GET /sign/:id/:token error:', err);
@@ -118,21 +152,25 @@ router.get('/sign/:id/:token', async (req, res) => {
   }
 });
 
-// POST /api/contracts/sign/:id/:token — submit signature (public)
-router.post('/sign/:id/:token', async (req, res) => {
+// POST /api/contracts/sign/:id/:token — submit signature (public, rate-limited)
+router.post('/sign/:id/:token', signLimiter, async (req, res) => {
   try {
     const { id, token } = req.params;
-    const { signature_data, signer_name, signer_id_number, signer_address } = req.body;
+    const { signature_data, signer_name, signer_id_number, signer_address, agreed_at } = req.body;
 
     if (!signature_data) {
       return res.status(400).json({ error: 'Signature data is required' });
     }
 
+    // Capture IP + User Agent for legal audit trail
+    const signerIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || 'unknown';
+    const signerUserAgent = req.headers['user-agent'] || 'unknown';
+
     // Verify token
     const { rows: sigRows } = await db.query(
       `SELECT cs.*, c.events, c.status AS contract_status, c.production_id,
               c.provider_name, c.provider_email,
-              c.fee_amount, c.currency,
+              c.fee_amount, c.currency, c.require_hocp_signature,
               p.project_name, p.producer
        FROM contract_signatures cs
        JOIN contracts c ON cs.contract_id = c.id
@@ -150,12 +188,15 @@ router.post('/sign/:id/:token', async (req, res) => {
 
     const now = new Date().toISOString();
 
-    // Save signature
+    // Save signature with IP + user agent for legal audit
     await db.query(
       `UPDATE contract_signatures
-       SET signature_data = $1, signed_at = $2, signer_name = COALESCE($3, signer_name), signer_id_number = COALESCE($4, signer_id_number)
+       SET signature_data = $1, signed_at = $2, signer_name = COALESCE($3, signer_name),
+           signer_id_number = COALESCE($4, signer_id_number),
+           ip_address = $6, user_agent = $7, agreed_at = $8
        WHERE id = $5`,
-      [signature_data, now, signer_name || null, signer_id_number || null, sig.id]
+      [signature_data, now, signer_name || null, signer_id_number || null, sig.id,
+       signerIp, signerUserAgent, agreed_at || now]
     );
 
     // Update main contract with provider-filled details (ID + address)
@@ -184,30 +225,51 @@ router.post('/sign/:id/:token', async (req, res) => {
       [JSON.stringify(events), id]
     );
 
-    // Auto-sign on behalf of Particle (HOCP) when provider signs
-    if (sig.signer_role === 'provider') {
-      const { rows: hocpSigs } = await db.query(
-        `SELECT * FROM contract_signatures WHERE contract_id = $1 AND signer_role = 'hocp' AND signed_at IS NULL`,
+    // Variables used in both HOCP and individual signer notifications
+    const projectLabel = sig.project_name || sig.production_id;
+    const prdId = sig.production_id;
+    const prdShort = prdId ? prdId.split('_li_')[0] : prdId;
+    const feeDisplay = sig.fee_amount ? `${Number(sig.fee_amount).toLocaleString()} ${sig.currency || 'USD'}` : '';
+
+    // If HOCP just signed AND require_hocp_signature is true → auto-send email to supplier
+    if (sig.signer_role === 'hocp' && sig.require_hocp_signature) {
+      // Get provider's signing token
+      const { rows: providerSigs } = await db.query(
+        `SELECT token, signer_name, signer_email FROM contract_signatures
+         WHERE contract_id = $1 AND signer_role = 'provider' AND signed_at IS NULL`,
         [id]
       );
-      for (const hocpSig of hocpSigs) {
-        await db.query(
-          `UPDATE contract_signatures
-           SET signed_at = $1, signer_name = 'Tomer Wilf Lezmy', signer_id_number = 'Head of Creative Production'
-           WHERE id = $2`,
-          [now, hocpSig.id]
-        );
-        events.push({
-          type: 'signed',
-          role: 'hocp',
-          name: 'Tomer Wilf Lezmy',
-          title: 'Head of Creative Production',
-          at: now,
-        });
-        await db.query(
-          `UPDATE contracts SET events = $1 WHERE id = $2`,
-          [JSON.stringify(events), id]
-        );
+      if (providerSigs.length > 0) {
+        const provSig = providerSigs[0];
+        const baseUrl = process.env.APP_URL || 'https://particlepdio.particleface.com';
+        const providerSignUrl = `${baseUrl}/sign/${id}/${provSig.token}`;
+
+        // Send email to supplier
+        sendEmail({
+          to: sig.provider_email,
+          skipDefaultCc: false,
+          subject: `Services Agreement - ${projectLabel}`,
+          htmlBody: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px;">
+              <h2 style="color: #030b2e;">Contract Ready for Signature</h2>
+              <p>Hi ${sig.provider_name},</p>
+              <p>A contract has been prepared for <strong>${projectLabel}</strong>.</p>
+              <p>Please review and sign the contract by clicking the link below:</p>
+              <p style="margin: 24px 0;">
+                <a href="${providerSignUrl}" style="background: #0808f8; color: white; padding: 12px 28px; border-radius: 8px; text-decoration: none; font-weight: bold;">
+                  Review & Sign Contract
+                </a>
+              </p>
+              <p style="color: #888; font-size: 13px;">If the button doesn't work, copy this link: ${providerSignUrl}</p>
+              <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
+              <p style="color: #aaa; font-size: 11px;">Sent via CP Panel — Particle Aesthetic Science Ltd.</p>
+            </div>`,
+        }).catch(() => {});
+
+        // Update contract status to 'sent'
+        await db.query(`UPDATE contracts SET status = 'sent', sent_at = $1 WHERE id = $2`, [now, id]);
+        // Slack: HOCP signed, contract now sent to supplier
+        notifySlack(`✍️ HOCP signed — contract sent to ${sig.provider_name}\nProduction: ${projectLabel}`, `${APP_BASE}/production/${prdShort}`);
       }
     }
 
@@ -218,259 +280,152 @@ router.post('/sign/:id/:token', async (req, res) => {
     );
     const allSigned = allSigs.every(s => s.signed_at !== null);
 
-    // Slack notification — individual signer
-    const projectLabel = sig.project_name || sig.production_id;
-    const prdId = sig.production_id;
-    const prdShort = prdId ? prdId.split('_li_')[0] : prdId;
-    const feeDisplay = sig.fee_amount ? `${Number(sig.fee_amount).toLocaleString()} ${sig.currency || 'USD'}` : 'N/A';
-    notifySlack(`Contract signed by ${signer_name || sig.signer_name} for ${projectLabel}\nAmount: ${feeDisplay}\nRef: ${prdId}`, `${APP_BASE}/production/${prdShort}`);
+    // Slack notification — individual signer (simple, no PDF)
+    notifySlack(`✍️ Contract signed by ${signer_name || sig.signer_name}\nProduction: ${projectLabel}`, `${APP_BASE}/production/${prdShort}`);
 
     if (allSigned) {
-      // Mark contract as fully signed
+      // Mark contract as fully signed — PDF generation, upload, email, and Slack
+      // are now handled by the frontend via POST /:id/upload-signed-pdf
       events.push({ type: 'completed', at: now });
       await db.query(
         `UPDATE contracts SET status = 'signed', signed_at = $1, events = $2 WHERE id = $3`,
         [now, JSON.stringify(events), id]
       );
-
-      // ── Generate signed PDF with embedded signatures & document history ──
-      let signedPdfBase64 = null;
-      try {
-        // Get the base contract PDF + contract details
-        const { rows: cInfo } = await db.query(
-          `SELECT contract_pdf_base64, exhibit_a, exhibit_b, fee_amount, currency,
-                  effective_date, provider_name, provider_address, provider_id_number
-           FROM contracts WHERE id = $1`,
-          [id]
-        );
-        const contractData = cInfo[0];
-
-        // Get all signatures
-        const { rows: signatures } = await db.query(
-          `SELECT signer_role, signer_name, signature_data, signed_at
-           FROM contract_signatures WHERE contract_id = $1 ORDER BY signed_at ASC`,
-          [id]
-        );
-
-        // Create a new PDF with signatures page
-        const pdfDoc = await PDFDocument.create();
-        const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-        const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-
-        // If we have the original PDF base64, merge it
-        if (contractData?.contract_pdf_base64) {
-          try {
-            const existingPdfBytes = Buffer.from(
-              contractData.contract_pdf_base64.replace(/^data:[^;]+;base64,/, ''),
-              'base64'
-            );
-            const existingPdf = await PDFDocument.load(existingPdfBytes);
-            const pages = await pdfDoc.copyPages(existingPdf, existingPdf.getPageIndices());
-            pages.forEach(p => pdfDoc.addPage(p));
-          } catch (e) {
-            console.error('Could not merge original PDF:', e.message);
-            // Fallback: create a simple title page
-            const page = pdfDoc.addPage([595, 842]); // A4
-            page.drawText('SERVICES AGREEMENT', { x: 50, y: 780, size: 20, font: boldFont, color: rgb(0.01, 0.04, 0.18) });
-            page.drawText(`${contractData?.provider_name || 'Service Provider'}`, { x: 50, y: 750, size: 14, font });
-            page.drawText(`Effective Date: ${contractData?.effective_date || 'N/A'}`, { x: 50, y: 730, size: 12, font });
-          }
-        }
-
-        // Add SIGNATURES PAGE
-        const sigPage = pdfDoc.addPage([595, 842]);
-        let y = 780;
-
-        // Title
-        sigPage.drawText('SIGNATURES', { x: 50, y, size: 16, font: boldFont, color: rgb(0.01, 0.04, 0.18) });
-        y -= 30;
-
-        sigPage.drawText('The parties have executed this Agreement as of the dates set forth below.', { x: 50, y, size: 10, font, color: rgb(0.3, 0.3, 0.3) });
-        y -= 40;
-
-        // Company signature block
-        sigPage.drawText('For the Company:', { x: 50, y, size: 11, font: boldFont });
-        y -= 18;
-        sigPage.drawText('Particle Aesthetic Science Ltd.', { x: 50, y, size: 10, font });
-        y -= 15;
-        sigPage.drawText('Name: Tomer Wilf Lezmy', { x: 50, y, size: 10, font });
-        y -= 15;
-        sigPage.drawText('Title: Head of Creative Production', { x: 50, y, size: 10, font });
-        y -= 15;
-
-        // Find HOCP signature
-        const hocpSig = signatures.find(s => s.signer_role === 'hocp');
-        if (hocpSig?.signature_data) {
-          try {
-            const sigBytes = Buffer.from(hocpSig.signature_data.replace(/^data:[^;]+;base64,/, ''), 'base64');
-            const sigImage = await pdfDoc.embedPng(sigBytes);
-            const sigDims = sigImage.scale(0.3);
-            sigPage.drawImage(sigImage, { x: 50, y: y - sigDims.height, width: sigDims.width, height: sigDims.height });
-            y -= sigDims.height + 10;
-          } catch (e) {
-            sigPage.drawText('[Digitally Signed]', { x: 50, y, size: 10, font, color: rgb(0, 0.4, 0) });
-            y -= 15;
-          }
-        }
-        sigPage.drawText(`Date: ${hocpSig?.signed_at ? new Date(hocpSig.signed_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A'}`, { x: 50, y, size: 10, font });
-        y -= 50;
-
-        // Provider signature block
-        sigPage.drawText('For the Service Provider:', { x: 50, y, size: 11, font: boldFont });
-        y -= 18;
-        sigPage.drawText(`Name: ${contractData?.provider_name || 'N/A'}`, { x: 50, y, size: 10, font });
-        y -= 15;
-        if (contractData?.provider_id_number) {
-          sigPage.drawText(`ID/Passport: ${contractData.provider_id_number}`, { x: 50, y, size: 10, font });
-          y -= 15;
-        }
-        if (contractData?.provider_address) {
-          sigPage.drawText(`Address: ${contractData.provider_address}`, { x: 50, y, size: 10, font });
-          y -= 15;
-        }
-
-        const providerSig = signatures.find(s => s.signer_role === 'provider');
-        if (providerSig?.signature_data) {
-          try {
-            const sigBytes = Buffer.from(providerSig.signature_data.replace(/^data:[^;]+;base64,/, ''), 'base64');
-            const sigImage = await pdfDoc.embedPng(sigBytes);
-            const sigDims = sigImage.scale(0.3);
-            sigPage.drawImage(sigImage, { x: 50, y: y - sigDims.height, width: sigDims.width, height: sigDims.height });
-            y -= sigDims.height + 10;
-          } catch (e) {
-            sigPage.drawText('[Digitally Signed]', { x: 50, y, size: 10, font, color: rgb(0, 0.4, 0) });
-            y -= 15;
-          }
-        }
-        sigPage.drawText(`Date: ${providerSig?.signed_at ? new Date(providerSig.signed_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A'}`, { x: 50, y, size: 10, font });
-        y -= 60;
-
-        // DOCUMENT HISTORY section
-        sigPage.drawText('DOCUMENT HISTORY', { x: 50, y, size: 12, font: boldFont, color: rgb(0.3, 0.3, 0.3) });
-        y -= 5;
-        sigPage.drawLine({ start: { x: 50, y }, end: { x: 545, y }, thickness: 0.5, color: rgb(0.8, 0.8, 0.8) });
-        y -= 18;
-
-        const formatDt = (d) => d ? new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
-        for (const evt of events) {
-          let label = evt.type;
-          if (evt.type === 'created') label = 'Contract Created';
-          if (evt.type === 'sent') label = 'Sent for Signature';
-          if (evt.type === 'signed') label = `Signed by ${evt.name || evt.role || 'Party'}`;
-          if (evt.type === 'completed') label = 'All Parties Signed \u2014 Completed';
-          if (evt.type === 'regenerated') label = 'Links Regenerated';
-
-          sigPage.drawText(`${label}`, { x: 50, y, size: 9, font: boldFont });
-          sigPage.drawText(`${formatDt(evt.at)}`, { x: 300, y, size: 9, font, color: rgb(0.5, 0.5, 0.5) });
-          y -= 16;
-          if (y < 50) break;
-        }
-
-        // Save the final signed PDF
-        const signedPdfBytes = await pdfDoc.save();
-        signedPdfBase64 = Buffer.from(signedPdfBytes).toString('base64');
-
-        // Save back to contract record
-        await db.query(
-          'UPDATE contracts SET contract_pdf_base64 = $1 WHERE id = $2',
-          ['data:application/pdf;base64,' + signedPdfBase64, id]
-        );
-        console.log('Signed PDF generated with embedded signatures and document history');
-      } catch (pdfErr) {
-        console.error('Signed PDF generation failed:', pdfErr.message);
-      }
-
-      // Upload signed PDF to Google Drive + Dropbox
-      let driveUrl = null;
-      let dropboxUrl = null;
-      try {
-        // Use the newly generated signed PDF, or fall back to the original
-        let uploadBase64 = signedPdfBase64;
-        if (!uploadBase64) {
-          const { rows: cInfo } = await db.query('SELECT contract_pdf_base64 FROM contracts WHERE id = $1', [id]);
-          const pdfBase64 = cInfo[0]?.contract_pdf_base64;
-          if (pdfBase64) uploadBase64 = pdfBase64.replace(/^data:[^;]+;base64,/, '');
-        }
-        if (uploadBase64 && driveRouter.uploadDual) {
-          const year = new Date().getFullYear();
-          const subfolder = `${year}/${prdShort} ${projectLabel}`;
-          const uploadResult = await driveRouter.uploadDual({
-            fileName: `Contract - ${sig.provider_name || signer_name}.pdf`,
-            fileContent: uploadBase64,
-            mimeType: 'application/pdf',
-            subfolder,
-            category: 'contracts',
-          });
-          driveUrl = uploadResult.drive?.viewLink || null;
-          dropboxUrl = uploadResult.dropbox?.link || null;
-          // Save URLs to contract
-          if (driveUrl || dropboxUrl) {
-            await db.query(
-              'UPDATE contracts SET drive_url = COALESCE($1, drive_url), dropbox_url = COALESCE($2, dropbox_url) WHERE id = $3',
-              [driveUrl, dropboxUrl, id]
-            );
-          }
-          console.log('Contract PDF uploaded:', driveUrl ? 'Drive OK' : 'Drive skipped', dropboxUrl ? 'Dropbox OK' : 'Dropbox skipped');
-        }
-      } catch (uploadErr) {
-        console.error('Contract PDF upload failed:', uploadErr.message);
-      }
-
-      // Slack notification — fully signed (with PDF link)
-      const pdfLink = driveUrl || dropboxUrl || `${APP_BASE}/production/${prdShort}`;
-      notifySlack(`Contract completed for ${sig.provider_name || signer_name} for ${projectLabel}\nAmount: ${feeDisplay}\nRef: ${prdId}`, pdfLink);
-
-      // Email all parties — contract completed
-      // Gather document history from events
-      const allEvents = events;
-      const createdEvent = allEvents.find(e => e.type === 'created');
-      const sentEvent = allEvents.find(e => e.type === 'sent');
-      const signedEvents = allEvents.filter(e => e.type === 'signed');
-      const completedEvent = allEvents.find(e => e.type === 'completed');
-
-      // driveUrl already set from upload above
-
-      const formatDate = (d) => d ? new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'N/A';
-
-      const historyHtml = `
-        <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
-          ${createdEvent ? `<tr><td style="padding: 6px 0; color: #666; font-size: 13px;">Contract Created</td><td style="padding: 6px 0; font-size: 13px;">${formatDate(createdEvent.at)}</td></tr>` : ''}
-          ${sentEvent ? `<tr><td style="padding: 6px 0; color: #666; font-size: 13px;">Sent to ${sig.provider_name}</td><td style="padding: 6px 0; font-size: 13px;">${formatDate(sentEvent.at)}</td></tr>` : ''}
-          ${signedEvents.map(se => `<tr><td style="padding: 6px 0; color: #666; font-size: 13px;">Signed by ${se.name || se.role}</td><td style="padding: 6px 0; font-size: 13px;">${formatDate(se.at)}</td></tr>`).join('')}
-          ${completedEvent ? `<tr><td style="padding: 6px 0; color: #666; font-size: 13px; font-weight: bold;">Completed</td><td style="padding: 6px 0; font-size: 13px; font-weight: bold;">${formatDate(completedEvent.at)}</td></tr>` : ''}
-        </table>
-      `;
-
-      const completedSubject = `Contract Signed & Completed: ${projectLabel} — ${sig.provider_name}`;
-      const completedBody = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px;">
-          <h2 style="color: #2e7d32;">&#9989; Contract Fully Signed</h2>
-          <p>The contract for <strong>${projectLabel}</strong> with <strong>${sig.provider_name}</strong> has been signed by all parties.</p>
-          ${driveUrl ? `<p><a href="${driveUrl}" style="color: #1a73e8; text-decoration: none; font-weight: bold;">&#128196; View Signed PDF in Google Drive</a></p>` : ''}
-          <h3 style="color: #333; font-size: 14px; margin-top: 24px;">Document History</h3>
-          ${historyHtml}
-          <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
-          <p style="color: #aaa; font-size: 11px;">Sent via CP Panel — Particle Aesthetic Science Ltd.</p>
-        </div>
-      `;
-      // Detect sandbox: if provider_email is an internal/test address
-      const isSandboxContract = sig.provider_email &&
-        (sig.provider_email.endsWith('@particleformen.com') || sig.provider_email === 'tomerlez1994@gmail.com');
-      if (isSandboxContract) {
-        // Sandbox: send to the sandbox email + tomer
-        sendEmail({ to: sig.provider_email, subject: completedSubject, htmlBody: completedBody }).catch(() => {});
-        if (sig.provider_email !== 'tomer@particleformen.com') {
-          sendEmail({ to: 'tomer@particleformen.com', subject: completedSubject, htmlBody: completedBody }).catch(() => {});
-        }
-      } else {
-        // Real mode: send to supplier, CC omer
-        sendEmail({ to: sig.provider_email, cc: 'omer@particleformen.com', subject: completedSubject, htmlBody: completedBody }).catch(() => {});
-      }
+      console.log(`Contract ${id} fully signed — waiting for frontend PDF upload`);
     }
 
     res.json({ success: true, all_signed: allSigned });
   } catch (err) {
     console.error('POST /sign/:id/:token error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ── GET /api/contracts/sign/:id/:token/completed — fetch both signatures + events for completed view ──
+router.get('/sign/:id/:token/completed', async (req, res) => {
+  const { id, token } = req.params;
+  try {
+    // Verify token
+    const { rows: sigRows } = await db.query(
+      `SELECT cs.contract_id FROM contract_signatures cs WHERE cs.contract_id = $1 AND cs.token = $2`,
+      [id, token]
+    );
+    if (!sigRows.length) return res.status(404).json({ error: 'Invalid token' });
+
+    // Get all signatures (include IP for document history)
+    const { rows: signatures } = await db.query(
+      `SELECT signer_role, signer_name, signer_id_number, signature_data, signed_at, ip_address, agreed_at
+       FROM contract_signatures WHERE contract_id = $1 ORDER BY signed_at ASC`,
+      [id]
+    );
+
+    // Get contract events + drive_url
+    const { rows: cRows } = await db.query(
+      `SELECT events, drive_url, dropbox_url FROM contracts WHERE id = $1`,
+      [id]
+    );
+    const events = cRows[0]?.events ? JSON.parse(cRows[0].events) : [];
+
+    res.json({ signatures, events, drive_url: cRows[0]?.drive_url });
+  } catch (err) {
+    console.error('GET /sign/:id/:token/completed error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ── POST /api/contracts/:id/upload-signed-pdf — receive PDF from frontend, upload to Drive, send email+Slack ──
+router.post('/:id/upload-signed-pdf', async (req, res) => {
+  const { id } = req.params;
+  const { pdf_base64, token } = req.body;
+  if (!pdf_base64 || !token) return res.status(400).json({ error: 'Missing pdf_base64 or token' });
+
+  try {
+    // Verify token
+    const { rows: sigRows } = await db.query(
+      `SELECT cs.contract_id FROM contract_signatures cs WHERE cs.contract_id = $1 AND cs.token = $2`,
+      [id, token]
+    );
+    if (!sigRows.length) return res.status(404).json({ error: 'Invalid token' });
+
+    // Get contract info
+    const { rows: cRows } = await db.query(
+      `SELECT c.*, split_part(c.production_id, '_li_', 1) as prd_short,
+              p.project_name
+       FROM contracts c
+       LEFT JOIN productions p ON p.id = split_part(c.production_id, '_li_', 1)
+       WHERE c.id = $1`,
+      [id]
+    );
+    const contract = cRows[0];
+    if (!contract) return res.status(404).json({ error: 'Contract not found' });
+
+    // Skip if already uploaded
+    if (contract.drive_url) {
+      return res.json({ success: true, drive_url: contract.drive_url, already_uploaded: true });
+    }
+
+    // Upload to Google Drive
+    let driveUrl = null;
+    try {
+      const uploadBase64 = pdf_base64.replace(/^data:[^;]+;base64,/, '');
+      if (driveRouter.uploadDual) {
+        const prdShort = contract.prd_short || contract.production_id;
+        const projectLabel = contract.project_name || prdShort;
+        const year = new Date().getFullYear();
+        const uploadResult = await driveRouter.uploadDual({
+          fileName: `Contract - ${contract.provider_name || 'Signed'}.pdf`,
+          fileContent: uploadBase64,
+          mimeType: 'application/pdf',
+          subfolder: `${year}/${prdShort} ${projectLabel}`,
+          category: 'contracts',
+        });
+        driveUrl = uploadResult.drive?.viewLink || null;
+        if (driveUrl) {
+          await db.query('UPDATE contracts SET drive_url = $1 WHERE id = $2', [driveUrl, id]);
+        }
+        console.log('Signed PDF uploaded to Drive:', driveUrl || 'skipped');
+      }
+    } catch (uploadErr) {
+      console.error('PDF upload failed:', uploadErr.message);
+    }
+
+    // Send Slack notification — completed
+    const prdShort = contract.prd_short || contract.production_id;
+    const projectLabel = contract.project_name || prdShort;
+    const feeDisplay = contract.fee_amount ? `${Number(contract.fee_amount).toLocaleString()} ${contract.currency || 'USD'}` : '';
+
+    const slackMsg = `✅ Contract Completed\nSupplier: ${contract.provider_name} | Production: ${projectLabel}${feeDisplay ? ' | Amount: ' + feeDisplay : ''}${driveUrl ? '\n📄 Signed PDF: ' + driveUrl : ''}`;
+    notifySlack(slackMsg, driveUrl || `${APP_BASE}/production/${prdShort}`);
+
+    // Send completion email
+    const events = contract.events ? JSON.parse(contract.events) : [];
+    const formatDate = (d) => d ? new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'N/A';
+    const historyHtml = events.map(evt => {
+      let label = evt.type;
+      if (evt.type === 'created') label = 'Contract Created';
+      if (evt.type === 'sent') label = 'Sent for Signature';
+      if (evt.type === 'signed') label = `Signed by ${evt.name || evt.role}`;
+      if (evt.type === 'completed') label = 'All Parties Signed — Completed';
+      return `<tr><td style="padding:6px 0;color:#666;font-size:13px;">${label}</td><td style="padding:6px 0;font-size:13px;">${formatDate(evt.at)}</td></tr>`;
+    }).join('');
+
+    const subject = `Contract Signed & Completed: ${projectLabel} — ${contract.provider_name}`;
+    const body = `
+      <div style="font-family:Arial,sans-serif;max-width:600px;">
+        <h2 style="color:#2e7d32;">✅ Contract Fully Signed</h2>
+        <p>The contract for <strong>${projectLabel}</strong> with <strong>${contract.provider_name}</strong> has been signed by all parties.</p>
+        ${driveUrl ? `<p><a href="${driveUrl}" style="color:#1a73e8;text-decoration:none;font-weight:bold;">📄 View Signed PDF in Google Drive</a></p>` : ''}
+        <h3 style="color:#333;font-size:14px;margin-top:24px;">Document History</h3>
+        <table style="width:100%;border-collapse:collapse;margin:16px 0;">${historyHtml}</table>
+        <hr style="border:none;border-top:1px solid #eee;margin:24px 0;">
+        <p style="color:#aaa;font-size:11px;">Sent via CP Panel — Particle Aesthetic Science Ltd.</p>
+      </div>`;
+
+    sendEmail({ to: contract.provider_email, subject, htmlBody: body, skipDefaultCc: false }).catch(() => {});
+
+    res.json({ success: true, drive_url: driveUrl });
+  } catch (err) {
+    console.error('POST /:id/upload-signed-pdf error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -578,8 +533,10 @@ router.post('/:production_id/generate', async (req, res) => {
   const {
     provider_name, provider_email, hocp_name, hocp_email,
     exhibit_a, exhibit_b, fee_amount, payment_terms,
-    sandbox, currency, contract_type, effective_date,
+    currency, contract_type, effective_date,
+    require_hocp_signature,
   } = req.body;
+  const hocpRequired = require_hocp_signature !== false; // default true
   const prodId = req.params.production_id;
 
   try {
@@ -615,11 +572,11 @@ router.post('/:production_id/generate', async (req, res) => {
       const { rows } = await db.query(
         `INSERT INTO contracts (production_id, provider_name, provider_email, status, events,
                                 exhibit_a, exhibit_b, fee_amount, payment_terms,
-                                currency, contract_type, effective_date)
-         VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
+                                currency, contract_type, effective_date, require_hocp_signature)
+         VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
         [prodId, provider_name, provider_email, JSON.stringify([{ type: 'created', at: now }]),
          exhibit_a || null, exhibit_b || null, fee_amount || null, payment_terms || null,
-         currency || 'USD', contract_type || 'crew', effective_date || null]
+         currency || 'USD', contract_type || 'crew', effective_date || null, hocpRequired]
       );
       contract = rows[0];
     }
@@ -659,34 +616,105 @@ router.post('/:production_id/generate', async (req, res) => {
       if (prodRows[0]) projectName = prodRows[0].project_name;
     } catch (_) {}
 
-    // Slack notification — contract generated/sent
-    const slackPrefix = req.body.sandbox ? '[TEST] ' : '';
     const feeLabel = fee_amount ? `${Number(fee_amount).toLocaleString()} ${currency || 'USD'}` : 'N/A';
-    notifySlack(`${slackPrefix}Contract sent to ${provider_name} for ${projectName}\nAmount: ${feeLabel}\nRef: ${prodId}`, `${APP_BASE}/production/${prdShort}`, { sandbox: !!req.body.sandbox });
+    const contractIdForTimer = contract.id;
 
-    // Auto-send email to provider via Gmail API (fire-and-forget)
-    sendEmail({
-      to: provider_email,
-      skipDefaultCc: !!sandbox,
-      subject: `${sandbox ? '[TEST] ' : ''}Services Agreement - ${projectName}`,
-      htmlBody: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px;">
-          ${sandbox ? '<div style="background:#fef3c7;border:2px solid #f59e0b;padding:10px 16px;border-radius:8px;margin-bottom:16px;font-weight:bold;color:#92400e;">[TEST] Sandbox Mode</div>' : ''}
-          <h2 style="color: #030b2e;">Contract Ready for Signature</h2>
-          <p>Hi ${provider_name},</p>
-          <p>A contract has been prepared for <strong>${projectName}</strong>.</p>
-          <p>Please review and sign the contract by clicking the link below:</p>
-          <p style="margin: 24px 0;">
-            <a href="${providerSignUrl}" style="background: #0808f8; color: white; padding: 12px 28px; border-radius: 8px; text-decoration: none; font-weight: bold;">
-              Review & Sign Contract
-            </a>
-          </p>
-          <p style="color: #888; font-size: 13px;">If the button doesn't work, copy this link: ${providerSignUrl}</p>
-          <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
-          <p style="color: #aaa; font-size: 11px;">Sent via CP Panel — Particle Aesthetic Science Ltd.</p>
-        </div>
-      `,
-    }).catch(() => {}); // Non-blocking
+    // Helper: build supplier email HTML
+    const buildSupplierEmailHtml = (signUrl) => `
+      <div style="font-family: Arial, sans-serif; max-width: 600px;">
+        <h2 style="color: #030b2e;">Contract Ready for Signature</h2>
+        <p>Hi ${provider_name},</p>
+        <p>A contract has been prepared for <strong>${projectName}</strong>.</p>
+        <p>Please review and sign the contract by clicking the link below:</p>
+        <p style="margin: 24px 0;">
+          <a href="${signUrl}" style="background: #0808f8; color: white; padding: 12px 28px; border-radius: 8px; text-decoration: none; font-weight: bold;">
+            Review & Sign Contract
+          </a>
+        </p>
+        <p style="color: #888; font-size: 13px;">If the button doesn't work, copy this link: ${signUrl}</p>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
+        <p style="color: #aaa; font-size: 11px;">Sent via CP Panel — Particle Aesthetic Science Ltd.</p>
+      </div>`;
+
+    if (hocpRequired) {
+      // ── FLOW A: HOCP Signature Required ──
+      // Set status to awaiting_hocp
+      await db.query(`UPDATE contracts SET status = 'awaiting_hocp', require_hocp_signature = true WHERE id = $1`, [contract.id]);
+      contract.status = 'awaiting_hocp';
+
+      // Slack DM to Tomer: requesting signature
+      slackDM(`🖊️ Please sign: Contract for ${provider_name}\nProduction: ${projectName} | Amount: ${feeLabel}\n→ Sign here: ${hocpSignUrl}`);
+
+      // Slack channel: contract sent to HOCP
+      notifySlack(
+        `🖊️ Contract sent to HOCP to sign\nSupplier: ${provider_name} | Production: ${projectName} | Amount: ${feeLabel}`,
+        `${APP_BASE}/production/${prdShort}`
+      );
+
+      // Email to Tomer with HOCP signing link
+      sendEmail({
+        to: 'tomer@particleformen.com',
+        skipDefaultCc: true,
+        subject: `🖊️ Sign Contract: ${provider_name} — ${projectName}`,
+        htmlBody: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px;">
+            <h2 style="color: #030b2e;">Contract Needs Your Signature</h2>
+            <p>A contract for <strong>${provider_name}</strong> (<strong>${projectName}</strong>) is waiting for your signature.</p>
+            <p><strong>Amount:</strong> ${feeLabel}</p>
+            <p style="margin: 24px 0;">
+              <a href="${hocpSignUrl}" style="background: #030b2e; color: white; padding: 12px 28px; border-radius: 8px; text-decoration: none; font-weight: bold;">
+                Review & Sign Contract
+              </a>
+            </p>
+            <p style="color: #888; font-size: 13px;">After you sign, the contract will be automatically sent to ${provider_name}.</p>
+          </div>`,
+      }).catch(() => {});
+
+      // Do NOT send to supplier yet — that happens after HOCP signs (in POST /sign/:id/:token)
+    } else {
+      // ── FLOW B: Auto-Sign (no HOCP canvas) ──
+      // Set status to sent immediately
+      await db.query(`UPDATE contracts SET status = 'sent', sent_at = $1, require_hocp_signature = false WHERE id = $2`, [now, contract.id]);
+      contract.status = 'sent';
+
+      // Slack: contract sent
+      notifySlack(
+        `📄 Contract Sent\nSupplier: ${provider_name}\nProduction: ${projectName} | Amount: ${feeLabel}`,
+        `${APP_BASE}/production/${prdShort}`
+      );
+
+      // Send email to supplier immediately
+      sendEmail({
+        to: provider_email,
+        skipDefaultCc: false,
+        subject: `Services Agreement - ${projectName}`,
+        htmlBody: buildSupplierEmailHtml(providerSignUrl),
+      }).catch(() => {});
+
+      // Auto-sign HOCP 10 minutes from now using static signature image
+      setTimeout(async () => {
+        try {
+          const sigPng = fs.readFileSync(path.join(__dirname, '../assets/tomer-signature.png'));
+          const sigBase64 = 'data:image/png;base64,' + sigPng.toString('base64');
+          const { rowCount } = await db.query(
+            `UPDATE contract_signatures
+             SET signed_at = NOW(), signature_data = $1, signer_name = 'Tomer Wilf Lezmy',
+                 signer_id_number = 'Head of Creative Production'
+             WHERE contract_id = $2 AND signer_role = 'hocp' AND signed_at IS NULL`,
+            [sigBase64, contractIdForTimer]
+          );
+          if (rowCount > 0) {
+            const { rows: cRows } = await db.query('SELECT events FROM contracts WHERE id = $1', [contractIdForTimer]);
+            const evts = cRows[0]?.events ? (typeof cRows[0].events === 'string' ? JSON.parse(cRows[0].events) : cRows[0].events) : [];
+            evts.push({ type: 'signed', role: 'hocp', name: 'Tomer Wilf Lezmy', title: 'Head of Creative Production', at: new Date().toISOString() });
+            await db.query('UPDATE contracts SET events = $1 WHERE id = $2', [JSON.stringify(evts), contractIdForTimer]);
+            console.log(`[TIMER] HOCP auto-signed for contract ${contractIdForTimer}`);
+          }
+        } catch (e) {
+          console.error('[TIMER] HOCP auto-sign failed:', e.message);
+        }
+      }, 10 * 60 * 1000); // 10 minutes
+    }
 
     res.json({
       contract,
@@ -694,7 +722,8 @@ router.post('/:production_id/generate', async (req, res) => {
         provider: { url: providerSignUrl, name: provider_name, email: provider_email },
         hocp:     { url: hocpSignUrl,     name: hocp_name || 'Tomer Wilf Lezmy', email: hocp_email || 'tomer@particleformen.com' },
       },
-      emailSent: true,
+      require_hocp_signature: hocpRequired,
+      emailSent: !hocpRequired, // supplier email only sent if auto-sign mode
     });
   } catch (err) {
     console.error('POST /contracts/generate error:', err);
@@ -705,8 +734,8 @@ router.post('/:production_id/generate', async (req, res) => {
 // POST /api/contracts/notify-slack — send a Slack notification from the frontend
 router.post('/notify-slack', async (req, res) => {
   try {
-    const { message, sandbox, link } = req.body;
-    await notifySlack(message || 'Contract notification', link, { sandbox: !!sandbox });
+    const { message, link } = req.body;
+    await notifySlack(message || 'Contract notification', link);
     res.json({ ok: true });
   } catch (err) {
     console.warn('POST /contracts/notify-slack error:', err.message);
@@ -739,6 +768,18 @@ router.get('/:production_id/signatures', async (req, res) => {
     res.json({ contract: contractRows[0], signatures });
   } catch (err) {
     console.error('GET /contracts/signatures error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// DELETE /api/contracts/:production_id
+router.delete('/:production_id', async (req, res) => {
+  try {
+    await db.query('DELETE FROM contract_signatures WHERE contract_id = $1', [req.params.production_id]);
+    const { rows } = await db.query('DELETE FROM contracts WHERE production_id = $1 RETURNING *', [req.params.production_id]);
+    res.json({ deleted: rows[0] || null });
+  } catch (err) {
+    console.error('DELETE contract error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });

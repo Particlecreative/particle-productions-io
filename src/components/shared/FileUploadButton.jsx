@@ -150,20 +150,9 @@ export default function FileUploadButton({
                 <DriveIcon size={isSm ? 12 : 14} />
               </a>
             )}
-            {result?.dropbox?.link && (
+            {result?.drive?.downloadLink && (
               <a
-                href={result.dropbox.link}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-white border border-gray-200 hover:border-blue-300 hover:shadow-sm transition-all"
-                title="Open in Dropbox"
-              >
-                <DropboxIcon size={isSm ? 12 : 14} />
-              </a>
-            )}
-            {(result?.drive?.downloadLink || result?.dropbox?.link) && (
-              <a
-                href={result?.drive?.downloadLink || result?.dropbox?.link}
+                href={result.drive.downloadLink}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-white border border-gray-200 hover:border-gray-400 hover:shadow-sm transition-all text-gray-500"
@@ -223,14 +212,14 @@ export function getDriveThumbnail(url, size = 200) {
  * Detect if a URL is a Google Drive or Dropbox link and return
  * structured props for CloudLinks.
  */
-export function detectCloudUrl(url) {
-  if (!url) return {};
-  const isDrive = url.includes('drive.google.com') || url.includes('docs.google.com');
-  const isDropbox = url.includes('dropbox.com');
+export function detectCloudUrl(url, explicitDriveUrl, explicitDropboxUrl) {
+  if (!url && !explicitDriveUrl && !explicitDropboxUrl) return {};
+  const isDrive = url?.includes('drive.google.com') || url?.includes('docs.google.com');
+  const isDropbox = url?.includes('dropbox.com');
   return {
-    driveUrl: isDrive ? url : null,
-    dropboxUrl: isDropbox ? url : null,
-    downloadUrl: url,
+    driveUrl: explicitDriveUrl || (isDrive ? url : null),
+    dropboxUrl: explicitDropboxUrl || (isDropbox ? url : null),
+    downloadUrl: url || explicitDriveUrl || explicitDropboxUrl,
   };
 }
 
@@ -239,20 +228,14 @@ export function detectCloudUrl(url) {
  * Can be used standalone wherever cloud file links need to be shown.
  */
 export function CloudLinks({ driveUrl, dropboxUrl, downloadUrl, size = 'sm' }) {
-  if (!driveUrl && !dropboxUrl && !downloadUrl) return null;
+  if (!driveUrl && !downloadUrl) return null;
   const iconSize = size === 'sm' ? 14 : 16;
   return (
     <span className="inline-flex items-center gap-1">
       {driveUrl && (
         <a href={driveUrl} target="_blank" rel="noopener noreferrer"
-           className="inline-flex items-center p-1 rounded hover:bg-gray-100 transition-colors" title="Google Drive">
+           className="inline-flex items-center p-1 rounded hover:bg-gray-100 transition-colors" title="Open in Google Drive">
           <DriveIcon size={iconSize} />
-        </a>
-      )}
-      {dropboxUrl && (
-        <a href={dropboxUrl} target="_blank" rel="noopener noreferrer"
-           className="inline-flex items-center p-1 rounded hover:bg-gray-100 transition-colors" title="Dropbox">
-          <DropboxIcon size={iconSize} />
         </a>
       )}
       {(downloadUrl || driveUrl) && (

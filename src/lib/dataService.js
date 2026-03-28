@@ -375,6 +375,15 @@ export function getContracts() {
   return apiGet('/contracts');
 }
 
+export function deleteContract(productionId) {
+  if (IS_DEV) {
+    const all = read('cp_contracts', []).filter(c => c.production_id !== productionId);
+    write('cp_contracts', all);
+    return { deleted: true };
+  }
+  return apiDelete(`/contracts/${encodeURIComponent(productionId)}`);
+}
+
 export function generateContractSignatures(productionId, data) {
   if (IS_DEV) {
     // In dev mode, simulate generating signing links

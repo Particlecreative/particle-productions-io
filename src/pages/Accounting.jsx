@@ -639,7 +639,7 @@ function AccountingRow({ item, fmt, isEditor, showProduction, productionName, on
         {item.invoice_url ? (
           <div className="flex items-center gap-1">
             <span className="text-xs text-green-600 font-semibold">✓</span>
-            <CloudLinks {...detectCloudUrl(item.invoice_url)} />
+            <CloudLinks {...detectCloudUrl(item.invoice_url, item.drive_url, item.dropbox_url)} />
           </div>
         ) : (
           <span className="text-gray-300 text-xs">—</span>
@@ -822,7 +822,7 @@ function AccountingRow({ item, fmt, isEditor, showProduction, productionName, on
         ) : item.payment_screenshot_url ? (
           <div className="flex items-center gap-1">
             <span className="text-xs text-green-600 font-semibold">✓</span>
-            <CloudLinks {...detectCloudUrl(item.payment_screenshot_url)} />
+            <CloudLinks {...detectCloudUrl(item.payment_screenshot_url || item.payment_proof_url, item.payment_proof_drive_url, item.payment_proof_dropbox_url)} />
             {isEditor && (
               <button onClick={() => setEditingScreenshot(true)} className="text-gray-300 hover:text-gray-500 ml-1 text-xs">✏</button>
             )}

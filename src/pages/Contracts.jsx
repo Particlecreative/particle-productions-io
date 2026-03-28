@@ -14,20 +14,23 @@ const STATUS_OPTIONS = ['All', 'pending', 'sent', 'signed'];
 
 const CONTRACT_STATUS_STYLES = {
   gray:   { border: 'border-gray-400',   ring: 'ring-gray-400',   text: 'text-gray-700'   },
+  amber:  { border: 'border-amber-400',  ring: 'ring-amber-400',  text: 'text-amber-700'  },
   orange: { border: 'border-orange-400', ring: 'ring-orange-400', text: 'text-orange-700' },
   green:  { border: 'border-green-400',  ring: 'ring-green-400',  text: 'text-green-700'  },
 };
 
 // Left-border color for each status
 const STATUS_ROW_BORDER = {
-  pending: '#9ca3af', // gray-400
-  sent:    '#fb923c', // orange-400
-  signed:  '#4ade80', // green-400
+  pending:        '#9ca3af', // gray-400
+  awaiting_hocp:  '#fbbf24', // amber-400
+  sent:           '#fb923c', // orange-400
+  signed:         '#4ade80', // green-400
 };
 
 function statusBadge(status) {
   if (status === 'signed') return <span className="badge text-xs bg-green-50 text-green-700 border border-green-200">✓ Signed</span>;
   if (status === 'sent')   return <span className="badge text-xs bg-orange-50 text-orange-700 border border-orange-200">⏳ Sent</span>;
+  if (status === 'awaiting_hocp') return <span className="badge text-xs bg-amber-50 text-amber-700 border border-amber-200">🖊️ HOCP</span>;
   return <span className="badge text-xs bg-gray-100 text-gray-500 border border-gray-200">Pending</span>;
 }
 
@@ -150,9 +153,10 @@ export default function Contracts() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-4 gap-4 mb-6">
         {[
           { label: 'Pending', status: 'pending', color: 'gray' },
+          { label: 'HOCP',    status: 'awaiting_hocp', color: 'amber' },
           { label: 'Sent',    status: 'sent',    color: 'orange' },
           { label: 'Signed',  status: 'signed',  color: 'green' },
         ].map(({ label, status, color }) => {
@@ -296,7 +300,7 @@ export default function Contracts() {
                           >
                             <ExternalLink size={10} /> View
                           </a>
-                          <CloudLinks {...detectCloudUrl(c.pdf_url)} />
+                          <CloudLinks {...detectCloudUrl(c.pdf_url, c.drive_url, c.dropbox_url)} />
                         </div>
                       ) : (
                         <span className="text-gray-300 text-xs">—</span>

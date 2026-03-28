@@ -99,6 +99,26 @@ router.post('/setup', requireAdmin, async (req, res) => {
   }
 });
 
+// ── POST /api/gcal/reset — Delete old calendar + clear ID (so /setup creates fresh) ──
+router.post('/reset', requireAdmin, async (req, res) => {
+  try {
+    const calendarId = await getCalendarId();
+    if (calendarId) {
+      try {
+        const calendar = await getCalendarClient();
+        await calendar.calendars.delete({ calendarId });
+      } catch (e) {
+        console.log('Calendar delete failed (may already be gone):', e.message);
+      }
+      await db.query("UPDATE settings SET gcal_calendar_id = NULL WHERE brand_id = 'particle'");
+    }
+    res.json({ success: true, message: 'Calendar reset. Call /setup to create a new one.' });
+  } catch (err) {
+    console.error('GCal reset error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── POST /api/gcal/sync-to-google — Push local events → Google Calendar ─────
 router.post('/sync-to-google', async (req, res) => {
   try {

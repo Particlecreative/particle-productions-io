@@ -671,7 +671,7 @@ function InvoiceRow({ item, productionName, fmt, isEditor, showProduction, recei
             </span>
           )}
           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-            <CloudLinks {...detectCloudUrl(invUrl)} />
+            <CloudLinks {...detectCloudUrl(invUrl, item.drive_url, item.dropbox_url)} />
             {isEditor && (
               <button
                 onClick={() => { setUrlVal(invUrl); setEditingUrl(true); }}

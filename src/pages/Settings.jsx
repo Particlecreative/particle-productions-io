@@ -366,11 +366,33 @@ function GCalSection({ driveConnected }) {
           {status.lastSync && (
             <div className="text-xs text-gray-400">Last sync: {new Date(status.lastSync).toLocaleString()}</div>
           )}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <button onClick={handleSync} className="btn-secondary text-xs px-4 py-2" disabled={syncing}>
               {syncing ? '🔄 Syncing...' : '🔄 Sync Now'}
             </button>
-            <span className="text-xs text-gray-400">Auto-syncs when Gantt events change. Google Calendar changes sync via webhook.</span>
+            <button
+              onClick={async () => {
+                if (!confirm('This will delete the current calendar and create a fresh one. All existing Google Calendar events for this project will be removed. Continue?')) return;
+                try {
+                  const h = { Authorization: `Bearer ${localStorage.getItem('cp_auth_token')}`, 'Content-Type': 'application/json' };
+                  // Delete old calendar
+                  await fetch('/api/gcal/reset', { method: 'POST', headers: h });
+                  // Create new one
+                  const r = await fetch('/api/gcal/setup', { method: 'POST', headers: h });
+                  const d = await r.json();
+                  if (d.calendarId) {
+                    setStatus({ connected: true, calendarId: d.calendarId });
+                    alert('New calendar created! Old one deleted.');
+                  } else {
+                    alert(d.error || 'Failed to create new calendar');
+                  }
+                } catch (e) { alert('Error: ' + e.message); }
+              }}
+              className="text-xs text-red-400 hover:text-red-600 underline"
+            >
+              Reset Calendar
+            </button>
+            <span className="text-xs text-gray-400">Auto-syncs when Gantt events change.</span>
           </div>
         </div>
       ) : (
@@ -378,6 +400,130 @@ function GCalSection({ driveConnected }) {
           Setup Calendar
         </button>
       )}
+    </div>
+  );
+}
+
+function DataBackupSection({ dropboxConnected, dropboxLoading, setDropboxLoading }) {
+  const [backupStatus, setBackupStatus] = useState(null);
+  const [running, setRunning] = useState(false);
+
+  useEffect(() => {
+    const token = localStorage.getItem('cp_auth_token');
+    fetch('/api/drive/backup-status', { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json()).then(setBackupStatus).catch(() => {});
+  }, []);
+
+  async function runBackup() {
+    setRunning(true);
+    try {
+      const token = localStorage.getItem('cp_auth_token');
+      const r = await fetch('/api/drive/backup-to-dropbox', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await r.json();
+      if (r.ok) {
+        setBackupStatus({ lastRun: new Date().toISOString(), stats: data });
+        alert(`Backup complete: ${data.synced} files synced, ${data.skipped} skipped, ${data.errors} errors`);
+      } else {
+        alert('Backup failed: ' + (data.error || 'Unknown error'));
+      }
+    } catch (e) {
+      alert('Backup failed: ' + e.message);
+    }
+    setRunning(false);
+  }
+
+  const lastRun = backupStatus?.lastRun;
+  const stats = backupStatus?.stats;
+
+  return (
+    <div className="space-y-3">
+      {/* Status */}
+      {lastRun ? (
+        <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-xs">
+          <span className="text-green-500 font-bold">✓</span>
+          <span className="text-green-700 font-medium">Last backup: {new Date(lastRun).toLocaleString('en-IL', { timeZone: 'Asia/Jerusalem' })}</span>
+          {stats && (
+            <span className="text-gray-400 ml-2">
+              {stats.synced} synced, {stats.skipped} skipped{stats.errors > 0 ? `, ${stats.errors} errors` : ''}
+            </span>
+          )}
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs">
+          <span className="text-amber-500 font-bold">!</span>
+          <span className="text-amber-700 font-medium">Never backed up</span>
+        </div>
+      )}
+
+      {/* Actions */}
+      <div className="flex items-center gap-3">
+        {dropboxConnected ? (
+          <>
+            <button
+              onClick={runBackup}
+              disabled={running}
+              className="btn-cta flex items-center gap-2 text-sm"
+              style={{ opacity: running ? 0.6 : 1 }}
+            >
+              {running ? (
+                <>
+                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                  Backing up...
+                </>
+              ) : (
+                <>💾 Run Backup Now</>
+              )}
+            </button>
+            <a
+              href="https://www.dropbox.com/scl/fo/6aq8cgu4rq1hdbkylajlq/AFdjDC0mCrjDrIRJ1UvKGn8?rlkey=5xwz4x18jfgpjwarddui13gis&dl=0"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-blue-600 hover:underline"
+            >
+              Open Dropbox Folder
+            </a>
+            <button
+              onClick={async () => {
+                setDropboxLoading(true);
+                try {
+                  const token = localStorage.getItem('cp_auth_token');
+                  const r = await fetch('/api/drive/dropbox-auth', { headers: { Authorization: `Bearer ${token}` } });
+                  const data = await r.json();
+                  if (data?.url) { window.location.href = data.url; return; }
+                } catch {}
+                setDropboxLoading(false);
+              }}
+              className="text-xs text-gray-400 hover:text-gray-600 underline"
+            >
+              Reauthorize Dropbox
+            </button>
+          </>
+        ) : (
+          <button
+            onClick={async () => {
+              setDropboxLoading(true);
+              try {
+                const token = localStorage.getItem('cp_auth_token');
+                const r = await fetch('/api/drive/dropbox-auth', { headers: { Authorization: `Bearer ${token}` } });
+                const data = await r.json();
+                if (data?.url) window.location.href = data.url;
+              } catch {}
+              setDropboxLoading(false);
+            }}
+            disabled={dropboxLoading}
+            className="btn-cta flex items-center gap-2 text-sm"
+          >
+            {dropboxLoading ? 'Connecting...' : 'Connect Dropbox for Backup'}
+          </button>
+        )}
+      </div>
+
+      <p className="text-[10px] text-gray-300">
+        Automatic backup runs daily at 9:00 PM Israel time. Only new files are synced.
+      </p>
     </div>
   );
 }
@@ -1052,43 +1198,16 @@ export default function Settings() {
             </div>
           </section>
 
-          {/* Dropbox */}
+          {/* Data Backup (Dropbox) */}
           <section className="brand-card">
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-xl">📦</span>
-              <h2 className="font-bold" style={{ color: 'var(--brand-primary)' }}>Dropbox</h2>
+              <span className="text-xl">💾</span>
+              <h2 className="font-bold" style={{ color: 'var(--brand-primary)' }}>Data Backup</h2>
             </div>
             <p className="text-xs text-gray-400 mb-4">
-              Connect Dropbox to backup uploaded files (invoices, contracts, receipts).
+              Nightly backup of all Google Drive files to Dropbox at 9:00 PM Israel time.
             </p>
-            <div className="flex items-center gap-4">
-              {dropboxConnected ? (
-                <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-xs text-green-700 font-medium">
-                  <span className="text-green-500">✓</span> Connected
-                  <span className="text-gray-400 ml-2">— files will auto-backup</span>
-                </div>
-              ) : (
-                <button
-                  onClick={async () => {
-                    setDropboxLoading(true);
-                    try {
-                      const token = localStorage.getItem('cp_auth_token');
-                      const r = await fetch('/api/drive/dropbox-auth', { headers: { Authorization: `Bearer ${token}` } });
-                      const data = await r.json();
-                      if (data?.url) window.location.href = data.url;
-                    } catch (e) {
-                      alert('Failed to start Dropbox auth.');
-                    }
-                    setDropboxLoading(false);
-                  }}
-                  disabled={dropboxLoading}
-                  className="btn-cta flex items-center gap-2 text-sm"
-                >
-                  <Link2 size={13} />
-                  {dropboxLoading ? 'Connecting...' : 'Connect Dropbox'}
-                </button>
-              )}
-            </div>
+            <DataBackupSection dropboxConnected={dropboxConnected} dropboxLoading={dropboxLoading} setDropboxLoading={setDropboxLoading} />
           </section>
 
           {/* Slack Webhook */}

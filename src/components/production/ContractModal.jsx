@@ -16,7 +16,8 @@ import clsx from 'clsx';
 import jsPDF from 'jspdf';
 
 // ── Constants ────────────────────────────────────────────────────
-const CAST_TYPES = ['Cast', 'Actor', 'Model', 'Talent', 'Actress'];
+// Only "Crew" type uses Crew template. Everything else (Cast, Actor, Model, Talent, Equipment, etc.) uses Cast template.
+const CREW_TYPES = ['Crew'];
 
 const PARTICLE_COMPANY = {
   name: 'Particle Aesthetic Science Ltd.',
@@ -32,13 +33,16 @@ const STEPS = [
 ];
 
 // ── Step Indicator ───────────────────────────────────────────────
-function StepIndicator({ currentStep, onStepClick, maxReachedStep }) {
+function StepIndicator({ currentStep, onStepClick, maxReachedStep, requireHocpSignature }) {
   return (
     <div className="flex items-center gap-0 mb-5">
       {STEPS.map((step, i) => {
         const isActive = step.id === currentStep;
         const isDone = step.id < currentStep;
         const isClickable = step.id <= maxReachedStep;
+        const label = step.id === 4
+          ? (requireHocpSignature ? 'Sign & Send' : 'Send for Signature')
+          : step.label;
         return (
           <div key={step.id} className="flex items-center flex-1 last:flex-none">
             <button
@@ -61,7 +65,7 @@ function StepIndicator({ currentStep, onStepClick, maxReachedStep }) {
               )}>
                 {isDone ? <CheckCircle size={10} /> : step.id}
               </span>
-              <span className="hidden sm:inline">{step.label}</span>
+              <span className="hidden sm:inline">{label}</span>
             </button>
             {i < STEPS.length - 1 && (
               <div className={clsx('flex-1 h-0.5 mx-1', isDone ? 'bg-green-300' : 'bg-gray-200')} />
@@ -507,14 +511,11 @@ export default function ContractModal({ production, lineItem, onClose }) {
 
   const existing = getContract(contractKey);
 
-  // ── Sandbox mode (Tomer only) ──
-  const isTomer = user?.email?.toLowerCase() === 'tomer@particleformen.com';
-  const [sandboxMode, setSandboxMode] = useState(false);
-  const [sandboxEmail, setSandboxEmail] = useState('tomerlez1994@gmail.com');
+  // ── HOCP Signature Required toggle ──
+  const [requireHocpSignature, setRequireHocpSignature] = useState(
+    existing?.require_hocp_signature !== false // default true
+  );
 
-  // In sandbox: override email to sandbox email, skip CC, Slack → Tomer's DM only
-  const effectiveProviderName = providerName;
-  const effectiveProviderEmail = sandboxMode ? (sandboxEmail || 'tomerlez1994@gmail.com') : providerEmail;
 
   // ── Step navigation ──
   const [currentStep, setCurrentStep] = useState(1);
@@ -674,7 +675,7 @@ export default function ContractModal({ production, lineItem, onClose }) {
       ? new Date(effectiveDate + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
       : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
-    const isCast = CAST_TYPES.includes(lineItem?.type);
+    const isCast = !CREW_TYPES.includes(lineItem?.type);
 
     const providerIdClause = isCast
       ? `${providerName || '[Please complete]'}, ID/Passport number ${providerIdNumber || '[Please complete]'}, with a principal place of business at ${providerAddress || '[Please complete]'} ("Service Provider"),`
@@ -741,7 +742,7 @@ export default function ContractModal({ production, lineItem, onClose }) {
       hocp_name: user?.name || 'Tomer Wilf Lezmy',
       logoBase64,
       documentHistory: buildDocumentHistory(),
-      isCastType: CAST_TYPES.includes(lineItem?.type),
+      isCastType: !CREW_TYPES.includes(lineItem?.type),
     });
 
     const dataUrl = doc.output('datauristring');
@@ -772,28 +773,28 @@ export default function ContractModal({ production, lineItem, onClose }) {
         effective_date: effectiveDate,
         contract_pdf_base64: pdfDataUrl || '',
         status: 'pending',
-        contract_type: CAST_TYPES.includes(lineItem?.type) ? 'cast' : 'crew',
+        contract_type: !CREW_TYPES.includes(lineItem?.type) ? 'cast' : 'crew',
       });
 
       const result = await generateContractSignatures(contractKey, {
         provider_name: providerName,
-        provider_email: sandboxMode ? (sandboxEmail || 'tomerlez1994@gmail.com') : providerEmail,
+        provider_email: providerEmail,
         hocp_name: user?.name || 'Tomer Wilf Lezmy',
         hocp_email: user?.email || 'tomer@particleformen.com',
-        sandbox: sandboxMode,
         exhibit_a: exhibitA,
         exhibit_b: exhibitB,
         fee_amount: feeAmount,
         payment_terms: paymentTerms,
         currency,
-        contract_type: CAST_TYPES.includes(lineItem?.type) ? 'cast' : 'crew',
+        contract_type: !CREW_TYPES.includes(lineItem?.type) ? 'cast' : 'crew',
         effective_date: effectiveDate,
+        require_hocp_signature: requireHocpSignature,
       });
 
       if (result?.signing_links) {
         setSigningLinks(result.signing_links);
-        setStatus('pending');
-        const newEvents = [...events, { type: 'generated', at: new Date().toISOString() }];
+        setStatus(requireHocpSignature ? 'awaiting_hocp' : 'sent');
+        const newEvents = [...events, { type: requireHocpSignature ? 'awaiting_hocp' : 'sent', at: new Date().toISOString() }];
         setEvents(newEvents);
       }
     } catch (e) {
@@ -811,9 +812,8 @@ export default function ContractModal({ production, lineItem, onClose }) {
     const token = localStorage.getItem('cp_auth_token');
     const API = import.meta.env.VITE_API_URL || '';
 
-    const toEmail = sandboxMode ? (sandboxEmail || 'tomerlez1994@gmail.com') : providerEmail;
+    const toEmail = providerEmail;
     const toName = providerName || 'Service Provider';
-    const subjectPrefix = sandboxMode ? '[TEST] ' : '';
 
     try {
       const res = await fetch(`${API}/api/gmail/send`, {
@@ -821,11 +821,10 @@ export default function ContractModal({ production, lineItem, onClose }) {
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           to: toEmail,
-          skipDefaultCc: sandboxMode,
-          subject: `${subjectPrefix}Services Agreement - ${production.project_name}`,
+          skipDefaultCc: false,
+          subject: `Services Agreement - ${production.project_name}`,
           htmlBody: `
             <div style="font-family: Arial, sans-serif; max-width: 600px; color: #333;">
-              ${sandboxMode ? '<div style="background:#fef3c7;border:2px solid #f59e0b;padding:10px 16px;border-radius:8px;margin-bottom:16px;font-weight:bold;color:#92400e;">🧪 SANDBOX TEST — This is a test contract. No real signatures needed.</div>' : ''}
               <div style="border-bottom: 3px solid #030b2e; padding-bottom: 12px; margin-bottom: 20px;">
                 <h2 style="color: #030b2e; margin: 0;">Services Agreement</h2>
                 <p style="color: #666; font-size: 13px; margin: 4px 0 0;">${production.project_name}</p>
@@ -881,7 +880,6 @@ export default function ContractModal({ production, lineItem, onClose }) {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({
         message: `Contract sent via email: [${production.id}] ${production.project_name} - ${providerName}`,
-        sandbox: sandboxMode,
         link: providerLink || `${window.location.origin}/production/${production.id}`,
       }),
     }).catch(() => {});
@@ -916,7 +914,7 @@ export default function ContractModal({ production, lineItem, onClose }) {
       hocp_name: user?.name || 'Tomer Wilf Lezmy',
       logoBase64,
       documentHistory: buildDocumentHistory(),
-      isCastType: CAST_TYPES.includes(lineItem?.type),
+      isCastType: !CREW_TYPES.includes(lineItem?.type),
     });
     doc.save(`Contract_${production.project_name}_${providerName}.pdf`);
   }
@@ -951,44 +949,13 @@ export default function ContractModal({ production, lineItem, onClose }) {
           </div>
         )}
 
-        {/* Sandbox toggle — Tomer only */}
-        {isTomer && (
-          <div className="flex items-center justify-end gap-2 mb-2">
-            <button
-              type="button"
-              onClick={() => setSandboxMode(v => !v)}
-              className={clsx(
-                'inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border transition-all',
-                sandboxMode
-                  ? 'bg-amber-100 border-amber-400 text-amber-800'
-                  : 'bg-gray-50 border-gray-200 text-gray-400 hover:border-gray-300'
-              )}
-            >
-              🧪 {sandboxMode ? 'Sandbox ON — sends to you only' : 'Test Mode'}
-            </button>
-            {sandboxMode && (
-              <input
-                type="email"
-                className="text-xs border border-amber-300 rounded-full px-3 py-1.5 bg-amber-50 text-amber-800 focus:outline-none focus:ring-2 focus:ring-amber-300"
-                style={{ width: 220 }}
-                value={sandboxEmail}
-                onChange={e => setSandboxEmail(e.target.value)}
-                placeholder="Sandbox email"
-              />
-            )}
-          </div>
-        )}
-        {sandboxMode && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 mb-3 text-xs text-amber-800">
-            <strong>🧪 Sandbox Mode:</strong> Contract will be sent to <strong>{sandboxEmail || 'tomerlez1994@gmail.com'}</strong> only. No CC to Omer. Slack notification goes to your DM. You can test the full signing flow as both sides.
-          </div>
-        )}
 
         {/* Step Indicator */}
         <StepIndicator
           currentStep={currentStep}
           onStepClick={goToStep}
           maxReachedStep={maxReachedStep}
+          requireHocpSignature={requireHocpSignature}
         />
 
         {/* ═══════════════════════════════════════════════════
@@ -1240,6 +1207,35 @@ export default function ContractModal({ production, lineItem, onClose }) {
                 <Eye size={14} /> Preview Contract <ChevronRight size={14} />
               </button>
             </div>
+
+            {/* HOCP Signature Toggle */}
+            <div className="mt-5 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-bold text-amber-800 flex items-center gap-1.5">
+                    <PenTool size={13} /> Require HOCP Signature
+                  </div>
+                  <div className="text-[10px] text-amber-600 mt-0.5">
+                    {requireHocpSignature
+                      ? 'Tomer will sign on his device first, then supplier gets the link'
+                      : 'Tomer\'s signature auto-applied (static image), supplier gets link immediately'}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setRequireHocpSignature(!requireHocpSignature)}
+                  disabled={isSigned}
+                  className={clsx(
+                    'relative w-11 h-6 rounded-full transition-colors shrink-0',
+                    requireHocpSignature ? 'bg-amber-500' : 'bg-gray-300'
+                  )}
+                >
+                  <div className={clsx(
+                    'absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform',
+                    requireHocpSignature ? 'translate-x-5' : 'translate-x-0.5'
+                  )} />
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -1310,7 +1306,7 @@ export default function ContractModal({ production, lineItem, onClose }) {
                 <div className="flex items-center justify-between">
                   <div>
                     {logoBase64
-                      ? <img src={logoBase64} alt="Particle" style={{ height: 36 }} />
+                      ? <img src={logoBase64} alt="Particle" style={{ maxWidth: 250, maxHeight: 50, objectFit: 'contain' }} />
                       : <div className="text-lg font-bold tracking-wider">PARTICLE <span className="text-xs font-normal">for men</span></div>
                     }
                   </div>
@@ -1545,7 +1541,6 @@ export default function ContractModal({ production, lineItem, onClose }) {
                           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${waToken}` },
                           body: JSON.stringify({
                             message: `Contract sent via WhatsApp: [${production.id}] ${production.project_name} - ${providerName}`,
-                            sandbox: sandboxMode,
                             link: signingLinks?.provider?.url || `${window.location.origin}/production/${production.id}`,
                           }),
                         }).catch(() => {});
@@ -1732,7 +1727,6 @@ export default function ContractModal({ production, lineItem, onClose }) {
                       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${waToken2}` },
                       body: JSON.stringify({
                         message: `Contract resent via WhatsApp: [${production.id}] ${production.project_name} - ${providerName}`,
-                        sandbox: sandboxMode,
                         link: signingLinks?.provider?.url || `${window.location.origin}/production/${production.id}`,
                       }),
                     }).catch(() => {});

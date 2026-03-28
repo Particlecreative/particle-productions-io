@@ -11,11 +11,14 @@ import {
   syncProductionTotals,
   generateId,
   getContract,
+  deleteContract,
   updateProduction,
   getGlobalBudgetCustomCols,
   saveGlobalBudgetCustomCols,
   getProductionCustomCols,
   createCastMember,
+  deleteCastMember,
+  getCastMembers,
   createGanttEvent,
   getCCPurchases,
 } from '../../lib/dataService';
@@ -251,13 +254,45 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
     setEditingCell(null);
   }
 
-  async function handleDelete(id) {
+  // Cascade delete state
+  const [deleteModal, setDeleteModal] = useState(null); // { id, item }
+  const [deleteOpts, setDeleteOpts] = useState({ contract: true, cast: true, driveFiles: false });
+  const [deleting, setDeleting] = useState(false);
+
+  function handleDelete(id) {
     if (!isEditor) return;
-    if (!confirm('Delete this line item?')) return;
     const item = items.find(i => i.id === id);
-    await Promise.resolve(deleteLineItem(id));
-    addNotification('edit', `${user?.name || 'Someone'} deleted line item${item ? ` "${item.item || item.full_name}"` : ''} from ${production?.project_name || productionId}`, productionId);
-    await refresh();
+    if (!item) return;
+    // Check what related data exists
+    const contractKey = `${productionId}_li_${id}`;
+    const contract = getContract(contractKey);
+    const isCast = (item.type || '').toLowerCase().includes('cast') || (item.category || '').toLowerCase().includes('cast');
+    setDeleteOpts({ contract: !!contract, cast: isCast, driveFiles: false });
+    setDeleteModal({ id, item, contract, isCast });
+  }
+
+  async function confirmDelete() {
+    if (!deleteModal) return;
+    setDeleting(true);
+    const { id, item } = deleteModal;
+    try {
+      const params = new URLSearchParams({
+        deleteContract: deleteOpts.contract ? 'true' : 'false',
+        deleteCast: deleteOpts.cast ? 'true' : 'false',
+        deleteDriveFiles: deleteOpts.driveFiles ? 'true' : 'false',
+      });
+      const token = localStorage.getItem('cp_auth_token');
+      await fetch(`/api/line-items/${encodeURIComponent(id)}?${params}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      addNotification('edit', `${user?.name || 'Someone'} deleted "${item.item || item.full_name}" from ${production?.project_name || productionId}`, productionId);
+      await refresh();
+    } catch (e) {
+      console.error('Delete failed:', e);
+    }
+    setDeleting(false);
+    setDeleteModal(null);
   }
 
   /**
@@ -300,6 +335,100 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
 
   return (
     <div>
+      {/* Cascade Delete Confirmation Modal */}
+      {deleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => !deleting && setDeleteModal(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="bg-red-50 px-6 py-4 border-b border-red-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                  <AlertTriangle size={20} className="text-red-500" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-gray-800">Delete "{deleteModal.item.item || deleteModal.item.full_name}"?</h3>
+                  <p className="text-xs text-gray-400">This action cannot be undone</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Body — what will be deleted */}
+            <div className="px-6 py-4 space-y-3">
+              <p className="text-sm text-gray-600 font-medium">The following will be deleted:</p>
+
+              {/* Always: line item */}
+              <label className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50">
+                <input type="checkbox" checked disabled className="rounded" />
+                <CreditCard size={14} className="text-gray-400" />
+                <span className="text-sm text-gray-700">Line item & budget entry</span>
+              </label>
+
+              {/* Contract */}
+              {deleteModal.contract && (
+                <label className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors">
+                  <input type="checkbox" checked={deleteOpts.contract}
+                    onChange={e => setDeleteOpts(o => ({ ...o, contract: e.target.checked }))}
+                    className="rounded accent-red-500" />
+                  <FileSignature size={14} className="text-blue-400" />
+                  <span className="text-sm text-gray-700">Contract & signatures</span>
+                  <span className="text-[10px] text-gray-400 ml-auto">{deleteModal.contract.status}</span>
+                </label>
+              )}
+
+              {/* Cast */}
+              {deleteModal.isCast && (
+                <label className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors">
+                  <input type="checkbox" checked={deleteOpts.cast}
+                    onChange={e => setDeleteOpts(o => ({ ...o, cast: e.target.checked }))}
+                    className="rounded accent-red-500" />
+                  <User size={14} className="text-purple-400" />
+                  <span className="text-sm text-gray-700">Cast member entry & photo</span>
+                </label>
+              )}
+
+              {/* Drive files */}
+              {(deleteModal.item.invoice_url || deleteModal.item.drive_url) && (
+                <label className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors">
+                  <input type="checkbox" checked={deleteOpts.driveFiles}
+                    onChange={e => setDeleteOpts(o => ({ ...o, driveFiles: e.target.checked }))}
+                    className="rounded accent-red-500" />
+                  <svg width="14" height="14" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M6.6 66.85l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3L29 52.2H0c0 1.55.4 3.1 1.2 4.5z" fill="#0066DA"/>
+                    <path d="M43.65 25.15L29 1.2C27.65 2 26.5 3.1 25.7 4.5l-24.5 42.4c-.8 1.4-1.2 2.95-1.2 4.5H29z" fill="#00AC47"/>
+                    <path d="M58.3 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75L73.7 52.2H58.3L43.65 25.15 29 52.2z" fill="#EA4335"/>
+                  </svg>
+                  <span className="text-sm text-gray-700">Files on Google Drive</span>
+                  <span className="text-[10px] text-red-400 ml-auto">permanent</span>
+                </label>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
+              <button
+                onClick={() => setDeleteModal(null)}
+                disabled={deleting}
+                className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                disabled={deleting}
+                className="px-4 py-2 text-sm font-semibold text-white bg-red-500 rounded-lg hover:bg-red-600 transition-colors flex items-center gap-2"
+                style={{ opacity: deleting ? 0.6 : 1 }}
+              >
+                {deleting ? (
+                  <><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg> Deleting...</>
+                ) : (
+                  <><Trash2 size={14} /> Delete Selected</>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Budget cap warning */}
       {isOverCap && (
         <div className="mb-3 flex items-center gap-2 px-4 py-2.5 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
@@ -712,7 +841,16 @@ function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEd
   const diff = (parseFloat(item.planned_budget) || 0) - (parseFloat(item.actual_spent) || 0);
   const isEditing = (field) => editingCell?.itemId === item.id && editingCell?.field === field;
   const contractKey = production ? `${production.id}_li_${item.id}` : null;
-  const contract = contractKey ? getContract(contractKey) : null;
+  const [contract, setContract] = useState(null);
+  useEffect(() => {
+    if (!contractKey) return;
+    const result = getContract(contractKey);
+    if (result && typeof result.then === 'function') {
+      result.then(data => setContract(data)).catch(() => {});
+    } else {
+      setContract(result);
+    }
+  }, [contractKey]);
 
   function cell(field, children, className) {
     if (!isEditor) return <td className={className}>{children}</td>;
@@ -748,7 +886,7 @@ function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEd
             <span className="text-[10px] text-gray-400">{item.invoice_type}</span>
           )}
           <div className="flex items-center gap-2 mt-0.5" onClick={e => e.stopPropagation()}>
-            <CloudLinks {...detectCloudUrl(invUrl)} />
+            <CloudLinks {...detectCloudUrl(invUrl, item.drive_url, item.dropbox_url)} />
             {isEditor && (
               <button
                 onClick={e => { e.stopPropagation(); onInvoice(item.id, 'receive'); }}
@@ -939,15 +1077,17 @@ function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEd
                 'flex items-center gap-1 text-xs px-2 py-1 rounded border transition-all w-fit',
                 contract.status === 'signed' ? 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100' :
                 contract.status === 'sent'   ? 'bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100' :
+                contract.status === 'awaiting_hocp' ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100' :
                 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100'
               )}
             >
               <FileSignature size={11} />
               {contract.status === 'signed' ? '✓ Signed' :
-               contract.status === 'sent'   ? '⏳ Sent' : 'Pending'}
+               contract.status === 'sent'   ? '⏳ Sent' :
+               contract.status === 'awaiting_hocp' ? '🖊️ HOCP' : 'Pending'}
             </button>
-            {contract.pdf_url && contract.status === 'signed' && (
-              <CloudLinks {...detectCloudUrl(contract.pdf_url)} />
+            {contract.status === 'signed' && (contract.drive_url || contract.pdf_url) && (
+              <CloudLinks {...detectCloudUrl(contract.drive_url || contract.pdf_url, contract.drive_url, contract.dropbox_url)} />
             )}
           </div>
         ) : (

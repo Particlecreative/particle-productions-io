@@ -81,6 +81,8 @@ export default function InvoiceModal({ lineItemId, productionId, initialStep = '
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [invoiceUrl, setInvoiceUrl] = useState('');
+  const [invDriveUrl, setInvDriveUrl] = useState('');
+  const [invDropboxUrl, setInvDropboxUrl] = useState('');
   const [step, setStep] = useState(initialStep);
   const [sent, setSent] = useState(false);
   const [showPrint, setShowPrint] = useState(false);
@@ -184,6 +186,8 @@ export default function InvoiceModal({ lineItemId, productionId, initialStep = '
     await Promise.resolve(updateLineItem(lineItemId, {
       invoice_status: 'Received',
       invoice_url: invoiceUrl,
+      drive_url: invDriveUrl || '',
+      dropbox_url: invDropboxUrl || '',
       payment_due: paymentDue,
       net_days: netDays,
       invoice_type: resolvedType,
@@ -390,34 +394,11 @@ export default function InvoiceModal({ lineItemId, productionId, initialStep = '
                     onUploaded={(data) => {
                       const link = data?.drive?.viewLink || data?.dropbox?.link || '';
                       if (link) setInvoiceUrl(link);
+                      if (data?.drive?.viewLink) setInvDriveUrl(data.drive.viewLink);
+                      if (data?.dropbox?.link) setInvDropboxUrl(data.dropbox.link);
                     }}
                   />
                 </div>
-              </div>
-
-              {/* Payment Proof Upload */}
-              <div className="mt-3">
-                <label className="block text-sm font-bold text-gray-700 mb-1.5">
-                  Payment Proof <span className="text-xs font-normal text-gray-400">(optional)</span>
-                </label>
-                <FileUploadButton
-                  category="payment-proofs"
-                  subfolder={`${new Date().getFullYear()}/${productionId}${production?.project_name ? ' ' + production.project_name : ''}`}
-                  fileName={`Proof - ${item.full_name || 'Supplier'} - ${item.item || 'Item'}.pdf`}
-                  accept="application/pdf,image/*"
-                  label="Upload Payment Proof"
-                  onUploaded={(data) => {
-                    const link = data?.drive?.viewLink || data?.dropbox?.link || '';
-                    if (link) {
-                      // Store in notes for now (payment_proof_url field may not exist yet)
-                      const existingNotes = item.notes || '';
-                      const proofNote = `[Payment Proof: ${link}]`;
-                      if (!existingNotes.includes('[Payment Proof:')) {
-                        updateLineItem(lineItemId, { notes: existingNotes ? existingNotes + '\n' + proofNote : proofNote });
-                      }
-                    }
-                  }}
-                />
               </div>
 
               <div className="bg-gray-50 rounded-xl p-3 mt-3 text-xs text-gray-500">

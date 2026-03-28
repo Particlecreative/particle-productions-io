@@ -270,58 +270,8 @@ router.post('/upload-dual', verifyJWT, async (req, res) => {
     console.error('Drive upload (dual):', err.message);
   }
 
-  // 2. Upload to Dropbox
-  const DROPBOX_TOKEN = await getDropboxToken();
-  if (DROPBOX_TOKEN) {
-    try {
-      const categoryPaths = {
-        'contracts': 'Contracts',
-        'invoices': 'Invoices',
-        'payment-proofs': 'Payment Proofs',
-        'links': 'Links',
-        'cast-photos': 'Cast Photos',
-      };
-      const catFolder = categoryPaths[category] || category || 'Uploads';
-      const dropboxPath = `/CP Panel/${catFolder}${subfolder ? '/' + subfolder : ''}/${fileName}`;
-      const buffer = Buffer.from(fileContent, 'base64');
-      const dropboxRes = await fetch('https://content.dropboxapi.com/2/files/upload', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${DROPBOX_TOKEN}`,
-          'Content-Type': 'application/octet-stream',
-          'Dropbox-API-Arg': JSON.stringify({
-            path: dropboxPath,
-            mode: 'add',
-            autorename: true,
-            mute: false,
-          }),
-        },
-        body: buffer,
-      });
-      if (dropboxRes.ok) {
-        const data = await dropboxRes.json();
-        // Get shared link
-        try {
-          const linkRes = await fetch('https://api.dropboxapi.com/2/sharing/create_shared_link_with_settings', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${DROPBOX_TOKEN}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ path: data.path_display, settings: { requested_visibility: 'public' } }),
-          });
-          const linkData = await linkRes.json();
-          results.dropbox = { path: data.path_display, link: linkData.url };
-        } catch {
-          results.dropbox = { path: data.path_display };
-        }
-      } else {
-        console.error('Dropbox upload failed:', dropboxRes.status, await dropboxRes.text().catch(() => ''));
-      }
-    } catch (err) {
-      console.error('Dropbox upload:', err.message);
-    }
-  }
+  // Dropbox disabled — handled by nightly backup instead
+  // results.dropbox = null;
 
   res.json(results);
 });
@@ -418,32 +368,180 @@ async function uploadDual({ fileName, fileContent, mimeType, subfolder, category
     }
   } catch (e) { console.error('uploadDual Drive:', e.message); }
 
-  // Dropbox
-  const DROPBOX_TOKEN = await getDropboxToken();
-  if (DROPBOX_TOKEN) {
-    try {
-      const catPaths = { contracts: 'Contracts', invoices: 'Invoices', 'payment-proofs': 'Payment Proofs' };
-      const catFolder = catPaths[category] || category || 'Uploads';
-      const dropboxPath = `/CP Panel/${catFolder}${subfolder ? '/' + subfolder : ''}/${fileName}`;
-      const buffer = Buffer.from(fileContent, 'base64');
-      const dropboxRes = await fetch('https://content.dropboxapi.com/2/files/upload', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${DROPBOX_TOKEN}`, 'Content-Type': 'application/octet-stream', 'Dropbox-API-Arg': JSON.stringify({ path: dropboxPath, mode: 'add', autorename: true }) },
-        body: buffer,
-      });
-      if (dropboxRes.ok) {
-        const data = await dropboxRes.json();
-        try {
-          const linkRes = await fetch('https://api.dropboxapi.com/2/sharing/create_shared_link_with_settings', { method: 'POST', headers: { Authorization: `Bearer ${DROPBOX_TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ path: data.path_display, settings: { requested_visibility: 'public' } }) });
-          const linkData = await linkRes.json();
-          results.dropbox = { path: data.path_display, link: linkData.url };
-        } catch { results.dropbox = { path: data.path_display }; }
-      }
-    } catch (e) { console.error('uploadDual Dropbox:', e.message); }
-  }
+  // Dropbox disabled — now handled by nightly backup instead
+  // results.dropbox = null;
 
   return results;
 }
 
 router.uploadDual = uploadDual;
+
+// ── POST /api/drive/backup-to-dropbox — copy all Drive files to Dropbox ──────
+router.post('/backup-to-dropbox', verifyJWT, async (req, res) => {
+  try {
+    const result = await runDropboxBackup();
+    res.json(result);
+  } catch (err) {
+    console.error('Backup error:', err);
+    res.status(500).json({ error: 'Backup failed: ' + err.message });
+  }
+});
+
+// ── GET /api/drive/backup-status — get last backup info ──────────────────────
+router.get('/backup-status', verifyJWT, async (req, res) => {
+  try {
+    const { rows } = await db.query("SELECT dropbox_backup_at, dropbox_backup_stats FROM settings WHERE brand_id = 'particle'");
+    res.json({
+      lastRun: rows[0]?.dropbox_backup_at || null,
+      stats: rows[0]?.dropbox_backup_stats || null,
+    });
+  } catch {
+    res.json({ lastRun: null, stats: null });
+  }
+});
+
+/**
+ * Backup: list all files in Google Drive CP Panel folder,
+ * download each, upload to Dropbox /CP Panel Backup/
+ */
+async function runDropboxBackup() {
+  const start = Date.now();
+  let synced = 0, skipped = 0, errors = 0;
+
+  // Get Google Drive auth
+  const { rows } = await db.query("SELECT google_tokens FROM settings WHERE brand_id = 'particle'");
+  if (!rows[0]?.google_tokens) throw new Error('Google Drive not connected');
+  const tokens = typeof rows[0].google_tokens === 'string' ? JSON.parse(rows[0].google_tokens) : rows[0].google_tokens;
+  const oauth2 = getOAuth2Client();
+  oauth2.setCredentials(tokens);
+  if (tokens.expiry_date && tokens.expiry_date < Date.now()) {
+    const { credentials } = await oauth2.refreshAccessToken();
+    oauth2.setCredentials(credentials);
+    await db.query("UPDATE settings SET google_tokens = $1 WHERE brand_id = 'particle'", [JSON.stringify(credentials)]);
+  }
+  const drive = google.drive({ version: 'v3', auth: oauth2 });
+
+  // Get Dropbox token
+  const dbxToken = await getDropboxToken();
+  if (!dbxToken) throw new Error('Dropbox not connected');
+
+  // Recursively list all files in Drive folder
+  async function listAllFiles(folderId, path = '') {
+    const files = [];
+    let pageToken = null;
+    do {
+      const resp = await drive.files.list({
+        q: `'${folderId}' in parents AND trashed = false`,
+        fields: 'nextPageToken, files(id, name, mimeType, size)',
+        pageSize: 100,
+        pageToken,
+        supportsAllDrives: true, includeItemsFromAllDrives: true,
+      });
+      for (const f of resp.data.files) {
+        if (f.mimeType === 'application/vnd.google-apps.folder') {
+          const subFiles = await listAllFiles(f.id, `${path}/${f.name}`);
+          files.push(...subFiles);
+        } else {
+          files.push({ id: f.id, name: f.name, path: `${path}/${f.name}`, mimeType: f.mimeType, size: f.size });
+        }
+      }
+      pageToken = resp.data.nextPageToken;
+    } while (pageToken);
+    return files;
+  }
+
+  console.log('Starting Dropbox backup...');
+  const allFiles = await listAllFiles(DRIVE_FOLDER_ID);
+  console.log(`Found ${allFiles.length} files in Drive`);
+
+  // Check what already exists in Dropbox (path → size map for incremental sync)
+  const existingFiles = new Map(); // path_lower → { size }
+  try {
+    const listRes = await fetch('https://api.dropboxapi.com/2/files/list_folder', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${dbxToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: '/CP Panel Backup', recursive: true, limit: 2000 }),
+    });
+    if (listRes.ok) {
+      const listData = await listRes.json();
+      for (const entry of listData.entries) {
+        if (entry['.tag'] === 'file') existingFiles.set(entry.path_lower, { size: entry.size });
+      }
+      let hasMore = listData.has_more;
+      let cursor = listData.cursor;
+      while (hasMore) {
+        const contRes = await fetch('https://api.dropboxapi.com/2/files/list_folder/continue', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${dbxToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cursor }),
+        });
+        if (contRes.ok) {
+          const contData = await contRes.json();
+          for (const entry of contData.entries) {
+            if (entry['.tag'] === 'file') existingFiles.set(entry.path_lower, { size: entry.size });
+          }
+          hasMore = contData.has_more;
+          cursor = contData.cursor;
+        } else break;
+      }
+    }
+  } catch (e) {
+    console.log('Dropbox backup folder not found, will create it');
+  }
+
+  console.log(`Dropbox has ${existingFiles.size} existing files`);
+
+  // Incremental sync: skip if same path AND same size, otherwise overwrite
+  for (const file of allFiles) {
+    const dropboxPath = `/CP Panel Backup${file.path}`;
+    const existing = existingFiles.get(dropboxPath.toLowerCase());
+    if (existing && file.size && existing.size === parseInt(file.size)) {
+      skipped++;
+      continue; // Same file, same size — skip
+    }
+    // If file exists but size differs → overwrite. If new file → upload.
+
+    try {
+      // Download from Drive
+      const downloadRes = await drive.files.get({ fileId: file.id, alt: 'media', supportsAllDrives: true }, { responseType: 'arraybuffer' });
+      const buffer = Buffer.from(downloadRes.data);
+
+      // Upload to Dropbox
+      const uploadRes = await fetch('https://content.dropboxapi.com/2/files/upload', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${dbxToken}`,
+          'Content-Type': 'application/octet-stream',
+          'Dropbox-API-Arg': JSON.stringify({ path: dropboxPath, mode: { '.tag': 'overwrite' }, autorename: false, mute: true }),
+        },
+        body: buffer,
+      });
+      if (uploadRes.ok) {
+        synced++;
+        console.log(`Backed up: ${file.path}`);
+      } else {
+        errors++;
+        console.error(`Backup failed for ${file.path}:`, uploadRes.status);
+      }
+    } catch (e) {
+      errors++;
+      console.error(`Backup error for ${file.path}:`, e.message);
+    }
+  }
+
+  const duration = Math.round((Date.now() - start) / 1000);
+  const stats = { synced, skipped, errors, totalFiles: allFiles.length, duration };
+  console.log(`Backup complete: ${synced} synced, ${skipped} skipped, ${errors} errors (${duration}s)`);
+
+  // Save backup status
+  await db.query(
+    "UPDATE settings SET dropbox_backup_at = NOW(), dropbox_backup_stats = $1 WHERE brand_id = 'particle'",
+    [JSON.stringify(stats)]
+  );
+
+  return stats;
+}
+
+router.runDropboxBackup = runDropboxBackup;
+
 module.exports = router;

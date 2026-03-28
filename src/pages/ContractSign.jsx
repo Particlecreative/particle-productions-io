@@ -3,8 +3,10 @@ import { useParams } from 'react-router-dom';
 import {
   CheckCircle, RotateCcw, Undo2, PenTool, FileText,
   DollarSign, Shield, AlertTriangle, RefreshCw, Clock,
-  User, Calendar, Hash, ChevronDown,
+  User, Calendar, Hash, ChevronDown, Download,
 } from 'lucide-react';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 
 const API = import.meta.env.VITE_API_URL || '';
 
@@ -41,6 +43,11 @@ export default function ContractSign() {
   const [alreadySignedData, setAlreadySignedData] = useState(null);
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [allSigned, setAllSigned] = useState(false);
+  const [completedData, setCompletedData] = useState(null); // { signatures, events, drive_url }
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [pdfUploaded, setPdfUploaded] = useState(false);
+  const completedRef = useRef(null);
 
   // Signature pad
   const canvasRef = useRef(null);
@@ -48,6 +55,7 @@ export default function ContractSign() {
   const [strokes, setStrokes] = useState([]);
   const [currentStroke, setCurrentStroke] = useState([]);
   const [hasSignature, setHasSignature] = useState(false);
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
 
   // Form fields
   const [signerName, setSignerName] = useState('');
@@ -76,6 +84,15 @@ export default function ContractSign() {
           }
           setLoading(false);
           return;
+        }
+        // HOCP signers must be logged in
+        if (data.signer_role === 'hocp') {
+          const jwt = localStorage.getItem('cp_token');
+          if (!jwt) {
+            // Redirect to login, then come back
+            window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
+            return;
+          }
         }
         setContractData(data);
         setSignerName(data.signer_name || '');
@@ -194,6 +211,7 @@ export default function ContractSign() {
           signer_name: signerName.trim(),
           signer_id_number: signerId.trim(),
           signer_address: signerAddress.trim(),
+          agreed_at: new Date().toISOString(),
         }),
       });
       const data = await res.json();
@@ -204,13 +222,96 @@ export default function ContractSign() {
         return;
       }
       setSubmitted(true);
+      // If all parties signed, fetch completion data (both signatures + events)
+      if (data.all_signed) {
+        setAllSigned(true);
+        try {
+          const cRes = await fetch(`${API}/api/contracts/sign/${contractId}/${token}/completed`);
+          if (cRes.ok) {
+            const cData = await cRes.json();
+            setCompletedData(cData);
+          }
+        } catch {}
+      }
     } catch {
       setError('Network error. Please try again.');
     }
     setSubmitting(false);
   }
 
-  const canSubmit = hasSignature && signerName.trim() && !submitting;
+  /* ── PDF Export ── */
+  async function handleDownloadPdf() {
+    if (!completedRef.current) return;
+    setExportingPdf(true);
+    try {
+      const canvas = await html2canvas(completedRef.current, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+      });
+      const imgData = canvas.toDataURL('image/jpeg', 0.95);
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const imgWidth = canvas.width;
+      const imgHeight = canvas.height;
+      const ratio = pdfWidth / imgWidth;
+      const scaledHeight = imgHeight * ratio;
+      // Multi-page support
+      let yOffset = 0;
+      while (yOffset < scaledHeight) {
+        if (yOffset > 0) pdf.addPage();
+        pdf.addImage(imgData, 'JPEG', 0, -yOffset, pdfWidth, scaledHeight);
+        yOffset += pdfHeight;
+      }
+      // Download locally
+      pdf.save(`Contract - ${contractData?.provider_name || 'Signed'}.pdf`);
+      // Also upload to backend
+      if (!pdfUploaded) {
+        const base64 = pdf.output('datauristring');
+        try {
+          await fetch(`${API}/api/contracts/${contractId}/upload-signed-pdf`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pdf_base64: base64, token }),
+          });
+          setPdfUploaded(true);
+        } catch {}
+      }
+    } catch (err) {
+      console.error('PDF export failed:', err);
+    }
+    setExportingPdf(false);
+  }
+
+  // Auto-upload PDF in background after completed view renders
+  useEffect(() => {
+    if (!allSigned || !completedData || pdfUploaded || !completedRef.current) return;
+    const timer = setTimeout(async () => {
+      try {
+        const canvas = await html2canvas(completedRef.current, { scale: 2, useCORS: true, logging: false, backgroundColor: '#fff' });
+        const imgData = canvas.toDataURL('image/jpeg', 0.95);
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        const pdfW = pdf.internal.pageSize.getWidth();
+        const pdfH = pdf.internal.pageSize.getHeight();
+        const ratio = pdfW / canvas.width;
+        const scaledH = canvas.height * ratio;
+        let yOff = 0;
+        while (yOff < scaledH) { if (yOff > 0) pdf.addPage(); pdf.addImage(imgData, 'JPEG', 0, -yOff, pdfW, scaledH); yOff += pdfH; }
+        const base64 = pdf.output('datauristring');
+        await fetch(`${API}/api/contracts/${contractId}/upload-signed-pdf`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pdf_base64: base64, token }),
+        });
+        setPdfUploaded(true);
+      } catch {}
+    }, 2000); // Wait 2s for render to stabilize
+    return () => clearTimeout(timer);
+  }, [allSigned, completedData, pdfUploaded]);
+
+  const canSubmit = hasSignature && signerName.trim() && agreedToTerms && !submitting;
 
   /* ─────────── Render states ─────────── */
 
@@ -283,8 +384,175 @@ export default function ContractSign() {
     );
   }
 
-  // Success after signing
+  // Success after signing — show full signed contract if all_signed, otherwise simple success
   if (submitted) {
+    const d = contractData;
+    const effectiveDate = d?.effective_date
+      ? new Date(d.effective_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+      : signDate;
+
+    if (allSigned && d) {
+      const sigs = completedData?.signatures || [];
+      const events = completedData?.events || [];
+      const hocpSig = sigs.find(s => s.signer_role === 'hocp');
+      const providerSig = sigs.find(s => s.signer_role === 'provider');
+      const formatEvt = (dt) => dt ? new Date(dt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+
+      return (
+        <Shell status="signed">
+          <style>{GLOBAL_STYLES}</style>
+
+          {/* Green completion banner */}
+          <div className="bg-green-600 text-white rounded-xl p-6 mb-6 flex items-center gap-4" style={{ animation: 'cs-fade-up .4s ease-out' }}>
+            <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0" style={{ animation: 'cs-check-pop .5s ease-out' }}>
+              <CheckCircle size={28} className="text-white" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold">Contract Signed & Completed</h2>
+              <p className="text-green-100 text-sm mt-1">All parties have signed. A copy has been sent to your email.</p>
+            </div>
+          </div>
+
+          {/* Download PDF button */}
+          <div className="flex justify-center gap-3 mb-6">
+            <button
+              onClick={handleDownloadPdf}
+              disabled={exportingPdf}
+              className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl shadow-lg transition-all disabled:opacity-60"
+            >
+              {exportingPdf ? (
+                <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full" style={{ animation: 'cs-spin .6s linear infinite' }} /> Generating PDF...</>
+              ) : (
+                <><Download size={16} /> Download Signed PDF</>
+              )}
+            </button>
+            {pdfUploaded && (
+              <span className="inline-flex items-center gap-1 text-xs text-green-600 self-center">
+                <CheckCircle size={12} /> Saved to Drive
+              </span>
+            )}
+          </div>
+
+          {/* Full signed contract view — this div is captured as PDF */}
+          <div ref={completedRef} className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden">
+
+            {/* Agreement Header */}
+            <div className="px-6 sm:px-10 pt-10 pb-8 border-b border-gray-100">
+              <div className="text-center mb-8">
+                <p className="text-[10px] uppercase tracking-[3px] text-gray-400 mb-3">Particle Aesthetic Science Ltd.</p>
+                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight">SERVICES AGREEMENT</h1>
+                <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 bg-gray-50 rounded-full text-xs text-gray-500">
+                  <Calendar size={11} /> Effective Date: {effectiveDate}
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                <PartyCard label="The Company" name="Particle Aesthetic Science Ltd." subtitle="Tomer Wilf Lezmy — Head of Creative Production" role="Company" />
+                <PartyCard label="Service Provider" name={d.provider_name || '—'} role="Provider" />
+              </div>
+            </div>
+
+            {/* Production Banner */}
+            <div className="mx-6 sm:mx-10 mt-6 mb-2 bg-blue-50 border border-blue-200 rounded-xl p-5 text-center">
+              <div className="text-xs font-semibold text-blue-500 uppercase tracking-wider mb-1">This Agreement Is For</div>
+              <div className="text-xl font-bold text-blue-900">{d.project_name || 'Production'}</div>
+            </div>
+
+            {/* Full Agreement Terms */}
+            <div className="px-6 sm:px-10 py-6 border-b border-gray-100">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-4">Agreement Terms</h3>
+              <FullContractText data={d} effectiveDate={effectiveDate} liveId={signerId || d.provider_id_number} liveAddress={signerAddress || d.provider_address} />
+            </div>
+
+            {/* Exhibit A */}
+            {d.exhibit_a && (
+              <div className="px-6 sm:px-10 py-6 border-b border-gray-100">
+                <ExhibitCard color="blue" icon={<FileText size={15} className="text-blue-600" />} title="Exhibit A" subtitle="Scope of Services" content={d.exhibit_a} />
+              </div>
+            )}
+
+            {/* Exhibit B */}
+            {(d.exhibit_b || d.fee_amount || d.payment_terms) && (
+              <div className="px-6 sm:px-10 py-6 border-b border-gray-100">
+                <ExhibitCard color="green" icon={<DollarSign size={15} className="text-green-600" />} title="Exhibit B" subtitle="Fees & Payment">
+                  {d.fee_amount && (
+                    <div className="mb-3 px-4 py-3 bg-green-50 rounded-lg">
+                      <p className="text-[10px] uppercase tracking-widest text-green-600 mb-1">Total Fee</p>
+                      <p className="text-xl font-bold text-green-700">{Number(d.fee_amount).toLocaleString()} {d.currency || 'USD'}</p>
+                    </div>
+                  )}
+                  {d.payment_terms && <div className="mb-3"><p className="text-[10px] uppercase tracking-widest text-gray-400 mb-1">Payment Terms</p><p className="text-sm text-gray-700">{d.payment_terms}</p></div>}
+                  {d.exhibit_b && <div className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{d.exhibit_b}</div>}
+                </ExhibitCard>
+              </div>
+            )}
+
+            {/* ── SIGNATURES SECTION ── */}
+            <div className="px-6 sm:px-10 py-8 border-b border-gray-100 bg-gray-50/30">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-6">Signatures</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                {/* Company / HOCP */}
+                <div className="bg-white rounded-lg border border-gray-200 p-5">
+                  <p className="text-[10px] uppercase tracking-[2px] text-gray-400 mb-3">For the Company</p>
+                  <p className="text-sm font-semibold text-gray-900">Particle Aesthetic Science Ltd.</p>
+                  <p className="text-xs text-gray-500 mt-1">Tomer Wilf Lezmy — Head of Creative Production</p>
+                  {contractData?.hocp_signature?.signature_data && (
+                    <img src={contractData.hocp_signature.signature_data} alt="Company Signature" className="max-h-16 mt-3" />
+                  )}
+                  <p className="text-xs text-gray-400 mt-2">
+                    {contractData?.hocp_signature?.signed_at
+                      ? `Signed: ${new Date(contractData.hocp_signature.signed_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}`
+                      : '[Pending]'}
+                  </p>
+                </div>
+                {/* Provider */}
+                <div className="bg-white rounded-lg border border-gray-200 p-5">
+                  <p className="text-[10px] uppercase tracking-[2px] text-gray-400 mb-3">Service Provider</p>
+                  <p className="text-sm font-semibold text-gray-900">{d.provider_name || '—'}</p>
+                  {(signerId || d.provider_id_number) && <p className="text-xs text-gray-500 mt-1">ID: {signerId || d.provider_id_number}</p>}
+                  {(signerAddress || d.provider_address) && <p className="text-xs text-gray-500">{signerAddress || d.provider_address}</p>}
+                  {providerSig?.signature_data && (
+                    <img src={providerSig.signature_data} alt="Provider Signature" className="max-h-16 mt-3" />
+                  )}
+                  <p className="text-xs text-gray-400 mt-2">
+                    {providerSig?.signed_at ? `Signed: ${formatEvt(providerSig.signed_at)}` : '[Pending]'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* ── DOCUMENT HISTORY ── */}
+            <div className="px-6 sm:px-10 py-6">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-4">Document History</h3>
+              <div className="space-y-2">
+                {events.map((evt, i) => {
+                  let icon = '📄', label = evt.type;
+                  if (evt.type === 'created') { icon = '📝'; label = 'Contract Created'; }
+                  if (evt.type === 'sent') { icon = '📤'; label = 'Sent for Signature'; }
+                  if (evt.type === 'generated') { icon = '⚙️'; label = 'Contract Generated'; }
+                  if (evt.type === 'signed') { icon = '✍️'; label = `Signed by ${evt.name || evt.role || 'Party'}`; }
+                  if (evt.type === 'completed') { icon = '✅'; label = 'All Parties Signed — Completed'; }
+                  return (
+                    <div key={i} className="flex items-center gap-3 text-sm">
+                      <span className="text-base">{icon}</span>
+                      <span className="font-medium text-gray-700 flex-1">{label}</span>
+                      <span className="text-xs text-gray-400">{formatEvt(evt.at)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Security footer */}
+          <div className="flex items-center justify-center gap-2 mt-6 text-[11px] text-gray-400">
+            <Shield size={11} />
+            <span>Secured & powered by Particle Aesthetic Science Ltd.</span>
+          </div>
+        </Shell>
+      );
+    }
+
+    // Simple success (provider signed but waiting for other party)
     return (
       <Shell status="signed">
         <div className="flex flex-col items-center justify-center py-20 px-6 text-center"
@@ -295,7 +563,7 @@ export default function ContractSign() {
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Document Signed Successfully</h2>
           <p className="text-gray-500 text-sm max-w-sm mb-3">
-            Your signature has been recorded. You and all parties will receive a signed copy via email.
+            Your signature has been recorded. You and all parties will receive a signed copy via email once all parties have signed.
           </p>
           <p className="text-gray-400 text-xs">You may safely close this page.</p>
           <div className="mt-8 flex items-center gap-2 text-xs text-gray-400">
@@ -417,12 +685,25 @@ export default function ContractSign() {
           </div>
         )}
 
-        {/* ── Signing Confirmation ── */}
-        <div className="px-6 sm:px-10 py-4 border-b border-gray-100 bg-gray-50/40">
-          <p className="text-[11px] text-gray-400 leading-relaxed">
-            By signing below, you confirm that you have read, understood, and agree to the full terms of this
-            Services Agreement, including Exhibit A (Services) and Exhibit B (Fees & Payment).
-          </p>
+        {/* ── Signing Confirmation + Agreement Checkbox ── */}
+        <div className="px-6 sm:px-10 py-5 border-b border-gray-100 bg-gray-50/40">
+          <label className="flex items-start gap-3 cursor-pointer group">
+            <input
+              type="checkbox"
+              checked={agreedToTerms}
+              onChange={e => setAgreedToTerms(e.target.checked)}
+              className="mt-0.5 w-5 h-5 rounded border-2 border-gray-300 text-blue-600 focus:ring-blue-500 shrink-0 cursor-pointer"
+            />
+            <span className="text-sm text-gray-600 leading-relaxed group-hover:text-gray-800 transition-colors">
+              I have read and agree to all terms and conditions set forth in this Services Agreement,
+              including Exhibit A (Services) and Exhibit B (Fees & Payment).
+            </span>
+          </label>
+          {!agreedToTerms && (
+            <div className="mt-2 ml-8 text-[10px] text-amber-600 font-medium">
+              You must agree to the terms before signing
+            </div>
+          )}
         </div>
 
         {/* ── Section 7: Signature Section ── */}
@@ -487,9 +768,10 @@ export default function ContractSign() {
             </div>
 
             {/* ── Signature Pad ── */}
-            <div className="mb-6">
+            <div className={`mb-6 ${!agreedToTerms ? 'opacity-40 pointer-events-none' : ''}`}>
               <label className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-2">
                 <PenTool size={12} /> Signature <span className="text-red-400">*</span>
+                {!agreedToTerms && <span className="text-amber-500 font-normal normal-case ml-1">(agree to terms first)</span>}
               </label>
               <div className="relative border-2 border-dashed border-gray-300 rounded-xl bg-white overflow-hidden
                               hover:border-gray-400 transition-colors">
@@ -550,6 +832,18 @@ export default function ContractSign() {
           </form>
         </div>
       </div>
+
+      {/* ── Scroll to sign indicator ── */}
+      {!hasScrolledToSign && !submitted && (
+        <button
+          onClick={() => signSectionRef.current?.scrollIntoView({ behavior: 'smooth' })}
+          className="fixed bottom-20 sm:bottom-6 right-6 z-40 flex items-center gap-2 px-4 py-2.5 rounded-full
+                     bg-[#0a1e42] text-white text-sm font-semibold shadow-lg hover:bg-[#132d5e] transition-all
+                     animate-bounce"
+        >
+          <ChevronDown size={16} /> Scroll to Sign
+        </button>
+      )}
 
       {/* ── Security footer ── */}
       <div className="flex items-center justify-center gap-2 mt-6 text-[11px] text-gray-400">

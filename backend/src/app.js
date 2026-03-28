@@ -42,10 +42,10 @@ const authLimiter = rateLimit({
   message: { error: 'Too many login attempts, please try again later' },
 });
 
-// General API rate limiter (100 requests per minute per IP)
+// General API rate limiter (500 requests per minute per IP)
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 100,
+  max: 500,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests, please slow down' },
@@ -98,6 +98,19 @@ app.use('/api/calendar',         require('./routes/calendar'));
 
 // ── Health check ─────────────────────────────────────
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
+
+// ── Nightly Dropbox backup cron (9 PM Israel time) ───
+const cron = require('node-cron');
+const driveRouter = require('./routes/drive');
+cron.schedule('0 21 * * *', async () => {
+  console.log('[CRON] Starting nightly Dropbox backup...');
+  try {
+    const result = await driveRouter.runDropboxBackup();
+    console.log('[CRON] Backup done:', result);
+  } catch (err) {
+    console.error('[CRON] Backup failed:', err.message);
+  }
+}, { timezone: 'Asia/Jerusalem' });
 
 // ── Global error handler ─────────────────────────────
 app.use((err, _req, res, _next) => {

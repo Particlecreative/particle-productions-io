@@ -75,6 +75,8 @@ export default function Login() {
   const { login, resetPassword } = useAuth();
   const { brand, brandId } = useBrand();
   const navigate = useNavigate();
+  // Support redirect after login (e.g., HOCP signing page)
+  const redirectTo = new URLSearchParams(window.location.search).get('redirect');
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -86,7 +88,7 @@ export default function Login() {
       if (result.user?.must_change_password) {
         setForceChange(true);
       } else {
-        navigate('/');
+        navigate(redirectTo || '/');
       }
     } else {
       // Parse error - handle JSON strings and system states
@@ -124,7 +126,7 @@ export default function Login() {
       const data = await res.json();
       if (!res.ok) { setError(data.error || 'Failed to set password'); setChangingPw(false); return; }
       setForceChange(false);
-      navigate('/');
+      navigate(redirectTo || '/');
     } catch (err) {
       setError(err.message || 'Failed to change password');
     }
