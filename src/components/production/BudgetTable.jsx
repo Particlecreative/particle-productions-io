@@ -1052,7 +1052,11 @@ function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEd
       ))}
 
       {/* Type */}
-      {vis('type') && <td>
+      {vis('type') && <td
+        style={showColors && getListItemColor('lineItemTypes', item.type) ? {
+          backgroundColor: getListItemColor('lineItemTypes', item.type) + '15',
+        } : {}}
+      >
         {isEditor ? (
           <select
             value={item.type}
@@ -1064,7 +1068,10 @@ function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEd
                 onUpdate(item.id, 'type', newType);
               }
             }}
-            className="text-xs border-0 bg-transparent outline-none cursor-pointer font-medium"
+            className="text-xs border-0 bg-transparent outline-none cursor-pointer font-semibold w-full"
+            style={showColors && getListItemColor('lineItemTypes', item.type) ? {
+              color: getListItemColor('lineItemTypes', item.type),
+            } : {}}
           >
             {lineItemTypes.map(t => <option key={t}>{t}</option>)}
           </select>
@@ -1079,12 +1086,19 @@ function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEd
       </td>}
 
       {/* Status */}
-      {vis('status') && <td>
+      {vis('status') && <td
+        style={showColors && getListItemColor('lineItemStatuses', item.status) ? {
+          backgroundColor: getListItemColor('lineItemStatuses', item.status) + '15',
+        } : {}}
+      >
         {isEditor ? (
           <select
             value={item.status}
             onChange={e => onUpdate(item.id, 'status', e.target.value)}
-            className="text-xs border-0 bg-transparent outline-none cursor-pointer font-medium"
+            className="text-xs border-0 bg-transparent outline-none cursor-pointer font-semibold w-full"
+            style={showColors && getListItemColor('lineItemStatuses', item.status) ? {
+              color: getListItemColor('lineItemStatuses', item.status),
+            } : {}}
           >
             {lineItemStatuses.map(s => <option key={s}>{s}</option>)}
           </select>

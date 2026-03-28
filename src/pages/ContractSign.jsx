@@ -438,7 +438,7 @@ export default function ContractSign() {
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                <PartyCard label="The Company" name="Particle Aesthetic Science Ltd." subtitle="Tomer Wilf Lezmy — Head of Creative Production" role="Company" />
+                <PartyCard label="The Company" name="Particle Aesthetic Science Ltd." subtitle="{contractData?.hocp_signature?.signer_name || contractData?.signer_name || 'Authorized Signatory'}" role="Company" />
                 <PartyCard label="Service Provider" name={d.provider_name || '—'} role="Provider" />
               </div>
             </div>
@@ -486,7 +486,7 @@ export default function ContractSign() {
                 <div className="bg-white rounded-lg border border-gray-200 p-5">
                   <p className="text-[10px] uppercase tracking-[2px] text-gray-400 mb-3">For the Company</p>
                   <p className="text-sm font-semibold text-gray-900">Particle Aesthetic Science Ltd.</p>
-                  <p className="text-xs text-gray-500 mt-1">Tomer Wilf Lezmy — Head of Creative Production</p>
+                  <p className="text-xs text-gray-500 mt-1">{contractData?.hocp_signature?.signer_name || contractData?.signer_name || 'Authorized Signatory'}</p>
                   {contractData?.hocp_signature?.signature_data && (
                     <img src={contractData.hocp_signature.signature_data} alt="Company Signature" className="max-h-16 mt-3" />
                   )}
@@ -591,7 +591,7 @@ export default function ContractSign() {
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-            <PartyCard label="The Company" name="Particle Aesthetic Science Ltd." subtitle="Tomer Wilf Lezmy — Head of Creative Production" role="Company" />
+            <PartyCard label="The Company" name="Particle Aesthetic Science Ltd." subtitle="{contractData?.hocp_signature?.signer_name || contractData?.signer_name || 'Authorized Signatory'}" role="Company" />
             <PartyCard label="Service Provider" name={d.provider_name || '\u2014'} role={d.signer_role === 'hocp' ? 'HOCP' : 'Provider'} />
           </div>
         </div>

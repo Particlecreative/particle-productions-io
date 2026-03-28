@@ -208,7 +208,7 @@ export default function CrewBar({ production, onRefresh }) {
             onClick={() => { setAdding(true); setEditingId(null); }}
             className="flex items-center gap-1 ml-4 text-xs text-gray-400 hover:text-gray-700 px-2.5 py-1.5 rounded-lg border border-dashed border-gray-300 hover:border-gray-500 transition-colors"
           >
-            <Plus size={12} /> Add Crew
+            <Plus size={12} /> Add to Main Crew
           </button>
         )}
 
