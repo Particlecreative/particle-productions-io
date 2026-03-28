@@ -236,10 +236,13 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
     });
   }, [items, sortState]);
 
+  const [newRowId, setNewRowId] = useState(null);
+
   async function addRow() {
     if (!isEditor) return;
+    const id = generateId('li');
     const item = {
-      id: generateId('li'),
+      id,
       production_id: productionId,
       item: '',
       full_name: '',
@@ -252,7 +255,12 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
     };
     await Promise.resolve(createLineItem(item));
     addNotification('edit', `${user?.name || 'Someone'} added a line item to ${production?.project_name || productionId}`, productionId);
+    setNewRowId(id);
     await refresh();
+    // Clear highlight after animation
+    setTimeout(() => setNewRowId(null), 2000);
+    // Auto-focus the first cell of the new row
+    setTimeout(() => setEditingCell({ itemId: id, field: 'item' }), 300);
   }
 
   async function handleUpdate(id, field, value) {
@@ -626,6 +634,7 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
                       next.has(item.id) ? next.delete(item.id) : next.add(item.id);
                       return next;
                     })}
+                    isNew={newRowId === item.id}
                   />
                   {expandedRows.has(item.id) && (ccByLineItem[item.id] || []).map(cc => (
                     <CCSubRow key={cc.id} cc={cc} totalCols={totalVisibleCols} />
@@ -859,7 +868,7 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
   );
 }
 
-function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEditingCell, onUpdate, onDelete, onInvoice, onContract, lineItemTypes, lineItemStatuses, hiddenCols = [], customCols = [], onOpenCastModal, onPhotoFullscreen, ccChildren = [], isExpanded, onToggleExpand }) {
+function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEditingCell, onUpdate, onDelete, onInvoice, onContract, lineItemTypes, lineItemStatuses, hiddenCols = [], customCols = [], onOpenCastModal, onPhotoFullscreen, ccChildren = [], isExpanded, onToggleExpand, isNew }) {
   const vis = key => !hiddenCols.includes(key);
   const diff = (parseFloat(item.planned_budget) || 0) - (parseFloat(item.actual_spent) || 0);
   const isEditing = (field) => editingCell?.itemId === item.id && editingCell?.field === field;
@@ -972,7 +981,10 @@ function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEd
   }
 
   return (
-    <tr>
+    <tr
+      className={isNew ? 'animate-[budget-row-flash_1.5s_ease-out]' : ''}
+      style={isNew ? { background: 'rgba(59,130,246,0.08)' } : undefined}
+    >
       {cell('item',
         <div className="flex items-center gap-2">
           {ccChildren.length > 0 && (

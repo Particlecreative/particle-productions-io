@@ -657,6 +657,12 @@ html.dark .skeleton {
   0%,100% { background-color: transparent; }
   40%     { background-color: #fef9c3; }
 }
+/* New row highlight animation */
+@keyframes budget-row-flash {
+  0%   { background-color: rgba(59,130,246,0.15); transform: translateY(-2px); }
+  30%  { background-color: rgba(59,130,246,0.1); transform: translateY(0); }
+  100% { background-color: transparent; }
+}
 /* Card pop on copy */
 @keyframes cardPop {
   0%,100% { transform: scale(1); }
