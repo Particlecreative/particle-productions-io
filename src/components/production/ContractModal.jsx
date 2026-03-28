@@ -33,7 +33,7 @@ const STEPS = [
 ];
 
 // ── Step Indicator ───────────────────────────────────────────────
-function StepIndicator({ currentStep, onStepClick, maxReachedStep, requireHocpSignature }) {
+function StepIndicator({ currentStep, onStepClick, maxReachedStep, signerIsCreator }) {
   return (
     <div className="flex items-center gap-0 mb-5">
       {STEPS.map((step, i) => {
@@ -41,7 +41,7 @@ function StepIndicator({ currentStep, onStepClick, maxReachedStep, requireHocpSi
         const isDone = step.id < currentStep;
         const isClickable = step.id <= maxReachedStep;
         const label = step.id === 4
-          ? (requireHocpSignature ? 'Sign & Send' : 'Send for Signature')
+          ? (signerIsCreator ? 'Send to Supplier' : 'Send to Signer')
           : step.label;
         return (
           <div key={step.id} className="flex items-center flex-1 last:flex-none">
@@ -511,10 +511,25 @@ export default function ContractModal({ production, lineItem, onClose }) {
 
   const existing = getContract(contractKey);
 
-  // ── HOCP Signature Required toggle ──
-  const [requireHocpSignature, setRequireHocpSignature] = useState(
-    existing?.require_hocp_signature !== false // default true
+  // Who signs on behalf of Particle
+  const [companySigner, setCompanySigner] = useState(
+    existing?.company_signer || 'omer' // 'omer' | 'tomer' | 'custom'
   );
+  const [customSignerName, setCustomSignerName] = useState(existing?.company_signer_name || '');
+  const [customSignerEmail, setCustomSignerEmail] = useState(existing?.company_signer_email || '');
+  const [customSignerTitle, setCustomSignerTitle] = useState(existing?.company_signer_title || '');
+
+  // Derived values
+  const signerIsCreator = companySigner === 'omer'; // Omer signs in Step 3, no external link
+  const companySignerName = companySigner === 'omer' ? 'Omer Barak'
+    : companySigner === 'tomer' ? 'Tomer Wilf Lezmy'
+    : customSignerName;
+  const companySignerEmail = companySigner === 'omer' ? 'omer@particleformen.com'
+    : companySigner === 'tomer' ? 'tomer@particleformen.com'
+    : customSignerEmail;
+  const companySignerTitle = companySigner === 'omer' ? 'Creative Producer'
+    : companySigner === 'tomer' ? 'Head of Creative Production'
+    : customSignerTitle;
 
 
   // ── Step navigation ──
@@ -739,7 +754,7 @@ export default function ContractModal({ production, lineItem, onClose }) {
       currency,
       payment_terms: paymentTerms,
       payment_method: paymentMethod,
-      hocp_name: user?.name || 'Tomer Wilf Lezmy',
+      hocp_name: companySignerName,
       logoBase64,
       documentHistory: buildDocumentHistory(),
       isCastType: !CREW_TYPES.includes(lineItem?.type),
@@ -779,8 +794,8 @@ export default function ContractModal({ production, lineItem, onClose }) {
       const result = await generateContractSignatures(contractKey, {
         provider_name: providerName,
         provider_email: providerEmail,
-        hocp_name: user?.name || 'Tomer Wilf Lezmy',
-        hocp_email: user?.email || 'tomer@particleformen.com',
+        hocp_name: companySignerName,
+        hocp_email: companySignerEmail,
         exhibit_a: exhibitA,
         exhibit_b: exhibitB,
         fee_amount: feeAmount,
@@ -788,13 +803,17 @@ export default function ContractModal({ production, lineItem, onClose }) {
         currency,
         contract_type: !CREW_TYPES.includes(lineItem?.type) ? 'cast' : 'crew',
         effective_date: effectiveDate,
-        require_hocp_signature: requireHocpSignature,
+        company_signer: companySigner,
+        company_signer_name: companySignerName,
+        company_signer_email: companySignerEmail,
+        company_signer_title: companySignerTitle,
+        require_hocp_signature: !signerIsCreator, // true when Tomer/custom signs externally
       });
 
       if (result?.signing_links) {
         setSigningLinks(result.signing_links);
-        setStatus(requireHocpSignature ? 'awaiting_hocp' : 'sent');
-        const newEvents = [...events, { type: requireHocpSignature ? 'awaiting_hocp' : 'sent', at: new Date().toISOString() }];
+        setStatus(signerIsCreator ? 'sent' : 'awaiting_signer');
+        const newEvents = [...events, { type: signerIsCreator ? 'sent' : 'awaiting_signer', at: new Date().toISOString() }];
         setEvents(newEvents);
       }
     } catch (e) {
@@ -911,7 +930,7 @@ export default function ContractModal({ production, lineItem, onClose }) {
       currency,
       payment_terms: paymentTerms,
       payment_method: paymentMethod,
-      hocp_name: user?.name || 'Tomer Wilf Lezmy',
+      hocp_name: companySignerName,
       logoBase64,
       documentHistory: buildDocumentHistory(),
       isCastType: !CREW_TYPES.includes(lineItem?.type),
@@ -955,7 +974,7 @@ export default function ContractModal({ production, lineItem, onClose }) {
           currentStep={currentStep}
           onStepClick={goToStep}
           maxReachedStep={maxReachedStep}
-          requireHocpSignature={requireHocpSignature}
+          signerIsCreator={signerIsCreator}
         />
 
         {/* ═══════════════════════════════════════════════════
@@ -973,9 +992,9 @@ export default function ContractModal({ production, lineItem, onClose }) {
                   <div className="text-[10px] text-gray-400">{PARTICLE_COMPANY.address}</div>
                 </div>
                 <div>
-                  <div className="text-[10px] text-gray-400">Signer (HOCP)</div>
-                  <div className="font-semibold text-gray-700 text-xs">{user?.name || 'Tomer Wilf Lezmy'}</div>
-                  <div className="text-[10px] text-gray-400">{user?.email || 'tomer@particleformen.com'}</div>
+                  <div className="text-[10px] text-gray-400">Signer (Particle)</div>
+                  <div className="font-semibold text-gray-700 text-xs">{companySignerName || 'Select in Step 2'}</div>
+                  <div className="text-[10px] text-gray-400">{companySignerEmail}</div>
                 </div>
               </div>
             </div>
@@ -1208,32 +1227,46 @@ export default function ContractModal({ production, lineItem, onClose }) {
               </button>
             </div>
 
-            {/* HOCP Signature Toggle */}
-            <div className="mt-5 p-4 bg-amber-50 border border-amber-200 rounded-xl">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-bold text-amber-800 flex items-center gap-1.5">
-                    <PenTool size={13} /> Require HOCP Signature
+            {/* Who signs on behalf of Particle? */}
+            <div className="mt-5 p-4 bg-indigo-50 border border-indigo-200 rounded-xl">
+              <div className="text-sm font-bold text-indigo-800 mb-3 flex items-center gap-1.5">
+                <PenTool size={13} /> Who signs on behalf of Particle?
+              </div>
+              <div className="space-y-2">
+                {[
+                  { id: 'omer', label: 'Omer Barak', sub: 'Creative Producer — signs in Step 3 (no external link)', email: 'omer@particleformen.com' },
+                  { id: 'tomer', label: 'Tomer Wilf Lezmy', sub: 'HOCP — receives signing link via email', email: 'tomer@particleformen.com' },
+                  { id: 'custom', label: 'Someone else', sub: 'Enter name and email below' },
+                ].map(opt => (
+                  <label key={opt.id} className={clsx(
+                    'flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all',
+                    companySigner === opt.id
+                      ? 'border-indigo-400 bg-white shadow-sm'
+                      : 'border-transparent hover:bg-white/50'
+                  )}>
+                    <input
+                      type="radio"
+                      name="companySigner"
+                      value={opt.id}
+                      checked={companySigner === opt.id}
+                      onChange={() => setCompanySigner(opt.id)}
+                      className="mt-1 accent-indigo-600"
+                      disabled={isSigned}
+                    />
+                    <div>
+                      <div className="text-sm font-semibold text-gray-800">{opt.label}</div>
+                      <div className="text-[10px] text-gray-500">{opt.sub}</div>
+                      {opt.email && <div className="text-[10px] text-indigo-500 mt-0.5">{opt.email}</div>}
+                    </div>
+                  </label>
+                ))}
+                {companySigner === 'custom' && (
+                  <div className="grid grid-cols-2 gap-2 mt-2 pl-8">
+                    <input className="brand-input text-sm" placeholder="Full name" value={customSignerName} onChange={e => setCustomSignerName(e.target.value)} disabled={isSigned} />
+                    <input className="brand-input text-sm" placeholder="Email" type="email" value={customSignerEmail} onChange={e => setCustomSignerEmail(e.target.value)} disabled={isSigned} />
+                    <input className="brand-input text-sm col-span-2" placeholder="Title (e.g., Production Manager)" value={customSignerTitle} onChange={e => setCustomSignerTitle(e.target.value)} disabled={isSigned} />
                   </div>
-                  <div className="text-[10px] text-amber-600 mt-0.5">
-                    {requireHocpSignature
-                      ? 'Tomer will sign on his device first, then supplier gets the link'
-                      : 'Tomer\'s signature auto-applied (static image), supplier gets link immediately'}
-                  </div>
-                </div>
-                <button
-                  onClick={() => setRequireHocpSignature(!requireHocpSignature)}
-                  disabled={isSigned}
-                  className={clsx(
-                    'relative w-11 h-6 rounded-full transition-colors shrink-0',
-                    requireHocpSignature ? 'bg-amber-500' : 'bg-gray-300'
-                  )}
-                >
-                  <div className={clsx(
-                    'absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform',
-                    requireHocpSignature ? 'translate-x-5' : 'translate-x-0.5'
-                  )} />
-                </button>
+                )}
               </div>
             </div>
           </div>
@@ -1399,8 +1432,8 @@ export default function ContractModal({ production, lineItem, onClose }) {
                     <div>
                       <div className="font-semibold mb-1">For the Company:</div>
                       <div>{PARTICLE_COMPANY.name}</div>
-                      <div>Name: {user?.name || 'Tomer Wilf Lezmy'}</div>
-                      <div>Title: Head of Creative Production</div>
+                      <div>Name: {companySignerName}</div>
+                      <div>Title: {companySignerTitle}</div>
                       <div>Date: {effectiveDate || new Date().toISOString().slice(0, 10)}</div>
                       {tomerSignature ? (
                         <img src={tomerSignature} alt="Signature" className="h-12 mt-2" />

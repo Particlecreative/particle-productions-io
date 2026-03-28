@@ -154,11 +154,11 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
       .then(cols => setCustomCols(cols || []));
   }, [production?.id, production?.custom_columns]);
 
-  // Keyboard shortcut: Cmd+N to add new line
+  // Keyboard shortcut: Alt+N to add new line
   useEffect(() => {
     if (!isEditor) return;
     function handleKeyDown(e) {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
+      if (e.altKey && e.key === 'n') {
         e.preventDefault();
         addRow();
       }
@@ -690,7 +690,7 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
               </div>
               <span className="font-medium">Add Line Item</span>
               <kbd className="ml-auto hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-gray-100 text-[10px] text-gray-400 font-mono group-hover:bg-blue-100 group-hover:text-blue-500 transition-colors">
-                ⌘ N
+                Alt+N
               </kbd>
             </button>
           )}

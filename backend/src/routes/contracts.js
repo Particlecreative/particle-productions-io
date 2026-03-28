@@ -409,7 +409,7 @@ router.post('/:id/upload-signed-pdf', async (req, res) => {
       return `<tr><td style="padding:6px 0;color:#666;font-size:13px;">${label}</td><td style="padding:6px 0;font-size:13px;">${formatDate(evt.at)}</td></tr>`;
     }).join('');
 
-    const subject = `Contract Signed & Completed: ${projectLabel} — ${contract.provider_name}`;
+    const subject = `Contract Signed & Completed: ${projectLabel} - ${contract.provider_name}`;
     const body = `
       <div style="font-family:Arial,sans-serif;max-width:600px;">
         <h2 style="color:#2e7d32;">✅ Contract Fully Signed</h2>
@@ -655,7 +655,7 @@ router.post('/:production_id/generate', async (req, res) => {
       sendEmail({
         to: 'tomer@particleformen.com',
         skipDefaultCc: true,
-        subject: `🖊️ Sign Contract: ${provider_name} — ${projectName}`,
+        subject: `Sign Contract: ${provider_name} - ${projectName}`,
         htmlBody: `
           <div style="font-family: Arial, sans-serif; max-width: 600px;">
             <h2 style="color: #030b2e;">Contract Needs Your Signature</h2>

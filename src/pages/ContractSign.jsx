@@ -85,15 +85,7 @@ export default function ContractSign() {
           setLoading(false);
           return;
         }
-        // HOCP signers must be logged in
-        if (data.signer_role === 'hocp') {
-          const jwt = localStorage.getItem('cp_token');
-          if (!jwt) {
-            // Redirect to login, then come back
-            window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
-            return;
-          }
-        }
+        // All signing links are public (no login required) — security via unique 64-char token
         setContractData(data);
         setSignerName(data.signer_name || '');
         setSignerId(data.signer_id_number || data.provider_id_number || '');
