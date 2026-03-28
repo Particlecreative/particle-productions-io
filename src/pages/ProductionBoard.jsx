@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Upload, Calendar, DollarSign, Clock, Film, Tag, MapPin,
-  Truck, Clapperboard, ChevronDown, Pencil, FileSpreadsheet,
+  Truck, Clapperboard, ChevronDown, Pencil, FileSpreadsheet, Settings2, GripVertical, Eye, EyeOff,
 } from 'lucide-react';
+import { getTabOrder, saveTabOrder, resetTabOrder } from '../lib/tabPrefs';
 import { useBrand } from '../context/BrandContext';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency } from '../context/CurrencyContext';
@@ -71,9 +72,17 @@ export default function ProductionBoard() {
 
   // Build tab list based on production type
   const isShootType = production && SHOOT_TYPES.includes(production.production_type);
-  const tabs = isShootType
+  const defaultTabs = isShootType
     ? ['Budget Table', 'People on Set', 'Credit Card', 'Cast', 'Accounting', 'Financial', 'Links', 'Updates', 'History', 'Gantt', 'Call Sheet']
     : ['Budget Table', 'Credit Card', 'Accounting', 'Financial', 'Links', 'Updates', 'History', 'Gantt'];
+
+  const [tabConfig, setTabConfig] = useState(() =>
+    getTabOrder(user?.id || 'anon', production?.id, defaultTabs)
+  );
+  const [showTabModal, setShowTabModal] = useState(false);
+  const [tabModalScope, setTabModalScope] = useState({ who: 'me', where: 'all' });
+
+  const visibleTabs = tabConfig.filter(t => t.visible).map(t => t.id);
 
   useEffect(() => {
     async function load() {
@@ -327,7 +336,7 @@ export default function ProductionBoard() {
 
       {/* ── Tabs ─────────────────────────────────────────────── */}
       <div className="brand-tabs mb-6 flex items-center">
-        {tabs.map(tab => (
+        {visibleTabs.map(tab => (
           <button
             key={tab}
             className={clsx('brand-tab', activeTab === tab && 'active')}
@@ -336,6 +345,15 @@ export default function ProductionBoard() {
             {tab}
           </button>
         ))}
+        {isEditor && (
+          <button
+            onClick={() => setShowTabModal(true)}
+            className="ml-1 p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            title="Arrange tabs"
+          >
+            <Settings2 size={14} />
+          </button>
+        )}
         {isShootType && (
           <button
             onClick={async () => {
@@ -430,6 +448,91 @@ export default function ProductionBoard() {
           cast={taxiCast}
           onClose={() => setShowTaxiWizard(false)}
         />
+      )}
+
+      {/* Tab Arrangement Modal */}
+      {showTabModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowTabModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="bg-gray-50 px-6 py-4 border-b">
+              <h3 className="font-bold text-gray-800">Arrange Tabs</h3>
+              <p className="text-xs text-gray-400 mt-0.5">Drag to reorder, toggle visibility</p>
+            </div>
+            <div className="px-6 py-4 max-h-80 overflow-y-auto">
+              {tabConfig.map((tab, idx) => (
+                <div key={tab.id} className="flex items-center gap-3 py-2 border-b border-gray-100 last:border-0">
+                  <div className="flex gap-1">
+                    <button
+                      disabled={idx === 0}
+                      onClick={() => {
+                        const next = [...tabConfig];
+                        [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+                        setTabConfig(next);
+                      }}
+                      className="text-gray-300 hover:text-gray-500 disabled:opacity-20 text-xs"
+                    >&#9650;</button>
+                    <button
+                      disabled={idx === tabConfig.length - 1}
+                      onClick={() => {
+                        const next = [...tabConfig];
+                        [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+                        setTabConfig(next);
+                      }}
+                      className="text-gray-300 hover:text-gray-500 disabled:opacity-20 text-xs"
+                    >&#9660;</button>
+                  </div>
+                  <span className={`text-sm flex-1 ${tab.visible ? 'text-gray-800' : 'text-gray-400 line-through'}`}>{tab.id}</span>
+                  <button
+                    onClick={() => {
+                      const next = tabConfig.map((t, i) => i === idx ? { ...t, visible: !t.visible } : t);
+                      setTabConfig(next);
+                    }}
+                    className={`p-1 rounded ${tab.visible ? 'text-blue-600' : 'text-gray-300'}`}
+                  >
+                    {tab.visible ? <Eye size={14} /> : <EyeOff size={14} />}
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="px-6 py-3 bg-gray-50 border-t">
+              <div className="flex gap-4 mb-3 text-xs">
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input type="radio" name="tabWho" checked={tabModalScope.who === 'me'} onChange={() => setTabModalScope(s => ({ ...s, who: 'me' }))} className="accent-blue-600" />
+                  Only me
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input type="radio" name="tabWho" checked={tabModalScope.who === 'all'} onChange={() => setTabModalScope(s => ({ ...s, who: 'all' }))} className="accent-blue-600" />
+                  All users
+                </label>
+                <span className="text-gray-300">|</span>
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input type="radio" name="tabWhere" checked={tabModalScope.where === 'this'} onChange={() => setTabModalScope(s => ({ ...s, where: 'this' }))} className="accent-blue-600" />
+                  This production
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input type="radio" name="tabWhere" checked={tabModalScope.where === 'all'} onChange={() => setTabModalScope(s => ({ ...s, where: 'all' }))} className="accent-blue-600" />
+                  All productions
+                </label>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { setTabConfig(defaultTabs.map(t => ({ id: t, visible: true }))); }}
+                  className="text-xs px-3 py-1.5 rounded-lg border text-gray-500 hover:bg-gray-100"
+                >Reset</button>
+                <div className="flex-1" />
+                <button onClick={() => setShowTabModal(false)} className="text-xs px-3 py-1.5 rounded-lg border text-gray-500 hover:bg-gray-100">Cancel</button>
+                <button
+                  onClick={() => {
+                    const scope = `${tabModalScope.who === 'me' ? 'user' : 'all'}_${tabModalScope.where === 'this' ? 'production_' + production?.id : 'global'}${tabModalScope.who === 'me' ? '_' + (user?.id || 'anon') : ''}`;
+                    saveTabOrder(scope, tabConfig);
+                    setShowTabModal(false);
+                  }}
+                  className="text-xs px-4 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+                >Save</button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

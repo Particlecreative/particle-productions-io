@@ -28,6 +28,7 @@ import { useLists } from '../../context/ListsContext';
 import InvoiceModal from './InvoiceModal';
 import ContractModal from './ContractModal';
 import { CloudLinks, detectCloudUrl, getDriveThumbnail } from '../shared/FileUploadButton';
+import { getListItemColor } from '../../lib/listService';
 import clsx from 'clsx';
 
 const TYPE_CLASSES = {
@@ -130,6 +131,11 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
   // Cast modal + photo fullscreen
   const [castModalItem, setCastModalItem] = useState(null); // line item that triggered Cast type
   const [photoFullscreen, setPhotoFullscreen] = useState(null); // photo URL to show fullscreen
+
+  // Color toggle for Status/Type columns
+  const [showColors, setShowColors] = useState(() => {
+    try { return localStorage.getItem('cp_budget_colors') !== 'false'; } catch { return true; }
+  });
 
   // CC purchase sub-rows
   const [ccPurchases, setCcPurchases] = useState([]);
@@ -503,6 +509,18 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
         >
           Compact
         </button>
+        <button
+          onClick={() => {
+            const next = !showColors;
+            setShowColors(next);
+            localStorage.setItem('cp_budget_colors', next ? 'true' : 'false');
+          }}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full border transition-colors ${
+            showColors ? 'bg-gradient-to-r from-red-100 via-yellow-100 to-green-100 border-gray-300 text-gray-700' : 'bg-gray-100 border-gray-200 text-gray-400'
+          }`}
+        >
+          {showColors ? '\uD83C\uDFA8 Colors On' : '\u2B1C Colors Off'}
+        </button>
         <div className="relative">
           {showColPanel && <div className="fixed inset-0 z-10" onClick={() => setShowColPanel(false)} />}
           <button
@@ -636,6 +654,7 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
                       return next;
                     })}
                     isNew={newRowId === item.id}
+                    showColors={showColors}
                   />
                   {expandedRows.has(item.id) && (ccByLineItem[item.id] || []).map(cc => (
                     <CCSubRow key={cc.id} cc={cc} totalCols={totalVisibleCols} />
@@ -869,7 +888,7 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
   );
 }
 
-function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEditingCell, onUpdate, onDelete, onInvoice, onContract, lineItemTypes, lineItemStatuses, crewRoles = [], hiddenCols = [], customCols = [], onOpenCastModal, onPhotoFullscreen, ccChildren = [], isExpanded, onToggleExpand, isNew }) {
+function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEditingCell, onUpdate, onDelete, onInvoice, onContract, lineItemTypes, lineItemStatuses, crewRoles = [], hiddenCols = [], customCols = [], onOpenCastModal, onPhotoFullscreen, ccChildren = [], isExpanded, onToggleExpand, isNew, showColors }) {
   const vis = key => !hiddenCols.includes(key);
   const diff = (parseFloat(item.planned_budget) || 0) - (parseFloat(item.actual_spent) || 0);
   const isEditing = (field) => editingCell?.itemId === item.id && editingCell?.field === field;
@@ -1050,7 +1069,12 @@ function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEd
             {lineItemTypes.map(t => <option key={t}>{t}</option>)}
           </select>
         ) : (
-          <span className={clsx('badge', TYPE_CLASSES[item.type])}>{item.type}</span>
+          <span className={clsx('badge', !showColors && TYPE_CLASSES[item.type], showColors && 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium')}
+            style={showColors && getListItemColor('lineItemTypes', item.type) ? {
+              backgroundColor: getListItemColor('lineItemTypes', item.type) + '20',
+              color: getListItemColor('lineItemTypes', item.type),
+              border: `1px solid ${getListItemColor('lineItemTypes', item.type)}40`
+            } : {}}>{item.type}</span>
         )}
       </td>}
 
@@ -1065,7 +1089,12 @@ function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEd
             {lineItemStatuses.map(s => <option key={s}>{s}</option>)}
           </select>
         ) : (
-          <span className={clsx('badge', STATUS_CLASSES[item.status])}>{item.status}</span>
+          <span className={clsx('badge', !showColors && STATUS_CLASSES[item.status], showColors && 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium')}
+            style={showColors && getListItemColor('lineItemStatuses', item.status) ? {
+              backgroundColor: getListItemColor('lineItemStatuses', item.status) + '20',
+              color: getListItemColor('lineItemStatuses', item.status),
+              border: `1px solid ${getListItemColor('lineItemStatuses', item.status)}40`
+            } : {}}>{item.status}</span>
         )}
       </td>}
 
