@@ -103,6 +103,30 @@ router.get('/sign/:id/:token', async (req, res) => {
     if (tokenAge > 30 * 24 * 60 * 60 * 1000) {
       return res.status(410).json({ error: 'This signing link has expired (30 days). Please request a new contract.' });
     }
+
+    // ── Track "viewed" event (like Dropbox Sign) ──
+    const viewerIp = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+    try {
+      const { rows: cEvt } = await db.query('SELECT events FROM contracts WHERE id = $1', [id]);
+      const evts = cEvt[0]?.events ? (typeof cEvt[0].events === 'string' ? JSON.parse(cEvt[0].events) : cEvt[0].events) : [];
+      // Only add "viewed" if last event wasn't a view by same person in last 5 min
+      const lastView = evts.filter(e => e.type === 'viewed' && e.role === sig.signer_role).pop();
+      const fiveMin = 5 * 60 * 1000;
+      if (!lastView || (Date.now() - new Date(lastView.at).getTime() > fiveMin)) {
+        evts.push({
+          type: 'viewed',
+          role: sig.signer_role,
+          name: sig.signer_name,
+          email: sig.signer_email,
+          ip: viewerIp,
+          at: new Date().toISOString(),
+        });
+        await db.query('UPDATE contracts SET events = $1 WHERE id = $2', [JSON.stringify(evts), id]);
+      }
+    } catch (viewErr) {
+      console.error('Failed to track view event:', viewErr.message);
+    }
+
     if (sig.signed_at) {
       // Check if ALL parties signed — if so, include full completion data
       const { rows: allSigs } = await db.query(
@@ -332,187 +356,320 @@ router.post('/sign/:id/:token', signLimiter, async (req, res) => {
       );
       console.log(`Contract ${id} fully signed — generating PDF + sending notifications`);
 
-      // ── Generate full signed PDF with pdf-lib ──
+      // ── Generate professional signed PDF with pdf-lib ──
       let driveUrl = null;
       try {
-        const { rows: cInfo } = await db.query(
-          `SELECT * FROM contracts WHERE id = $1`, [id]
-        );
+        const { rows: cInfo } = await db.query(`SELECT * FROM contracts WHERE id = $1`, [id]);
         const c = cInfo[0] || {};
         const { rows: signatures } = await db.query(
-          `SELECT signer_role, signer_name, signer_id_number, signature_data, signed_at, ip_address
+          `SELECT signer_role, signer_name, signer_email, signer_id_number, signature_data, signed_at, ip_address, user_agent
            FROM contract_signatures WHERE contract_id = $1 ORDER BY signed_at ASC`, [id]
         );
 
         const pdfDoc = await PDFDocument.create();
         const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
         const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-        const W = 595; const H = 842; const M = 50; const CW = W - M * 2;
+        const italic = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
+        const W = 595; const H = 842; const ML = 60; const MR = 60; const CW = W - ML - MR;
+        const BRAND = rgb(0.01, 0.04, 0.18); // #030b2e
+        const GRAY = rgb(0.4, 0.4, 0.4);
+        const LIGHT = rgb(0.6, 0.6, 0.6);
+        const TEXT = rgb(0.2, 0.2, 0.2);
+        const LINE_COLOR = rgb(0.85, 0.85, 0.85);
+        let pageNum = 0;
 
-        // Helper: add text with word wrap and auto-pagination
-        let page = pdfDoc.addPage([W, H]);
-        let y = H - M;
-        function checkPage(needed = 30) {
-          if (y < M + needed) { page = pdfDoc.addPage([W, H]); y = H - M; }
+        let page = null;
+        let y = 0;
+
+        function newPage() {
+          page = pdfDoc.addPage([W, H]);
+          pageNum++;
+          y = H - 55;
+          // Header line
+          page.drawLine({ start: { x: ML, y: H - 40 }, end: { x: W - MR, y: H - 40 }, thickness: 0.5, color: LINE_COLOR });
+          page.drawText('PARTICLE AESTHETIC SCIENCE LTD.', { x: ML, y: H - 35, size: 7, font, color: LIGHT });
+          page.drawText('SERVICES AGREEMENT', { x: W - MR - font.widthOfTextAtSize('SERVICES AGREEMENT', 7), y: H - 35, size: 7, font, color: LIGHT });
+          // Footer
+          page.drawLine({ start: { x: ML, y: 35 }, end: { x: W - MR, y: 35 }, thickness: 0.5, color: LINE_COLOR });
+          page.drawText(`Page ${pageNum}`, { x: W / 2 - 15, y: 22, size: 7, font, color: LIGHT });
+          page.drawText('Confidential', { x: ML, y: 22, size: 7, font: italic, color: LIGHT });
         }
-        function drawTitle(text) { checkPage(40); page.drawText(text, { x: M, y, size: 14, font: bold, color: rgb(0.01, 0.04, 0.18) }); y -= 24; }
-        function drawHeading(text) { checkPage(30); page.drawText(text, { x: M, y, size: 11, font: bold }); y -= 18; }
-        function drawParagraph(text) {
+
+        function checkPage(needed = 30) {
+          if (!page || y < 50 + needed) { newPage(); }
+        }
+
+        function drawSectionTitle(text) {
+          checkPage(35);
+          y -= 8;
+          page.drawLine({ start: { x: ML, y: y + 14 }, end: { x: W - MR, y: y + 14 }, thickness: 0.5, color: LINE_COLOR });
+          y -= 4;
+          page.drawText(text.toUpperCase(), { x: ML, y, size: 12, font: bold, color: BRAND });
+          y -= 22;
+        }
+
+        function drawHeading(text) {
+          checkPage(25);
+          y -= 4;
+          page.drawText(text, { x: ML, y, size: 10, font: bold, color: BRAND });
+          y -= 16;
+        }
+
+        function drawParagraph(text, indent = 0) {
           if (!text) return;
+          const maxW = CW - indent;
           const words = text.split(' ');
           let line = '';
           for (const word of words) {
             const test = line ? line + ' ' + word : word;
-            const tw = font.widthOfTextAtSize(test, 9.5);
-            if (tw > CW && line) {
-              checkPage(14);
-              page.drawText(line, { x: M, y, size: 9.5, font, color: rgb(0.25, 0.25, 0.25) });
-              y -= 14;
+            const tw = font.widthOfTextAtSize(test, 9);
+            if (tw > maxW && line) {
+              checkPage(13);
+              page.drawText(line, { x: ML + indent, y, size: 9, font, color: TEXT });
+              y -= 13;
               line = word;
             } else { line = test; }
           }
-          if (line) { checkPage(14); page.drawText(line, { x: M, y, size: 9.5, font, color: rgb(0.25, 0.25, 0.25) }); y -= 14; }
-          y -= 6;
+          if (line) { checkPage(13); page.drawText(line, { x: ML + indent, y, size: 9, font, color: TEXT }); y -= 13; }
+          y -= 5;
+        }
+
+        function drawLabel(label, value, x, labelW) {
+          checkPage(16);
+          page.drawText(label, { x, y, size: 8, font: bold, color: GRAY });
+          page.drawText(value || '—', { x: x + labelW, y, size: 9, font, color: TEXT });
+          y -= 15;
         }
 
         const provName = c.provider_name || 'Service Provider';
-        const provId = c.provider_id_number || '[Not provided]';
-        const provAddr = c.provider_address || '[Not provided]';
+        const provId = c.provider_id_number || '—';
+        const provAddr = c.provider_address || '—';
         const effDate = c.effective_date ? new Date(c.effective_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A';
         const isCast = c.contract_type === 'cast';
+        const feeStr = c.fee_amount ? `${Number(c.fee_amount).toLocaleString()} ${c.currency || 'USD'}` : 'As agreed';
 
-        // ── Title Page ──
-        page.drawText('PARTICLE AESTHETIC SCIENCE LTD.', { x: M, y, size: 8, font, color: rgb(0.5, 0.5, 0.5) }); y -= 20;
-        drawTitle('SERVICES AGREEMENT');
-        page.drawText(`Effective Date: ${effDate}`, { x: M, y, size: 10, font, color: rgb(0.4, 0.4, 0.4) }); y -= 20;
-        page.drawText('The Company:', { x: M, y, size: 9, font: bold }); y -= 14;
-        page.drawText('Particle Aesthetic Science Ltd., King George 48, Tel Aviv', { x: M, y, size: 9, font }); y -= 20;
-        page.drawText('Service Provider:', { x: M, y, size: 9, font: bold }); y -= 14;
-        page.drawText(`${provName}, ID: ${provId}, Address: ${provAddr}`, { x: M, y, size: 9, font }); y -= 20;
-        if (c.fee_amount) {
-          page.drawText(`Fee: ${Number(c.fee_amount).toLocaleString()} ${c.currency || 'USD'}`, { x: M, y, size: 9, font: bold }); y -= 14;
-        }
-        if (projectLabel) { page.drawText(`Production: ${projectLabel}`, { x: M, y, size: 9, font }); y -= 20; }
+        // ═══════════════════════════════════════════
+        // PAGE 1: COVER / TITLE
+        // ═══════════════════════════════════════════
+        newPage();
+        y = H - 120;
+        page.drawText('PARTICLE AESTHETIC SCIENCE LTD.', { x: ML, y, size: 9, font, color: GRAY });
+        y -= 35;
+        page.drawText('SERVICES AGREEMENT', { x: ML, y, size: 22, font: bold, color: BRAND });
+        y -= 28;
+        page.drawLine({ start: { x: ML, y }, end: { x: ML + 80, y }, thickness: 2.5, color: rgb(0.03, 0.03, 0.97) }); // Blue accent line
+        y -= 30;
+
+        // Party boxes
+        const boxW = (CW - 20) / 2;
+        const boxH = 70;
+        const boxY = y - boxH;
+        // Company box
+        page.drawRectangle({ x: ML, y: boxY, width: boxW, height: boxH, color: rgb(0.97, 0.97, 0.97), borderColor: LINE_COLOR, borderWidth: 0.5 });
+        page.drawText('THE COMPANY', { x: ML + 12, y: boxY + boxH - 16, size: 7, font: bold, color: GRAY });
+        page.drawText('Particle Aesthetic Science Ltd.', { x: ML + 12, y: boxY + boxH - 32, size: 9, font: bold, color: BRAND });
+        page.drawText('King George 48, Tel Aviv', { x: ML + 12, y: boxY + boxH - 46, size: 8, font, color: GRAY });
+        // Provider box
+        const bx2 = ML + boxW + 20;
+        page.drawRectangle({ x: bx2, y: boxY, width: boxW, height: boxH, color: rgb(0.97, 0.97, 0.97), borderColor: LINE_COLOR, borderWidth: 0.5 });
+        page.drawText('SERVICE PROVIDER', { x: bx2 + 12, y: boxY + boxH - 16, size: 7, font: bold, color: GRAY });
+        page.drawText(provName, { x: bx2 + 12, y: boxY + boxH - 32, size: 9, font: bold, color: BRAND });
+        page.drawText(`ID: ${provId}`, { x: bx2 + 12, y: boxY + boxH - 46, size: 8, font, color: GRAY });
+        page.drawText(provAddr, { x: bx2 + 12, y: boxY + boxH - 58, size: 8, font, color: GRAY });
+        y = boxY - 25;
+
+        // Key details
+        drawLabel('Effective Date:', effDate, ML, 90);
+        drawLabel('Fee:', feeStr, ML, 90);
+        drawLabel('Production:', projectLabel || '—', ML, 90);
+        if (c.payment_terms) drawLabel('Payment Terms:', c.payment_terms, ML, 90);
         y -= 10;
 
-        // ── Preamble ──
+        // ═══════════════════════════════════════════
+        // AGREEMENT TEXT
+        // ═══════════════════════════════════════════
+        drawSectionTitle('Preamble');
         drawParagraph(`This Services Agreement ("Agreement") is made and entered into on ${effDate} ("Effective Date"), by and between Particle Aesthetic Science Ltd., a company registered in Israel, with a principal place of business at King George 48, Tel Aviv ("Company"), and ${provName}, ID/Passport number ${provId}, with a principal place of business at ${provAddr} ("Service Provider").`);
-        drawParagraph('WHEREAS, Service Provider has the skills, resources, know-how and ability required to provide the Services and create the Deliverables; and');
+        drawParagraph('WHEREAS, Service Provider has the skills, resources, know-how and ability required to provide the Services and create the Deliverables (each as defined below); and');
         drawParagraph('WHEREAS, based on Service Provider\'s representations hereunder, the parties desire that Service Provider provide the Services as an independent contractor of Company upon the terms and conditions hereinafter specified;');
         drawParagraph('NOW, THEREFORE, the parties hereby agree as follows:');
 
-        // ── 1. DEFINITIONS ──
-        drawHeading('1. DEFINITIONS');
+        drawSectionTitle('1. Definitions');
+        drawParagraph('For purposes of this Agreement, the following capitalized terms shall have the following meaning:');
         if (isCast) {
-          drawParagraph('"Content" shall mean any testimonials, data, personal stories and details, names, locations, videos, photos, audio, and any breakdown, definition or partition of video, film or TV clips, including images, sound footage and segments, recorded performance, interviews, likeness and voice of the Service Provider as embodied therein.');
+          drawParagraph('"Content" shall mean any testimonials, data, personal stories and details, names, locations, videos, photos, audio, and any breakdown, definition or partition of video, film or TV clips, including images, sound footage and segments, recorded performance, interviews, likeness and voice of the Service Provider as embodied therein, and any and all other information which may be provided by the Service Provider to Company in connection with the Services.');
         } else {
           drawParagraph('"Deliverables" shall mean all deliverables provided or produced as a result of the work performed under this Agreement or in connection therewith, including, without limitation, any work products, composition, photographs, videos, information, specifications, documentation, content, designs, audio, and any breakdown, definition or partition of video, film or clips, images, sound footage and segments, recorded performance, including as set forth in Exhibit A, all in any media or form whatsoever.');
         }
-        drawParagraph('"Intellectual Property Rights" shall mean all worldwide, whether registered or not (i) patents, patent applications and patent rights; (ii) rights associated with works of authorship, including copyrights; (iii) rights relating to the protection of trade secrets and confidential information; (iv) trademarks, logos, service marks, brands, trade names, domain names; (v) rights analogous to those set forth herein and any other proprietary rights relating to intangible property; (vi) all other intellectual and industrial property rights.');
+        drawParagraph('"Intellectual Property Rights" shall mean all worldwide, whether registered or not (i) patents, patent applications and patent rights; (ii) rights associated with works of authorship, including copyrights, copyrights applications, copyrights restrictions; (iii) rights relating to the protection of trade secrets and confidential information; (iv) trademarks, logos, service marks, brands, trade names, domain names, goodwill and the right to publicity; (v) rights analogous to those set forth herein and any other proprietary rights relating to intangible property; (vi) all other intellectual and industrial property rights (of every kind and nature throughout the world and however designated) whether arising by operation of law, contract, license, or otherwise; and (vii) all registrations, initial applications, renewals, extensions, continuations, divisions or reissues thereof now or hereafter in force.');
         if (!isCast) {
           drawParagraph('"Services" shall mean any professional, creative, or technical services required under this Agreement, including filming, editing, directing, photography, sound design, styling, production assistance, and any other services as described in Exhibit A.');
         }
 
-        // ── 2-10 Clauses (condensed for PDF) ──
-        drawHeading('2. ENGAGEMENT AND SERVICES');
-        drawParagraph('Company engages Service Provider as an independent contractor to provide the Services and/or Deliverables as set forth in Exhibit A. Service Provider shall devote sufficient time, attention, and resources to perform the Services in a professional manner.');
+        drawSectionTitle('2. Engagement and Services');
+        drawParagraph('Company hereby engages Service Provider, and Service Provider hereby accepts such engagement, as an independent contractor to provide the Services and/or create the Deliverables, as set forth in Exhibit A attached hereto. Service Provider shall devote sufficient time, attention, and resources to perform the Services diligently and in a professional manner consistent with industry standards.');
 
-        drawHeading('3. COMPENSATION');
-        drawParagraph(`Company shall pay Service Provider a fee of ${c.fee_amount ? Number(c.fee_amount).toLocaleString() + ' ' + (c.currency || 'USD') : 'as agreed'}, subject to the payment terms set forth in Exhibit B. ${c.payment_terms || ''}`);
+        drawSectionTitle('3. Compensation');
+        drawParagraph(`In consideration for the Services and/or Deliverables, Company shall pay Service Provider a total fee of ${feeStr}, subject to the payment terms and conditions set forth in Exhibit B attached hereto. ${c.payment_terms || ''} All payments shall be made against a valid tax invoice. Service Provider shall be solely responsible for all applicable taxes.`);
 
-        drawHeading('4. INTELLECTUAL PROPERTY');
-        drawParagraph('All Deliverables and any Intellectual Property Rights therein shall be the sole and exclusive property of Company. Service Provider hereby irrevocably assigns to Company all rights, title, and interest in and to the Deliverables.');
+        drawSectionTitle('4. Intellectual Property');
+        drawParagraph('All Deliverables and any Intellectual Property Rights created in connection with the Services shall be the sole and exclusive property of Company. Service Provider hereby irrevocably assigns to Company all rights, title, and interest in and to the Deliverables, including all Intellectual Property Rights therein. Service Provider waives any moral rights in the Deliverables to the fullest extent permitted by law.');
+        if (isCast) {
+          drawParagraph('Service Provider grants Company an irrevocable, worldwide, perpetual license to use the Content in any manner and in any media, whether now known or hereafter devised, for Company\'s commercial purposes.');
+        }
 
-        drawHeading('5. CONFIDENTIALITY');
-        drawParagraph('Service Provider shall maintain in strict confidence all proprietary and confidential information of Company. This obligation shall survive the termination of this Agreement.');
+        drawSectionTitle('5. Confidentiality');
+        drawParagraph('Service Provider shall maintain in strict confidence all proprietary and confidential information of Company, including but not limited to trade secrets, business plans, client lists, financial information, and any other non-public information disclosed in connection with this Agreement. This obligation shall survive the termination of this Agreement for a period of five (5) years.');
 
-        drawHeading('6. REPRESENTATIONS AND WARRANTIES');
-        drawParagraph('Service Provider represents and warrants that (a) the Services and Deliverables will be performed in a professional manner; (b) the Deliverables will be original and will not infringe any third-party rights; (c) Service Provider has the full right and authority to enter into this Agreement.');
+        drawSectionTitle('6. Representations and Warranties');
+        drawParagraph('Service Provider represents and warrants that: (a) the Services will be performed in a professional and workmanlike manner; (b) the Deliverables will be original and will not infringe upon any third-party intellectual property rights; (c) Service Provider has the full right, power, and authority to enter into this Agreement and perform the obligations hereunder; (d) Service Provider is not subject to any obligation that would prevent performance under this Agreement.');
 
-        drawHeading('7. INDEMNIFICATION');
-        drawParagraph('Service Provider shall indemnify, defend, and hold harmless Company from and against any and all claims, damages, losses, costs, and expenses arising out of or relating to any breach of this Agreement by Service Provider.');
+        drawSectionTitle('7. Indemnification');
+        drawParagraph('Service Provider shall indemnify, defend, and hold harmless Company and its directors, officers, employees, and agents from and against any and all claims, damages, losses, costs, and expenses (including reasonable attorneys\' fees) arising out of or relating to any breach of this Agreement, any infringement of third-party rights, or any negligent or wrongful act or omission of Service Provider.');
 
-        drawHeading('8. TERM AND TERMINATION');
-        drawParagraph('This Agreement shall commence on the Effective Date and continue until all Services have been completed, unless earlier terminated by either party upon written notice.');
+        drawSectionTitle('8. Term and Termination');
+        drawParagraph('This Agreement shall commence on the Effective Date and shall continue until all Services have been completed and all Deliverables have been accepted by Company, unless earlier terminated. Either party may terminate this Agreement upon thirty (30) days\' prior written notice. Company may terminate immediately upon material breach by Service Provider.');
 
-        drawHeading('9. INDEPENDENT CONTRACTOR');
-        drawParagraph('Service Provider is an independent contractor and nothing herein shall be construed to create a partnership, joint venture, or employer-employee relationship between the parties.');
+        drawSectionTitle('9. Independent Contractor');
+        drawParagraph('Service Provider is an independent contractor and nothing herein shall be construed to create a partnership, joint venture, agency, or employer-employee relationship between the parties. Service Provider shall be solely responsible for all taxes, insurance, and benefits related to Service Provider\'s work.');
 
-        drawHeading('10. GENERAL PROVISIONS');
-        drawParagraph('This Agreement constitutes the entire agreement between the parties. This Agreement shall be governed by the laws of the State of Israel. Any dispute arising under this Agreement shall be subject to the exclusive jurisdiction of the courts of Tel Aviv.');
+        drawSectionTitle('10. General Provisions');
+        drawParagraph('This Agreement constitutes the entire agreement between the parties with respect to the subject matter hereof and supersedes all prior agreements. This Agreement may not be amended except in writing signed by both parties. This Agreement shall be governed by and construed in accordance with the laws of the State of Israel. Any dispute arising under or in connection with this Agreement shall be subject to the exclusive jurisdiction of the competent courts of Tel Aviv-Jaffa.');
 
-        // ── Exhibit A ──
+        // ═══════════════════════════════════════════
+        // EXHIBIT A
+        // ═══════════════════════════════════════════
         if (c.exhibit_a) {
-          checkPage(60);
-          drawTitle('EXHIBIT A - SCOPE OF SERVICES');
+          drawSectionTitle('Exhibit A — Scope of Services');
           drawParagraph(c.exhibit_a);
         }
 
-        // ── Exhibit B ──
-        if (c.exhibit_b) {
-          checkPage(60);
-          drawTitle('EXHIBIT B - FEES & PAYMENT');
-          drawParagraph(c.exhibit_b);
+        // ═══════════════════════════════════════════
+        // EXHIBIT B
+        // ═══════════════════════════════════════════
+        if (c.exhibit_b || c.fee_amount) {
+          drawSectionTitle('Exhibit B — Fees & Payment');
+          if (c.exhibit_b) drawParagraph(c.exhibit_b);
+          if (!c.exhibit_b && c.fee_amount) {
+            drawParagraph(`Total Fee: ${feeStr}`);
+            if (c.payment_terms) drawParagraph(`Payment Terms: ${c.payment_terms}`);
+          }
         }
 
-        // ── SIGNATURES PAGE ──
-        checkPage(200);
-        drawTitle('SIGNATURES');
-        page.drawText('The parties have executed this Agreement as of the dates set forth below.', { x: M, y, size: 9, font, color: rgb(0.4, 0.4, 0.4) }); y -= 30;
+        // ═══════════════════════════════════════════
+        // SIGNATURES PAGE
+        // ═══════════════════════════════════════════
+        newPage(); // Always start signatures on a new page
+        y = H - 80;
+        page.drawText('SIGNATURES', { x: ML, y, size: 16, font: bold, color: BRAND }); y -= 8;
+        page.drawLine({ start: { x: ML, y }, end: { x: W - MR, y }, thickness: 1, color: BRAND }); y -= 20;
+        page.drawText('The parties have executed this Agreement as of the dates set forth below.', { x: ML, y, size: 9, font: italic, color: GRAY }); y -= 30;
 
         for (const s of signatures) {
-          checkPage(100);
-          const label = s.signer_role === 'hocp' ? 'For the Company:' : 'For the Service Provider:';
-          page.drawText(label, { x: M, y, size: 10, font: bold }); y -= 16;
-          page.drawText(`Name: ${s.signer_name || 'N/A'}`, { x: M, y, size: 9, font }); y -= 14;
-          if (s.signer_id_number) { page.drawText(`ID/Title: ${s.signer_id_number}`, { x: M, y, size: 9, font }); y -= 14; }
+          checkPage(120);
+          const isCompany = s.signer_role === 'hocp';
+          const label = isCompany ? 'FOR THE COMPANY' : 'FOR THE SERVICE PROVIDER';
+
+          // Signature box with border
+          const sigBoxH = 90;
+          const sigBoxY = y - sigBoxH;
+          page.drawRectangle({ x: ML, y: sigBoxY, width: CW, height: sigBoxH, borderColor: LINE_COLOR, borderWidth: 0.5 });
+          page.drawText(label, { x: ML + 12, y: sigBoxY + sigBoxH - 16, size: 8, font: bold, color: GRAY });
 
           // Embed signature image
           if (s.signature_data) {
             try {
               const sigBytes = Buffer.from(s.signature_data.replace(/^data:[^;]+;base64,/, ''), 'base64');
               const sigImg = await pdfDoc.embedPng(sigBytes);
-              const dims = sigImg.scale(0.25);
-              checkPage(dims.height + 20);
-              page.drawImage(sigImg, { x: M, y: y - dims.height, width: dims.width, height: dims.height });
-              y -= dims.height + 8;
+              const maxSigW = 150; const maxSigH = 40;
+              const scale = Math.min(maxSigW / sigImg.width, maxSigH / sigImg.height, 1);
+              const sw = sigImg.width * scale; const sh = sigImg.height * scale;
+              page.drawImage(sigImg, { x: ML + 12, y: sigBoxY + 22, width: sw, height: sh });
             } catch (e) {
-              page.drawText('[Digitally Signed]', { x: M, y, size: 9, font, color: rgb(0, 0.4, 0) }); y -= 14;
+              page.drawText('[Digitally Signed]', { x: ML + 12, y: sigBoxY + 35, size: 10, font: italic, color: rgb(0, 0.4, 0) });
             }
           }
+
+          // Details on right side
+          const rx = ML + CW / 2 + 10;
+          let ry = sigBoxY + sigBoxH - 20;
+          page.drawText(`Name: ${s.signer_name || '—'}`, { x: rx, y: ry, size: 8, font, color: TEXT }); ry -= 13;
+          if (s.signer_id_number) { page.drawText(`ID/Title: ${s.signer_id_number}`, { x: rx, y: ry, size: 8, font, color: TEXT }); ry -= 13; }
+          if (s.signer_email) { page.drawText(`Email: ${s.signer_email}`, { x: rx, y: ry, size: 8, font, color: GRAY }); ry -= 13; }
           const signedDate = s.signed_at ? new Date(s.signed_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'N/A';
-          page.drawText(`Date: ${signedDate}`, { x: M, y, size: 9, font }); y -= 14;
-          if (s.ip_address) { page.drawText(`IP: ${s.ip_address}`, { x: M, y, size: 8, font, color: rgb(0.5, 0.5, 0.5) }); y -= 14; }
-          y -= 20;
+          page.drawText(`Date: ${signedDate}`, { x: rx, y: ry, size: 8, font, color: TEXT }); ry -= 13;
+          if (s.ip_address) { page.drawText(`IP: ${s.ip_address}`, { x: rx, y: ry, size: 7, font, color: LIGHT }); }
+
+          y = sigBoxY - 20;
         }
 
-        // ── DOCUMENT HISTORY ──
-        checkPage(80);
-        drawTitle('DOCUMENT HISTORY');
-        page.drawLine({ start: { x: M, y: y + 3 }, end: { x: W - M, y: y + 3 }, thickness: 0.5, color: rgb(0.8, 0.8, 0.8) }); y -= 10;
-        const fmtDt = (d) => d ? new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+        // ═══════════════════════════════════════════
+        // DOCUMENT HISTORY (Dropbox Sign style)
+        // ═══════════════════════════════════════════
+        y -= 10;
+        checkPage(60);
+        page.drawText('Document History', { x: ML, y, size: 14, font: bold, color: BRAND }); y -= 6;
+        page.drawLine({ start: { x: ML, y }, end: { x: W - MR, y }, thickness: 0.5, color: LINE_COLOR }); y -= 20;
+
+        const fmtDt = (d) => {
+          if (!d) return '';
+          const dt = new Date(d);
+          return dt.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
+            + '  ' + dt.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) + ' UTC';
+        };
+
+        const historyItems = [];
         for (const evt of events) {
-          checkPage(16);
-          let label = evt.type;
-          if (evt.type === 'created') label = 'Contract Created';
-          if (evt.type === 'sent') label = 'Sent for Signature';
-          if (evt.type === 'signed') label = `Signed by ${evt.name || evt.role || 'Party'}`;
-          if (evt.type === 'completed') label = 'All Parties Signed - Completed';
-          if (evt.type === 'regenerated') label = 'Links Regenerated';
-          // Find matching IP
-          const matchSig = signatures.find(s => s.signer_role === evt.role);
-          const ip = matchSig?.ip_address ? ` (IP: ${matchSig.ip_address})` : '';
-          page.drawText(label + ip, { x: M, y, size: 8, font: bold, color: rgb(0.3, 0.3, 0.3) });
-          page.drawText(fmtDt(evt.at), { x: 350, y, size: 8, font, color: rgb(0.5, 0.5, 0.5) });
-          y -= 14;
+          let label = '', detail = '';
+          const evtIp = evt.ip || '';
+          if (evt.type === 'viewed') {
+            label = 'VIEWED';
+            detail = `Viewed by ${evt.name || 'Unknown'}${evt.email ? ' (' + evt.email + ')' : ''}`;
+          } else if (evt.type === 'created') {
+            label = 'CREATED';
+            detail = 'Contract created';
+          } else if (evt.type === 'sent') {
+            label = 'SENT';
+            detail = `Sent for signature to ${c.provider_name || 'provider'}`;
+          } else if (evt.type === 'signed') {
+            label = 'SIGNED';
+            detail = `Signed by ${evt.name || evt.role || 'Party'}${evt.email ? ' (' + evt.email + ')' : ''}`;
+          } else if (evt.type === 'completed') {
+            label = 'COMPLETED';
+            detail = 'The document has been completed.';
+          } else {
+            label = (evt.type || '').toUpperCase();
+            detail = evt.name || '';
+          }
+          historyItems.push({ label, date: fmtDt(evt.at), detail, ip: evtIp });
         }
 
-        // Save PDF
+        for (const item of historyItems) {
+          checkPage(50);
+          // Label badge
+          page.drawText(item.label, { x: ML + 10, y: y - 4, size: 7, font: bold, color: GRAY });
+          // Date
+          page.drawText(item.date, { x: ML + 90, y, size: 9, font: bold, color: TEXT });
+          // Detail
+          page.drawText(item.detail, { x: ML + 220, y, size: 9, font, color: TEXT });
+          y -= 14;
+          // IP
+          if (item.ip) {
+            page.drawText(`IP: ${item.ip}`, { x: ML + 220, y, size: 8, font, color: LIGHT });
+            y -= 14;
+          }
+          y -= 12;
+          // Separator line
+          page.drawLine({ start: { x: ML, y: y + 8 }, end: { x: W - MR, y: y + 8 }, thickness: 0.3, color: rgb(0.9, 0.9, 0.9) });
+          y -= 4;
+        }
+
+        // ── Save PDF ──
         const pdfBytes = await pdfDoc.save();
         const pdfBase64 = Buffer.from(pdfBytes).toString('base64');
-        console.log(`[PDF] Generated ${Math.round(pdfBytes.length / 1024)}KB signed contract PDF`);
+        console.log(`[PDF] Generated ${Math.round(pdfBytes.length / 1024)}KB signed contract PDF (${pageNum} pages)`);
 
-        // Upload to Google Drive (skip if PDF is suspiciously small)
+        // ── Upload to Google Drive ──
         if (driveRouter.uploadDual && pdfBytes.length > 1000) {
           const year = new Date().getFullYear();
           const uploadResult = await driveRouter.uploadDual({
