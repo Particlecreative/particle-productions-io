@@ -111,7 +111,7 @@ function AppRoutes() {
         {/* Public forms — no auth required */}
         <Route path="/supplier-form/:productionId" element={<SupplierForm />} />
         <Route path="/cc-payment/:productionId" element={<CCPaymentForm />} />
-        <Route path="/sign/:contractId/:token" element={<ContractSign />} />
+        <Route path="/sign/:contractId/:token" element={<ErrorBoundary><ContractSign /></ErrorBoundary>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>

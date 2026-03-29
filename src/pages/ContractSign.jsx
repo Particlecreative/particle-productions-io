@@ -5,8 +5,17 @@ import {
   DollarSign, Shield, AlertTriangle, RefreshCw, Clock,
   User, Calendar, Hash, ChevronDown, Download,
 } from 'lucide-react';
-import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
+// Lazy-load heavy PDF libs to avoid "Cannot access before initialization" errors
+let html2canvasLib = null;
+let jsPDFLib = null;
+async function getHtml2Canvas() {
+  if (!html2canvasLib) { const m = await import('html2canvas'); html2canvasLib = m.default || m; }
+  return html2canvasLib;
+}
+async function getJsPDF() {
+  if (!jsPDFLib) { const m = await import('jspdf'); jsPDFLib = m.jsPDF || m.default || m; }
+  return jsPDFLib;
+}
 
 const API = import.meta.env.VITE_API_URL || '';
 
@@ -194,7 +203,17 @@ export default function ContractSign() {
     setSubmitting(true);
     try {
       const canvas = canvasRef.current;
-      const signatureBase64 = canvas.toDataURL('image/png');
+      let signatureBase64;
+      try {
+        signatureBase64 = canvas.toDataURL('image/png');
+        if (!signatureBase64 || signatureBase64 === 'data:,') {
+          throw new Error('Empty signature');
+        }
+      } catch (sigErr) {
+        setError('Unable to capture signature. Please try refreshing the page or use a different browser.');
+        setSubmitting(false);
+        return;
+      }
       const res = await fetch(`${API}/api/contracts/sign/${contractId}/${token}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -236,14 +255,16 @@ export default function ContractSign() {
     if (!completedRef.current) return;
     setExportingPdf(true);
     try {
-      const canvas = await html2canvas(completedRef.current, {
+      const h2c = await getHtml2Canvas();
+      const canvas = await h2c(completedRef.current, {
         scale: 2,
         useCORS: true,
         logging: false,
         backgroundColor: '#ffffff',
       });
       const imgData = canvas.toDataURL('image/jpeg', 0.95);
-      const pdf = new jsPDF('p', 'mm', 'a4');
+      const JsPDF = await getJsPDF();
+      const pdf = new JsPDF('p', 'mm', 'a4');
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = pdf.internal.pageSize.getHeight();
       const imgWidth = canvas.width;
@@ -282,9 +303,11 @@ export default function ContractSign() {
     if (!allSigned || !completedData || pdfUploaded || !completedRef.current) return;
     const timer = setTimeout(async () => {
       try {
-        const canvas = await html2canvas(completedRef.current, { scale: 2, useCORS: true, logging: false, backgroundColor: '#fff' });
+        const h2c = await getHtml2Canvas();
+        const canvas = await h2c(completedRef.current, { scale: 2, useCORS: true, logging: false, backgroundColor: '#fff' });
         const imgData = canvas.toDataURL('image/jpeg', 0.95);
-        const pdf = new jsPDF('p', 'mm', 'a4');
+        const JsPDF = await getJsPDF();
+        const pdf = new JsPDF('p', 'mm', 'a4');
         const pdfW = pdf.internal.pageSize.getWidth();
         const pdfH = pdf.internal.pageSize.getHeight();
         const ratio = pdfW / canvas.width;
@@ -438,7 +461,7 @@ export default function ContractSign() {
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                <PartyCard label="The Company" name="Particle Aesthetic Science Ltd." subtitle="{contractData?.hocp_signature?.signer_name || contractData?.signer_name || 'Authorized Signatory'}" role="Company" />
+                <PartyCard label="The Company" name="Particle Aesthetic Science Ltd." subtitle={contractData?.hocp_signature?.signer_name || contractData?.signer_name || 'Authorized Signatory'} role="Company" />
                 <PartyCard label="Service Provider" name={d.provider_name || '—'} role="Provider" />
               </div>
             </div>
@@ -592,7 +615,7 @@ export default function ContractSign() {
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-            <PartyCard label="The Company" name="Particle Aesthetic Science Ltd." subtitle="{contractData?.hocp_signature?.signer_name || contractData?.signer_name || 'Authorized Signatory'}" role="Company" />
+            <PartyCard label="The Company" name="Particle Aesthetic Science Ltd." subtitle={contractData?.hocp_signature?.signer_name || contractData?.signer_name || 'Authorized Signatory'} role="Company" />
             <PartyCard label="Service Provider" name={d.provider_name || '\u2014'} role={d.signer_role === 'hocp' ? 'HOCP' : 'Provider'} />
           </div>
         </div>

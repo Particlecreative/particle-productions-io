@@ -269,7 +269,7 @@ router.post('/sign/:id/:token', signLimiter, async (req, res) => {
         // Update contract status to 'sent'
         await db.query(`UPDATE contracts SET status = 'sent', sent_at = $1 WHERE id = $2`, [now, id]);
         // Slack: HOCP signed, contract now sent to supplier
-        notifySlack(`✍️ HOCP signed — contract sent to ${sig.provider_name}\nProduction: ${projectLabel}`, `${APP_BASE}/production/${prdShort}`);
+        notifySlack(`✍️ HOCP signed — contract sent to ${sig.provider_name}\nProduction: ${projectLabel}`, `${APP_BASE}/production/${prdShort}?contract=true`);
       }
     }
 
@@ -281,17 +281,43 @@ router.post('/sign/:id/:token', signLimiter, async (req, res) => {
     const allSigned = allSigs.every(s => s.signed_at !== null);
 
     // Slack notification — individual signer (simple, no PDF)
-    notifySlack(`✍️ Contract signed by ${signer_name || sig.signer_name}\nProduction: ${projectLabel}`, `${APP_BASE}/production/${prdShort}`);
+    notifySlack(`✍️ Contract signed by ${signer_name || sig.signer_name}\nProduction: ${projectLabel}`, `${APP_BASE}/production/${prdShort}?contract=true`);
 
     if (allSigned) {
-      // Mark contract as fully signed — PDF generation, upload, email, and Slack
-      // are now handled by the frontend via POST /:id/upload-signed-pdf
+      // Mark contract as fully signed
       events.push({ type: 'completed', at: now });
       await db.query(
-        `UPDATE contracts SET status = 'signed', signed_at = $1, events = $2 WHERE id = $3`,
+        `UPDATE contracts SET status = 'signed', signed_at = $1, events = $2, completion_email_sent_at = $1 WHERE id = $3`,
         [now, JSON.stringify(events), id]
       );
-      console.log(`Contract ${id} fully signed — waiting for frontend PDF upload`);
+      console.log(`Contract ${id} fully signed — sending completion notifications`);
+
+      // Send completion email immediately (don't wait for frontend PDF upload)
+      try {
+        const completedSubject = `Contract Signed - ${projectLabel} - ${sig.provider_name}`;
+        const completedBody = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px;">
+            <h2 style="color: #2e7d32;">Contract Fully Signed</h2>
+            <p>The contract for <strong>${projectLabel}</strong> with <strong>${sig.provider_name}</strong> has been signed by all parties.</p>
+            <p>A signed PDF copy will be available shortly in Google Drive.</p>
+            <p style="color: #888; font-size: 13px; margin-top: 24px;">
+              You can view the signed contract at any time using the original signing link.
+            </p>
+            <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
+            <p style="color: #aaa; font-size: 11px;">Sent via CP Panel - Particle Aesthetic Science Ltd.</p>
+          </div>`;
+        // Send to supplier
+        sendEmail({ to: sig.provider_email, subject: completedSubject, htmlBody: completedBody, skipDefaultCc: true }).catch(() => {});
+        console.log(`Completion email sent to ${sig.provider_email}`);
+      } catch (emailErr) {
+        console.error('Completion email failed:', emailErr.message);
+      }
+
+      // Slack notification — fully signed
+      notifySlack(
+        `Contract SIGNED - ${sig.provider_name} for ${projectLabel}\nAmount: ${feeDisplay}\nRef: ${prdId}`,
+        `${APP_BASE}/production/${prdShort}?contract=true`
+      );
     }
 
     res.json({ success: true, all_signed: allSigned });
@@ -324,7 +350,8 @@ router.get('/sign/:id/:token/completed', async (req, res) => {
       `SELECT events, drive_url, dropbox_url FROM contracts WHERE id = $1`,
       [id]
     );
-    const events = cRows[0]?.events ? JSON.parse(cRows[0].events) : [];
+    const rawEvents = cRows[0]?.events;
+    const events = Array.isArray(rawEvents) ? rawEvents : (typeof rawEvents === 'string' ? JSON.parse(rawEvents) : []);
 
     res.json({ signatures, events, drive_url: cRows[0]?.drive_url });
   } catch (err) {
@@ -395,10 +422,10 @@ router.post('/:id/upload-signed-pdf', async (req, res) => {
     const feeDisplay = contract.fee_amount ? `${Number(contract.fee_amount).toLocaleString()} ${contract.currency || 'USD'}` : '';
 
     const slackMsg = `✅ Contract Completed\nSupplier: ${contract.provider_name} | Production: ${projectLabel}${feeDisplay ? ' | Amount: ' + feeDisplay : ''}${driveUrl ? '\n📄 Signed PDF: ' + driveUrl : ''}`;
-    notifySlack(slackMsg, driveUrl || `${APP_BASE}/production/${prdShort}`);
+    notifySlack(slackMsg, driveUrl || `${APP_BASE}/production/${prdShort}?contract=true`);
 
     // Send completion email
-    const events = contract.events ? JSON.parse(contract.events) : [];
+    const events = Array.isArray(contract.events) ? contract.events : (typeof contract.events === 'string' ? JSON.parse(contract.events) : []);
     const formatDate = (d) => d ? new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'N/A';
     const historyHtml = events.map(evt => {
       let label = evt.type;
