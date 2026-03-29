@@ -626,6 +626,7 @@ export default function ContractModal({ production, lineItem, onClose }) {
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState('');
   const [copyMsg, setCopyMsg] = useState('');
+  const [autoGenTriggered, setAutoGenTriggered] = useState(false);
 
   // ── Logo for PDF (hardcoded base64, no fetch needed) ──
   const [logoBase64] = useState(PARTICLE_LOGO_BASE64);
@@ -1619,8 +1620,10 @@ export default function ContractModal({ production, lineItem, onClose }) {
         {currentStep === 4 && (
           <div>
             {/* Auto-generate signing links if not yet done */}
-            {!signingLinks && !generating && !generateError && (() => {
-              if (providerName.trim() && providerEmail.trim()) {
+            {!signingLinks && !generating && !generateError && !autoGenTriggered && providerName.trim() && providerEmail.trim() && (() => {
+              // Use ref to prevent multiple triggers
+              if (!autoGenTriggered) {
+                setAutoGenTriggered(true);
                 setTimeout(() => handleGenerate(), 100);
               }
               return (

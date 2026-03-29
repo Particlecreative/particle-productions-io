@@ -24,7 +24,7 @@ const INV_TYPE_LABELS = {
   Other:                'Other',
 };
 
-const INVOICE_TEMPLATE_EN = (prodName, amount, itemId, brandName) =>
+const INVOICE_TEMPLATE_EN = (prodName, amount, itemId, brandName, currency) =>
 `Dear Team,
 
 We hope this message finds you well.
@@ -33,7 +33,7 @@ Please send us a formal invoice for services rendered on the following productio
 
 Production: ${prodName}
 Reference: ${itemId}
-Amount: $${amount ? amount.toLocaleString() : 'as agreed'}
+Amount: ${amount ? amount.toLocaleString() : 'as agreed'} ${currency || 'USD'}
 Payment Terms: Net 30 days from invoice date
 
 Please send the invoice at your earliest convenience to ensure timely processing.
@@ -58,10 +58,10 @@ const INVOICE_TEMPLATE_HE = (prodName, amount, itemId, brandName) =>
 ${brandName}
 צוות הפקה`;
 
-const INVOICE_TEMPLATE = (prodName, amount, itemId, brandName, locale = 'en') =>
+const INVOICE_TEMPLATE = (prodName, amount, itemId, brandName, locale = 'en', currency = 'USD') =>
   locale === 'he'
     ? INVOICE_TEMPLATE_HE(prodName, amount, itemId, brandName)
-    : INVOICE_TEMPLATE_EN(prodName, amount, itemId, brandName);
+    : INVOICE_TEMPLATE_EN(prodName, amount, itemId, brandName, currency);
 
 /**
  * InvoiceModal
