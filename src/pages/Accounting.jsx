@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { X, Plus, ChevronDown, ChevronRight, ExternalLink, Upload, Download } from 'lucide-react';
+import { X, Plus, ChevronDown, ChevronRight, ExternalLink, Upload, Download, Trash2 } from 'lucide-react';
 import { useBrand } from '../context/BrandContext';
 import ExportMenu from '../components/ui/ExportMenu';
 import { useCurrency } from '../context/CurrencyContext';
@@ -834,6 +834,27 @@ function AccountingRow({ item, fmt, isEditor, showProduction, productionName, on
           </button>
         ) : <span className="text-gray-300 text-xs">—</span>}
       </td>
+
+      {/* Delete */}
+      {isEditor && (
+        <td className="text-center">
+          <button
+            onClick={() => {
+              if (confirm(`Delete "${item.full_name || item.item}"? This will remove this line item.`)) {
+                const token = localStorage.getItem('cp_token');
+                fetch(`/api/line-items/${item.id}?deleteContract=true&deleteCast=true`, {
+                  method: 'DELETE',
+                  headers: { Authorization: `Bearer ${token}` },
+                }).then(() => refresh()).catch(() => {});
+              }
+            }}
+            className="p-1 rounded hover:bg-red-50 text-gray-300 hover:text-red-500 transition-colors"
+            title="Delete line"
+          >
+            <Trash2 size={12} />
+          </button>
+        </td>
+      )}
 
     </tr>
   );
