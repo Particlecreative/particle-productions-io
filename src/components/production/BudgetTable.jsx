@@ -769,7 +769,7 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
                               item: role,
                               full_name: '',
                               planned_budget: 0,
-                              type: 'Crew',
+                              type: '',
                               status: 'Not Started',
                               actual_spent: 0,
                             };
