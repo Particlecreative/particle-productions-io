@@ -644,7 +644,7 @@ export default function ContractSign() {
             </button>
             {!pdfUploaded && (
               <button
-                onClick={handleUploadToDrive}
+                onClick={handleAutoUpload}
                 disabled={exportingPdf}
                 className="inline-flex items-center gap-2 px-5 py-3 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-xl transition-all disabled:opacity-60"
               >
