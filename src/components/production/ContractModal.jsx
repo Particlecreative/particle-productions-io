@@ -77,36 +77,43 @@ function StepIndicator({ currentStep, onStepClick, maxReachedStep, signerIsCreat
   );
 }
 
-// ── Event Timeline ───────────────────────────────────────────────
+// ── Event Timeline — Dropbox Sign style ─────────────────────────
 function EventTimeline({ events }) {
   if (!events || events.length === 0) return null;
-  const EVENT_ICONS = {
-    created:   { icon: Plus,        color: '#6b7280', label: 'Contract Created' },
-    sent:      { icon: Send,        color: '#2563eb', label: 'Contract Sent' },
-    signed:    { icon: FileSignature, color: '#16a34a', label: 'Signed' },
-    completed: { icon: CheckCircle, color: '#16a34a', label: 'All Parties Signed' },
-    generated: { icon: Link2,       color: '#7c3aed', label: 'Signing Links Generated' },
-    uploaded:  { icon: Upload,      color: '#0ea5e9', label: 'File Uploaded' },
-  };
+  const icons = { viewed: '👁', created: '📄', sent: '📤', signed: '✍️', completed: '✓', regenerated: '🔄', generated: '⚙️', uploaded: '📎' };
+  const labels = { viewed: 'VIEWED', created: 'CREATED', sent: 'SENT', signed: 'SIGNED', completed: 'COMPLETED', regenerated: 'UPDATED', generated: 'GENERATED', uploaded: 'UPLOADED' };
   return (
-    <div className="mt-5 pt-4 border-t border-gray-100">
-      <div className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3">Document History</div>
-      <div className="space-y-2">
-        {events.map((ev, i) => {
-          const meta = EVENT_ICONS[ev.type] || { icon: Clock, color: '#9ca3af', label: ev.type };
-          const Icon = meta.icon;
+    <div className="mt-5 pt-4 border-t border-gray-200">
+      <div className="text-sm font-semibold text-gray-700 mb-3">Document History</div>
+      <div className="divide-y divide-gray-100">
+        {events.map((evt, i) => {
+          const badge = labels[evt.type] || evt.type?.toUpperCase() || '';
+          const icon = icons[evt.type] || '•';
+          let detail = '';
+          if (evt.type === 'viewed') detail = `Viewed by ${evt.name || 'Unknown'}${evt.email ? ' (' + evt.email + ')' : ''}`;
+          else if (evt.type === 'created') detail = 'Contract created';
+          else if (evt.type === 'sent') detail = 'Sent for signature';
+          else if (evt.type === 'signed') detail = `Signed by ${evt.name || evt.role || 'Party'}${evt.email ? ' (' + evt.email + ')' : ''}`;
+          else if (evt.type === 'completed') detail = 'The document has been completed.';
+          else if (evt.type === 'generated') detail = 'Signing links generated';
+          else if (evt.type === 'uploaded') detail = 'File uploaded to Drive';
+          else detail = evt.name || '';
+          const evtDate = evt.at ? new Date(evt.at) : null;
+          const dateStr = evtDate ? evtDate.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }) : '';
+          const timeStr = evtDate ? evtDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZoneName: 'short' }) : '';
           return (
-            <div key={i} className="flex items-start gap-3">
-              <div className="shrink-0 w-6 h-6 rounded-full flex items-center justify-center" style={{ background: meta.color + '18' }}>
-                <Icon size={12} style={{ color: meta.color }} />
+            <div key={i} className="flex items-start gap-3 py-3">
+              <div className="flex flex-col items-center w-14 shrink-0">
+                <span className="text-base">{icon}</span>
+                <span className="text-[8px] font-bold tracking-wider text-gray-400 mt-0.5">{badge}</span>
+              </div>
+              <div className="w-24 shrink-0">
+                <div className="text-xs font-bold text-gray-800">{dateStr}</div>
+                <div className="text-[10px] text-gray-400">{timeStr}</div>
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-xs font-semibold text-gray-700">
-                  {meta.label}
-                  {ev.role && <span className="text-gray-400 font-normal ml-1">({ev.role === 'hocp' ? 'Particle HOCP' : 'Provider'})</span>}
-                  {ev.name && <span className="text-gray-400 font-normal ml-1">- {ev.name}</span>}
-                </div>
-                {ev.at && <div className="text-[10px] text-gray-400">{formatIST(ev.at)}</div>}
+                <div className="text-xs text-gray-700">{detail}</div>
+                {evt.ip && <div className="text-[10px] text-gray-400 mt-0.5">IP: {evt.ip}</div>}
               </div>
             </div>
           );
@@ -650,10 +657,8 @@ export default function ContractModal({ production, lineItem, onClose }) {
           setSigningLinks(links);
         }
         // If contract has been generated/sent, jump to appropriate step
-        if (data?.contract?.status === 'signed') {
-          setCurrentStep(5);
-          setMaxReachedStep(5);
-        } else if (data?.signatures?.length > 0) {
+        const cStatus = data?.contract?.status;
+        if (cStatus === 'signed' || cStatus === 'sent' || cStatus === 'awaiting_hocp' || data?.signatures?.length > 0) {
           setCurrentStep(5);
           setMaxReachedStep(5);
         }

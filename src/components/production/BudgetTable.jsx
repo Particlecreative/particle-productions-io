@@ -109,6 +109,7 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
   const [editingCell, setEditingCell] = useState(null); // { itemId, field }
   const [invoiceFor, setInvoiceFor] = useState(null);   // { id, step } | null
   const [contractFor, setContractFor] = useState(null); // lineItem object
+  const [contractRefreshKey, setContractRefreshKey] = useState(0); // increment to refresh contract status
   const [hiddenCols, setHiddenCols] = useState(() => getTablePrefs('budget').hidden);
   const [showColPanel, setShowColPanel] = useState(false);
   const [stickyHeader, setStickyHeader] = useState(() => {
@@ -670,6 +671,7 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
                     })}
                     isNew={newRowId === item.id}
                     showColors={showColors}
+                    contractRefreshKey={contractRefreshKey}
                   />
                   {expandedRows.has(item.id) && (ccByLineItem[item.id] || []).map(cc => (
                     <CCSubRow key={cc.id} cc={cc} totalCols={totalVisibleCols} />
@@ -852,7 +854,7 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
         <ContractModal
           production={production}
           lineItem={contractFor}
-          onClose={() => setContractFor(null)}
+          onClose={() => { setContractFor(null); setContractRefreshKey(k => k + 1); }}
         />
       )}
 
@@ -991,7 +993,7 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
   );
 }
 
-function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEditingCell, onUpdate, onDelete, onInvoice, onContract, lineItemTypes, lineItemStatuses, crewRoles = [], hiddenCols = [], customCols = [], onOpenCastModal, onPhotoFullscreen, ccChildren = [], isExpanded, onToggleExpand, isNew, showColors }) {
+function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEditingCell, onUpdate, onDelete, onInvoice, onContract, lineItemTypes, lineItemStatuses, crewRoles = [], hiddenCols = [], customCols = [], onOpenCastModal, onPhotoFullscreen, ccChildren = [], isExpanded, onToggleExpand, isNew, showColors, contractRefreshKey = 0 }) {
   const vis = key => !hiddenCols.includes(key);
   const diff = (parseFloat(item.planned_budget) || 0) - (parseFloat(item.actual_spent) || 0);
   const isEditing = (field) => editingCell?.itemId === item.id && editingCell?.field === field;
@@ -1009,7 +1011,7 @@ function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEd
     } catch (e) {
       console.warn('Failed to load contract for', contractKey, e);
     }
-  }, [contractKey]);
+  }, [contractKey, contractRefreshKey]);
 
   function cell(field, children, className) {
     if (!isEditor) return <td className={className}>{children}</td>;

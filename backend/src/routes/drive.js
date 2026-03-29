@@ -383,6 +383,18 @@ async function uploadDual({ fileName, fileContent, mimeType, subfolder, category
 
 router.uploadDual = uploadDual;
 
+// Trash a Drive file by fileId
+async function trashDriveFile(fileId) {
+  const { rows } = await db.query("SELECT google_tokens FROM settings WHERE brand_id = 'particle'");
+  if (!rows[0]?.google_tokens) return;
+  const tokens = typeof rows[0].google_tokens === 'string' ? JSON.parse(rows[0].google_tokens) : rows[0].google_tokens;
+  const oauth2 = getOAuth2Client();
+  oauth2.setCredentials(tokens);
+  const drive = google.drive({ version: 'v3', auth: oauth2 });
+  await drive.files.update({ fileId, resource: { trashed: true }, supportsAllDrives: true });
+}
+router.trashDriveFile = trashDriveFile;
+
 // ── POST /api/drive/backup-to-dropbox — copy all Drive files to Dropbox ──────
 router.post('/backup-to-dropbox', verifyJWT, async (req, res) => {
   try {

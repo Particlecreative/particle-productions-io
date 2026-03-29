@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { FileSignature, Search, ExternalLink, Download } from 'lucide-react';
+import { FileSignature, Search, ExternalLink, Download, Trash2 } from 'lucide-react';
 import ExportMenu from '../components/ui/ExportMenu';
 import { useBrand } from '../context/BrandContext';
 import { useAuth } from '../context/AuthContext';
@@ -61,6 +61,27 @@ export default function Contracts() {
   const [filterStatus, setFilterStatus] = useState('All');
   const [openContract, setOpenContract] = useState(null); // { production, contract }
   const [flashedId, setFlashedId] = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(null); // contract object
+  const [deleteDrive, setDeleteDrive] = useState(true);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDeleteContract() {
+    if (!deleteConfirm) return;
+    setDeleting(true);
+    try {
+      const token = localStorage.getItem('cp_token');
+      await fetch(`/api/contracts/${deleteConfirm.id}?deleteDrive=${deleteDrive}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      refreshContracts();
+    } catch (e) {
+      console.error('Delete contract failed:', e);
+    }
+    setDeleteConfirm(null);
+    setDeleting(false);
+    setDeleteDrive(true);
+  }
 
   useEffect(() => {
     async function load() {
@@ -306,6 +327,17 @@ export default function Contracts() {
                         <span className="text-gray-300 text-xs">—</span>
                       )}
                     </td>
+                    <td onClick={e => e.stopPropagation()} className="text-center">
+                      {isEditor && (
+                        <button
+                          onClick={() => setDeleteConfirm(c)}
+                          className="p-1 rounded hover:bg-red-50 text-gray-300 hover:text-red-500 transition-colors"
+                          title="Delete contract"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 );
               })}
@@ -321,6 +353,48 @@ export default function Contracts() {
           lineItem={openContract.lineItemId ? { id: openContract.lineItemId } : null}
           onClose={handleModalClose}
         />
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm && (
+        <div className="modal-overlay" onClick={() => !deleting && setDeleteConfirm(null)}>
+          <div className="modal-panel max-w-sm" onClick={e => e.stopPropagation()}>
+            <div className="text-center mb-4">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-50 text-red-500 mb-3">
+                <Trash2 size={22} />
+              </div>
+              <h3 className="text-lg font-bold text-gray-800">Delete Contract?</h3>
+              <p className="text-sm text-gray-500 mt-1">
+                Contract for <strong>{deleteConfirm.provider_name || 'Unknown'}</strong> will be permanently deleted.
+              </p>
+            </div>
+            <label className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg mb-4 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={deleteDrive}
+                onChange={e => setDeleteDrive(e.target.checked)}
+                className="rounded"
+              />
+              <span className="text-sm text-gray-600">Also delete files from Google Drive</span>
+            </label>
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setDeleteConfirm(null); setDeleteDrive(true); }}
+                className="flex-1 btn-secondary"
+                disabled={deleting}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteContract}
+                disabled={deleting}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-red-600 hover:bg-red-700 text-white transition-colors disabled:opacity-50"
+              >
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

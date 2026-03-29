@@ -1222,12 +1222,38 @@ router.get('/:production_id/signatures', async (req, res) => {
   }
 });
 
-// DELETE /api/contracts/:production_id
-router.delete('/:production_id', async (req, res) => {
+// DELETE /api/contracts/:id — delete by UUID or production_id, optionally trash Drive files
+router.delete('/:id', async (req, res) => {
+  const identifier = req.params.id;
+  const deleteDrive = req.query.deleteDrive === 'true';
   try {
-    await db.query('DELETE FROM contract_signatures WHERE contract_id = $1', [req.params.production_id]);
-    const { rows } = await db.query('DELETE FROM contracts WHERE production_id = $1 RETURNING *', [req.params.production_id]);
-    res.json({ deleted: rows[0] || null });
+    // Find the contract (try by id first, then by production_id)
+    let contract;
+    const { rows: byId } = await db.query('SELECT * FROM contracts WHERE id = $1', [identifier]);
+    if (byId[0]) { contract = byId[0]; }
+    else {
+      const { rows: byProd } = await db.query('SELECT * FROM contracts WHERE production_id = $1', [identifier]);
+      contract = byProd[0];
+    }
+    if (!contract) return res.status(404).json({ error: 'Contract not found' });
+
+    // Optionally trash Drive file
+    if (deleteDrive && contract.drive_url && driveRouter.trashDriveFile) {
+      try {
+        const fileIdMatch = contract.drive_url.match(/\/d\/([^/]+)/);
+        if (fileIdMatch) {
+          await driveRouter.trashDriveFile(fileIdMatch[1]);
+          console.log(`Trashed Drive file ${fileIdMatch[1]} for contract ${contract.id}`);
+        }
+      } catch (driveErr) {
+        console.error('Drive trash failed:', driveErr.message);
+      }
+    }
+
+    // Delete signatures + contract
+    await db.query('DELETE FROM contract_signatures WHERE contract_id = $1', [contract.id]);
+    await db.query('DELETE FROM contracts WHERE id = $1', [contract.id]);
+    res.json({ deleted: contract });
   } catch (err) {
     console.error('DELETE contract error:', err);
     res.status(500).json({ error: 'Server error' });
