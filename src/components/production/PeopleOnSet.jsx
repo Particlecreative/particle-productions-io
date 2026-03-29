@@ -468,7 +468,7 @@ function PersonRow({ row, vis, isEditor, onEdit, onDelete }) {
       {isEditor && (
         <td>
           {canEdit && (
-            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="flex gap-1 sm:opacity-0 opacity-60 sm:group-hover:opacity-100 transition-opacity">
               <button onClick={onEdit}   className="p-1.5 rounded hover:bg-gray-100 text-gray-400"><Pencil size={12} /></button>
               <button onClick={onDelete} className="p-1.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-500"><Trash2 size={12} /></button>
             </div>

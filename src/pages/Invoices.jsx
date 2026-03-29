@@ -261,7 +261,7 @@ export default function Invoices() {
       {tab === 'invoices' && (
         <>
           {/* Summary Stats */}
-          <div className="grid grid-cols-2 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
             <div className="brand-card border-l-4 border-orange-400">
               <div className="text-xs text-gray-400 mb-1">Pending</div>
               <div className="text-xl font-black text-orange-700">{fmt(pendingTotal)}</div>

@@ -363,7 +363,7 @@ function SortableNavItem({ to, icon: Icon, label, badge, badgeColor }) {
       <button
         {...attributes}
         {...listeners}
-        className="text-white/20 hover:text-white/60 cursor-grab active:cursor-grabbing p-1 flex-shrink-0 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+        className="text-white/20 hover:text-white/60 cursor-grab active:cursor-grabbing p-1 flex-shrink-0 rounded sm:opacity-0 opacity-60 sm:group-hover:opacity-100 transition-opacity"
         tabIndex={-1}
         aria-label="Drag to reorder"
       >

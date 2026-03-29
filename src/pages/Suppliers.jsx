@@ -424,7 +424,7 @@ export default function Suppliers() {
                       {vis('notes')           && <td className="text-xs text-gray-500 max-w-[160px] truncate">{s.notes || '—'}</td>}
                       {isEditor && (
                         <td>
-                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="flex gap-1 sm:opacity-0 opacity-60 sm:group-hover:opacity-100 transition-opacity">
                             <button onClick={() => openEdit(s)} className="p-1.5 rounded hover:bg-gray-100 text-gray-400">
                               <Pencil size={12} />
                             </button>

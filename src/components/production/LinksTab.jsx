@@ -324,7 +324,7 @@ function CategoryManagerModal({ productionId, categories, links, onClose }) {
               {/* Delete */}
               <button
                 onClick={() => deleteCategory(cat.id)}
-                className="p-1 rounded hover:bg-red-50 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                className="p-1 rounded hover:bg-red-50 text-gray-300 hover:text-red-500 sm:opacity-0 opacity-60 sm:group-hover:opacity-100 transition-opacity shrink-0"
                 title="Delete category"
               >
                 <Trash2 size={12} />
@@ -428,7 +428,7 @@ function LinkCard({ link, isEditor, editingId, newTitle, newUrl, setNewTitle, se
   return (
     <div className="flex items-center gap-1 group">
       {isEditor && (
-        <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+        <div className="flex flex-col gap-0.5 sm:opacity-0 opacity-60 sm:group-hover:opacity-100 transition-opacity flex-shrink-0">
           <button onClick={() => onMove(link.id, -1)} disabled={isFirst}
             className="p-0.5 rounded hover:bg-gray-100 text-gray-300 hover:text-gray-500 disabled:opacity-20">
             <ChevronUp size={11} />
@@ -444,7 +444,7 @@ function LinkCard({ link, isEditor, editingId, newTitle, newUrl, setNewTitle, se
         <span className="truncate">{link.title}</span>
         <ExternalLink size={10} className="flex-shrink-0 opacity-50" />
       </a>
-      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+      <div className="flex gap-1 sm:opacity-0 opacity-60 sm:group-hover:opacity-100 transition-opacity flex-shrink-0">
         <button onClick={handleCopy} className="p-1 rounded hover:bg-gray-100 text-gray-400" title="Copy">
           {copied ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}
         </button>
@@ -486,7 +486,7 @@ function LinkRow({ link, isEditor, editingId, newTitle, newUrl, setNewTitle, set
   return (
     <div className="flex items-center gap-2 px-4 py-2.5 group hover:bg-gray-50 transition-colors">
       {isEditor && (
-        <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+        <div className="flex flex-col gap-0.5 sm:opacity-0 opacity-60 sm:group-hover:opacity-100 transition-opacity flex-shrink-0">
           <button onClick={() => onMove(link.id, -1)} disabled={isFirst}
             className="p-0.5 rounded hover:bg-gray-200 text-gray-300 hover:text-gray-500 disabled:opacity-20">
             <ChevronUp size={11} />
@@ -503,7 +503,7 @@ function LinkRow({ link, isEditor, editingId, newTitle, newUrl, setNewTitle, set
         <ExternalLink size={10} className="flex-shrink-0 opacity-40" />
       </a>
       <span className="text-xs text-gray-300 truncate max-w-[160px] hidden sm:block">{link.url}</span>
-      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+      <div className="flex gap-1 sm:opacity-0 opacity-60 sm:group-hover:opacity-100 transition-opacity flex-shrink-0">
         <button onClick={handleCopy} className="p-1.5 rounded hover:bg-gray-200 text-gray-400" title="Copy URL">
           {copied ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}
         </button>

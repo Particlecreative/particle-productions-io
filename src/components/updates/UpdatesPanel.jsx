@@ -477,7 +477,7 @@ export default function UpdatesPanel({ productionId, onClose, inline = false }) 
               )}
 
               {/* Actions */}
-              <div className="flex gap-2 mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="flex gap-2 mt-1.5 sm:opacity-0 opacity-60 sm:group-hover:opacity-100 transition-opacity">
                 {(user?.id === comment.user_id || isAdmin) && !editingId && (
                   <>
                     <button onClick={() => handleEdit(comment.id, comment.body)} className="text-[10px] text-gray-400 hover:text-gray-600 flex items-center gap-1">

@@ -1091,7 +1091,7 @@ function WeeklyReportsTab({ productions, brandId, selectedYear }) {
                     title={report ? 'Click to rename' : undefined}
                   >
                     {report ? report.title : `Week of ${fmtWeekLabel(weekStart)}`}
-                    {report && <Edit3 size={12} className="text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity" />}
+                    {report && <Edit3 size={12} className="text-gray-300 sm:opacity-0 opacity-60 sm:group-hover:opacity-100 transition-opacity" />}
                   </h2>
                 )}
                 <p className="text-[11px] text-gray-400">

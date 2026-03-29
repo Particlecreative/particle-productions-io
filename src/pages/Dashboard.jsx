@@ -1394,7 +1394,7 @@ function ProductionRow({
             {isEditor && (
               <button
                 onClick={startEdit}
-                className="p-1.5 rounded hover:bg-blue-50 text-gray-300 hover:text-blue-500 transition-colors opacity-0 group-hover:opacity-100"
+                className="p-1.5 rounded hover:bg-blue-50 text-gray-300 hover:text-blue-500 transition-colors sm:opacity-0 opacity-60 sm:group-hover:opacity-100"
                 title="Edit row (click pencil)"
               >
                 <Pencil size={14} />

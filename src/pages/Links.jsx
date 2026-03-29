@@ -279,7 +279,7 @@ export default function Links() {
                       <td className="text-xs text-gray-300 truncate max-w-[200px]">{link.url}</td>
                       {isEditor && (
                         <td>
-                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="flex gap-1 sm:opacity-0 opacity-60 sm:group-hover:opacity-100 transition-opacity">
                             <CopyButton url={link.url} />
                             <button onClick={() => handleEdit(link)} className="p-1.5 rounded hover:bg-gray-100 text-gray-400"><Pencil size={12} /></button>
                             <button onClick={() => handleDelete(link.id)} className="p-1.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-500"><Trash2 size={12} /></button>
@@ -337,7 +337,7 @@ export default function Links() {
                           <span className="truncate font-medium">{link.title}</span>
                           <ExternalLink size={10} className="flex-shrink-0 opacity-40" />
                         </a>
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                        <div className="flex gap-1 sm:opacity-0 opacity-60 sm:group-hover:opacity-100 transition-opacity flex-shrink-0">
                           <CopyButton url={link.url} />
                           {isEditor && (
                             <>

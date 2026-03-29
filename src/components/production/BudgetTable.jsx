@@ -589,7 +589,7 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
                         ) : (
                           <button
                             onClick={() => setDeleteColConfirm(col.key)}
-                            className="text-gray-300 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                            className="text-gray-300 hover:text-red-400 sm:opacity-0 opacity-60 sm:group-hover:opacity-100 transition-opacity"
                           ><X size={11} /></button>
                         )
                       )}

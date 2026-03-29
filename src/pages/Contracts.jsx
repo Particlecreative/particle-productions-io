@@ -174,7 +174,7 @@ export default function Contracts() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
         {[
           { label: 'Pending', status: 'pending', color: 'gray' },
           { label: 'HOCP',    status: 'awaiting_hocp', color: 'amber' },
@@ -202,11 +202,10 @@ export default function Contracts() {
 
       {/* Toolbar */}
       <div className="flex items-center gap-3 mb-5 flex-wrap">
-        <div className="relative">
+        <div className="relative flex-1 sm:flex-none">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
-            className="brand-input pl-10"
-            style={{ width: 220 }}
+            className="brand-input pl-10 w-full sm:w-[220px]"
             placeholder="Search supplier…"
             value={search}
             onChange={e => setSearch(e.target.value)}
@@ -214,8 +213,7 @@ export default function Contracts() {
         </div>
 
         <select
-          className="brand-input"
-          style={{ width: 180 }}
+          className="brand-input flex-1 sm:flex-none sm:w-[180px]"
           value={filterProd}
           onChange={e => setFilterProd(e.target.value)}
         >
@@ -226,8 +224,7 @@ export default function Contracts() {
         </select>
 
         <select
-          className="brand-input"
-          style={{ width: 140 }}
+          className="brand-input flex-1 sm:flex-none sm:w-[140px]"
           value={filterStatus}
           onChange={e => setFilterStatus(e.target.value)}
         >

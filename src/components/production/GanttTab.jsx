@@ -1485,7 +1485,7 @@ function SortablePhaseRow({ phase, onRename, onDelete, onColorChange }) {
         <span className="text-sm flex-1 cursor-pointer" onClick={() => setEditing(true)}>{phase.name}</span>
       )}
 
-      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="flex gap-1 sm:opacity-0 opacity-60 sm:group-hover:opacity-100 transition-opacity">
         {PALETTE.slice(0, 6).map(c => (
           <button
             key={c}
@@ -1497,7 +1497,7 @@ function SortablePhaseRow({ phase, onRename, onDelete, onColorChange }) {
         ))}
       </div>
 
-      <button onClick={() => onDelete(phase.id)} className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 flex-shrink-0 opacity-0 group-hover:opacity-100">
+      <button onClick={() => onDelete(phase.id)} className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 flex-shrink-0 sm:opacity-0 opacity-60 sm:group-hover:opacity-100">
         <Trash2 size={13} />
       </button>
     </div>
