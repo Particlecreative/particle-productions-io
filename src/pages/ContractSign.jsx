@@ -5,17 +5,8 @@ import {
   DollarSign, Shield, AlertTriangle, RefreshCw, Clock,
   User, Calendar, Hash, ChevronDown, Download,
 } from 'lucide-react';
-// Lazy-load heavy PDF libs to avoid "Cannot access before initialization" errors
-let html2canvasLib = null;
-let jsPDFLib = null;
-async function getHtml2Canvas() {
-  if (!html2canvasLib) { const m = await import('html2canvas'); html2canvasLib = m.default || m; }
-  return html2canvasLib;
-}
-async function getJsPDF() {
-  if (!jsPDFLib) { const m = await import('jspdf'); jsPDFLib = m.jsPDF || m.default || m; }
-  return jsPDFLib;
-}
+// PDF libs loaded on-demand only when user clicks "Save as PDF" — NOT on page load
+// This avoids Vite minification TDZ errors that crash the signing canvas
 
 const API = import.meta.env.VITE_API_URL || '';
 
@@ -106,6 +97,9 @@ export default function ContractSign() {
     }
     load();
   }, [contractId, token]);
+
+  // Determine signer type early (before any conditional returns that reference it)
+  const isInternal = contractData?.signer_role === 'hocp';
 
   /* ── Intersection observer for sign section ── */
   useEffect(() => {
@@ -236,13 +230,18 @@ export default function ContractSign() {
       // If all parties signed, fetch completion data (both signatures + events)
       if (data.all_signed) {
         setAllSigned(true);
-        try {
-          const cRes = await fetch(`${API}/api/contracts/sign/${contractId}/${token}/completed`);
-          if (cRes.ok) {
-            const cData = await cRes.json();
-            setCompletedData(cData);
-          }
-        } catch {}
+        // Fetch completion data with retry
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const cRes = await fetch(`${API}/api/contracts/sign/${contractId}/${token}/completed`);
+            if (cRes.ok) {
+              const cData = await cRes.json();
+              setCompletedData(cData);
+              break;
+            }
+          } catch {}
+          await new Promise(r => setTimeout(r, 1000)); // Wait 1s between retries
+        }
       }
     } catch {
       setError('Network error. Please try again.');
@@ -255,7 +254,7 @@ export default function ContractSign() {
     if (!completedRef.current) return;
     setExportingPdf(true);
     try {
-      const h2c = await getHtml2Canvas();
+      const { default: h2c } = await import('html2canvas');
       const canvas = await h2c(completedRef.current, {
         scale: 2,
         useCORS: true,
@@ -263,7 +262,7 @@ export default function ContractSign() {
         backgroundColor: '#ffffff',
       });
       const imgData = canvas.toDataURL('image/jpeg', 0.95);
-      const JsPDF = await getJsPDF();
+      const { jsPDF: JsPDF } = await import('jspdf');
       const pdf = new JsPDF('p', 'mm', 'a4');
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = pdf.internal.pageSize.getHeight();
@@ -298,33 +297,37 @@ export default function ContractSign() {
     setExportingPdf(false);
   }
 
-  // Auto-upload PDF in background after completed view renders
-  useEffect(() => {
-    if (!allSigned || !completedData || pdfUploaded || !completedRef.current) return;
-    const timer = setTimeout(async () => {
-      try {
-        const h2c = await getHtml2Canvas();
-        const canvas = await h2c(completedRef.current, { scale: 2, useCORS: true, logging: false, backgroundColor: '#fff' });
-        const imgData = canvas.toDataURL('image/jpeg', 0.95);
-        const JsPDF = await getJsPDF();
-        const pdf = new JsPDF('p', 'mm', 'a4');
-        const pdfW = pdf.internal.pageSize.getWidth();
-        const pdfH = pdf.internal.pageSize.getHeight();
-        const ratio = pdfW / canvas.width;
-        const scaledH = canvas.height * ratio;
-        let yOff = 0;
-        while (yOff < scaledH) { if (yOff > 0) pdf.addPage(); pdf.addImage(imgData, 'JPEG', 0, -yOff, pdfW, scaledH); yOff += pdfH; }
-        const base64 = pdf.output('datauristring');
-        await fetch(`${API}/api/contracts/${contractId}/upload-signed-pdf`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pdf_base64: base64, token }),
-        });
-        setPdfUploaded(true);
-      } catch {}
-    }, 2000); // Wait 2s for render to stabilize
-    return () => clearTimeout(timer);
-  }, [allSigned, completedData, pdfUploaded]);
+  // PDF upload to Drive happens via the "Upload to Drive" button (not auto)
+  // Auto-upload was unreliable because html2canvas needs the DOM to be fully painted
+  async function handleUploadToDrive() {
+    if (!completedRef.current || pdfUploaded) return;
+    setExportingPdf(true);
+    try {
+      const { default: h2c } = await import('html2canvas');
+      const canvas = await h2c(completedRef.current, { scale: 2, useCORS: true, logging: false, backgroundColor: '#fff' });
+      const imgData = canvas.toDataURL('image/jpeg', 0.95);
+      const { jsPDF: JsPDF } = await import('jspdf');
+      const pdf = new JsPDF('p', 'mm', 'a4');
+      const pdfW = pdf.internal.pageSize.getWidth();
+      const pdfH = pdf.internal.pageSize.getHeight();
+      const ratio = pdfW / canvas.width;
+      const scaledH = canvas.height * ratio;
+      let yOff = 0;
+      while (yOff < scaledH) { if (yOff > 0) pdf.addPage(); pdf.addImage(imgData, 'JPEG', 0, -yOff, pdfW, scaledH); yOff += pdfH; }
+      const base64 = pdf.output('datauristring');
+      console.log(`[PDF] Generated ${Math.round(base64.length / 1024)}KB for Drive upload`);
+      const res = await fetch(`${API}/api/contracts/${contractId}/upload-signed-pdf`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pdf_base64: base64, token }),
+      });
+      if (res.ok) setPdfUploaded(true);
+      else console.error('[PDF] Upload failed:', await res.text());
+    } catch (err) {
+      console.error('[PDF] Upload error:', err);
+    }
+    setExportingPdf(false);
+  }
 
   const canSubmit = hasSignature && signerName.trim() && (isInternal || agreedToTerms) && !submitting;
 
@@ -365,8 +368,149 @@ export default function ContractSign() {
     );
   }
 
-  // Already signed
+  // Already signed — show full completed view if all parties signed
   if (alreadySigned) {
+    const asd = alreadySignedData;
+    const isCompleted = asd?.all_signed;
+    const cd = asd?.contract_data;
+    const sigs = asd?.signatures || [];
+    const evts = cd?.events ? (typeof cd.events === 'string' ? JSON.parse(cd.events) : cd.events) : [];
+    const formatEvt = (d) => d ? new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+    const hocpSig = sigs.find(s => s.role === 'hocp');
+    const providerSig = sigs.find(s => s.role === 'provider');
+
+    if (isCompleted && cd) {
+      // Full completed view with both signatures + contract + history
+      return (
+        <Shell status="signed">
+          <style>{GLOBAL_STYLES}</style>
+          <div style={{ animation: 'cs-fade-up .4s ease-out' }}>
+            {/* Header */}
+            <div className="text-center mb-8">
+              <div className="w-16 h-16 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-4"
+                   style={{ animation: 'cs-check-pop .5s ease-out' }}>
+                <CheckCircle size={36} className="text-green-500" />
+              </div>
+              <h2 className="text-2xl font-bold text-gray-900">Contract Completed</h2>
+              <p className="text-gray-500 text-sm mt-1">All parties have signed this agreement.</p>
+            </div>
+
+            {/* Contract summary card */}
+            <div className="bg-white rounded-xl shadow border border-gray-100 p-6 mb-6">
+              <div className="text-center mb-4">
+                <p className="text-[10px] uppercase tracking-[3px] text-gray-400 mb-2">Particle Aesthetic Science Ltd.</p>
+                <h3 className="text-xl font-bold text-gray-900">SERVICES AGREEMENT</h3>
+                {cd.effective_date && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Effective: {new Date(cd.effective_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                  </p>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-4 text-sm mb-4">
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-[10px] uppercase text-gray-400 mb-1">Company</p>
+                  <p className="font-semibold text-gray-900">Particle Aesthetic Science Ltd.</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-[10px] uppercase text-gray-400 mb-1">Service Provider</p>
+                  <p className="font-semibold text-gray-900">{cd.provider_name}</p>
+                </div>
+              </div>
+              {cd.project_name && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center mb-4">
+                  <p className="text-xs text-blue-500 font-semibold uppercase">Production</p>
+                  <p className="text-lg font-bold text-blue-900">{cd.project_name}</p>
+                </div>
+              )}
+              {cd.fee_amount && (
+                <div className="flex items-center justify-center gap-2 text-sm text-gray-600">
+                  <DollarSign size={14} />
+                  <span className="font-semibold">{Number(cd.fee_amount).toLocaleString()} {cd.currency || 'USD'}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Signatures */}
+            <div className="bg-white rounded-xl shadow border border-gray-100 p-6 mb-6">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-4">Signatures</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                {/* Company signer */}
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <p className="text-[10px] uppercase tracking-wide text-gray-400 mb-2">For the Company</p>
+                  {hocpSig?.signature && (
+                    <img src={hocpSig.signature} alt="Company signature" className="max-h-16 mb-2" />
+                  )}
+                  <p className="text-sm font-semibold text-gray-900">{hocpSig?.name || 'Authorized Signatory'}</p>
+                  {hocpSig?.signed_at && (
+                    <p className="text-xs text-gray-500 mt-1">{formatEvt(hocpSig.signed_at)}</p>
+                  )}
+                </div>
+                {/* Provider signer */}
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <p className="text-[10px] uppercase tracking-wide text-gray-400 mb-2">Service Provider</p>
+                  {providerSig?.signature && (
+                    <img src={providerSig.signature} alt="Provider signature" className="max-h-16 mb-2" />
+                  )}
+                  <p className="text-sm font-semibold text-gray-900">{providerSig?.name || cd.provider_name}</p>
+                  {providerSig?.signed_at && (
+                    <p className="text-xs text-gray-500 mt-1">{formatEvt(providerSig.signed_at)}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Document History */}
+            <div className="bg-white rounded-xl shadow border border-gray-100 p-6 mb-6">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-4">Document History</h3>
+              <div className="space-y-3">
+                {evts.map((evt, i) => {
+                  let label = evt.type;
+                  if (evt.type === 'created') label = 'Contract Created';
+                  if (evt.type === 'sent') label = 'Sent for Signature';
+                  if (evt.type === 'signed') label = `Signed by ${evt.name || evt.role}`;
+                  if (evt.type === 'completed') label = 'All Parties Signed';
+                  if (evt.type === 'regenerated') label = 'Links Regenerated';
+                  return (
+                    <div key={i} className="flex items-start gap-3 text-sm py-1">
+                      <div className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${evt.type === 'completed' ? 'bg-green-500' : evt.type === 'signed' ? 'bg-blue-500' : 'bg-gray-300'}`} />
+                      <div className="flex-1">
+                        <span className="font-medium text-gray-700">{label}</span>
+                        {evt.ip && (
+                          <span className="text-[10px] text-gray-400 ml-2">IP: {evt.ip}</span>
+                        )}
+                      </div>
+                      <span className="text-xs text-gray-400 shrink-0">{formatEvt(evt.at)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-3">
+              {cd.drive_url && (
+                <a href={cd.drive_url} target="_blank" rel="noopener noreferrer"
+                   className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 transition-colors">
+                  <Download size={16} /> Download Signed PDF
+                </a>
+              )}
+              <button onClick={() => window.print()}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-gray-100 text-gray-700 text-sm font-semibold rounded-xl hover:bg-gray-200 transition-colors">
+                <FileText size={16} /> Print
+              </button>
+            </div>
+
+            {/* Security footer */}
+            <div className="flex items-center justify-center gap-2 mt-6 text-[11px] text-gray-400">
+              <Shield size={11} />
+              <span>Secured & powered by Particle Aesthetic Science Ltd.</span>
+            </div>
+          </div>
+        </Shell>
+      );
+    }
+
+    // Simple already-signed view (not all parties done yet)
     return (
       <Shell status="signed">
         <div className="flex flex-col items-center justify-center py-16 px-6 text-center"
@@ -375,22 +519,22 @@ export default function ContractSign() {
                style={{ animation: 'cs-check-pop .5s ease-out' }}>
             <CheckCircle size={40} className="text-green-500" />
           </div>
-          <h2 className="text-xl font-bold text-gray-900 mb-2">Document Already Signed</h2>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">Document Signed</h2>
           <p className="text-gray-500 text-sm max-w-sm mb-6">
-            This document has already been signed. No further action is required.
+            Your signature has been recorded. You will receive a signed copy once all parties have signed.
           </p>
-          {alreadySignedData?.signed_at && (
+          {asd?.signed_at && (
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-green-50 text-green-700 text-xs font-medium rounded-full">
               <CheckCircle size={12} />
-              Signed on {new Date(alreadySignedData.signed_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+              Signed on {new Date(asd.signed_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
             </div>
           )}
-          {alreadySignedData?.signature_data && (
+          {asd?.signature_data && (
             <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
-              <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-2">Signature</p>
-              <img src={alreadySignedData.signature_data} alt="Signature" className="max-h-16 mx-auto" />
-              {alreadySignedData.signer_name && (
-                <p className="text-sm font-semibold text-gray-700 mt-2">{alreadySignedData.signer_name}</p>
+              <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-2">Your Signature</p>
+              <img src={asd.signature_data} alt="Signature" className="max-h-16 mx-auto" />
+              {asd.signer_name && (
+                <p className="text-sm font-semibold text-gray-700 mt-2">{asd.signer_name}</p>
               )}
             </div>
           )}
@@ -406,7 +550,20 @@ export default function ContractSign() {
       ? new Date(d.effective_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
       : signDate;
 
-    if (allSigned && d) {
+    // Loading completed data...
+    if (allSigned && !completedData) {
+      return (
+        <Shell status="signed">
+          <div className="flex flex-col items-center justify-center py-24">
+            <div className="w-10 h-10 border-[3px] border-gray-200 border-t-green-500 rounded-full mb-5"
+                 style={{ animation: 'cs-spin .6s linear infinite' }} />
+            <p className="text-gray-500 text-sm">Loading signed contract...</p>
+          </div>
+        </Shell>
+      );
+    }
+
+    if (allSigned && completedData && d) {
       const sigs = completedData?.signatures || [];
       const events = completedData?.events || [];
       const hocpSig = sigs.find(s => s.signer_role === 'hocp');
@@ -428,22 +585,37 @@ export default function ContractSign() {
             </div>
           </div>
 
-          {/* Download PDF button */}
-          <div className="flex justify-center gap-3 mb-6">
+          {/* Download + Save to Drive buttons */}
+          <div className="flex flex-wrap justify-center gap-3 mb-6">
             <button
               onClick={handleDownloadPdf}
               disabled={exportingPdf}
               className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl shadow-lg transition-all disabled:opacity-60"
             >
               {exportingPdf ? (
-                <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full" style={{ animation: 'cs-spin .6s linear infinite' }} /> Generating PDF...</>
+                <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full" style={{ animation: 'cs-spin .6s linear infinite' }} /> Generating...</>
               ) : (
-                <><Download size={16} /> Download Signed PDF</>
+                <><Download size={16} /> Save as PDF</>
               )}
             </button>
+            <button
+              onClick={() => window.print()}
+              className="inline-flex items-center gap-2 px-5 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold rounded-xl transition-all"
+            >
+              <FileText size={16} /> Print
+            </button>
+            {!pdfUploaded && (
+              <button
+                onClick={handleUploadToDrive}
+                disabled={exportingPdf}
+                className="inline-flex items-center gap-2 px-5 py-3 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-xl transition-all disabled:opacity-60"
+              >
+                {exportingPdf ? 'Uploading...' : 'Save to Google Drive'}
+              </button>
+            )}
             {pdfUploaded && (
-              <span className="inline-flex items-center gap-1 text-xs text-green-600 self-center">
-                <CheckCircle size={12} /> Saved to Drive
+              <span className="inline-flex items-center gap-1 text-xs text-green-600 self-center bg-green-50 px-3 py-2 rounded-lg">
+                <CheckCircle size={12} /> Saved to Google Drive
               </span>
             )}
           </div>
@@ -475,7 +647,7 @@ export default function ContractSign() {
             {/* Full Agreement Terms */}
             <div className="px-6 sm:px-10 py-6 border-b border-gray-100">
               <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-4">Agreement Terms</h3>
-              <FullContractText data={d} effectiveDate={effectiveDate} liveId={signerId || d.provider_id_number} liveAddress={signerAddress || d.provider_address} />
+              <FullContractText data={d} effectiveDate={effectiveDate} liveId={signerId || d.provider_id_number} liveAddress={signerAddress || d.provider_address} noScroll />
             </div>
 
             {/* Exhibit A */}
@@ -547,10 +719,15 @@ export default function ContractSign() {
                   if (evt.type === 'signed') { icon = '✍️'; label = `Signed by ${evt.name || evt.role || 'Party'}`; }
                   if (evt.type === 'completed') { icon = '✅'; label = 'All Parties Signed — Completed'; }
                   return (
-                    <div key={i} className="flex items-center gap-3 text-sm">
-                      <span className="text-base">{icon}</span>
-                      <span className="font-medium text-gray-700 flex-1">{label}</span>
-                      <span className="text-xs text-gray-400">{formatEvt(evt.at)}</span>
+                    <div key={i} className="flex items-start gap-3 text-sm py-1">
+                      <span className="text-base mt-0.5">{icon}</span>
+                      <div className="flex-1">
+                        <span className="font-medium text-gray-700">{label}</span>
+                        {evt.ip && (
+                          <span className="text-[10px] text-gray-400 ml-2">IP: {evt.ip}</span>
+                        )}
+                      </div>
+                      <span className="text-xs text-gray-400 shrink-0">{formatEvt(evt.at)}</span>
                     </div>
                   );
                 })}
@@ -592,7 +769,6 @@ export default function ContractSign() {
 
   /* ─────────── Main signing view ─────────── */
   const d = contractData;
-  const isInternal = d?.signer_role === 'hocp';
   const effectiveDate = d.effective_date
     ? new Date(d.effective_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
     : signDate;
@@ -994,7 +1170,7 @@ function ExhibitCard({ color, icon, title, subtitle, content, children }) {
 /* ═══════════════════════════════════════════════
    Full Contract Text — renders full legal text
    ═══════════════════════════════════════════════ */
-function FullContractText({ data: d, effectiveDate, liveId, liveAddress }) {
+function FullContractText({ data: d, effectiveDate, liveId, liveAddress, noScroll }) {
   const isCast = (d.contract_type === 'cast');
   const providerName = d.provider_name || '[Service Provider]';
   const providerId = liveId || d.provider_id_number || d.provider_id || '[Please complete]';
@@ -1005,7 +1181,7 @@ function FullContractText({ data: d, effectiveDate, liveId, liveAddress }) {
   const P = ({ children }) => <p className="text-[13px] text-gray-600 leading-relaxed mb-2">{children}</p>;
 
   return (
-    <div className="max-h-[500px] overflow-y-auto pr-2" style={{ scrollbarWidth: 'thin' }}>
+    <div className={noScroll ? '' : 'max-h-[500px] overflow-y-auto pr-2'} style={noScroll ? {} : { scrollbarWidth: 'thin' }}>
       {/* Preamble */}
       <P>
         This Services Agreement (&ldquo;Agreement&rdquo;) is made and entered into on {effectiveDate} (&ldquo;Effective Date&rdquo;), by and between Particle Aesthetic Science Ltd., a company registered in Israel, with a principal place of business at King George 48, Tel Aviv (&ldquo;Company&rdquo;), and {providerName}, ID/Passport number {providerId}, with a principal place of business at {providerAddr} (&ldquo;Service Provider&rdquo;),

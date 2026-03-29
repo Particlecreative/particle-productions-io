@@ -27,18 +27,33 @@ async function getGmailClient() {
   return google.gmail({ version: 'v1', auth: oauth2 });
 }
 
+// Strip non-ASCII from email subjects to prevent encoding issues
+function sanitizeSubject(subject) {
+  if (!subject) return '';
+  // Remove emojis, non-ASCII chars, em-dashes → plain ASCII
+  return subject
+    .replace(/[\u{1F600}-\u{1F9FF}]/gu, '')  // emojis
+    .replace(/[\u{2600}-\u{27BF}]/gu, '')     // misc symbols
+    .replace(/[\u{FE00}-\u{FE0F}]/gu, '')     // variation selectors
+    .replace(/[\u{200D}]/gu, '')               // zero-width joiner
+    .replace(/\u2014/g, '-')                    // em-dash → hyphen
+    .replace(/\u2013/g, '-')                    // en-dash → hyphen
+    .replace(/[^\x00-\x7F]/g, '')              // any remaining non-ASCII
+    .trim();
+}
+
 // Build RFC 2822 email
-function buildEmail({ to, cc, subject, htmlBody, from, skipDefaultCc }) {
+function buildEmail({ to, cc, subject, htmlBody, from, skipDefaultCc, replyTo }) {
   const ccList = skipDefaultCc
     ? (cc || []).filter(Boolean).join(', ')
     : [ALWAYS_CC, ...(cc || [])].filter(Boolean).join(', ');
-  // MIME-encode subject for UTF-8 safety (handles accented names, special chars)
-  const encodedSubject = `=?UTF-8?B?${Buffer.from(subject).toString('base64')}?=`;
+  const cleanSubject = sanitizeSubject(subject);
   const raw = [
     `From: ${from || 'tomer@particleformen.com'}`,
     `To: ${to}`,
     ccList ? `Cc: ${ccList}` : '',
-    `Subject: ${encodedSubject}`,
+    replyTo ? `Reply-To: ${replyTo}` : '',
+    `Subject: ${cleanSubject}`,
     'MIME-Version: 1.0',
     'Content-Type: text/html; charset=UTF-8',
     '',

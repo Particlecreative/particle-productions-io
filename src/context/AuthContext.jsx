@@ -22,8 +22,11 @@ export function AuthProvider({ children }) {
       return;
     }
     // Prod: validate JWT with backend
+    // Skip auth check on public pages (signing, forms)
+    const publicPaths = ['/sign/', '/supplier-form/', '/cc-payment/'];
+    const isPublicPage = publicPaths.some(p => window.location.pathname.startsWith(p));
     const token = localStorage.getItem(TOKEN_KEY);
-    if (!token) { setLoading(false); return; }
+    if (!token || isPublicPage) { setLoading(false); return; }
     apiGet('/auth/me')
       .then(u => { if (u) setUser(u); })
       .catch(() => { localStorage.removeItem(TOKEN_KEY); })

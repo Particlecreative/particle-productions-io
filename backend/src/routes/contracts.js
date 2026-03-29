@@ -104,7 +104,47 @@ router.get('/sign/:id/:token', async (req, res) => {
       return res.status(410).json({ error: 'This signing link has expired (30 days). Please request a new contract.' });
     }
     if (sig.signed_at) {
-      return res.status(400).json({ error: 'This contract has already been signed', already_signed: true, signed_at: sig.signed_at, signature_data: sig.signature_data, signer_name: sig.signer_name });
+      // Check if ALL parties signed — if so, include full completion data
+      const { rows: allSigs } = await db.query(
+        `SELECT signer_role, signer_name, signature_data, signed_at, signer_id_number
+         FROM contract_signatures WHERE contract_id = $1 ORDER BY signed_at ASC`, [id]
+      );
+      const allDone = allSigs.every(s => s.signed_at !== null);
+      const { rows: cInfo } = await db.query(
+        `SELECT c.*, p.project_name FROM contracts c
+         LEFT JOIN productions p ON p.id = split_part(c.production_id, '_li_', 1)
+         WHERE c.id = $1`, [id]
+      );
+      const contract = cInfo[0] || {};
+      return res.status(400).json({
+        error: 'This contract has already been signed',
+        already_signed: true,
+        all_signed: allDone,
+        signed_at: sig.signed_at,
+        signature_data: sig.signature_data,
+        signer_name: sig.signer_name,
+        // Full contract data for completed view
+        contract_data: {
+          provider_name: contract.provider_name,
+          provider_email: contract.provider_email,
+          project_name: contract.project_name || contract.production_id,
+          fee_amount: contract.fee_amount,
+          currency: contract.currency,
+          effective_date: contract.effective_date,
+          exhibit_a: contract.exhibit_a,
+          exhibit_b: contract.exhibit_b,
+          contract_type: contract.contract_type,
+          drive_url: contract.drive_url,
+          events: contract.events,
+        },
+        signatures: allSigs.map(s => ({
+          role: s.signer_role,
+          name: s.signer_name,
+          signature: s.signature_data,
+          signed_at: s.signed_at,
+          id_number: s.signer_id_number,
+        })),
+      });
     }
     // Fetch HOCP signature status (to show on supplier's signing page)
     let hocpSignature = null;
@@ -290,33 +330,231 @@ router.post('/sign/:id/:token', signLimiter, async (req, res) => {
         `UPDATE contracts SET status = 'signed', signed_at = $1, events = $2, completion_email_sent_at = $1 WHERE id = $3`,
         [now, JSON.stringify(events), id]
       );
-      console.log(`Contract ${id} fully signed — sending completion notifications`);
+      console.log(`Contract ${id} fully signed — generating PDF + sending notifications`);
 
-      // Send completion email immediately (don't wait for frontend PDF upload)
+      // ── Generate full signed PDF with pdf-lib ──
+      let driveUrl = null;
       try {
+        const { rows: cInfo } = await db.query(
+          `SELECT * FROM contracts WHERE id = $1`, [id]
+        );
+        const c = cInfo[0] || {};
+        const { rows: signatures } = await db.query(
+          `SELECT signer_role, signer_name, signer_id_number, signature_data, signed_at, ip_address
+           FROM contract_signatures WHERE contract_id = $1 ORDER BY signed_at ASC`, [id]
+        );
+
+        const pdfDoc = await PDFDocument.create();
+        const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+        const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+        const W = 595; const H = 842; const M = 50; const CW = W - M * 2;
+
+        // Helper: add text with word wrap and auto-pagination
+        let page = pdfDoc.addPage([W, H]);
+        let y = H - M;
+        function checkPage(needed = 30) {
+          if (y < M + needed) { page = pdfDoc.addPage([W, H]); y = H - M; }
+        }
+        function drawTitle(text) { checkPage(40); page.drawText(text, { x: M, y, size: 14, font: bold, color: rgb(0.01, 0.04, 0.18) }); y -= 24; }
+        function drawHeading(text) { checkPage(30); page.drawText(text, { x: M, y, size: 11, font: bold }); y -= 18; }
+        function drawParagraph(text) {
+          if (!text) return;
+          const words = text.split(' ');
+          let line = '';
+          for (const word of words) {
+            const test = line ? line + ' ' + word : word;
+            const tw = font.widthOfTextAtSize(test, 9.5);
+            if (tw > CW && line) {
+              checkPage(14);
+              page.drawText(line, { x: M, y, size: 9.5, font, color: rgb(0.25, 0.25, 0.25) });
+              y -= 14;
+              line = word;
+            } else { line = test; }
+          }
+          if (line) { checkPage(14); page.drawText(line, { x: M, y, size: 9.5, font, color: rgb(0.25, 0.25, 0.25) }); y -= 14; }
+          y -= 6;
+        }
+
+        const provName = c.provider_name || 'Service Provider';
+        const provId = c.provider_id_number || '[Not provided]';
+        const provAddr = c.provider_address || '[Not provided]';
+        const effDate = c.effective_date ? new Date(c.effective_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A';
+        const isCast = c.contract_type === 'cast';
+
+        // ── Title Page ──
+        page.drawText('PARTICLE AESTHETIC SCIENCE LTD.', { x: M, y, size: 8, font, color: rgb(0.5, 0.5, 0.5) }); y -= 20;
+        drawTitle('SERVICES AGREEMENT');
+        page.drawText(`Effective Date: ${effDate}`, { x: M, y, size: 10, font, color: rgb(0.4, 0.4, 0.4) }); y -= 20;
+        page.drawText('The Company:', { x: M, y, size: 9, font: bold }); y -= 14;
+        page.drawText('Particle Aesthetic Science Ltd., King George 48, Tel Aviv', { x: M, y, size: 9, font }); y -= 20;
+        page.drawText('Service Provider:', { x: M, y, size: 9, font: bold }); y -= 14;
+        page.drawText(`${provName}, ID: ${provId}, Address: ${provAddr}`, { x: M, y, size: 9, font }); y -= 20;
+        if (c.fee_amount) {
+          page.drawText(`Fee: ${Number(c.fee_amount).toLocaleString()} ${c.currency || 'USD'}`, { x: M, y, size: 9, font: bold }); y -= 14;
+        }
+        if (projectLabel) { page.drawText(`Production: ${projectLabel}`, { x: M, y, size: 9, font }); y -= 20; }
+        y -= 10;
+
+        // ── Preamble ──
+        drawParagraph(`This Services Agreement ("Agreement") is made and entered into on ${effDate} ("Effective Date"), by and between Particle Aesthetic Science Ltd., a company registered in Israel, with a principal place of business at King George 48, Tel Aviv ("Company"), and ${provName}, ID/Passport number ${provId}, with a principal place of business at ${provAddr} ("Service Provider").`);
+        drawParagraph('WHEREAS, Service Provider has the skills, resources, know-how and ability required to provide the Services and create the Deliverables; and');
+        drawParagraph('WHEREAS, based on Service Provider\'s representations hereunder, the parties desire that Service Provider provide the Services as an independent contractor of Company upon the terms and conditions hereinafter specified;');
+        drawParagraph('NOW, THEREFORE, the parties hereby agree as follows:');
+
+        // ── 1. DEFINITIONS ──
+        drawHeading('1. DEFINITIONS');
+        if (isCast) {
+          drawParagraph('"Content" shall mean any testimonials, data, personal stories and details, names, locations, videos, photos, audio, and any breakdown, definition or partition of video, film or TV clips, including images, sound footage and segments, recorded performance, interviews, likeness and voice of the Service Provider as embodied therein.');
+        } else {
+          drawParagraph('"Deliverables" shall mean all deliverables provided or produced as a result of the work performed under this Agreement or in connection therewith, including, without limitation, any work products, composition, photographs, videos, information, specifications, documentation, content, designs, audio, and any breakdown, definition or partition of video, film or clips, images, sound footage and segments, recorded performance, including as set forth in Exhibit A, all in any media or form whatsoever.');
+        }
+        drawParagraph('"Intellectual Property Rights" shall mean all worldwide, whether registered or not (i) patents, patent applications and patent rights; (ii) rights associated with works of authorship, including copyrights; (iii) rights relating to the protection of trade secrets and confidential information; (iv) trademarks, logos, service marks, brands, trade names, domain names; (v) rights analogous to those set forth herein and any other proprietary rights relating to intangible property; (vi) all other intellectual and industrial property rights.');
+        if (!isCast) {
+          drawParagraph('"Services" shall mean any professional, creative, or technical services required under this Agreement, including filming, editing, directing, photography, sound design, styling, production assistance, and any other services as described in Exhibit A.');
+        }
+
+        // ── 2-10 Clauses (condensed for PDF) ──
+        drawHeading('2. ENGAGEMENT AND SERVICES');
+        drawParagraph('Company engages Service Provider as an independent contractor to provide the Services and/or Deliverables as set forth in Exhibit A. Service Provider shall devote sufficient time, attention, and resources to perform the Services in a professional manner.');
+
+        drawHeading('3. COMPENSATION');
+        drawParagraph(`Company shall pay Service Provider a fee of ${c.fee_amount ? Number(c.fee_amount).toLocaleString() + ' ' + (c.currency || 'USD') : 'as agreed'}, subject to the payment terms set forth in Exhibit B. ${c.payment_terms || ''}`);
+
+        drawHeading('4. INTELLECTUAL PROPERTY');
+        drawParagraph('All Deliverables and any Intellectual Property Rights therein shall be the sole and exclusive property of Company. Service Provider hereby irrevocably assigns to Company all rights, title, and interest in and to the Deliverables.');
+
+        drawHeading('5. CONFIDENTIALITY');
+        drawParagraph('Service Provider shall maintain in strict confidence all proprietary and confidential information of Company. This obligation shall survive the termination of this Agreement.');
+
+        drawHeading('6. REPRESENTATIONS AND WARRANTIES');
+        drawParagraph('Service Provider represents and warrants that (a) the Services and Deliverables will be performed in a professional manner; (b) the Deliverables will be original and will not infringe any third-party rights; (c) Service Provider has the full right and authority to enter into this Agreement.');
+
+        drawHeading('7. INDEMNIFICATION');
+        drawParagraph('Service Provider shall indemnify, defend, and hold harmless Company from and against any and all claims, damages, losses, costs, and expenses arising out of or relating to any breach of this Agreement by Service Provider.');
+
+        drawHeading('8. TERM AND TERMINATION');
+        drawParagraph('This Agreement shall commence on the Effective Date and continue until all Services have been completed, unless earlier terminated by either party upon written notice.');
+
+        drawHeading('9. INDEPENDENT CONTRACTOR');
+        drawParagraph('Service Provider is an independent contractor and nothing herein shall be construed to create a partnership, joint venture, or employer-employee relationship between the parties.');
+
+        drawHeading('10. GENERAL PROVISIONS');
+        drawParagraph('This Agreement constitutes the entire agreement between the parties. This Agreement shall be governed by the laws of the State of Israel. Any dispute arising under this Agreement shall be subject to the exclusive jurisdiction of the courts of Tel Aviv.');
+
+        // ── Exhibit A ──
+        if (c.exhibit_a) {
+          checkPage(60);
+          drawTitle('EXHIBIT A - SCOPE OF SERVICES');
+          drawParagraph(c.exhibit_a);
+        }
+
+        // ── Exhibit B ──
+        if (c.exhibit_b) {
+          checkPage(60);
+          drawTitle('EXHIBIT B - FEES & PAYMENT');
+          drawParagraph(c.exhibit_b);
+        }
+
+        // ── SIGNATURES PAGE ──
+        checkPage(200);
+        drawTitle('SIGNATURES');
+        page.drawText('The parties have executed this Agreement as of the dates set forth below.', { x: M, y, size: 9, font, color: rgb(0.4, 0.4, 0.4) }); y -= 30;
+
+        for (const s of signatures) {
+          checkPage(100);
+          const label = s.signer_role === 'hocp' ? 'For the Company:' : 'For the Service Provider:';
+          page.drawText(label, { x: M, y, size: 10, font: bold }); y -= 16;
+          page.drawText(`Name: ${s.signer_name || 'N/A'}`, { x: M, y, size: 9, font }); y -= 14;
+          if (s.signer_id_number) { page.drawText(`ID/Title: ${s.signer_id_number}`, { x: M, y, size: 9, font }); y -= 14; }
+
+          // Embed signature image
+          if (s.signature_data) {
+            try {
+              const sigBytes = Buffer.from(s.signature_data.replace(/^data:[^;]+;base64,/, ''), 'base64');
+              const sigImg = await pdfDoc.embedPng(sigBytes);
+              const dims = sigImg.scale(0.25);
+              checkPage(dims.height + 20);
+              page.drawImage(sigImg, { x: M, y: y - dims.height, width: dims.width, height: dims.height });
+              y -= dims.height + 8;
+            } catch (e) {
+              page.drawText('[Digitally Signed]', { x: M, y, size: 9, font, color: rgb(0, 0.4, 0) }); y -= 14;
+            }
+          }
+          const signedDate = s.signed_at ? new Date(s.signed_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'N/A';
+          page.drawText(`Date: ${signedDate}`, { x: M, y, size: 9, font }); y -= 14;
+          if (s.ip_address) { page.drawText(`IP: ${s.ip_address}`, { x: M, y, size: 8, font, color: rgb(0.5, 0.5, 0.5) }); y -= 14; }
+          y -= 20;
+        }
+
+        // ── DOCUMENT HISTORY ──
+        checkPage(80);
+        drawTitle('DOCUMENT HISTORY');
+        page.drawLine({ start: { x: M, y: y + 3 }, end: { x: W - M, y: y + 3 }, thickness: 0.5, color: rgb(0.8, 0.8, 0.8) }); y -= 10;
+        const fmtDt = (d) => d ? new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+        for (const evt of events) {
+          checkPage(16);
+          let label = evt.type;
+          if (evt.type === 'created') label = 'Contract Created';
+          if (evt.type === 'sent') label = 'Sent for Signature';
+          if (evt.type === 'signed') label = `Signed by ${evt.name || evt.role || 'Party'}`;
+          if (evt.type === 'completed') label = 'All Parties Signed - Completed';
+          if (evt.type === 'regenerated') label = 'Links Regenerated';
+          // Find matching IP
+          const matchSig = signatures.find(s => s.signer_role === evt.role);
+          const ip = matchSig?.ip_address ? ` (IP: ${matchSig.ip_address})` : '';
+          page.drawText(label + ip, { x: M, y, size: 8, font: bold, color: rgb(0.3, 0.3, 0.3) });
+          page.drawText(fmtDt(evt.at), { x: 350, y, size: 8, font, color: rgb(0.5, 0.5, 0.5) });
+          y -= 14;
+        }
+
+        // Save PDF
+        const pdfBytes = await pdfDoc.save();
+        const pdfBase64 = Buffer.from(pdfBytes).toString('base64');
+        console.log(`[PDF] Generated ${Math.round(pdfBytes.length / 1024)}KB signed contract PDF`);
+
+        // Upload to Google Drive
+        if (driveRouter.uploadDual) {
+          const year = new Date().getFullYear();
+          const uploadResult = await driveRouter.uploadDual({
+            fileName: `Contract - ${provName}.pdf`,
+            fileContent: pdfBase64,
+            mimeType: 'application/pdf',
+            subfolder: `${year}/${prdShort} ${projectLabel}`,
+            category: 'contracts',
+          });
+          driveUrl = uploadResult.drive?.viewLink || null;
+          if (driveUrl) {
+            await db.query('UPDATE contracts SET drive_url = $1 WHERE id = $2', [driveUrl, id]);
+          }
+          console.log('Signed PDF uploaded to Drive:', driveUrl || 'skipped');
+        }
+      } catch (pdfErr) {
+        console.error('PDF generation/upload failed:', pdfErr.message);
+      }
+
+      // Send completion email with Drive link
+      try {
+        const pdfLink = driveUrl ? `<p><a href="${driveUrl}" style="color: #1a73e8; font-weight: bold;">View Signed PDF in Google Drive</a></p>` : '';
         const completedSubject = `Contract Signed - ${projectLabel} - ${sig.provider_name}`;
         const completedBody = `
           <div style="font-family: Arial, sans-serif; max-width: 600px;">
             <h2 style="color: #2e7d32;">Contract Fully Signed</h2>
             <p>The contract for <strong>${projectLabel}</strong> with <strong>${sig.provider_name}</strong> has been signed by all parties.</p>
-            <p>A signed PDF copy will be available shortly in Google Drive.</p>
-            <p style="color: #888; font-size: 13px; margin-top: 24px;">
-              You can view the signed contract at any time using the original signing link.
-            </p>
+            ${pdfLink}
             <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
             <p style="color: #aaa; font-size: 11px;">Sent via CP Panel - Particle Aesthetic Science Ltd.</p>
           </div>`;
-        // Send to supplier
         sendEmail({ to: sig.provider_email, subject: completedSubject, htmlBody: completedBody, skipDefaultCc: true }).catch(() => {});
         console.log(`Completion email sent to ${sig.provider_email}`);
       } catch (emailErr) {
         console.error('Completion email failed:', emailErr.message);
       }
 
-      // Slack notification — fully signed
+      // Slack notification — fully signed with PDF link
+      const pdfLink = driveUrl || `${APP_BASE}/production/${prdShort}?contract=true`;
       notifySlack(
-        `Contract SIGNED - ${sig.provider_name} for ${projectLabel}\nAmount: ${feeDisplay}\nRef: ${prdId}`,
-        `${APP_BASE}/production/${prdShort}?contract=true`
+        `Contract SIGNED - ${sig.provider_name} for ${projectLabel}\nAmount: ${feeDisplay}\nRef: ${prdId}${driveUrl ? '\nPDF: ' + driveUrl : ''}`,
+        pdfLink
       );
     }
 
@@ -353,7 +591,15 @@ router.get('/sign/:id/:token/completed', async (req, res) => {
     const rawEvents = cRows[0]?.events;
     const events = Array.isArray(rawEvents) ? rawEvents : (typeof rawEvents === 'string' ? JSON.parse(rawEvents) : []);
 
-    res.json({ signatures, events, drive_url: cRows[0]?.drive_url });
+    // Enrich signed events with IP addresses from signatures
+    const enrichedEvents = events.map(evt => {
+      if (evt.type === 'signed' && evt.role) {
+        const matchingSig = signatures.find(s => s.signer_role === evt.role);
+        if (matchingSig?.ip_address) return { ...evt, ip: matchingSig.ip_address };
+      }
+      return evt;
+    });
+    res.json({ signatures, events: enrichedEvents, drive_url: cRows[0]?.drive_url });
   } catch (err) {
     console.error('GET /sign/:id/:token/completed error:', err);
     res.status(500).json({ error: 'Server error' });
@@ -386,15 +632,15 @@ router.post('/:id/upload-signed-pdf', async (req, res) => {
     const contract = cRows[0];
     if (!contract) return res.status(404).json({ error: 'Contract not found' });
 
-    // Skip if already uploaded
-    if (contract.drive_url) {
-      return res.json({ success: true, drive_url: contract.drive_url, already_uploaded: true });
-    }
+    // Allow re-upload (previous upload may have been broken/empty)
+    // Don't skip — always upload the new PDF
 
     // Upload to Google Drive
     let driveUrl = null;
     try {
       const uploadBase64 = pdf_base64.replace(/^data:[^;]+;base64,/, '');
+      const pdfBytes = Buffer.from(uploadBase64, 'base64');
+      console.log(`[PDF Upload] Received base64 length: ${pdf_base64.length}, decoded bytes: ${pdfBytes.length}`);
       if (driveRouter.uploadDual) {
         const prdShort = contract.prd_short || contract.production_id;
         const projectLabel = contract.project_name || prdShort;
@@ -718,29 +964,7 @@ router.post('/:production_id/generate', async (req, res) => {
         htmlBody: buildSupplierEmailHtml(providerSignUrl),
       }).catch(() => {});
 
-      // Auto-sign HOCP 10 minutes from now using static signature image
-      setTimeout(async () => {
-        try {
-          const sigPng = fs.readFileSync(path.join(__dirname, '../assets/tomer-signature.png'));
-          const sigBase64 = 'data:image/png;base64,' + sigPng.toString('base64');
-          const { rowCount } = await db.query(
-            `UPDATE contract_signatures
-             SET signed_at = NOW(), signature_data = $1, signer_name = 'Tomer Wilf Lezmy',
-                 signer_id_number = 'Head of Creative Production'
-             WHERE contract_id = $2 AND signer_role = 'hocp' AND signed_at IS NULL`,
-            [sigBase64, contractIdForTimer]
-          );
-          if (rowCount > 0) {
-            const { rows: cRows } = await db.query('SELECT events FROM contracts WHERE id = $1', [contractIdForTimer]);
-            const evts = cRows[0]?.events ? (typeof cRows[0].events === 'string' ? JSON.parse(cRows[0].events) : cRows[0].events) : [];
-            evts.push({ type: 'signed', role: 'hocp', name: 'Tomer Wilf Lezmy', title: 'Head of Creative Production', at: new Date().toISOString() });
-            await db.query('UPDATE contracts SET events = $1 WHERE id = $2', [JSON.stringify(evts), contractIdForTimer]);
-            console.log(`[TIMER] HOCP auto-signed for contract ${contractIdForTimer}`);
-          }
-        } catch (e) {
-          console.error('[TIMER] HOCP auto-sign failed:', e.message);
-        }
-      }, 10 * 60 * 1000); // 10 minutes
+      // HOCP auto-sign removed — signers are now chosen manually in Step 1
     }
 
     res.json({

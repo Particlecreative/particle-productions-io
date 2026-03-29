@@ -22,8 +22,10 @@ export async function api(path, options = {}) {
 
   if (res.status === 401) {
     localStorage.removeItem('cp_auth_token');
-    // Only redirect if not already on the login page (prevents reload loop)
-    if (window.location.pathname !== '/login') {
+    // Don't redirect on public pages (signing, supplier form, CC payment form)
+    const publicPaths = ['/login', '/sign/', '/supplier-form/', '/cc-payment/'];
+    const isPublicPage = publicPaths.some(p => window.location.pathname.startsWith(p));
+    if (!isPublicPage) {
       window.location.href = '/login';
     }
     return;

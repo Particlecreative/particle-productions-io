@@ -999,11 +999,15 @@ function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEd
   const [contract, setContract] = useState(null);
   useEffect(() => {
     if (!contractKey) return;
-    const result = getContract(contractKey);
-    if (result && typeof result.then === 'function') {
-      result.then(data => setContract(data)).catch(() => {});
-    } else {
-      setContract(result);
+    try {
+      const result = getContract(contractKey);
+      if (result && typeof result.then === 'function') {
+        result.then(data => { if (data) setContract(data); }).catch(() => {});
+      } else if (result) {
+        setContract(result);
+      }
+    } catch (e) {
+      console.warn('Failed to load contract for', contractKey, e);
     }
   }, [contractKey]);
 

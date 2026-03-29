@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft, Upload, Calendar, DollarSign, Clock, Film, Tag, MapPin,
   Truck, Clapperboard, ChevronDown, Pencil, FileSpreadsheet, Settings2, GripVertical, Eye, EyeOff,
@@ -62,6 +62,16 @@ export default function ProductionBoard() {
   const [editingName, setEditingName] = useState(false);
   const [nameValue, setNameValue] = useState('');
   const [showContract, setShowContract] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Auto-open contract modal from Slack deep link (?contract=true)
+  useEffect(() => {
+    if (searchParams.get('contract') === 'true') {
+      setShowContract(true);
+      searchParams.delete('contract');
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, []);
   const [showImport, setShowImport] = useState(false);
   const [showAccountingImport, setShowAccountingImport] = useState(false);
   const [prodRate, setProdRate] = useState(null);
@@ -436,7 +446,7 @@ export default function ProductionBoard() {
       {showContract && (
         <ContractModal
           production={production}
-          onClose={() => setShowContract(false)}
+          onClose={() => { setShowContract(false); refresh(); }}
         />
       )}
 
