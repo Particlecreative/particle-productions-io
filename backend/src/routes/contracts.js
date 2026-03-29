@@ -282,6 +282,8 @@ router.post('/sign/:id/:token', signLimiter, async (req, res) => {
       type: 'signed',
       role: sig.signer_role,
       name: signer_name || sig.signer_name,
+      email: sig.signer_email,
+      ip: signerIp,
       at: now,
     });
     await db.query(

@@ -256,12 +256,12 @@ export default function ContractSign() {
     try {
       const { default: h2c } = await import('html2canvas');
       const canvas = await h2c(completedRef.current, {
-        scale: 2,
+        scale: 1.5,
         useCORS: true,
         logging: false,
         backgroundColor: '#ffffff',
       });
-      const imgData = canvas.toDataURL('image/jpeg', 0.95);
+      const imgData = canvas.toDataURL('image/jpeg', 0.65);
       const { jsPDF: JsPDF } = await import('jspdf');
       const pdf = new JsPDF('p', 'mm', 'a4');
       const pdfWidth = pdf.internal.pageSize.getWidth();
@@ -304,8 +304,8 @@ export default function ContractSign() {
     setExportingPdf(true);
     try {
       const { default: h2c } = await import('html2canvas');
-      const canvas = await h2c(completedRef.current, { scale: 2, useCORS: true, logging: false, backgroundColor: '#fff' });
-      const imgData = canvas.toDataURL('image/jpeg', 0.95);
+      const canvas = await h2c(completedRef.current, { scale: 1.5, useCORS: true, logging: false, backgroundColor: '#fff' });
+      const imgData = canvas.toDataURL('image/jpeg', 0.65);
       const { jsPDF: JsPDF } = await import('jspdf');
       const pdf = new JsPDF('p', 'mm', 'a4');
       const pdfW = pdf.internal.pageSize.getWidth();
@@ -459,27 +459,41 @@ export default function ContractSign() {
               </div>
             </div>
 
-            {/* Document History */}
+            {/* Document History — Dropbox Sign style */}
             <div className="bg-white rounded-xl shadow border border-gray-100 p-6 mb-6">
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-4">Document History</h3>
-              <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-gray-700 mb-1">Document History</h3>
+              <div className="border-t border-gray-200 mt-3">
                 {evts.map((evt, i) => {
-                  let label = evt.type;
-                  if (evt.type === 'created') label = 'Contract Created';
-                  if (evt.type === 'sent') label = 'Sent for Signature';
-                  if (evt.type === 'signed') label = `Signed by ${evt.name || evt.role}`;
-                  if (evt.type === 'completed') label = 'All Parties Signed';
-                  if (evt.type === 'regenerated') label = 'Links Regenerated';
+                  const icons = { viewed: '👁', created: '📄', sent: '📤', signed: '✍️', completed: '✓', regenerated: '🔄' };
+                  const labels = { viewed: 'VIEWED', created: 'CREATED', sent: 'SENT', signed: 'SIGNED', completed: 'COMPLETED', regenerated: 'UPDATED' };
+                  const badge = labels[evt.type] || evt.type?.toUpperCase() || '';
+                  const icon = icons[evt.type] || '•';
+                  let detail = '';
+                  if (evt.type === 'viewed') detail = `Viewed by ${evt.name || 'Unknown'}${evt.email ? ' (' + evt.email + ')' : ''}`;
+                  else if (evt.type === 'created') detail = 'Contract created';
+                  else if (evt.type === 'sent') detail = `Sent for signature`;
+                  else if (evt.type === 'signed') detail = `Signed by ${evt.name || evt.role || 'Party'}${evt.email ? ' (' + evt.email + ')' : ''}`;
+                  else if (evt.type === 'completed') detail = 'The document has been completed.';
+                  const evtDate = evt.at ? new Date(evt.at) : null;
+                  const dateStr = evtDate ? evtDate.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }) : '';
+                  const timeStr = evtDate ? evtDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZoneName: 'short' }) : '';
                   return (
-                    <div key={i} className="flex items-start gap-3 text-sm py-1">
-                      <div className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${evt.type === 'completed' ? 'bg-green-500' : evt.type === 'signed' ? 'bg-blue-500' : 'bg-gray-300'}`} />
-                      <div className="flex-1">
-                        <span className="font-medium text-gray-700">{label}</span>
-                        {evt.ip && (
-                          <span className="text-[10px] text-gray-400 ml-2">IP: {evt.ip}</span>
-                        )}
+                    <div key={i} className="flex items-start gap-4 py-4 border-b border-gray-100 last:border-0">
+                      {/* Icon + Badge */}
+                      <div className="flex flex-col items-center w-16 shrink-0">
+                        <span className="text-lg">{icon}</span>
+                        <span className="text-[9px] font-bold tracking-wider text-gray-400 mt-0.5">{badge}</span>
                       </div>
-                      <span className="text-xs text-gray-400 shrink-0">{formatEvt(evt.at)}</span>
+                      {/* Date */}
+                      <div className="w-28 shrink-0">
+                        <div className="text-sm font-bold text-gray-800">{dateStr}</div>
+                        <div className="text-xs text-gray-400">{timeStr}</div>
+                      </div>
+                      {/* Detail */}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-gray-700">{detail}</div>
+                        {evt.ip && <div className="text-xs text-gray-400 mt-0.5">IP: {evt.ip}</div>}
+                      </div>
                     </div>
                   );
                 })}
@@ -707,27 +721,39 @@ export default function ContractSign() {
               </div>
             </div>
 
-            {/* ── DOCUMENT HISTORY ── */}
+            {/* ── DOCUMENT HISTORY — Dropbox Sign style ── */}
             <div className="px-6 sm:px-10 py-6">
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-4">Document History</h3>
-              <div className="space-y-2">
+              <h3 className="text-sm font-semibold text-gray-700 mb-1">Document History</h3>
+              <div className="border-t border-gray-200 mt-3">
                 {events.map((evt, i) => {
-                  let icon = '📄', label = evt.type;
-                  if (evt.type === 'created') { icon = '📝'; label = 'Contract Created'; }
-                  if (evt.type === 'sent') { icon = '📤'; label = 'Sent for Signature'; }
-                  if (evt.type === 'generated') { icon = '⚙️'; label = 'Contract Generated'; }
-                  if (evt.type === 'signed') { icon = '✍️'; label = `Signed by ${evt.name || evt.role || 'Party'}`; }
-                  if (evt.type === 'completed') { icon = '✅'; label = 'All Parties Signed — Completed'; }
+                  const icons = { viewed: '👁', created: '📄', sent: '📤', signed: '✍️', completed: '✓', regenerated: '🔄', generated: '⚙️' };
+                  const labels = { viewed: 'VIEWED', created: 'CREATED', sent: 'SENT', signed: 'SIGNED', completed: 'COMPLETED', regenerated: 'UPDATED', generated: 'GENERATED' };
+                  const badge = labels[evt.type] || evt.type?.toUpperCase() || '';
+                  const icon = icons[evt.type] || '•';
+                  let detail = '';
+                  if (evt.type === 'viewed') detail = `Viewed by ${evt.name || 'Unknown'}${evt.email ? ' (' + evt.email + ')' : ''}`;
+                  else if (evt.type === 'created') detail = 'Contract created';
+                  else if (evt.type === 'sent') detail = 'Sent for signature';
+                  else if (evt.type === 'signed') detail = `Signed by ${evt.name || evt.role || 'Party'}${evt.email ? ' (' + evt.email + ')' : ''}`;
+                  else if (evt.type === 'completed') detail = 'The document has been completed.';
+                  else if (evt.type === 'generated') detail = 'Contract generated';
+                  const evtDate = evt.at ? new Date(evt.at) : null;
+                  const dateStr = evtDate ? evtDate.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }) : '';
+                  const timeStr = evtDate ? evtDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZoneName: 'short' }) : '';
                   return (
-                    <div key={i} className="flex items-start gap-3 text-sm py-1">
-                      <span className="text-base mt-0.5">{icon}</span>
-                      <div className="flex-1">
-                        <span className="font-medium text-gray-700">{label}</span>
-                        {evt.ip && (
-                          <span className="text-[10px] text-gray-400 ml-2">IP: {evt.ip}</span>
-                        )}
+                    <div key={i} className="flex items-start gap-4 py-4 border-b border-gray-100 last:border-0">
+                      <div className="flex flex-col items-center w-16 shrink-0">
+                        <span className="text-lg">{icon}</span>
+                        <span className="text-[9px] font-bold tracking-wider text-gray-400 mt-0.5">{badge}</span>
                       </div>
-                      <span className="text-xs text-gray-400 shrink-0">{formatEvt(evt.at)}</span>
+                      <div className="w-28 shrink-0">
+                        <div className="text-sm font-bold text-gray-800">{dateStr}</div>
+                        <div className="text-xs text-gray-400">{timeStr}</div>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-gray-700">{detail}</div>
+                        {evt.ip && <div className="text-xs text-gray-400 mt-0.5">IP: {evt.ip}</div>}
+                      </div>
                     </div>
                   );
                 })}
@@ -1327,10 +1353,11 @@ function FullContractText({ data: d, effectiveDate, liveId, liveAddress, noScrol
    ═══════════════════════════════════════════════ */
 function Shell({ children, status }) {
   const statusConfig = {
-    loading:  { label: 'Loading',            color: 'bg-gray-100 text-gray-500' },
-    pending:  { label: 'Pending Signature',  color: 'bg-amber-100 text-amber-700' },
-    signed:   { label: 'Completed',          color: 'bg-green-100 text-green-700' },
-    error:    { label: 'Error',              color: 'bg-red-100 text-red-600' },
+    loading:   { label: 'Loading',              color: 'bg-gray-100 text-gray-500' },
+    pending:   { label: 'Pending Signature',    color: 'bg-amber-100 text-amber-700' },
+    signed:    { label: 'Completed',            color: 'bg-green-100 text-green-700' },
+    awaiting:  { label: 'Awaiting Other Party', color: 'bg-blue-100 text-blue-700' },
+    error:     { label: 'Error',                color: 'bg-red-100 text-red-600' },
   };
   const st = statusConfig[status] || statusConfig.pending;
 
