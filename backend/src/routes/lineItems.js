@@ -47,7 +47,7 @@ router.post('/', async (req, res) => {
        RETURNING *`,
       [
         production_id,
-        item || '', full_name || '', type || 'Crew', status || 'Not Started',
+        item || '', full_name || '', type || '', status || 'Not Started',
         planned_budget || 0, actual_spent || 0,
         payment_status || 'Not Paid', payment_method || null,
         bank_details || null, business_type || null,
@@ -62,6 +62,20 @@ router.post('/', async (req, res) => {
 
     // Sync production totals
     await syncTotals(production_id);
+
+    // Auto-create supplier if full_name provided (match by name, no duplicates)
+    if (full_name && full_name.trim()) {
+      try {
+        await db.query(
+          `INSERT INTO suppliers (name, brand_id, created_at)
+           VALUES ($1, (SELECT brand_id FROM productions WHERE id = $2 LIMIT 1), NOW())
+           ON CONFLICT DO NOTHING`,
+          [full_name.trim(), production_id.split('_')[0] === production_id ? production_id : production_id]
+        );
+      } catch (supErr) {
+        // Ignore — supplier may already exist or table may not have unique constraint
+      }
+    }
 
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -95,6 +109,17 @@ router.patch('/:id', async (req, res) => {
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
 
     await syncTotals(rows[0].production_id);
+
+    // Auto-create supplier when full_name is updated
+    if (req.body.full_name && req.body.full_name.trim()) {
+      try {
+        await db.query(
+          `INSERT INTO suppliers (name, brand_id, created_at) VALUES ($1, $2, NOW()) ON CONFLICT DO NOTHING`,
+          [req.body.full_name.trim(), rows[0].production_id?.split('_')[0] || 'particle']
+        );
+      } catch (_) {}
+    }
+
     res.json(rows[0]);
   } catch (err) {
     console.error('PATCH /line-items error:', err);

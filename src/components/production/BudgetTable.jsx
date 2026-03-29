@@ -269,7 +269,7 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
       item: '',
       full_name: '',
       planned_budget: 0,
-      type: 'Crew',
+      type: '',
       status: 'Not Started',
       timeline_start: '',
       timeline_end: '',
@@ -717,7 +717,7 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
           {isEditor && (
             <div className="relative" ref={addMenuRef}>
               <button
-                onClick={() => setShowAddMenu(!showAddMenu)}
+                onClick={() => addRow()}
                 className="group mt-0 flex items-center gap-3 w-full px-4 py-3 text-sm
                            border-t border-dashed border-gray-200
                            text-gray-400 hover:text-blue-600 hover:bg-blue-50/50

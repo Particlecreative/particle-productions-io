@@ -112,6 +112,20 @@ cron.schedule('0 21 * * *', async () => {
   }
 }, { timezone: 'Asia/Jerusalem' });
 
+// ── Casting automation cron (8 AM Israel time) ───
+cron.schedule('0 8 * * *', async () => {
+  console.log('[CRON] Running casting automation check...');
+  try {
+    const { runCastingAutomations } = require('./routes/castingAutomation');
+    if (runCastingAutomations) {
+      const result = await runCastingAutomations();
+      console.log('[CRON] Casting automation done:', result);
+    }
+  } catch (err) {
+    console.error('[CRON] Casting automation failed:', err.message);
+  }
+}, { timezone: 'Asia/Jerusalem' });
+
 // ── Global error handler ─────────────────────────────
 app.use((err, _req, res, _next) => {
   console.error('Unhandled error:', err);
