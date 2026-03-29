@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { Upload, CheckCircle, Loader2, AlertCircle, Download } from 'lucide-react';
+import { getDownloadUrl } from '../../lib/invoiceUtils';
 
 /* Brand SVG icons for Google Drive and Dropbox */
 const DriveIcon = ({ size = 14 }) => (
@@ -239,8 +240,9 @@ export function CloudLinks({ driveUrl, dropboxUrl, downloadUrl, size = 'sm' }) {
         </a>
       )}
       {(downloadUrl || driveUrl) && (
-        <a href={downloadUrl || driveUrl} target="_blank" rel="noopener noreferrer"
-           className="inline-flex items-center p-1 rounded hover:bg-gray-100 transition-colors" title="Download">
+        <a href={getDownloadUrl(downloadUrl || driveUrl) || downloadUrl || driveUrl}
+           download target="_blank" rel="noopener noreferrer"
+           className="inline-flex items-center p-1 rounded hover:bg-gray-100 transition-colors" title="Download file">
           <Download size={iconSize} className="text-gray-500" />
         </a>
       )}

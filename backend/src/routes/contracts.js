@@ -512,8 +512,8 @@ router.post('/sign/:id/:token', signLimiter, async (req, res) => {
         const pdfBase64 = Buffer.from(pdfBytes).toString('base64');
         console.log(`[PDF] Generated ${Math.round(pdfBytes.length / 1024)}KB signed contract PDF`);
 
-        // Upload to Google Drive
-        if (driveRouter.uploadDual) {
+        // Upload to Google Drive (skip if PDF is suspiciously small)
+        if (driveRouter.uploadDual && pdfBytes.length > 1000) {
           const year = new Date().getFullYear();
           const uploadResult = await driveRouter.uploadDual({
             fileName: `Contract - ${provName}.pdf`,
@@ -685,9 +685,9 @@ router.post('/:id/upload-signed-pdf', async (req, res) => {
     const subject = `Contract Signed & Completed: ${projectLabel} - ${contract.provider_name}`;
     const body = `
       <div style="font-family:Arial,sans-serif;max-width:600px;">
-        <h2 style="color:#2e7d32;">✅ Contract Fully Signed</h2>
+        <h2 style="color:#2e7d32;">Contract Fully Signed</h2>
         <p>The contract for <strong>${projectLabel}</strong> with <strong>${contract.provider_name}</strong> has been signed by all parties.</p>
-        ${driveUrl ? `<p><a href="${driveUrl}" style="color:#1a73e8;text-decoration:none;font-weight:bold;">📄 View Signed PDF in Google Drive</a></p>` : ''}
+        ${driveUrl ? `<p><a href="${driveUrl}" style="color:#1a73e8;text-decoration:none;font-weight:bold;">View Signed PDF in Google Drive</a></p>` : ''}
         <h3 style="color:#333;font-size:14px;margin-top:24px;">Document History</h3>
         <table style="width:100%;border-collapse:collapse;margin:16px 0;">${historyHtml}</table>
         <hr style="border:none;border-top:1px solid #eee;margin:24px 0;">
@@ -807,7 +807,7 @@ router.post('/:production_id/generate', async (req, res) => {
     provider_name, provider_email, hocp_name, hocp_email,
     exhibit_a, exhibit_b, fee_amount, payment_terms,
     currency, contract_type, effective_date,
-    require_hocp_signature,
+    require_hocp_signature, creator_signature,
   } = req.body;
   const hocpRequired = require_hocp_signature !== false; // default true
   const prodId = req.params.production_id;
@@ -964,7 +964,24 @@ router.post('/:production_id/generate', async (req, res) => {
         htmlBody: buildSupplierEmailHtml(providerSignUrl),
       }).catch(() => {});
 
-      // HOCP auto-sign removed — signers are now chosen manually in Step 1
+      // Auto-sign HOCP record if creator signed in Step 3 (Omer's canvas signature)
+      if (creator_signature) {
+        const signerIp = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+        const signerUA = req.headers['user-agent'] || '';
+        await db.query(
+          `UPDATE contract_signatures
+           SET signature_data = $1, signed_at = NOW(), ip_address = $2, user_agent = $3,
+               signer_name = $4, agreed_at = NOW()
+           WHERE contract_id = $5 AND signer_role = 'hocp' AND signed_at IS NULL`,
+          [creator_signature, signerIp, signerUA, hocp_name || 'Omer Barak', contract.id]
+        );
+        // Add signed event to contract events
+        const { rows: evtRows } = await db.query('SELECT events FROM contracts WHERE id = $1', [contract.id]);
+        const evts = evtRows[0]?.events ? (typeof evtRows[0].events === 'string' ? JSON.parse(evtRows[0].events) : evtRows[0].events) : [];
+        evts.push({ type: 'signed', role: 'hocp', name: hocp_name || 'Omer Barak', at: now, ip: signerIp });
+        await db.query('UPDATE contracts SET events = $1 WHERE id = $2', [JSON.stringify(evts), contract.id]);
+        console.log(`[GENERATE] Creator auto-signed HOCP for contract ${contract.id} (IP: ${signerIp})`);
+      }
     }
 
     res.json({

@@ -273,7 +273,7 @@ export default function CastingRights() {
         </td>
         <td className="text-xs">
           {m.warning_date ? (
-            <span className="text-orange-600 font-medium">⚠️ {m.warning_date}</span>
+            <span className="text-orange-600 font-medium">⚠️ {new Date(m.warning_date + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
           ) : <span className="text-gray-300">—</span>}
         </td>
         {showStatus && (
@@ -360,21 +360,9 @@ export default function CastingRights() {
           <p className="text-sm text-gray-400 mt-0.5">All cast members across productions — contract status & usage rights</p>
         </div>
         <div className="flex items-center gap-2">
-          {isAdmin && (
-            <button
-              onClick={handleRunAutomations}
-              disabled={automationRunning}
-              className={clsx(
-                'flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold border transition-colors',
-                automationRunning
-                  ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
-                  : 'bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100'
-              )}
-            >
-              {automationRunning ? <RefreshCw size={14} className="animate-spin" /> : <Play size={14} />}
-              {automationRunning ? 'Running...' : 'Run Automations'}
-            </button>
-          )}
+          <span className="text-[10px] text-gray-400 flex items-center gap-1">
+            <Clock size={10} /> Automations run daily at 8:00 AM
+          </span>
           {(isEditor || isAdmin) && (
             <button
               onClick={() => setEditing({ ...BLANK })}
@@ -800,7 +788,7 @@ function CastingModal({ initial, productions, onSave, onClose }) {
           {form.end_date && (
             <div className="flex items-center gap-2 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
               <span className="text-xs font-semibold text-orange-700">⚠️ Warning Date</span>
-              <span className="text-xs text-orange-600 font-mono">{form.warning_date || '—'}</span>
+              <span className="text-xs text-orange-600 font-mono">{form.warning_date ? new Date(form.warning_date + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}</span>
               <span className="text-[10px] text-orange-400 ml-auto">1 month before end · Gantt event added on save</span>
             </div>
           )}
