@@ -350,18 +350,33 @@ router.post('/sign/:id/:token', signLimiter, async (req, res) => {
     notifySlack(`✍️ Contract signed by ${signer_name || sig.signer_name}\nProduction: ${projectLabel}`, `${APP_BASE}/production/${prdShort}?contract=true`);
 
     if (allSigned) {
-      // Mark contract as fully signed
+      // Mark contract as fully signed — PDF generation + email handled by frontend auto-upload
       events.push({ type: 'completed', at: now });
       await db.query(
-        `UPDATE contracts SET status = 'signed', signed_at = $1, events = $2, completion_email_sent_at = $1 WHERE id = $3`,
+        `UPDATE contracts SET status = 'signed', signed_at = $1, events = $2 WHERE id = $3`,
         [now, JSON.stringify(events), id]
       );
-      console.log(`Contract ${id} fully signed — generating PDF + sending notifications`);
+      console.log(`Contract ${id} fully signed — frontend will auto-upload PDF + send email`);
 
-      // ── Generate professional signed PDF with pdf-lib ──
-      let driveUrl = null;
-      try {
-        const { rows: cInfo } = await db.query(`SELECT * FROM contracts WHERE id = $1`, [id]);
+      // PDF generation + Drive upload + email now handled by frontend auto-upload
+      // (POST /api/contracts/:id/upload-signed-pdf endpoint)
+      // Backend only sends Slack notification here — email sent after frontend uploads PDF
+
+      // Slack notification — contract completed (no PDF link yet, frontend will add it)
+      notifySlack(
+        `✅ Contract SIGNED\nSupplier: ${sig.provider_name || signer_name} | Production: ${projectLabel}${feeDisplay ? ' | Amount: ' + feeDisplay : ''}`,
+        `${APP_BASE}/production/${prdShort}?contract=true`
+      );
+
+      // Fallback: if frontend doesn't upload PDF within 3 minutes, generate backend PDF
+      const contractIdForFallback = id;
+      setTimeout(async () => {
+        try {
+          const { rows: check } = await db.query('SELECT drive_url FROM contracts WHERE id = $1', [contractIdForFallback]);
+          if (check[0]?.drive_url) return; // Frontend already uploaded
+          console.log(`[FALLBACK] Frontend didn't upload PDF in 3min — generating backend PDF for contract ${contractIdForFallback}`);
+          // Generate minimal fallback PDF with pdf-lib
+          const { rows: cInfo } = await db.query(`SELECT * FROM contracts WHERE id = $1`, [contractIdForFallback]);
         const c = cInfo[0] || {};
         const { rows: signatures } = await db.query(
           `SELECT signer_role, signer_name, signer_email, signer_id_number, signature_data, signed_at, ip_address, user_agent
@@ -672,49 +687,32 @@ router.post('/sign/:id/:token', signLimiter, async (req, res) => {
         console.log(`[PDF] Generated ${Math.round(pdfBytes.length / 1024)}KB signed contract PDF (${pageNum} pages)`);
 
         // ── Upload to Google Drive ──
-        if (driveRouter.uploadDual && pdfBytes.length > 1000) {
-          const year = new Date().getFullYear();
-          const uploadResult = await driveRouter.uploadDual({
-            fileName: `Contract - ${provName}.pdf`,
-            fileContent: pdfBase64,
-            mimeType: 'application/pdf',
-            subfolder: `${year}/${prdShort} ${projectLabel}`,
-            category: 'contracts',
-          });
-          driveUrl = uploadResult.drive?.viewLink || null;
-          if (driveUrl) {
-            await db.query('UPDATE contracts SET drive_url = $1 WHERE id = $2', [driveUrl, id]);
+          if (driveRouter.uploadDual && pdfBytes.length > 1000) {
+            const year = new Date().getFullYear();
+            const uploadResult = await driveRouter.uploadDual({
+              fileName: `Contract - ${provName}.pdf`,
+              fileContent: pdfBase64,
+              mimeType: 'application/pdf',
+              subfolder: `${year}/${prdShort} ${projectLabel}`,
+              category: 'contracts',
+            });
+            const fbDriveUrl = uploadResult.drive?.viewLink || null;
+            if (fbDriveUrl) {
+              await db.query('UPDATE contracts SET drive_url = $1 WHERE id = $2', [fbDriveUrl, contractIdForFallback]);
+              console.log('[FALLBACK] Backend PDF uploaded to Drive:', fbDriveUrl);
+              // Send delayed completion email with fallback PDF
+              sendEmail({
+                to: sig.provider_email,
+                subject: `Contract Signed - ${projectLabel} - ${sig.provider_name}`,
+                htmlBody: `<div style="font-family:Arial,sans-serif;max-width:600px;"><h2 style="color:#2e7d32;">Contract Fully Signed</h2><p>The contract for <strong>${projectLabel}</strong> with <strong>${sig.provider_name}</strong> has been signed by all parties.</p><p><a href="${fbDriveUrl}" style="color:#1a73e8;font-weight:bold;">View Signed PDF</a></p><hr style="border:none;border-top:1px solid #eee;margin:24px 0;"><p style="color:#aaa;font-size:11px;">Sent via CP Panel</p></div>`,
+                skipDefaultCc: true,
+              }).catch(() => {});
+            }
           }
-          console.log('Signed PDF uploaded to Drive:', driveUrl || 'skipped');
+        } catch (fbErr) {
+          console.error('[FALLBACK] Backend PDF generation failed:', fbErr.message);
         }
-      } catch (pdfErr) {
-        console.error('PDF generation/upload failed:', pdfErr.message);
-      }
-
-      // Send completion email with Drive link
-      try {
-        const pdfLink = driveUrl ? `<p><a href="${driveUrl}" style="color: #1a73e8; font-weight: bold;">View Signed PDF in Google Drive</a></p>` : '';
-        const completedSubject = `Contract Signed - ${projectLabel} - ${sig.provider_name}`;
-        const completedBody = `
-          <div style="font-family: Arial, sans-serif; max-width: 600px;">
-            <h2 style="color: #2e7d32;">Contract Fully Signed</h2>
-            <p>The contract for <strong>${projectLabel}</strong> with <strong>${sig.provider_name}</strong> has been signed by all parties.</p>
-            ${pdfLink}
-            <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
-            <p style="color: #aaa; font-size: 11px;">Sent via CP Panel - Particle Aesthetic Science Ltd.</p>
-          </div>`;
-        sendEmail({ to: sig.provider_email, subject: completedSubject, htmlBody: completedBody, skipDefaultCc: true }).catch(() => {});
-        console.log(`Completion email sent to ${sig.provider_email}`);
-      } catch (emailErr) {
-        console.error('Completion email failed:', emailErr.message);
-      }
-
-      // Slack notification — fully signed with PDF link
-      const pdfLink = driveUrl || `${APP_BASE}/production/${prdShort}?contract=true`;
-      notifySlack(
-        `Contract SIGNED - ${sig.provider_name} for ${projectLabel}\nAmount: ${feeDisplay}\nRef: ${prdId}${driveUrl ? '\nPDF: ' + driveUrl : ''}`,
-        pdfLink
-      );
+      }, 3 * 60 * 1000); // 3 minutes
     }
 
     res.json({ success: true, all_signed: allSigned });

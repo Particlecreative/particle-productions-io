@@ -250,36 +250,59 @@ export default function ContractSign() {
   }
 
   /* ── PDF Export ── */
+  // Generate PDF from the completion view — force desktop width for consistent layout
+  async function generatePdfFromView() {
+    if (!completedRef.current) return null;
+    const el = completedRef.current;
+    // Force desktop width for consistent PDF (even on mobile)
+    const origWidth = el.style.width;
+    const origMaxWidth = el.style.maxWidth;
+    const origMinWidth = el.style.minWidth;
+    el.style.width = '800px';
+    el.style.maxWidth = '800px';
+    el.style.minWidth = '800px';
+    // Wait for reflow
+    await new Promise(r => setTimeout(r, 100));
+
+    const { default: h2c } = await import('html2canvas');
+    const canvas = await h2c(el, {
+      scale: 1.5,
+      useCORS: true,
+      logging: false,
+      backgroundColor: '#ffffff',
+      width: 800,
+      windowWidth: 800,
+    });
+    // Restore original width
+    el.style.width = origWidth;
+    el.style.maxWidth = origMaxWidth;
+    el.style.minWidth = origMinWidth;
+
+    const imgData = canvas.toDataURL('image/jpeg', 0.7);
+    const { jsPDF: JsPDF } = await import('jspdf');
+    const pdf = new JsPDF('p', 'mm', 'a4');
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const pdfHeight = pdf.internal.pageSize.getHeight();
+    const ratio = pdfWidth / canvas.width;
+    const scaledHeight = canvas.height * ratio;
+    let yOffset = 0;
+    while (yOffset < scaledHeight) {
+      if (yOffset > 0) pdf.addPage();
+      pdf.addImage(imgData, 'JPEG', 0, -yOffset, pdfWidth, scaledHeight);
+      yOffset += pdfHeight;
+    }
+    return pdf;
+  }
+
   async function handleDownloadPdf() {
     if (!completedRef.current) return;
     setExportingPdf(true);
     try {
-      const { default: h2c } = await import('html2canvas');
-      const canvas = await h2c(completedRef.current, {
-        scale: 1.5,
-        useCORS: true,
-        logging: false,
-        backgroundColor: '#ffffff',
-      });
-      const imgData = canvas.toDataURL('image/jpeg', 0.65);
-      const { jsPDF: JsPDF } = await import('jspdf');
-      const pdf = new JsPDF('p', 'mm', 'a4');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = pdf.internal.pageSize.getHeight();
-      const imgWidth = canvas.width;
-      const imgHeight = canvas.height;
-      const ratio = pdfWidth / imgWidth;
-      const scaledHeight = imgHeight * ratio;
-      // Multi-page support
-      let yOffset = 0;
-      while (yOffset < scaledHeight) {
-        if (yOffset > 0) pdf.addPage();
-        pdf.addImage(imgData, 'JPEG', 0, -yOffset, pdfWidth, scaledHeight);
-        yOffset += pdfHeight;
-      }
+      const pdf = await generatePdfFromView();
+      if (!pdf) { setExportingPdf(false); return; }
       // Download locally
       pdf.save(`Contract - ${contractData?.provider_name || 'Signed'}.pdf`);
-      // Also upload to backend
+      // Also upload to backend (same PDF as downloaded)
       if (!pdfUploaded) {
         const base64 = pdf.output('datauristring');
         try {
@@ -297,31 +320,23 @@ export default function ContractSign() {
     setExportingPdf(false);
   }
 
-  // PDF upload to Drive happens via the "Upload to Drive" button (not auto)
-  // Auto-upload was unreliable because html2canvas needs the DOM to be fully painted
-  async function handleUploadToDrive() {
+  // Auto-upload PDF to Drive after completion view renders (uses same desktop-forced generator)
+  async function handleAutoUpload() {
     if (!completedRef.current || pdfUploaded) return;
     setExportingPdf(true);
     try {
-      const { default: h2c } = await import('html2canvas');
-      const canvas = await h2c(completedRef.current, { scale: 1.5, useCORS: true, logging: false, backgroundColor: '#fff' });
-      const imgData = canvas.toDataURL('image/jpeg', 0.65);
-      const { jsPDF: JsPDF } = await import('jspdf');
-      const pdf = new JsPDF('p', 'mm', 'a4');
-      const pdfW = pdf.internal.pageSize.getWidth();
-      const pdfH = pdf.internal.pageSize.getHeight();
-      const ratio = pdfW / canvas.width;
-      const scaledH = canvas.height * ratio;
-      let yOff = 0;
-      while (yOff < scaledH) { if (yOff > 0) pdf.addPage(); pdf.addImage(imgData, 'JPEG', 0, -yOff, pdfW, scaledH); yOff += pdfH; }
+      // Wait for DOM to be fully painted before capturing
+      await new Promise(r => setTimeout(r, 500));
+      const pdf = await generatePdfFromView();
+      if (!pdf) { setExportingPdf(false); return; }
       const base64 = pdf.output('datauristring');
-      console.log(`[PDF] Generated ${Math.round(base64.length / 1024)}KB for Drive upload`);
+      console.log(`[PDF] Auto-uploading ${Math.round(base64.length / 1024)}KB to Drive`);
       const res = await fetch(`${API}/api/contracts/${contractId}/upload-signed-pdf`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pdf_base64: base64, token }),
       });
-      if (res.ok) setPdfUploaded(true);
+      if (res.ok) { setPdfUploaded(true); console.log('[PDF] Auto-uploaded to Drive successfully'); }
       else console.error('[PDF] Upload failed:', await res.text());
     } catch (err) {
       console.error('[PDF] Upload error:', err);
@@ -330,6 +345,15 @@ export default function ContractSign() {
   }
 
   const canSubmit = hasSignature && signerName.trim() && (isInternal || agreedToTerms) && !submitting;
+
+  // Auto-upload PDF to Drive when completion view renders
+  useEffect(() => {
+    if ((allSigned || (completedData && submitted)) && completedRef.current && !pdfUploaded && !exportingPdf) {
+      // Wait for the completion view to be fully painted, then auto-upload
+      const timer = setTimeout(() => handleAutoUpload(), 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [allSigned, completedData, submitted, pdfUploaded]);
 
   /* ─────────── Render states ─────────── */
 
@@ -1220,15 +1244,23 @@ function FullContractText({ data: d, effectiveDate, liveId, liveAddress, noScrol
       <S>1. DEFINITIONS</S>
       <P>For purposes of this Agreement (including any and all amendments made to or incorporated herein now or in the future), the following capitalized terms shall have the following meaning:</P>
       {isCast ? (
-        <P>&ldquo;Content&rdquo; shall mean any testimonials, data, personal stories and details, names, locations, videos, photos, audio, and any breakdown, definition or partition of video, film or TV clips, including images, sound footage and segments, recorded performance, interviews, likeness and voice of the Service Provider as embodied therein, and any and all other information which may be provided by the Service Provider to Company in connection with the Services.</P>
+        <Sub>1.1</Sub>
       ) : (
-        <P>&ldquo;Deliverables&rdquo; shall mean all deliverables provided or produced as a result of the work performed under this Agreement or in connection therewith, including, without limitation, any work products, composition, photographs, videos, information, specifications, documentation, content, designs, audio, and any breakdown, definition or partition of video, film or clips, images, sound footage and segments, recorded performance, including as set forth in Exhibit A, all in any media or form whatsoever.</P>
+        <Sub>1.1</Sub>
       )}
-      <P>&ldquo;Intellectual Property Rights&rdquo; shall mean all worldwide, whether registered or not (i) patents, patent applications and patent rights; (ii) rights associated with works of authorship, including copyrights, copyrights applications, copyrights restrictions; (iii) rights relating to the protection of trade secrets and confidential information; (iv) trademarks, logos, service marks, brands, trade names, domain names, goodwill and the right to publicity; (v) rights analogous to those set forth herein and any other proprietary rights relating to intangible property; (vi) all other intellectual and industrial property rights (of every kind and nature throughout the world and however designated) whether arising by operation of law, contract, license, or otherwise; and (vii) all registrations, initial applications, renewals, extensions, continuations, divisions or reissues thereof now or hereafter in force (including any rights in any of the foregoing).</P>
+      {isCast ? (
+        <P>&ldquo;<strong>Content</strong>&rdquo; shall mean any testimonials, data, personal stories and details, names, locations, videos, photos, audio, and any breakdown, definition or partition of video, film or TV clips, including images, sound footage and segments, recorded performance, interviews, likeness and voice of the Service Provider as embodied therein, and any and all other information which may be provided by the Service Provider to Company in connection with the Services.</P>
+      ) : (
+        <P>&ldquo;<strong>Deliverables</strong>&rdquo; shall mean all deliverables provided or produced as a result of the work performed under this Agreement or in connection therewith, including, without limitation, any work products, composition, photographs, videos, information, specifications, documentation, content, designs, audio, and any breakdown, definition or partition of video, film or clips, images, sound footage and segments, recorded performance, including as set forth in <u>Exhibit A</u>, all in any media or form whatsoever.</P>
+      )}
+      <Sub>1.2</Sub>
+      <P>&ldquo;<strong>Intellectual Property Rights</strong>&rdquo; shall mean all worldwide, whether registered or not (i) patents, patent applications and patent rights; (ii) rights associated with works of authorship, including copyrights, copyrights applications, copyrights restrictions; (iii) rights relating to the protection of trade secrets and confidential information; (iv) trademarks, logos, service marks, brands, trade names, domain names, goodwill and the right to publicity; (v) rights analogous to those set forth herein and any other proprietary rights relating to intangible property; (vi) all other intellectual and industrial property rights (of every kind and nature throughout the world and however designated) whether arising by operation of law, contract, license, or otherwise; and (vii) all registrations, initial applications, renewals, extensions, continuations, divisions or reissues thereof now or hereafter in force (including any rights in any of the foregoing).</P>
       {!isCast && (
         <>
-          <P>&ldquo;Services&rdquo; shall have the meaning ascribed to it in Section 2 below.</P>
-          <P>&ldquo;Specifications&rdquo; shall mean Company&rsquo;s specifications for the Deliverables attached hereto as Exhibit A or as otherwise provided to Service Provider by Company from time to time.</P>
+          <Sub>1.3</Sub>
+          <P>&ldquo;<strong>Services</strong>&rdquo; shall have the meaning ascribed to it in Section 2 below.</P>
+          <Sub>1.4</Sub>
+          <P>&ldquo;<strong>Specifications</strong>&rdquo; shall mean Company&rsquo;s specifications for the Deliverables attached hereto as <u>Exhibit A</u> or as otherwise provided to Service Provider by Company from time to time.</P>
         </>
       )}
 
