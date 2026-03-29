@@ -795,10 +795,22 @@ router.post('/:id/upload-signed-pdf', async (req, res) => {
     // Upload to Google Drive
     let driveUrl = null;
     try {
-      const uploadBase64 = pdf_base64.replace(/^data:[^;]+;base64,/, '');
+      // Clean the base64: strip data URL prefix, whitespace, newlines
+      let uploadBase64 = pdf_base64;
+      // Strip data URL prefix (may be data:application/pdf;base64, or just base64)
+      const commaIdx = uploadBase64.indexOf(',');
+      if (commaIdx > 0 && commaIdx < 100) {
+        uploadBase64 = uploadBase64.substring(commaIdx + 1);
+      }
+      // Remove whitespace and newlines that break base64 decoding
+      uploadBase64 = uploadBase64.replace(/[\s\r\n]/g, '');
+
       const pdfBytes = Buffer.from(uploadBase64, 'base64');
-      console.log(`[PDF Upload] Received base64 length: ${pdf_base64.length}, decoded bytes: ${pdfBytes.length}`);
-      if (driveRouter.uploadDual) {
+      console.log(`[PDF Upload] Raw input length: ${pdf_base64.length}, cleaned base64 length: ${uploadBase64.length}, decoded bytes: ${pdfBytes.length}`);
+
+      if (pdfBytes.length < 1000) {
+        console.error(`[PDF Upload] WARNING: decoded PDF is only ${pdfBytes.length} bytes — skipping upload`);
+      } else if (driveRouter.uploadDual) {
         const prdShort = contract.prd_short || contract.production_id;
         const projectLabel = contract.project_name || prdShort;
         const year = new Date().getFullYear();

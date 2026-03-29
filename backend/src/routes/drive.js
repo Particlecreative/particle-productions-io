@@ -359,7 +359,14 @@ async function uploadDual({ fileName, fileContent, mimeType, subfolder, category
           else { const f = await drive.files.create({ resource: { name: part, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] }, fields: 'id', supportsAllDrives: true }); parentId = f.data.id; }
         }
       }
-      const buffer = Buffer.from(fileContent, 'base64');
+      // Clean base64 before decoding — remove any whitespace/newlines/data URL prefix
+      let cleanBase64 = fileContent;
+      const ci = cleanBase64.indexOf(',');
+      if (ci > 0 && ci < 100) cleanBase64 = cleanBase64.substring(ci + 1);
+      cleanBase64 = cleanBase64.replace(/[\s\r\n]/g, '');
+      const buffer = Buffer.from(cleanBase64, 'base64');
+      console.log(`[uploadDual] ${fileName}: base64 ${cleanBase64.length} chars → ${buffer.length} bytes`);
+      if (buffer.length < 100) { console.error(`[uploadDual] WARNING: buffer too small (${buffer.length}b), skipping`); throw new Error('Buffer too small'); }
       const { Readable } = require('stream');
       const stream = new Readable(); stream.push(buffer); stream.push(null);
       const file = await drive.files.create({ resource: { name: fileName, parents: [parentId] }, media: { mimeType: mimeType || 'application/pdf', body: stream }, fields: 'id, webViewLink', supportsAllDrives: true });
