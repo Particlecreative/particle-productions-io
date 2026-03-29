@@ -1010,12 +1010,25 @@ router.post('/:production_id/generate', async (req, res) => {
       );
       contract = rows[0];
     } else {
-      // Create new
+      // Create new (with ON CONFLICT to handle race conditions)
       const { rows } = await db.query(
         `INSERT INTO contracts (production_id, provider_name, provider_email, status, events,
                                 exhibit_a, exhibit_b, fee_amount, payment_terms,
                                 currency, contract_type, effective_date, require_hocp_signature)
-         VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+         VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7, $8, $9, $10, $11, $12)
+         ON CONFLICT (production_id) DO UPDATE SET
+           provider_name = EXCLUDED.provider_name,
+           provider_email = EXCLUDED.provider_email,
+           status = CASE WHEN contracts.status = 'signed' THEN contracts.status ELSE 'pending' END,
+           exhibit_a = COALESCE(EXCLUDED.exhibit_a, contracts.exhibit_a),
+           exhibit_b = COALESCE(EXCLUDED.exhibit_b, contracts.exhibit_b),
+           fee_amount = COALESCE(EXCLUDED.fee_amount, contracts.fee_amount),
+           payment_terms = COALESCE(EXCLUDED.payment_terms, contracts.payment_terms),
+           currency = COALESCE(EXCLUDED.currency, contracts.currency),
+           contract_type = COALESCE(EXCLUDED.contract_type, contracts.contract_type),
+           effective_date = COALESCE(EXCLUDED.effective_date, contracts.effective_date),
+           require_hocp_signature = EXCLUDED.require_hocp_signature
+         RETURNING *`,
         [prodId, provider_name, provider_email, JSON.stringify([{ type: 'created', at: now }]),
          exhibit_a || null, exhibit_b || null, fee_amount || null, payment_terms || null,
          currency || 'USD', contract_type || 'crew', effective_date || null, hocpRequired]
