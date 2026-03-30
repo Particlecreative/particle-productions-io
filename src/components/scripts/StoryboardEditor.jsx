@@ -29,7 +29,7 @@ const STATUS_COLORS = {
 };
 
 // ── SortableSceneRow ──────────────────────────────────────────────────────────
-function SortableSceneRow({ scene, index, visibleCols, onUpdate, onDelete, onDuplicate, commentCount, onCommentClick, onImageUpload, onImageDelete, onImageGenerate, onLightbox, readOnly }) {
+function SortableSceneRow({ scene, index, visibleCols, onUpdate, onDelete, onDuplicate, onAddScene, commentCount, onCommentClick, onImageUpload, onImageDelete, onImageGenerate, onLightbox, readOnly, isLastRow }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: scene.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
 
@@ -133,6 +133,12 @@ function SortableSceneRow({ scene, index, visibleCols, onUpdate, onDelete, onDup
                 value={scene.what_we_hear}
                 onChange={e => onUpdate(scene.id, 'what_we_hear', e.target.value)}
                 placeholder="Dialogue, voiceover, SFX..."
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !e.shiftKey && isLastRow && !readOnly) {
+                    e.preventDefault();
+                    onAddScene?.();
+                  }
+                }}
                 className="w-full resize-none border-0 outline-none bg-transparent text-sm text-indigo-700 placeholder-gray-300 min-h-[80px] leading-relaxed italic"
                 rows={4}
               />
@@ -783,6 +789,8 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                         onUpdate={updateScene}
                         onDelete={removeScene}
                         onDuplicate={duplicateScene}
+                        onAddScene={addScene}
+                        isLastRow={idx === scenes.length - 1}
                         commentCount={getCommentCount(scene.id)}
                         onCommentClick={handleCommentClick}
                         onImageUpload={handleImageUpload}
