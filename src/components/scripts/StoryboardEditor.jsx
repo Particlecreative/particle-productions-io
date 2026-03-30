@@ -970,19 +970,32 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
 
   // ── Generate All Images ──
   const handleGenerateAll = async (skipWizardCheck = false) => {
-    const wizardDone = localStorage.getItem(`script_wizard_${scriptId}`);
-    const charProfiles = getCharProfiles();
-    if (!skipWizardCheck && !wizardDone && charProfiles.length === 0) {
+    if (!skipWizardCheck) {
+      // Always show wizard when user manually clicks Generate All
+      // Pre-populate with any existing settings
+      const existingProduct = localStorage.getItem(`script_product_name_${scriptId}`) || '';
+      let existingPhotos = [];
+      try { existingPhotos = JSON.parse(localStorage.getItem(`script_product_photos_${scriptId}`) || '[]'); } catch {}
+      const existingChars = getCharProfiles();
+
       setWizardTargetSceneId('__all__');
-      setWizardStep(2); // Skip step 1 — user chose "Generate All", so AI is obvious
-      setWizardProductName('');
-      setWizardProductPhotos([]);
+      setWizardStep(2);
+      setWizardProductName(existingProduct);
+      setWizardProductPhotos(existingPhotos);
       setShowImageWizard(true);
-      // Kick off both in parallel: character extraction + product detection
+
+      // Always re-extract characters (show current ones immediately if any)
+      if (existingChars.length > 0) {
+        setWizardCharacters(existingChars.map(c => ({ name: c.name, description: c.description })));
+      }
       handleWizardExtractChars();
-      fetch(`${API}/api/scripts/${scriptId}/extract-product`, {
-        method: 'POST', headers: { Authorization: `Bearer ${jwt()}` },
-      }).then(r => r.json()).then(d => { if (d.product_name) setWizardProductName(d.product_name); }).catch(() => {});
+
+      // Auto-detect product if not already set
+      if (!existingProduct) {
+        fetch(`${API}/api/scripts/${scriptId}/extract-product`, {
+          method: 'POST', headers: { Authorization: `Bearer ${jwt()}` },
+        }).then(r => r.json()).then(d => { if (d.product_name) setWizardProductName(d.product_name); }).catch(() => {});
+      }
       return;
     }
 
