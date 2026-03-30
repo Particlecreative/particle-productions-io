@@ -41,22 +41,25 @@ router.get('/:id', async (req, res) => {
 
 // PUT /api/weekly-reports  — upsert by brand_id + week_start
 router.put('/', async (req, res) => {
-  const { id, brand_id, week_start, entries } = req.body;
+  const { id, brand_id, week_start, entries, general_updates, title } = req.body;
   if (!brand_id || !week_start) {
     return res.status(400).json({ error: 'brand_id and week_start are required' });
   }
   try {
     const { rows } = await db.query(
-      `INSERT INTO weekly_reports (id, brand_id, week_start, entries, updated_at)
-       VALUES ($1, $2, $3, $4, NOW())
+      `INSERT INTO weekly_reports (id, brand_id, week_start, entries, general_updates, title, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW())
        ON CONFLICT (brand_id, week_start)
-       DO UPDATE SET entries = EXCLUDED.entries, updated_at = NOW()
+       DO UPDATE SET entries = EXCLUDED.entries, general_updates = EXCLUDED.general_updates,
+                     title = EXCLUDED.title, updated_at = NOW()
        RETURNING *`,
       [
         id || require('crypto').randomUUID(),
         brand_id,
         week_start,
         JSON.stringify(entries || []),
+        JSON.stringify(general_updates || []),
+        title || '',
       ]
     );
     res.json(rows[0]);

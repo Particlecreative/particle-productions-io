@@ -197,11 +197,13 @@ CREATE TABLE IF NOT EXISTS cc_purchases (
 -- WEEKLY REPORTS
 -- =============================================
 CREATE TABLE IF NOT EXISTS weekly_reports (
-  id          TEXT PRIMARY KEY,
-  brand_id    TEXT NOT NULL DEFAULT '',
-  week_start  TEXT NOT NULL,
-  entries     JSONB NOT NULL DEFAULT '[]',
-  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  id              TEXT PRIMARY KEY,
+  brand_id        TEXT NOT NULL DEFAULT '',
+  week_start      TEXT NOT NULL,
+  entries         JSONB NOT NULL DEFAULT '[]',
+  general_updates JSONB NOT NULL DEFAULT '[]',
+  title           TEXT NOT NULL DEFAULT '',
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (brand_id, week_start)
 );
 

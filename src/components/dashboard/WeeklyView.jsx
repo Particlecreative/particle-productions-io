@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   ChevronLeft, ChevronRight, Plus, Trash2, Check, X, Link2,
   ExternalLink, Presentation, Clock, Edit3, ChevronDown,
-  Calendar as CalendarIcon, FileText,
+  Calendar as CalendarIcon, FileText, Copy,
 } from 'lucide-react';
 import {
   getWeeklyReports, getWeeklyReport, saveWeeklyReport, deleteWeeklyReport,
@@ -524,6 +524,166 @@ function ProductionEntry({ entry, prod, comments, links, onUpdate, onRemove, isE
 }
 
 // ============================================================================
+// GeneralUpdatesSection
+// ============================================================================
+
+function GeneralUpdatesSection({ updates = [], onUpdate, isEditor, prevWeekUpdates }) {
+  const [editingLink, setEditingLink] = useState(null);
+  const [linkDraft, setLinkDraft] = useState('');
+  const newRef = useRef(null);
+
+  function addDot() {
+    const next = [...updates, { id: crypto.randomUUID(), text: '', link: '' }];
+    onUpdate(next);
+    setTimeout(() => newRef.current?.focus(), 50);
+  }
+
+  function updateDot(id, patch) {
+    onUpdate(updates.map(d => d.id === id ? { ...d, ...patch } : d));
+  }
+
+  function removeDot(id) {
+    onUpdate(updates.filter(d => d.id !== id));
+  }
+
+  function copyFromLastWeek() {
+    if (!prevWeekUpdates?.length) return;
+    const copied = prevWeekUpdates.map(d => ({ ...d, id: crypto.randomUUID() }));
+    onUpdate([...updates, ...copied]);
+  }
+
+  function openLinkEditor(dot) {
+    setEditingLink(dot.id);
+    setLinkDraft(dot.link || '');
+  }
+
+  function saveLink(id) {
+    updateDot(id, { link: linkDraft.trim() });
+    setEditingLink(null);
+    setLinkDraft('');
+  }
+
+  return (
+    <div className="brand-card overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
+        <div className="flex items-center gap-2">
+          <div className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--brand-accent)' }} />
+          <h3 className="text-sm font-bold text-gray-700">General Updates</h3>
+          {updates.length > 0 && (
+            <span className="text-[10px] font-semibold text-gray-400 bg-gray-100 rounded-full px-2 py-0.5">
+              {updates.length}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Dots list */}
+      <div className="px-5 py-3">
+        {updates.length === 0 && !isEditor && (
+          <p className="text-xs text-gray-400 italic py-2">No general updates for this week.</p>
+        )}
+
+        <div className="space-y-1.5">
+          {updates.map((dot, i) => (
+            <div key={dot.id} className="group flex items-start gap-2 py-1 rounded-lg hover:bg-gray-50 px-1 -mx-1 transition-colors">
+              {/* Dot marker */}
+              <div className="w-2 h-2 rounded-full mt-2 flex-shrink-0" style={{ background: 'var(--brand-accent)', opacity: 0.7 }} />
+
+              {/* Text */}
+              <div className="flex-1 min-w-0">
+                {isEditor ? (
+                  <input
+                    ref={i === updates.length - 1 ? newRef : undefined}
+                    className="w-full text-sm text-gray-700 bg-transparent border-none outline-none placeholder:text-gray-300"
+                    placeholder="Type an update..."
+                    value={dot.text}
+                    onChange={e => updateDot(dot.id, { text: e.target.value })}
+                  />
+                ) : (
+                  <span className="text-sm text-gray-700">{dot.text}</span>
+                )}
+
+                {/* Link editor popover */}
+                {editingLink === dot.id && (
+                  <div className="flex items-center gap-1.5 mt-1.5">
+                    <input
+                      autoFocus
+                      className="flex-1 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-blue-300"
+                      placeholder="https://..."
+                      value={linkDraft}
+                      onChange={e => setLinkDraft(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') saveLink(dot.id); if (e.key === 'Escape') setEditingLink(null); }}
+                    />
+                    <button onClick={() => saveLink(dot.id)} className="p-1 rounded hover:bg-green-50 text-green-500"><Check size={13} /></button>
+                    <button onClick={() => setEditingLink(null)} className="p-1 rounded hover:bg-gray-100 text-gray-400"><X size={13} /></button>
+                  </div>
+                )}
+              </div>
+
+              {/* Link icon (if has link) */}
+              {dot.link && editingLink !== dot.id && (
+                <a
+                  href={dot.link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-1 rounded hover:bg-blue-50 text-blue-400 hover:text-blue-600 transition-colors flex-shrink-0"
+                  title={dot.link}
+                >
+                  <ExternalLink size={13} />
+                </a>
+              )}
+
+              {/* Editor controls */}
+              {isEditor && editingLink !== dot.id && (
+                <div className="flex items-center gap-0.5 sm:opacity-0 opacity-60 sm:group-hover:opacity-100 transition-opacity flex-shrink-0">
+                  <button
+                    onClick={() => openLinkEditor(dot)}
+                    className={`p-1 rounded hover:bg-blue-50 transition-colors ${dot.link ? 'text-blue-400' : 'text-gray-300 hover:text-blue-400'}`}
+                    title={dot.link ? 'Edit link' : 'Add link'}
+                  >
+                    <Link2 size={12} />
+                  </button>
+                  <button
+                    onClick={() => removeDot(dot.id)}
+                    className="p-1 rounded hover:bg-red-50 text-gray-300 hover:text-red-400 transition-colors"
+                    title="Remove"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Action buttons */}
+        {isEditor && (
+          <div className="flex items-center gap-2 mt-3 pt-2 border-t border-gray-50">
+            <button
+              onClick={addDot}
+              className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-[var(--brand-accent)] transition-colors py-1"
+            >
+              <Plus size={13} />
+              Add update
+            </button>
+            {prevWeekUpdates?.length > 0 && (
+              <button
+                onClick={copyFromLastWeek}
+                className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-[var(--brand-accent)] transition-colors py-1 ml-2"
+              >
+                <Copy size={12} />
+                Copy from last week
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
 // PresentCard
 // ============================================================================
 
@@ -642,10 +802,46 @@ function PresentationMode({ report, productions, commentsByProd, brand, onClose 
         </button>
       </div>
 
-      <div className="p-8">
-        {sorted.length === 0 ? (
+      <div className="p-8 space-y-6">
+        {/* General Updates slide */}
+        {(report.general_updates || []).length > 0 && (
+          <div className="bg-gradient-to-br from-gray-50 to-white rounded-2xl border border-gray-200 p-8 shadow-sm">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-2.5 h-2.5 rounded-full" style={{ background: 'var(--brand-accent)' }} />
+              <h2 className="text-lg font-black text-gray-800">General Updates</h2>
+              <span className="text-xs font-semibold text-gray-400 bg-gray-100 rounded-full px-2.5 py-0.5">
+                {report.general_updates.length}
+              </span>
+            </div>
+            <div className="space-y-3 pl-2">
+              {report.general_updates.map(dot => (
+                <div key={dot.id} className="flex items-start gap-3">
+                  <div className="w-2 h-2 rounded-full mt-2 flex-shrink-0" style={{ background: 'var(--brand-accent)', opacity: 0.6 }} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-base text-gray-700 leading-relaxed">{dot.text}</p>
+                    {dot.link && (
+                      <a
+                        href={dot.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs mt-1 hover:underline"
+                        style={{ color: 'var(--brand-accent)' }}
+                      >
+                        <ExternalLink size={11} />
+                        {(() => { try { return new URL(dot.link).hostname; } catch { return 'Link'; } })()}
+                      </a>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Production cards */}
+        {sorted.length === 0 && (report.general_updates || []).length === 0 ? (
           <div className="text-center py-20 text-gray-400">No productions in this report</div>
-        ) : (
+        ) : sorted.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-5">
             {sorted.map(entry => {
               const prod = productions.find(p => p.id === entry.production_id);
@@ -1149,6 +1345,20 @@ function WeeklyReportsTab({ productions, brandId, selectedYear }) {
         <div className="brand-card p-3">
           <WeekStrip weekStart={weekStart} showUS={showUSHolidays} showIL={showILHolidays} />
         </div>
+
+        {/* General Updates */}
+        {report && (
+          <GeneralUpdatesSection
+            updates={report.general_updates || []}
+            onUpdate={val => patchReport({ general_updates: val })}
+            isEditor={isEditor}
+            prevWeekUpdates={(() => {
+              const prev = toDateStr(addDays(weekStart, -7));
+              const prevReport = history.find(r => r.week_start === prev);
+              return prevReport?.general_updates || [];
+            })()}
+          />
+        )}
 
         {/* Empty state */}
         {!report ? (
