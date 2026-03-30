@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   ChevronLeft, ChevronRight, Plus, Trash2, Check, X, Link2,
   ExternalLink, Presentation, Clock, Edit3, ChevronDown,
-  Calendar as CalendarIcon, FileText, Copy,
+  Calendar as CalendarIcon, FileText, Copy, Share2,
 } from 'lucide-react';
 import {
   getWeeklyReports, getWeeklyReport, saveWeeklyReport, deleteWeeklyReport,
@@ -72,16 +72,12 @@ function getStatus(val) {
 
 function historyDot(entries) {
   if (!entries?.length) return 'bg-gray-300';
-  if (entries.some(e => e.status === 'blocked'))  return 'bg-red-500';
-  if (entries.some(e => e.status === 'at_risk'))  return 'bg-amber-400';
-  if (entries.every(e => e.status === 'on_track')) return 'bg-green-500';
   return 'bg-blue-400';
 }
 
 function buildEmptyEntry(prod) {
   return {
     production_id: prod.id,
-    status: 'pending',
     note: '',
     selected_comment_ids: [],
     approved_comment_ids: [],
@@ -290,16 +286,12 @@ function ProductionEntry({ entry, prod, comments, links, onUpdate, onRemove, isE
 
   const selectedComments = comments.filter(c => (entry.selected_comment_ids || []).includes(c.id));
   const availableLinks = links.filter(l => !(entry.weekly_links || []).some(wl => wl.link_id === l.id));
-  const s = getStatus(entry.status);
 
   return (
-    <div className={clsx('rounded-2xl border-l-4 bg-white shadow-sm', s.border)}>
+    <div className="rounded-2xl border-l-4 bg-white shadow-sm border-gray-200">
       {/* Header */}
       <div className="flex items-center gap-3 p-4 pb-3">
-        <StatusDropdown
-          value={entry.status}
-          onChange={v => onUpdate({ status: v })}
-        />
+        <StageBadge stage={prod.stage} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="font-mono text-[10px] text-gray-400">{prod.id}</span>
@@ -753,19 +745,14 @@ function CreativeWeeklyLink({ link, onUpdate, isEditor }) {
 
 function PresentCard({ entry, prod }) {
   if (!prod) return null;
-  const s = getStatus(entry.status);
 
   return (
-    <div className={clsx(
-      'rounded-2xl border-2 bg-white shadow-md flex flex-col min-h-[220px]',
-      s.border
-    )}>
-      <div className={clsx('rounded-t-2xl px-5 py-4', s.bg)}>
+    <div className="rounded-2xl border border-gray-200 bg-white shadow-md flex flex-col min-h-[220px]">
+      <div className="rounded-t-2xl px-5 py-4 bg-gray-50 border-b border-gray-100">
         <div className="flex items-center gap-2 mb-1">
-          <span className="text-lg">{s.icon}</span>
-          <span className={clsx('text-xs font-black uppercase tracking-wider', s.text)}>{s.label}</span>
+          <StageBadge stage={prod.stage} />
         </div>
-        <h3 className="font-black text-gray-900 text-base leading-tight">{prod.project_name}</h3>
+        <h3 className="font-black text-gray-900 text-base leading-tight mt-2">{prod.project_name}</h3>
         <span className="font-mono text-[10px] text-gray-400">{prod.id}</span>
       </div>
 
@@ -815,10 +802,6 @@ function PresentCard({ entry, prod }) {
             ))}
           </div>
         )}
-
-        <div className="pt-1">
-          <StageBadge stage={prod.stage} />
-        </div>
       </div>
     </div>
   );
@@ -842,88 +825,137 @@ function PresentationMode({ report, productions, commentsByProd, brand, onClose 
     return () => { delete window.__weeklyComments; };
   }, [commentsByProd]);
 
-  const sorted = [...(report.entries || [])].sort(
-    (a, b) => (STATUS_SORT[a.status] ?? 9) - (STATUS_SORT[b.status] ?? 9)
-  );
+  const STAGE_SORT = { 'Production': 0, 'Pre Production': 1, 'Post': 2, 'Pending': 3, 'Paused': 4, 'Completed': 5 };
+  const sorted = [...(report.entries || [])].sort((a, b) => {
+    const pa = productions.find(p => p.id === a.production_id);
+    const pb = productions.find(p => p.id === b.production_id);
+    return (STAGE_SORT[pa?.stage] ?? 9) - (STAGE_SORT[pb?.stage] ?? 9);
+  });
+
+  const weekDate = (() => {
+    try {
+      const [y, m, d] = report.week_start.split('-').map(Number);
+      const start = new Date(y, m - 1, d);
+      const end = addDays(start, 6);
+      return `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} \u2013 ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+    } catch { return report.week_start; }
+  })();
+
+  const generalUpdates = report.general_updates || [];
+  const creativeLink = report.creative_link;
+  const hasOverview = generalUpdates.length > 0 || creativeLink?.url;
 
   return (
-    <div className="fixed inset-0 z-50 bg-white overflow-y-auto">
-      <div className="sticky top-0 z-10 flex items-center justify-between px-8 py-4 border-b border-gray-200 bg-white/95 backdrop-blur-sm shadow-sm">
+    <div className="fixed inset-0 z-50 bg-gradient-to-br from-gray-50 to-white overflow-y-auto">
+      {/* Top bar */}
+      <div className="sticky top-0 z-10 flex items-center justify-between px-8 py-4 border-b border-gray-200/80 bg-white/90 backdrop-blur-md shadow-sm">
         <div className="flex items-center gap-4">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-black text-sm" style={{ background: 'var(--brand-accent)' }}>
+            {(brand?.name || 'P')[0]}
+          </div>
           <div>
-            <div className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--brand-primary)' }}>
+            <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-gray-400">
               {brand?.name || 'Productions'}
             </div>
-            <h1 className="text-xl font-black text-gray-900">{report.title}</h1>
+            <h1 className="text-lg font-black text-gray-900 leading-tight">{report.title}</h1>
           </div>
         </div>
-        <button
-          onClick={onClose}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-200 text-sm text-gray-500 hover:bg-gray-50 transition-all"
-        >
-          <X size={15} />
-          Exit Presentation
-        </button>
+        <div className="flex items-center gap-4">
+          <div className="text-right hidden sm:block">
+            <div className="text-xs font-semibold text-gray-500">{weekDate}</div>
+            <div className="text-[10px] text-gray-400">{sorted.length} production{sorted.length !== 1 ? 's' : ''}</div>
+          </div>
+          <button
+            onClick={onClose}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-200 text-sm text-gray-500 hover:bg-gray-100 transition-all"
+          >
+            <X size={15} />
+            Exit
+          </button>
+        </div>
       </div>
 
-      <div className="p-8 space-y-6">
-        {/* General Updates slide */}
-        {(report.general_updates || []).length > 0 && (
-          <div className="bg-gradient-to-br from-gray-50 to-white rounded-2xl border border-gray-200 p-8 shadow-sm">
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-2.5 h-2.5 rounded-full" style={{ background: 'var(--brand-accent)' }} />
-              <h2 className="text-lg font-black text-gray-800">General Updates</h2>
-              <span className="text-xs font-semibold text-gray-400 bg-gray-100 rounded-full px-2.5 py-0.5">
-                {report.general_updates.length}
-              </span>
-            </div>
-            <div className="space-y-3 pl-2">
-              {report.general_updates.map(dot => (
-                <div key={dot.id} className="flex items-start gap-3">
-                  <div className="w-2 h-2 rounded-full mt-2 flex-shrink-0" style={{ background: 'var(--brand-accent)', opacity: 0.6 }} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-base text-gray-700 leading-relaxed">{dot.text}</p>
-                    {dot.link && (
-                      <a
-                        href={dot.link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-xs mt-1 hover:underline"
-                        style={{ color: 'var(--brand-accent)' }}
-                      >
-                        <ExternalLink size={11} />
-                        {(() => { try { return new URL(dot.link).hostname; } catch { return 'Link'; } })()}
-                      </a>
-                    )}
+      <div className="max-w-7xl mx-auto px-8 py-8 space-y-8">
+
+        {/* Overview section: General Updates + Creative Link side by side */}
+        {hasOverview && (
+          <div className={`grid gap-5 ${generalUpdates.length > 0 && creativeLink?.url ? 'grid-cols-1 lg:grid-cols-3' : 'grid-cols-1'}`}>
+            {/* General Updates */}
+            {generalUpdates.length > 0 && (
+              <div className={`bg-white rounded-2xl border border-gray-200 p-7 shadow-sm ${creativeLink?.url ? 'lg:col-span-2' : ''}`}>
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'var(--brand-accent)', opacity: 0.12 }}>
+                    <FileText size={15} style={{ color: 'var(--brand-accent)' }} />
                   </div>
+                  <h2 className="text-base font-black text-gray-800">General Updates</h2>
                 </div>
-              ))}
-            </div>
+                <div className="space-y-3">
+                  {generalUpdates.map(dot => (
+                    <div key={dot.id} className="flex items-start gap-3">
+                      <div className="w-2 h-2 rounded-full mt-[7px] flex-shrink-0" style={{ background: 'var(--brand-accent)', opacity: 0.5 }} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-gray-700 leading-relaxed">{dot.text}</p>
+                        {dot.link && (
+                          <a
+                            href={dot.link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs mt-1 hover:underline"
+                            style={{ color: 'var(--brand-accent)' }}
+                          >
+                            <ExternalLink size={11} />
+                            {(() => { try { return new URL(dot.link).hostname; } catch { return 'Link'; } })()}
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Creative Weekly Link */}
+            {creativeLink?.url && (
+              <div className="bg-white rounded-2xl border border-purple-100 p-7 shadow-sm flex flex-col justify-center">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-8 h-8 rounded-lg bg-purple-50 flex items-center justify-center">
+                    <Link2 size={15} className="text-purple-500" />
+                  </div>
+                  <h2 className="text-base font-black text-gray-800">Creative Link</h2>
+                </div>
+                <a
+                  href={creativeLink.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group flex items-center gap-3 p-4 rounded-xl bg-purple-50/60 hover:bg-purple-50 border border-purple-100 transition-all"
+                >
+                  <ExternalLink size={16} className="text-purple-500 flex-shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-purple-700 group-hover:underline truncate">
+                      {creativeLink.label || 'View Link'}
+                    </p>
+                    <p className="text-[11px] text-purple-400 truncate">
+                      {(() => { try { return new URL(creativeLink.url).hostname; } catch { return creativeLink.url; } })()}
+                    </p>
+                  </div>
+                </a>
+              </div>
+            )}
           </div>
         )}
 
-        {/* Creative Weekly Link slide */}
-        {report.creative_link?.url && (
-          <div className="bg-gradient-to-br from-purple-50 to-white rounded-2xl border border-purple-100 p-8 shadow-sm">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-2.5 h-2.5 rounded-full bg-purple-400" />
-              <h2 className="text-lg font-black text-gray-800">Creative Weekly Link</h2>
-            </div>
-            <a
-              href={report.creative_link.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 text-base font-medium text-purple-600 hover:underline"
-            >
-              <ExternalLink size={15} />
-              {report.creative_link.label || report.creative_link.url}
-            </a>
+        {/* Divider */}
+        {hasOverview && sorted.length > 0 && (
+          <div className="flex items-center gap-4">
+            <div className="flex-1 h-px bg-gray-200" />
+            <span className="text-xs font-bold uppercase tracking-widest text-gray-300">Productions</span>
+            <div className="flex-1 h-px bg-gray-200" />
           </div>
         )}
 
         {/* Production cards */}
-        {sorted.length === 0 && (report.general_updates || []).length === 0 ? (
-          <div className="text-center py-20 text-gray-400">No productions in this report</div>
+        {sorted.length === 0 && !hasOverview ? (
+          <div className="text-center py-20 text-gray-400">No content in this report</div>
         ) : sorted.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-5">
             {sorted.map(entry => {
@@ -1256,10 +1288,6 @@ function WeeklyReportsTab({ productions, brandId, selectedYear }) {
   }
 
   async function createReport() {
-    const weekEnd = addDays(weekStart, 6);
-    const activeProds = productions.filter(p =>
-      p.stage !== 'Completed' && overlapsWeek(p, weekStart, weekEnd)
-    );
     const weekStr = toDateStr(weekStart);
     const newReport = {
       id: generateId('wr'),
@@ -1270,24 +1298,38 @@ function WeeklyReportsTab({ productions, brandId, selectedYear }) {
       updated_at: new Date().toISOString(),
       created_by_id: user?.id,
       created_by_name: user?.name,
-      entries: activeProds.map(buildEmptyEntry),
+      entries: [],
+      general_updates: [],
+      creative_link: null,
     };
-    const cByP = {}, lByP = {};
-    await Promise.all(activeProds.map(async p => {
-      const [comments, links] = await Promise.all([
-        Promise.resolve(getComments(p.id)),
-        Promise.resolve(getLinks(p.id)),
-      ]);
-      cByP[p.id] = Array.isArray(comments) ? comments : [];
-      lByP[p.id] = Array.isArray(links) ? links : [];
-    }));
-    setCommentsByProd(cByP);
-    setLinksByProd(lByP);
     await Promise.resolve(saveWeeklyReport(newReport));
     setReport(newReport);
+    setCommentsByProd({});
+    setLinksByProd({});
     const allReports = await Promise.resolve(getWeeklyReports(brandId));
     setHistory(Array.isArray(allReports) ? allReports : []);
     setDirty(false);
+  }
+
+  const [shareLoading, setShareLoading] = useState(false);
+  async function shareReport() {
+    if (!report) return;
+    setShareLoading(true);
+    try {
+      const API = import.meta.env.VITE_API_URL || '';
+      const token = localStorage.getItem('cp_token');
+      const res = await fetch(`${API}/api/weekly-reports/${report.id}/share`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const { share_token } = await res.json();
+      const url = `${window.location.origin}/weekly/${share_token}`;
+      await navigator.clipboard.writeText(url);
+      alert('Share link copied to clipboard!');
+    } catch (err) {
+      console.error('Share error:', err);
+    }
+    setShareLoading(false);
   }
 
   async function addProduction(prod) {
@@ -1411,14 +1453,24 @@ function WeeklyReportsTab({ productions, brandId, selectedYear }) {
                 </button>
               )}
               {report && (
-                <button
-                  onClick={() => setMode('present')}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white transition-all shadow-sm"
-                  style={{ background: 'var(--brand-accent)' }}
-                >
-                  <Presentation size={13} />
-                  Present
-                </button>
+                <>
+                  <button
+                    onClick={shareReport}
+                    disabled={shareLoading}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border border-gray-200 text-gray-500 hover:bg-gray-50 transition-all"
+                  >
+                    <Share2 size={13} />
+                    {shareLoading ? 'Copying…' : 'Share'}
+                  </button>
+                  <button
+                    onClick={() => setMode('present')}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-white transition-all shadow-sm"
+                    style={{ background: 'var(--brand-accent)' }}
+                  >
+                    <Presentation size={13} />
+                    Present
+                  </button>
+                </>
               )}
             </div>
           </div>

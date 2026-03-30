@@ -1,7 +1,49 @@
 const router = require('express').Router();
 const db     = require('../db');
+const crypto = require('crypto');
 const { verifyJWT } = require('../middleware/auth');
 
+// ── PUBLIC: share endpoint (no auth) ────────────────────────────────────────
+router.get('/share/:token', async (req, res) => {
+  try {
+    const { rows } = await db.query(
+      'SELECT * FROM weekly_reports WHERE share_token = $1',
+      [req.params.token]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Report not found or link expired' });
+
+    const report = rows[0];
+
+    // Also fetch productions referenced in entries
+    const prodIds = (report.entries || []).map(e => e.production_id).filter(Boolean);
+    let productions = [];
+    if (prodIds.length > 0) {
+      const { rows: prods } = await db.query(
+        `SELECT id, project_name, stage, brand_id FROM productions WHERE id = ANY($1)`,
+        [prodIds]
+      );
+      productions = prods;
+    }
+
+    // Fetch comments for selected_comment_ids
+    const allCommentIds = (report.entries || []).flatMap(e => e.selected_comment_ids || []);
+    let comments = [];
+    if (allCommentIds.length > 0) {
+      const { rows: cmts } = await db.query(
+        `SELECT id, body, production_id FROM comments WHERE id = ANY($1)`,
+        [allCommentIds]
+      );
+      comments = cmts;
+    }
+
+    res.json({ report, productions, comments });
+  } catch (err) {
+    console.error('GET /weekly-reports/share/:token error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ── PROTECTED routes below ──────────────────────────────────────────────────
 router.use(verifyJWT);
 
 // GET /api/weekly-reports?brand_id=...&week_start=...
@@ -39,6 +81,30 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+// POST /api/weekly-reports/:id/share — generate or return share token
+router.post('/:id/share', async (req, res) => {
+  try {
+    const { rows } = await db.query(
+      'SELECT id, share_token FROM weekly_reports WHERE id = $1',
+      [req.params.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+
+    let token = rows[0].share_token;
+    if (!token) {
+      token = crypto.randomBytes(32).toString('hex');
+      await db.query(
+        'UPDATE weekly_reports SET share_token = $1 WHERE id = $2',
+        [token, req.params.id]
+      );
+    }
+    res.json({ share_token: token });
+  } catch (err) {
+    console.error('POST /weekly-reports/:id/share error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // PUT /api/weekly-reports  — upsert by brand_id + week_start
 router.put('/', async (req, res) => {
   const { id, brand_id, week_start, entries, general_updates, title, creative_link } = req.body;
@@ -54,7 +120,7 @@ router.put('/', async (req, res) => {
                      title = EXCLUDED.title, creative_link = EXCLUDED.creative_link, updated_at = NOW()
        RETURNING *`,
       [
-        id || require('crypto').randomUUID(),
+        id || crypto.randomUUID(),
         brand_id,
         week_start,
         JSON.stringify(entries || []),

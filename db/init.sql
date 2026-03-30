@@ -204,6 +204,7 @@ CREATE TABLE IF NOT EXISTS weekly_reports (
   general_updates JSONB NOT NULL DEFAULT '[]',
   title           TEXT NOT NULL DEFAULT '',
   creative_link   JSONB,
+  share_token     TEXT,
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (brand_id, week_start)
 );
