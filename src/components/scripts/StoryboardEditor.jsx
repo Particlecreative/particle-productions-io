@@ -1281,7 +1281,12 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
               <button onClick={() => setShowShare(false)}><X size={18} className="text-gray-400" /></button>
             </div>
             <div className="space-y-3 mb-6">
-              {[{ id: 'none', label: 'Off', desc: 'Link disabled' }, { id: 'view', label: 'View Only', desc: 'Anyone with link can view' }, { id: 'edit', label: 'View + Edit', desc: 'Anyone with link can edit' }].map(opt => (
+              {[
+  { id: 'none',    label: 'Off',              desc: 'Link disabled' },
+  { id: 'view',    label: 'View Only',        desc: 'Anyone with link can view but not comment' },
+  { id: 'comment', label: 'View + Comment',   desc: 'Anyone with link can view and leave comments' },
+  { id: 'edit',    label: 'View + Edit',      desc: 'Anyone with link can edit content' },
+].map(opt => (
                 <label key={opt.id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${shareMode === opt.id ? 'border-indigo-300 bg-indigo-50' : 'border-gray-200 hover:border-gray-300'}`}>
                   <input type="radio" checked={shareMode === opt.id} onChange={() => handleShare(opt.id)} className="accent-indigo-600" />
                   <div>

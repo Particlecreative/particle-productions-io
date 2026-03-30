@@ -265,6 +265,65 @@ router.get('/share/:token', async (req, res) => {
   }
 });
 
+// ── PUBLIC: get comments via share token (comment/edit mode) ─────────────────
+router.get('/share/:token/comments', async (req, res) => {
+  try {
+    const { rows: s } = await db.query(
+      `SELECT id, share_mode FROM scripts WHERE share_token = $1`,
+      [req.params.token]
+    );
+    if (!s[0]) return res.status(404).json({ error: 'Not found' });
+    if (!['comment', 'edit'].includes(s[0].share_mode)) return res.status(403).json({ error: 'Comments not enabled on this link' });
+    const { rows } = await db.query(
+      `SELECT * FROM script_comments WHERE script_id = $1 ORDER BY created_at ASC`,
+      [s[0].id]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('GET /scripts/share/:token/comments error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ── PUBLIC: post comment via share token (comment/edit mode) ──────────────────
+router.post('/share/:token/comments', async (req, res) => {
+  try {
+    const { scene_id, cell, selected_text, text, author_name } = req.body;
+    if (!text?.trim()) return res.status(400).json({ error: 'text is required' });
+    const { rows: s } = await db.query(
+      `SELECT s.id, s.title, s.scenes, s.production_id, p.project_name, s.share_mode
+       FROM scripts s LEFT JOIN productions p ON s.production_id = p.id
+       WHERE s.share_token = $1`,
+      [req.params.token]
+    );
+    if (!s[0]) return res.status(404).json({ error: 'Not found' });
+    if (!['comment', 'edit'].includes(s[0].share_mode)) return res.status(403).json({ error: 'Comments not allowed on this link' });
+    const authorName = author_name?.trim() || 'Anonymous';
+    const { rows } = await db.query(
+      `INSERT INTO script_comments (id, script_id, scene_id, cell, selected_text, text, author_name)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [crypto.randomUUID(), s[0].id, scene_id || null, cell || null, selected_text || null, text.trim(), authorName]
+    );
+    // Slack notification
+    const sceneRow = scene_id ? (s[0].scenes || []).find(sc => sc.id === scene_id) : null;
+    const location = sceneRow?.location || '';
+    const cellLabel = { what_we_see: 'What We See', what_we_hear: 'What We Hear', location: 'Location' }[cell] || cell || '';
+    sendSlackNotification(slackScriptPayload({
+      emoji: '💬', headline: `New comment by ${authorName} (via share link)`,
+      script: s[0],
+      fields: [
+        location ? `*Scene:* ${location}` : null,
+        cellLabel ? `*In:* ${cellLabel}` : null,
+        `*Comment:* "${text.substring(0, 120)}${text.length > 120 ? '...' : ''}"`,
+      ].filter(Boolean),
+    }));
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('POST /scripts/share/:token/comments error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // ── PUBLIC: update script via share token (edit mode) ────────────────────────
 router.put('/share/:token', async (req, res) => {
   try {
