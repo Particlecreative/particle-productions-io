@@ -511,35 +511,47 @@ router.post('/import', async (req, res) => {
           };
         }));
       } else {
-        // Google Docs — use Claude to parse the content
-        const docs = google.docs({ version: 'v1', auth: oauth2 });
-        const doc = await docs.documents.get({ documentId: fileId });
-        const content = doc.data.body?.content || [];
-        let fullText = '';
-        for (const block of content) {
-          if (block.paragraph) {
-            for (const el of block.paragraph.elements || []) {
-              fullText += (el.textRun?.content || '');
-            }
-          } else if (block.table) {
-            for (const row of block.table.tableRows || []) {
-              for (const cell of row.tableCells || []) {
-                for (const para of cell.content || []) {
-                  for (const el of para.paragraph?.elements || []) {
-                    fullText += (el.textRun?.content || '') + '\t';
-                  }
-                }
-                fullText += '|';
-              }
-              fullText += '\n';
-            }
+        // Google Docs — export via Drive API as PDF, then process with Gemini
+        // (avoids needing Google Docs API to be enabled separately)
+        const accessToken = (await oauth2.getAccessToken()).token;
+        const exportUrl = `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=application/pdf`;
+        const exportRes = await fetch(exportUrl, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (!exportRes.ok) {
+          // Fall back to plain text export if PDF fails
+          const textExportUrl = `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`;
+          const textRes = await fetch(textExportUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+          if (!textRes.ok) throw new Error(`Could not export Google Doc (${textRes.status}). Make sure the document is shared with the connected Google account.`);
+          const fullText = await textRes.text();
+          const text = await callClaude(
+            `Extract this script/storyboard document into a JSON scenes array. The document content:\n\n${fullText.substring(0, 40000)}`,
+            SCENE_SYSTEM_PROMPT
+          );
+          scenes = parseSceneJson(text);
+        } else {
+          // Send PDF to Gemini for extraction
+          const pdfBuffer = Buffer.from(await exportRes.arrayBuffer());
+          const pdfBase64 = pdfBuffer.toString('base64');
+          const importPrompt = `Analyze this script, storyboard, or document and extract it into a structured JSON scenes array.
+
+For each scene/section/slide:
+- "location": scene heading or setting (e.g. "INT. STUDIO - DAY"), empty string if none
+- "what_we_see": visual directions, action description, visual text on screen
+- "what_we_hear": dialogue, voiceover, script text, audio directions
+- "duration": timing if mentioned (e.g. "5s", "10s"), empty string if none
+- "images_in_source": array of strings describing any images/visuals physically embedded in this scene/slide. Empty array if no images.
+
+Return ONLY this JSON object with NO markdown:
+{"scenes":[{"id":"<uuid-v4>","order":0,"location":"","what_we_see":"","what_we_hear":"","duration":"","collapsed":false,"images_in_source":[],"images":[]}]}`;
+          let text;
+          if (process.env.GEMINI_API_KEY) {
+            text = await callGemini(importPrompt, pdfBase64, 'application/pdf');
+          } else {
+            text = await callClaude(importPrompt, SCENE_SYSTEM_PROMPT);
           }
+          scenes = parseSceneJson(text);
         }
-        const text = await callClaude(
-          `Extract this script/storyboard document into a JSON scenes array. The document content:\n\n${fullText}`,
-          SCENE_SYSTEM_PROMPT
-        );
-        scenes = parseSceneJson(text);
       }
     } else if (fileBase64) {
       // File upload — Gemini primary (natively handles PDF/DOCX/PPTX/images), Claude fallback
