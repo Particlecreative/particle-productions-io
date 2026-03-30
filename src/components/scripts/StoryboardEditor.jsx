@@ -8,10 +8,10 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import {
   GripVertical, Plus, Trash2, Copy, ChevronDown, ChevronRight, MessageSquare,
-  Upload, Sparkles, Share2, Play, X, Check, History, Download, Eye, EyeOff,
+  Upload, Sparkles, Share2, Play, Pause, X, Check, History, Download, Eye, EyeOff,
   Columns3, Table2, Layout, Volume2, ChevronLeft, ChevronRight as ChevronRightIcon,
   Loader2, RefreshCw, ExternalLink, Film, Maximize2, ArrowLeft, MoreHorizontal,
-  Image as ImageIcon, Wand2, CheckCircle,
+  Image as ImageIcon, Wand2, CheckCircle, Clock,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useBrand } from '../../context/BrandContext';
@@ -21,6 +21,17 @@ const API = import.meta.env.VITE_API_URL || '';
 
 function jwt() { return localStorage.getItem('cp_auth_token'); }
 
+// ── VO duration estimate (word count at 130 WPM) ─────────────────────────────
+const VO_WPM = 130;
+function estimateSeconds(text) {
+  if (!text?.trim()) return 0;
+  return Math.round((text.trim().split(/\s+/).length / VO_WPM) * 60);
+}
+function fmtSeconds(s) {
+  if (s < 60) return `${s}s`;
+  return `${Math.floor(s / 60)}m ${s % 60}s`;
+}
+
 const STATUS_COLORS = {
   draft: 'bg-gray-100 text-gray-600',
   review: 'bg-amber-100 text-amber-700',
@@ -28,8 +39,105 @@ const STATUS_COLORS = {
   archived: 'bg-gray-100 text-gray-400',
 };
 
+// ── ElevenLabs voice options ──────────────────────────────────────────────────
+const ELEVEN_VOICES = [
+  { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel', desc: 'Professional · Clear', gender: 'F' },
+  { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam', desc: 'Deep · Authoritative', gender: 'M' },
+  { id: 'TxGEqnHWrfWFTfGW9XjX', name: 'Josh', desc: 'Young · Dynamic', gender: 'M' },
+  { id: 'VR6AewLTigWG4xSOukaG', name: 'Arnold', desc: 'Powerful · Bold', gender: 'M' },
+  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Bella', desc: 'Warm · Storytelling', gender: 'F' },
+  { id: 'ErXwobaYiN019PkySvjV', name: 'Antoni', desc: 'Warm · Conversational', gender: 'M' },
+  { id: 'MF3mGyEYCl7XYWbV9V6O', name: 'Elli', desc: 'Friendly · Upbeat', gender: 'F' },
+];
+
+// ── Rich text cell (contentEditable with formatting) ─────────────────────────
+function RichTextCell({ value, onChange, placeholder, readOnly, className, onMouseUp }) {
+  const ref = useRef(null);
+  const isFocused = useRef(false);
+  const lastHtml = useRef(value || '');
+
+  // Mount: set initial HTML
+  useEffect(() => {
+    if (ref.current) {
+      ref.current.innerHTML = value || '';
+    }
+  }, []); // mount only
+
+  // Sync from parent when NOT focused (e.g. scene reloaded from server)
+  useEffect(() => {
+    if (ref.current && !isFocused.current && value !== lastHtml.current) {
+      ref.current.innerHTML = value || '';
+      lastHtml.current = value || '';
+    }
+  });
+
+  const handleInput = useCallback(() => {
+    if (ref.current) {
+      const html = ref.current.innerHTML;
+      // Treat '<br>' as empty
+      lastHtml.current = html === '<br>' ? '' : html;
+      onChange?.(lastHtml.current);
+    }
+  }, [onChange]);
+
+  return (
+    <div className="relative">
+      <div
+        ref={ref}
+        contentEditable={!readOnly}
+        suppressContentEditableWarning
+        onFocus={() => { isFocused.current = true; }}
+        onBlur={() => { isFocused.current = false; }}
+        onInput={handleInput}
+        onMouseUp={onMouseUp}
+        className={clsx('outline-none break-words', className)}
+      />
+      {(!value || value === '<br>' || value === '') && !readOnly && (
+        <div className="absolute inset-0 pointer-events-none text-gray-300 text-sm select-none" style={{ top: 0 }}>
+          {placeholder}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Strip HTML for TTS/AI (plain text only)
+function stripHtml(html) {
+  return html?.replace(/<[^>]*>/g, '') || '';
+}
+
+// ── Floating formatting toolbar ───────────────────────────────────────────────
+const FORMAT_COLORS = ['#1f2937', '#dc2626', '#2563eb', '#16a34a', '#9333ea', '#d97706'];
+
+function FormatToolbar({ style, onDismiss }) {
+  const fmt = (cmd, val) => { document.execCommand(cmd, false, val); };
+  return (
+    <div
+      className="fixed z-[90] bg-gray-900 rounded-xl shadow-2xl flex items-center gap-0.5 px-1.5 py-1"
+      style={style}
+      onMouseDown={e => e.preventDefault()} // keep selection alive
+    >
+      <button onClick={() => fmt('bold')} className="w-7 h-7 flex items-center justify-center rounded-lg text-white hover:bg-white/20 font-black text-sm transition-colors" title="Bold">B</button>
+      <button onClick={() => fmt('italic')} className="w-7 h-7 flex items-center justify-center rounded-lg text-white hover:bg-white/20 italic font-serif text-sm transition-colors" title="Italic">I</button>
+      <button onClick={() => fmt('underline')} className="w-7 h-7 flex items-center justify-center rounded-lg text-white hover:bg-white/20 underline text-sm transition-colors" title="Underline">U</button>
+      <div className="w-px h-4 bg-white/20 mx-0.5" />
+      {FORMAT_COLORS.map(color => (
+        <button
+          key={color}
+          onClick={() => fmt('foreColor', color)}
+          className="w-4 h-4 rounded-full border-2 border-white/40 hover:border-white transition-colors"
+          style={{ backgroundColor: color }}
+          title={`Color: ${color}`}
+        />
+      ))}
+      <div className="w-px h-4 bg-white/20 mx-0.5" />
+      <button onClick={() => fmt('removeFormat')} className="w-7 h-7 flex items-center justify-center rounded-lg text-white/60 hover:bg-white/20 text-[10px] font-semibold transition-colors" title="Clear formatting">✕</button>
+    </div>
+  );
+}
+
 // ── SortableSceneRow ──────────────────────────────────────────────────────────
-function SortableSceneRow({ scene, index, visibleCols, onUpdate, onDelete, onDuplicate, onAddScene, commentCount, onCommentClick, onImageUpload, onImageDelete, onImageGenerate, onRegenImage, onRequestAIImage, onLightbox, readOnly, isLastRow }) {
+function SortableSceneRow({ scene, index, visibleCols, onUpdate, onDelete, onDuplicate, onAddScene, commentCount, onCommentClick, onImageUpload, onImageDelete, onImageGenerate, onRegenImage, onRequestAIImage, onLightbox, readOnly, isLastRow, onPlayTTS, isPlaying }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: scene.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
 
@@ -74,15 +182,15 @@ function SortableSceneRow({ scene, index, visibleCols, onUpdate, onDelete, onDup
       {visibleCols.location && (
         <td className="w-40 px-2 py-2 align-top">
           {collapsed ? (
-            <span className="text-xs text-gray-500 truncate block">{scene.location || '—'}</span>
+            <span className="text-xs text-gray-500 truncate block">{stripHtml(scene.location) || '—'}</span>
           ) : (
-            <textarea
-              readOnly={readOnly}
+            <RichTextCell
               value={scene.location}
-              onChange={e => onUpdate(scene.id, 'location', e.target.value)}
+              onChange={v => onUpdate(scene.id, 'location', v)}
               placeholder="INT. STUDIO - DAY"
-              className="w-full resize-none border-0 outline-none bg-transparent text-xs font-mono text-gray-600 placeholder-gray-300 min-h-[60px] leading-relaxed"
-              rows={2}
+              readOnly={readOnly}
+              onMouseUp={() => handleMouseUp('location')}
+              className="w-full text-xs font-mono text-gray-600 min-h-[60px] leading-relaxed"
             />
           )}
         </td>
@@ -90,22 +198,21 @@ function SortableSceneRow({ scene, index, visibleCols, onUpdate, onDelete, onDup
 
       {/* What We See */}
       {visibleCols.what_we_see && (
-        <td className="px-2 py-2 align-top" onMouseUp={() => handleMouseUp('what_we_see')}>
+        <td className="px-2 py-2 align-top">
           {collapsed ? (
-            <span className="text-xs text-gray-600 line-clamp-1">{scene.what_we_see || '—'}</span>
+            <span className="text-xs text-gray-600 line-clamp-1">{stripHtml(scene.what_we_see) || '—'}</span>
           ) : (
-            <div className="relative">
-              <textarea
-                readOnly={readOnly}
+            <div className="relative" onMouseUp={() => handleMouseUp('what_we_see')}>
+              <RichTextCell
                 value={scene.what_we_see}
-                onChange={e => onUpdate(scene.id, 'what_we_see', e.target.value)}
+                onChange={v => onUpdate(scene.id, 'what_we_see', v)}
                 placeholder="Visual directions, camera movements..."
-                className="w-full resize-none border-0 outline-none bg-transparent text-sm text-gray-700 placeholder-gray-300 min-h-[80px] leading-relaxed"
-                rows={4}
+                readOnly={readOnly}
+                className="w-full text-sm text-gray-700 min-h-[80px] leading-relaxed"
               />
               {selectionBtn?.cell === 'what_we_see' && (
                 <button
-                  onClick={() => { onCommentClick(selectionBtn); setSelectionBtn(null); }}
+                  onMouseDown={e => { e.preventDefault(); onCommentClick(selectionBtn); setSelectionBtn(null); }}
                   className="absolute -top-6 right-0 flex items-center gap-1 text-xs bg-yellow-400 text-white px-2 py-0.5 rounded-full shadow z-10"
                 >
                   <MessageSquare size={10} /> Comment
@@ -118,32 +225,41 @@ function SortableSceneRow({ scene, index, visibleCols, onUpdate, onDelete, onDup
 
       {/* What We Hear */}
       {visibleCols.what_we_hear && (
-        <td className="px-2 py-2 align-top" onMouseUp={() => handleMouseUp('what_we_hear')}>
+        <td className="px-2 py-2 align-top">
           {collapsed ? (
-            <span className="text-xs text-indigo-700 line-clamp-1">{scene.what_we_hear || '—'}</span>
+            <span className="text-xs text-indigo-700 line-clamp-1">{stripHtml(scene.what_we_hear) || '—'}</span>
           ) : (
-            <div className="relative">
-              <textarea
-                readOnly={readOnly}
+            <div className="relative" onMouseUp={() => handleMouseUp('what_we_hear')}>
+              <RichTextCell
                 value={scene.what_we_hear}
-                onChange={e => onUpdate(scene.id, 'what_we_hear', e.target.value)}
+                onChange={v => onUpdate(scene.id, 'what_we_hear', v)}
                 placeholder="Dialogue, voiceover, SFX..."
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && !e.shiftKey && isLastRow && !readOnly) {
-                    e.preventDefault();
-                    onAddScene?.();
-                  }
-                }}
-                className="w-full resize-none border-0 outline-none bg-transparent text-sm text-indigo-700 placeholder-gray-300 min-h-[80px] leading-relaxed italic"
-                rows={4}
+                readOnly={readOnly}
+                className="w-full text-sm text-indigo-700 min-h-[80px] leading-relaxed italic"
               />
               {selectionBtn?.cell === 'what_we_hear' && (
                 <button
-                  onClick={() => { onCommentClick(selectionBtn); setSelectionBtn(null); }}
+                  onMouseDown={e => { e.preventDefault(); onCommentClick(selectionBtn); setSelectionBtn(null); }}
                   className="absolute -top-6 right-0 flex items-center gap-1 text-xs bg-yellow-400 text-white px-2 py-0.5 rounded-full shadow z-10"
                 >
                   <MessageSquare size={10} /> Comment
                 </button>
+              )}
+              {/* VO duration + play button */}
+              {stripHtml(scene.what_we_hear)?.trim() && (
+                <div className="flex items-center gap-1.5 mt-1">
+                  <span className="text-[10px] text-indigo-400 font-mono">~{fmtSeconds(estimateSeconds(stripHtml(scene.what_we_hear)))}</span>
+                  {onPlayTTS && (
+                    <button
+                      onClick={() => onPlayTTS(scene.id)}
+                      title="Preview VO audio"
+                      className={`flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full transition-colors ${isPlaying ? 'bg-indigo-100 text-indigo-600' : 'text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50'}`}
+                    >
+                      {isPlaying ? <Loader2 size={9} className="animate-spin" /> : <Play size={9} />}
+                      {isPlaying ? 'Playing...' : 'Play'}
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           )}
@@ -271,16 +387,37 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
   const [commenterName, setCommenterName] = useState(() => localStorage.getItem('cp_commenter_name') || '');
   const [showMoreMenu, setShowMoreMenu] = useState(false);
 
+  // ── ElevenLabs TTS ──
+  const [playingSceneId, setPlayingSceneId] = useState(null);
+  const audioRef = useRef(null);
+  const [commercialTarget, setCommercialTarget] = useState(() => {
+    return localStorage.getItem(`script_target_${scriptId}`) || '30';
+  });
+
   // ── AI Image wizard & regeneration ──
   const [showImageWizard, setShowImageWizard] = useState(false);
-  const [wizardStep, setWizardStep] = useState(1); // 1=choice 2=characters 3=style
+  const [wizardStep, setWizardStep] = useState(1); // 1=choice 2=characters 3=product 4=style
   const [wizardTargetSceneId, setWizardTargetSceneId] = useState(null);
   const [wizardCharacters, setWizardCharacters] = useState([]); // [{name, description, photoBase64?, photoMime?}]
   const [wizardStyleNotes, setWizardStyleNotes] = useState('');
+  const [wizardProductName, setWizardProductName] = useState('');
+  const [wizardProductPhotos, setWizardProductPhotos] = useState([]); // [{base64, mimeType, previewUrl}]
+  const [detectingProduct, setDetectingProduct] = useState(false);
+  const [generatingAll, setGeneratingAll] = useState(false);
+  const [generateAllProgress, setGenerateAllProgress] = useState({ current: 0, total: 0 });
+  const productPhotoRef = useRef();
   const [extractingChars, setExtractingChars] = useState(false);
   const [describingActor, setDescribingActor] = useState(null); // index being described
   const actorPhotoRef = useRef();
   const [actorPhotoTarget, setActorPhotoTarget] = useState(null); // index for which char photo is being uploaded
+
+  // ── Voice picker ──
+  const [voiceId, setVoiceId] = useState(() => localStorage.getItem('cp_voice_id') || '21m00Tcm4TlvDq8ikWAM');
+  const [showVoicePicker, setShowVoicePicker] = useState(false);
+  const [previewingVoice, setPreviewingVoice] = useState(null);
+
+  // ── Format toolbar ──
+  const [formatToolbar, setFormatToolbar] = useState(null);
 
   // Regeneration modal
   const [regenModal, setRegenModal] = useState(null); // {sceneId, imageId, prompt}
@@ -451,14 +588,21 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
   const handleImageGenerate = async (sceneId) => {
     const charProfiles = getCharProfiles();
     const styleNotes = localStorage.getItem(`script_style_${scriptId}`) || '';
+    const productName = localStorage.getItem(`script_product_name_${scriptId}`) || '';
+    let productPhotos = [];
+    try { productPhotos = JSON.parse(localStorage.getItem(`script_product_photos_${scriptId}`) || '[]'); } catch {}
+
+    const body = {
+      scene_id: sceneId,
+      character_profiles: charProfiles.length > 0 ? charProfiles : undefined,
+      style_notes: styleNotes || undefined,
+      product_info: productName ? { name: productName, photos: productPhotos } : undefined,
+    };
+
     const res = await fetch(`${API}/api/scripts/${scriptId}/ai-image`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
-      body: JSON.stringify({
-        scene_id: sceneId,
-        character_profiles: charProfiles.length > 0 ? charProfiles : undefined,
-        style_notes: styleNotes || undefined,
-      }),
+      body: JSON.stringify(body),
     });
     const data = await res.json();
     if (data.url) {
@@ -582,6 +726,58 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
     else { alert(data.error || 'Approval failed'); }
   };
 
+  const handlePlayTTS = async (sceneId) => {
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+    if (playingSceneId === sceneId) { setPlayingSceneId(null); return; }
+
+    // First time: show voice picker
+    if (!localStorage.getItem('cp_voice_id')) {
+      setShowVoicePicker(true);
+      return;
+    }
+
+    setPlayingSceneId(sceneId);
+    try {
+      const res = await fetch(`${API}/api/scripts/${scriptId}/tts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
+        body: JSON.stringify({ scene_id: sceneId, voice_id: voiceId }),
+      });
+      const data = await res.json();
+      if (!data.audio_base64) { alert(data.error || 'TTS failed'); setPlayingSceneId(null); return; }
+      const audio = new Audio(`data:${data.mime_type};base64,${data.audio_base64}`);
+      audioRef.current = audio;
+      audio.onended = () => { setPlayingSceneId(null); audioRef.current = null; };
+      audio.onerror = () => { setPlayingSceneId(null); audioRef.current = null; };
+      audio.play();
+    } catch (e) {
+      console.error('TTS error:', e);
+      setPlayingSceneId(null);
+    }
+  };
+
+  const handlePreviewVoice = async (vid) => {
+    if (previewingVoice) return;
+    setPreviewingVoice(vid);
+    try {
+      const previewText = 'This is a preview of how your voiceover will sound in the final commercial.';
+      const res = await fetch(`${API}/api/scripts/voice-preview`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
+        body: JSON.stringify({ voice_id: vid, text: previewText }),
+      });
+      const data = await res.json();
+      if (data.audio_base64) {
+        const audio = new Audio(`data:audio/mpeg;base64,${data.audio_base64}`);
+        audio.onended = () => setPreviewingVoice(null);
+        audio.onerror = () => setPreviewingVoice(null);
+        audio.play();
+      } else {
+        setPreviewingVoice(null);
+      }
+    } catch { setPreviewingVoice(null); }
+  };
+
   const handleStatusChange = async (status) => {
     const res = await fetch(`${API}/api/scripts/${scriptId}`, {
       method: 'PUT',
@@ -650,6 +846,8 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
       // Show setup wizard
       setWizardTargetSceneId(sceneId);
       setWizardStep(1);
+      setWizardProductName('');
+      setWizardProductPhotos([]);
       setShowImageWizard(true);
     }
   };
@@ -706,10 +904,56 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
     const profiles = wizardCharacters.filter(c => c.description).map(c => ({ name: c.name, description: c.description }));
     saveCharProfiles(profiles);
     if (wizardStyleNotes.trim()) localStorage.setItem(`script_style_${scriptId}`, wizardStyleNotes.trim());
+    if (wizardProductName.trim()) localStorage.setItem(`script_product_name_${scriptId}`, wizardProductName.trim());
+    const productPhotosToSave = wizardProductPhotos.slice(0, 3).map(p => ({ base64: p.base64, mimeType: p.mimeType }));
+    if (productPhotosToSave.length > 0) localStorage.setItem(`script_product_photos_${scriptId}`, JSON.stringify(productPhotosToSave));
     localStorage.setItem(`script_wizard_${scriptId}`, 'done');
     setShowImageWizard(false);
-    // Now generate the image that triggered the wizard
-    if (wizardTargetSceneId) handleImageGenerate(wizardTargetSceneId);
+
+    // Generate for target scene(s)
+    if (wizardTargetSceneId === '__all__') {
+      handleGenerateAll(true);
+    } else if (wizardTargetSceneId) {
+      handleImageGenerate(wizardTargetSceneId);
+    }
+  };
+
+  // ── Generate All Images ──
+  const handleGenerateAll = async (skipWizardCheck = false) => {
+    const wizardDone = localStorage.getItem(`script_wizard_${scriptId}`);
+    const charProfiles = getCharProfiles();
+    if (!skipWizardCheck && !wizardDone && charProfiles.length === 0) {
+      setWizardTargetSceneId('__all__');
+      setWizardStep(1);
+      setWizardProductName('');
+      setWizardProductPhotos([]);
+      setShowImageWizard(true);
+      return;
+    }
+
+    const scenesWithoutImages = scenes.filter(s => !s.images || s.images.length === 0);
+    if (scenesWithoutImages.length === 0) {
+      alert('All scenes already have images.');
+      return;
+    }
+
+    if (!confirm(`Generate AI images for ${scenesWithoutImages.length} scene${scenesWithoutImages.length !== 1 ? 's' : ''}? This may take a minute.`)) return;
+
+    setGeneratingAll(true);
+    setGenerateAllProgress({ current: 0, total: scenesWithoutImages.length });
+
+    for (let i = 0; i < scenesWithoutImages.length; i++) {
+      setGenerateAllProgress({ current: i + 1, total: scenesWithoutImages.length });
+      try {
+        await handleImageGenerate(scenesWithoutImages[i].id);
+      } catch (e) {
+        console.warn(`Failed to generate image for scene ${i + 1}:`, e);
+      }
+      if (i < scenesWithoutImages.length - 1) await new Promise(r => setTimeout(r, 1500));
+    }
+
+    setGeneratingAll(false);
+    setGenerateAllProgress({ current: 0, total: 0 });
   };
 
   // ── Image regeneration ──
@@ -757,6 +1001,31 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
   const openCommentCount = comments.filter(c => c.status === 'open').length;
   const scenes = script?.scenes || [];
   const shareUrl = shareToken ? `${window.location.origin}/script/${shareToken}` : '';
+
+  // ── Format toolbar — global mouseup listener ──
+  useEffect(() => {
+    const handleMouseUp = () => {
+      const sel = window.getSelection();
+      if (sel && sel.toString().trim() && sel.rangeCount > 0) {
+        const rect = sel.getRangeAt(0).getBoundingClientRect();
+        setFormatToolbar({
+          top: rect.top + window.scrollY - 44,
+          left: Math.max(8, rect.left + window.scrollX + rect.width / 2 - 100),
+        });
+      } else {
+        setFormatToolbar(null);
+      }
+    };
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => document.removeEventListener('mouseup', handleMouseUp);
+  }, []);
+
+  // ── Commercial timing ──
+  const totalVoSeconds = scenes.reduce((sum, s) => sum + estimateSeconds(stripHtml(s.what_we_hear)), 0);
+  const targetSeconds = parseInt(commercialTarget) || 30;
+  const timingRatio = totalVoSeconds / targetSeconds;
+  const timingColor = timingRatio <= 0.9 ? 'text-gray-500' : timingRatio <= 1.05 ? 'text-green-600' : timingRatio <= 1.2 ? 'text-amber-600' : 'text-red-600';
+  const barColor = timingRatio <= 0.9 ? 'bg-gray-300' : timingRatio <= 1.05 ? 'bg-green-500' : timingRatio <= 1.2 ? 'bg-amber-500' : 'bg-red-500';
 
   if (loading) return (
     <div className="flex-1 flex items-center justify-center">
@@ -809,6 +1078,44 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
             </span>
           </div>
         </div>
+
+        {/* ── Commercial timing bar ── */}
+        {totalVoSeconds > 0 && (
+          <div className="flex items-center gap-2 mb-2 scripts-no-print">
+            <Clock size={11} className="text-gray-400 shrink-0" />
+            <div className="flex-1 bg-gray-100 rounded-full h-1.5 relative overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${barColor}`}
+                style={{ width: `${Math.min(timingRatio * 100, 100)}%` }}
+              />
+              {/* Target marker at 100% */}
+              <div className="absolute right-0 top-0 h-full w-px bg-gray-400 opacity-50" />
+            </div>
+            <span className={`text-[11px] font-mono font-semibold shrink-0 ${timingColor}`}>
+              {fmtSeconds(totalVoSeconds)}
+            </span>
+            <span className="text-[11px] text-gray-400 shrink-0">/ target:</span>
+            <button
+              onClick={() => setShowVoicePicker(true)}
+              className="shrink-0 flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-md text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+              title="Change VO voice"
+            >
+              <Volume2 size={10} />
+              {ELEVEN_VOICES.find(v => v.id === voiceId)?.name || 'Voice'}
+            </button>
+            <div className="flex items-center gap-0.5 bg-gray-100 rounded-md p-0.5 shrink-0">
+              {['30', '60'].map(t => (
+                <button
+                  key={t}
+                  onClick={() => { setCommercialTarget(t); localStorage.setItem(`script_target_${scriptId}`, t); }}
+                  className={`text-[10px] px-1.5 py-0.5 rounded font-semibold transition-colors ${commercialTarget === t ? 'bg-white shadow-sm text-gray-800' : 'text-gray-400 hover:text-gray-600'}`}
+                >
+                  {t}s
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="flex items-center gap-2 flex-wrap">
           {/* View toggle */}
@@ -907,9 +1214,17 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                     localStorage.removeItem(`script_wizard_${scriptId}`);
                     localStorage.removeItem(`script_chars_${scriptId}`);
                     localStorage.removeItem(`script_style_${scriptId}`);
+                    localStorage.removeItem(`script_product_name_${scriptId}`);
+                    localStorage.removeItem(`script_product_photos_${scriptId}`);
                     alert('AI image setup reset. Next time you generate an image, the wizard will run again.');
                   }} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50">
                     <Sparkles size={12} /> Reset AI Image Setup
+                  </button>
+                  <button onClick={() => { setShowMoreMenu(false); handleGenerateAll(); }}
+                    disabled={generatingAll}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                    <Sparkles size={12} className="text-purple-500" />
+                    {generatingAll ? `Generating ${generateAllProgress.current}/${generateAllProgress.total}...` : 'Generate All Images'}
                   </button>
                   <div className="border-t border-gray-100 my-1" />
                   <button onClick={() => { setShowMoreMenu(false); handleDeleteScript(); }}
@@ -922,6 +1237,32 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
           )}
         </div>
       </div>
+
+      {/* ── Generate All Images banner ── */}
+      {!readOnly && scenes.length > 0 && scenes.every(s => !s.images || s.images.length === 0) && !generatingAll && (
+        <div className="mx-4 mt-3 p-3 rounded-xl bg-purple-50 border border-purple-200 flex items-center gap-3 scripts-no-print">
+          <Sparkles size={16} className="text-purple-500 shrink-0" />
+          <div className="flex-1">
+            <p className="text-xs font-semibold text-purple-800">No storyboard images yet</p>
+            <p className="text-xs text-purple-600">Generate AI images for all {scenes.length} scenes at once</p>
+          </div>
+          <button onClick={handleGenerateAll} className="shrink-0 px-3 py-1.5 bg-purple-600 text-white text-xs font-bold rounded-lg hover:bg-purple-700 transition-colors">
+            Generate All
+          </button>
+        </div>
+      )}
+      {generatingAll && (
+        <div className="mx-4 mt-3 p-3 rounded-xl bg-purple-50 border border-purple-200 flex items-center gap-3 scripts-no-print">
+          <Loader2 size={16} className="text-purple-500 animate-spin shrink-0" />
+          <div className="flex-1">
+            <p className="text-xs font-semibold text-purple-800">Generating storyboard images...</p>
+            <div className="mt-1.5 h-1.5 bg-purple-200 rounded-full overflow-hidden">
+              <div className="h-full bg-purple-500 rounded-full transition-all" style={{ width: `${generateAllProgress.total > 0 ? (generateAllProgress.current / generateAllProgress.total) * 100 : 0}%` }} />
+            </div>
+          </div>
+          <span className="text-xs font-mono text-purple-700">{generateAllProgress.current}/{generateAllProgress.total}</span>
+        </div>
+      )}
 
       {/* ── Content ── */}
       <div className="flex-1 overflow-auto">
@@ -965,6 +1306,8 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                         onRequestAIImage={handleRequestAIImage}
                         onLightbox={setLightbox}
                         readOnly={readOnly}
+                        onPlayTTS={handlePlayTTS}
+                        isPlaying={playingSceneId === scene.id}
                       />
                     ))}
                   </tbody>
@@ -989,18 +1332,40 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
         {/* VO View */}
         {activeView === 'vo' && (
           <div className="max-w-2xl mx-auto py-8 px-6">
-            <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-6">Audio / Voiceover Script</h3>
-            {scenes.map((scene, idx) => (
-              <div key={scene.id} className="mb-6 pb-6 border-b border-gray-100 last:border-0">
-                <div className="flex items-baseline gap-3 mb-2">
-                  <span className="text-xs font-bold text-gray-400 w-5">{idx + 1}</span>
-                  {scene.location && <span className="text-xs font-mono text-gray-400">{scene.location}</span>}
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">Audio / Voiceover Script</h3>
+              {totalVoSeconds > 0 && (
+                <span className={`text-xs font-mono font-semibold ${timingColor}`}>
+                  Total: {fmtSeconds(totalVoSeconds)} / {targetSeconds}s target
+                </span>
+              )}
+            </div>
+            {scenes.map((scene, idx) => {
+              const secs = estimateSeconds(scene.what_we_hear);
+              return (
+                <div key={scene.id} className="mb-6 pb-6 border-b border-gray-100 last:border-0">
+                  <div className="flex items-baseline gap-3 mb-2">
+                    <span className="text-xs font-bold text-gray-400 w-5">{idx + 1}</span>
+                    {scene.location && <span className="text-xs font-mono text-gray-400">{scene.location}</span>}
+                    <div className="ml-auto flex items-center gap-2">
+                      {secs > 0 && <span className="text-[10px] font-mono text-indigo-400">~{fmtSeconds(secs)}</span>}
+                      {scene.what_we_hear?.trim() && (
+                        <button
+                          onClick={() => handlePlayTTS(scene.id)}
+                          className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border transition-colors ${playingSceneId === scene.id ? 'border-indigo-300 bg-indigo-50 text-indigo-600' : 'border-gray-200 text-gray-400 hover:text-indigo-600 hover:border-indigo-300'}`}
+                        >
+                          {playingSceneId === scene.id ? <Loader2 size={9} className="animate-spin" /> : <Play size={9} />}
+                          {playingSceneId === scene.id ? 'Playing...' : 'Play VO'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-base text-indigo-800 leading-relaxed italic pl-8">
+                    {scene.what_we_hear || <span className="text-gray-300">No audio for this scene</span>}
+                  </p>
                 </div>
-                <p className="text-base text-indigo-800 leading-relaxed italic pl-8">
-                  {scene.what_we_hear || <span className="text-gray-300">No audio for this scene</span>}
-                </p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -1412,6 +1777,60 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
         </div>
       )}
 
+      {/* ── Format Toolbar (global, shown on text selection) ── */}
+      {!readOnly && formatToolbar && (
+        <FormatToolbar style={{ position: 'fixed', top: formatToolbar.top, left: formatToolbar.left }} />
+      )}
+
+      {/* ── Voice Picker Modal ── */}
+      {showVoicePicker && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <div className="px-5 pt-5 pb-3 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h3 className="font-black text-gray-900 flex items-center gap-2"><Volume2 size={16} className="text-indigo-500" /> Choose a Voice</h3>
+                <p className="text-xs text-gray-400 mt-0.5">Select the voice for VO preview playback</p>
+              </div>
+              <button onClick={() => setShowVoicePicker(false)}><X size={16} className="text-gray-400" /></button>
+            </div>
+            <div className="p-4 space-y-2 max-h-80 overflow-y-auto">
+              {ELEVEN_VOICES.map(v => (
+                <div key={v.id}
+                  className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all cursor-pointer ${voiceId === v.id ? 'border-indigo-400 bg-indigo-50' : 'border-gray-100 hover:border-gray-200'}`}
+                  onClick={() => setVoiceId(v.id)}
+                >
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${voiceId === v.id ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600'}`}>
+                    {v.gender}
+                  </div>
+                  <div className="flex-1">
+                    <p className={`text-sm font-bold ${voiceId === v.id ? 'text-indigo-800' : 'text-gray-800'}`}>{v.name}</p>
+                    <p className="text-xs text-gray-400">{v.desc}</p>
+                  </div>
+                  <button
+                    onClick={e => { e.stopPropagation(); handlePreviewVoice(v.id); }}
+                    disabled={!!previewingVoice}
+                    className="w-7 h-7 flex items-center justify-center rounded-full bg-gray-100 hover:bg-indigo-100 text-gray-500 hover:text-indigo-600 transition-colors disabled:opacity-50"
+                  >
+                    {previewingVoice === v.id ? <Loader2 size={12} className="animate-spin" /> : <Play size={11} />}
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="px-4 pb-4">
+              <button
+                onClick={() => {
+                  localStorage.setItem('cp_voice_id', voiceId);
+                  setShowVoicePicker(false);
+                }}
+                className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700"
+              >
+                Use {ELEVEN_VOICES.find(v => v.id === voiceId)?.name || 'this voice'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── AI Image Setup Wizard ── */}
       {showImageWizard && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
@@ -1420,7 +1839,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
             <div className="px-6 pt-5 pb-4 border-b border-gray-100 flex items-center justify-between">
               <div>
                 <h3 className="font-black text-gray-900 text-lg flex items-center gap-2"><Sparkles size={18} className="text-purple-500" /> AI Storyboard Images</h3>
-                <p className="text-xs text-gray-400 mt-0.5">Step {wizardStep} of 3</p>
+                <p className="text-xs text-gray-400 mt-0.5">Step {wizardStep} of 4</p>
               </div>
               <button onClick={() => setShowImageWizard(false)}><X size={18} className="text-gray-400" /></button>
             </div>
@@ -1495,8 +1914,112 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
               </div>
             )}
 
-            {/* Step 3 — Visual Style */}
+            {/* Step 3 — Product */}
             {wizardStep === 3 && (
+              <div className="p-6">
+                <p className="text-sm text-gray-600 mb-4">
+                  Does this script feature a specific product that must appear in frames? (e.g. a shoe, phone, drink, car)
+                </p>
+
+                <div className="mb-4">
+                  <label className="block text-xs font-semibold text-gray-500 mb-1.5">Product Name</label>
+                  <div className="flex gap-2">
+                    <input
+                      value={wizardProductName}
+                      onChange={e => setWizardProductName(e.target.value)}
+                      placeholder="e.g. Nike Air Max 90, iPhone 15, Coca-Cola Classic..."
+                      className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-300"
+                    />
+                    <button
+                      onClick={async () => {
+                        setDetectingProduct(true);
+                        try {
+                          const res = await fetch(`${API}/api/scripts/${scriptId}/extract-product`, {
+                            method: 'POST', headers: { Authorization: `Bearer ${jwt()}` }
+                          });
+                          const data = await res.json();
+                          if (data.product_name) setWizardProductName(data.product_name);
+                        } catch {}
+                        setDetectingProduct(false);
+                      }}
+                      disabled={detectingProduct}
+                      className="flex items-center gap-1 px-3 py-2 text-xs bg-purple-100 text-purple-700 rounded-xl hover:bg-purple-200 transition-colors disabled:opacity-50"
+                    >
+                      {detectingProduct ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                      Detect
+                    </button>
+                  </div>
+                </div>
+
+                {wizardProductName.trim() && (
+                  <div className="mb-4">
+                    <label className="block text-xs font-semibold text-gray-500 mb-2">
+                      Product Photos <span className="font-normal text-gray-400">(up to 3, for visual consistency)</span>
+                    </label>
+                    <div className="flex gap-2 flex-wrap">
+                      {wizardProductPhotos.map((photo, i) => (
+                        <div key={i} className="relative">
+                          <img src={photo.previewUrl} alt="Product" className="w-20 h-20 object-cover rounded-xl border border-gray-200" />
+                          <button
+                            onClick={() => setWizardProductPhotos(prev => prev.filter((_, pi) => pi !== i))}
+                            className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-[10px]"
+                          >×</button>
+                        </div>
+                      ))}
+                      {wizardProductPhotos.length < 3 && (
+                        <button
+                          onClick={() => productPhotoRef.current?.click()}
+                          className="w-20 h-20 rounded-xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center text-gray-400 hover:border-purple-300 hover:text-purple-400 transition-colors gap-1"
+                        >
+                          <Upload size={16} />
+                          <span className="text-[10px]">Upload</span>
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      ref={productPhotoRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={e => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const reader = new FileReader();
+                        reader.onload = ev => {
+                          const dataUrl = ev.target.result;
+                          setWizardProductPhotos(prev => [...prev, {
+                            base64: dataUrl.split(',')[1],
+                            mimeType: file.type || 'image/jpeg',
+                            previewUrl: dataUrl,
+                          }]);
+                        };
+                        reader.readAsDataURL(file);
+                        e.target.value = '';
+                      }}
+                    />
+                    <p className="text-[11px] text-gray-400 mt-2">
+                      AI will ensure the product appears with exact accuracy in every scene where it's visible.
+                    </p>
+                  </div>
+                )}
+
+                {!wizardProductName.trim() && (
+                  <div className="mb-4 p-3 bg-gray-50 rounded-xl text-xs text-gray-500 text-center">
+                    No product → leave empty and continue
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <button onClick={() => setWizardStep(2)} className="px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">Back</button>
+                  <button onClick={() => setWizardStep(4)} className="flex-1 py-2 bg-purple-600 text-white rounded-xl text-sm font-bold hover:bg-purple-700">
+                    Continue →
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Step 4 — Visual Style */}
+            {wizardStep === 4 && (
               <div className="p-6">
                 <p className="text-sm text-gray-600 mb-3">Describe the visual style for this storyboard (optional). This applies to all generated images.</p>
                 <textarea
@@ -1506,7 +2029,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                   className="w-full border border-gray-200 rounded-xl p-3 text-sm outline-none resize-none h-24 focus:border-purple-400 mb-4"
                 />
                 <div className="flex gap-2">
-                  <button onClick={() => setWizardStep(2)} className="px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">Back</button>
+                  <button onClick={() => setWizardStep(3)} className="px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">Back</button>
                   <button onClick={() => handleWizardComplete(true)}
                     className="flex-1 py-2.5 bg-purple-600 text-white rounded-xl text-sm font-bold hover:bg-purple-700 flex items-center justify-center gap-2">
                     <Sparkles size={14} /> Generate Image

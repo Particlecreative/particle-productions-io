@@ -761,10 +761,10 @@ router.post('/:id/ai-generate', async (req, res) => {
 });
 
 // POST /api/scripts/:id/ai-image — Gemini image generation (Nano Banana 2)
-// Accepts optional: prompt (override), replace_image_id (replace vs append), character_profiles, style_notes
+// Accepts optional: prompt (override), replace_image_id (replace vs append), character_profiles, style_notes, product_info
 router.post('/:id/ai-image', async (req, res) => {
   try {
-    const { scene_id, prompt: promptOverride, replace_image_id, character_profiles, style_notes, reference_image, reference_image_url } = req.body;
+    const { scene_id, prompt: promptOverride, replace_image_id, character_profiles, style_notes, reference_image, reference_image_url, product_info } = req.body;
     if (!scene_id) return res.status(400).json({ error: 'scene_id is required' });
 
     if (!process.env.GEMINI_API_KEY) {
@@ -796,6 +796,11 @@ router.post('/:id/ai-image', async (req, res) => {
         ? `\nCHARACTERS IN THIS PRODUCTION (maintain exact visual consistency for each):\n${character_profiles.map(c => `- ${c.name}: ${c.description}`).join('\n')}\n`
         : '';
 
+      // Build product context
+      const productContext = product_info?.name
+        ? `\nPRODUCT CONSISTENCY (CRITICAL — non-negotiable):\nThe product "${product_info.name}" must appear in this scene with EXACT visual accuracy. Maintain the exact shape, branding, colors, proportions, and logo placement from the reference product images provided. Do NOT stylize, abstract, or alter the product in any way. The product must be instantly recognizable as "${product_info.name}".\n`
+        : '';
+
       // Build style notes context
       const styleContext = style_notes
         ? `\nVISUAL STYLE FOR THIS PRODUCTION:\n${style_notes}\n`
@@ -805,7 +810,7 @@ router.post('/:id/ai-image', async (req, res) => {
       const contextPrompt = `You are writing an image generation prompt for a professional storyboard frame.
 
 Script title: "${rows[0].title}"
-${charContext}${styleContext}
+${charContext}${productContext}${styleContext}
 ${prevScene ? `PREVIOUS SCENE (Scene ${sceneIndex}):
 - Location: ${prevScene.location || ''}
 - What We See: ${prevScene.what_we_see || ''}
@@ -845,6 +850,16 @@ Write a single, detailed image generation prompt (2-4 sentences) for the CURRENT
 
     // Resolve reference image (upload or URL)
     const refImages = [];
+
+    // Prepend product photos (up to 3) before any actor reference
+    if (Array.isArray(product_info?.photos)) {
+      for (const photo of product_info.photos.slice(0, 3)) {
+        if (photo?.base64) {
+          refImages.unshift({ base64: photo.base64, mimeType: photo.mimeType || 'image/jpeg' });
+        }
+      }
+    }
+
     if (reference_image?.base64) {
       refImages.push({ base64: reference_image.base64, mimeType: reference_image.mimeType || 'image/jpeg' });
     } else if (reference_image_url) {
@@ -864,8 +879,12 @@ Write a single, detailed image generation prompt (2-4 sentences) for the CURRENT
       }
     }
 
-    // If reference image is provided, tell Claude to incorporate it
-    if (refImages.length > 0 && !promptOverride) {
+    // If product photos were added (and no override), tell model to replicate product precisely
+    const productPhotosAdded = Array.isArray(product_info?.photos) && product_info.photos.length > 0;
+    if (productPhotosAdded && !promptOverride) {
+      imagePrompt += ' The provided product reference images show the exact product that must appear in this scene — replicate it precisely.';
+    } else if (refImages.length > 0 && !promptOverride && !productPhotosAdded) {
+      // Non-product reference image — use for inspiration
       imagePrompt += ' Use the provided reference image as visual inspiration for composition, style, or subject — adapt it to fit the scene context while maintaining storyboard consistency.';
     }
 
@@ -943,6 +962,45 @@ If no specific characters found, return {"characters": []}`;
   } catch (err) {
     console.error('POST /scripts/:id/extract-characters error:', err);
     res.status(500).json({ error: err.message || 'Character extraction failed' });
+  }
+});
+
+// POST /api/scripts/:id/extract-product — Claude detects the product being advertised
+router.post('/:id/extract-product', async (req, res) => {
+  try {
+    const { rows } = await db.query('SELECT scenes, title FROM scripts WHERE id = $1', [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Script not found' });
+    const scenes = rows[0].scenes || [];
+    const allText = scenes.map((s, i) =>
+      `Scene ${i + 1}:\nLocation: ${s.location || ''}\nWhat We See: ${s.what_we_see || ''}\nWhat We Hear: ${s.what_we_hear || ''}`
+    ).join('\n\n');
+
+    const prompt = `Analyze this commercial/advertisement script and identify the main product, brand, or item being advertised or prominently featured.
+
+Script title: "${rows[0].title}"
+
+${allText}
+
+Look for: product names, brand mentions, items being held/used/shown, things in dialogue (VO), items in scene descriptions.
+
+Return ONLY valid JSON in this exact format:
+{"product_name": "Product Name Here", "confidence": "detected"}
+
+If no specific product can be identified with confidence, return:
+{"product_name": "", "confidence": "uncertain"}
+
+Return ONLY the JSON object, nothing else.`;
+
+    const result = await callClaude(prompt, 'You are a script analyst. Identify the main product or brand featured in this commercial script. Be specific — if it says "Nike shoes" say "Nike shoes", not just "shoes".');
+    let parsed = { product_name: '', confidence: 'uncertain' };
+    try {
+      const match = result.match(/\{[\s\S]*\}/);
+      if (match) parsed = JSON.parse(match[0]);
+    } catch (e) { /* silent */ }
+    res.json(parsed);
+  } catch (err) {
+    console.error('POST /scripts/:id/extract-product error:', err);
+    res.status(500).json({ error: err.message || 'Product extraction failed' });
   }
 });
 
@@ -1235,6 +1293,98 @@ router.delete('/:id', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('DELETE /scripts/:id error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ── ElevenLabs TTS helpers ────────────────────────────────────────────────────
+
+// Words per minute for professional VO narration
+const VO_WPM = 130;
+
+function estimateDuration(text) {
+  if (!text?.trim()) return 0;
+  const words = text.trim().split(/\s+/).length;
+  return Math.round((words / VO_WPM) * 60); // seconds
+}
+
+async function elevenLabsTTS(text, voiceIdOverride) {
+  const apiKey = process.env.ELEVENLABS_API_KEY;
+  if (!apiKey) throw new Error('ELEVENLABS_API_KEY not configured');
+  // Default voice: Rachel (professional, clear narration)
+  const voiceId = voiceIdOverride || process.env.ELEVENLABS_VOICE_ID || '21m00Tcm4TlvDq8ikWAM';
+  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+    method: 'POST',
+    headers: {
+      'xi-api-key': apiKey,
+      'Content-Type': 'application/json',
+      'Accept': 'audio/mpeg',
+    },
+    body: JSON.stringify({
+      text: text.substring(0, 2500), // ElevenLabs limit per request
+      model_id: 'eleven_turbo_v2',
+      voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`ElevenLabs error: ${res.status} — ${err.slice(0, 200)}`);
+  }
+  const buffer = Buffer.from(await res.arrayBuffer());
+  return buffer.toString('base64');
+}
+
+// POST /api/scripts/voice-preview — preview a voice (no script needed)
+router.post('/voice-preview', async (req, res) => {
+  try {
+    const { voice_id, text } = req.body;
+    const vid = voice_id || '21m00Tcm4TlvDq8ikWAM';
+    const previewText = (text || 'This is a preview of how your voiceover will sound.').substring(0, 200);
+    const audioBase64 = await elevenLabsTTS(previewText, vid);
+    res.json({ audio_base64: audioBase64, mime_type: 'audio/mpeg' });
+  } catch (err) {
+    console.error('POST /scripts/voice-preview error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/scripts/:id/tts — generate VO for a single scene
+router.post('/:id/tts', async (req, res) => {
+  try {
+    const { scene_id, voice_id } = req.body;
+    if (!scene_id) return res.status(400).json({ error: 'scene_id required' });
+    const { rows } = await db.query('SELECT scenes FROM scripts WHERE id = $1', [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Script not found' });
+    const scene = (rows[0].scenes || []).find(s => s.id === scene_id);
+    if (!scene) return res.status(404).json({ error: 'Scene not found' });
+    const rawText = scene.what_we_hear || '';
+    // Strip HTML tags for TTS (scene may contain rich text)
+    const text = rawText.replace(/<[^>]*>/g, '') || '';
+    if (!text.trim()) return res.status(400).json({ error: 'Scene has no VO text' });
+    const audioBase64 = await elevenLabsTTS(text, voice_id);
+    const estimated = estimateDuration(text);
+    res.json({ audio_base64: audioBase64, mime_type: 'audio/mpeg', duration_seconds: estimated });
+  } catch (err) {
+    console.error('POST /scripts/:id/tts error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/scripts/:id/duration — word-count duration estimate for all scenes (no ElevenLabs call)
+router.get('/:id/duration', async (req, res) => {
+  try {
+    const { rows } = await db.query('SELECT scenes FROM scripts WHERE id = $1', [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+    const scenes = rows[0].scenes || [];
+    const durations = scenes.map(s => ({
+      scene_id: s.id,
+      text: s.what_we_hear || '',
+      estimated_seconds: estimateDuration(s.what_we_hear),
+    }));
+    const total = durations.reduce((sum, d) => sum + d.estimated_seconds, 0);
+    res.json({ durations, total_seconds: total });
+  } catch (err) {
+    console.error('GET /scripts/:id/duration error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
