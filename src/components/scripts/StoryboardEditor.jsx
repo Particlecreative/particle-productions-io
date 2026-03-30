@@ -1312,6 +1312,18 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                     {downloadingFullVO ? 'Generating VO...' : 'Download Full VO (MP3)'}
                   </button>
                   <div className="border-t border-gray-100 my-1" />
+                  <button onClick={() => {
+                    setShowMoreMenu(false);
+                    if (!confirm('Remove all images from every scene? This cannot be undone.')) return;
+                    const updated = { ...script, scenes: script.scenes.map(s => ({ ...s, images: [] })) };
+                    setScript(updated);
+                    debounceSave(updated);
+                    // Also reset the wizard so Generate All prompts for refs again
+                    localStorage.removeItem(`script_wizard_${scriptId}`);
+                  }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-500 hover:bg-red-50">
+                    <ImageIcon size={12} /> Clear All Images
+                  </button>
                   <button onClick={() => { setShowMoreMenu(false); handleDeleteScript(); }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-600 hover:bg-red-50">
                     <Trash2 size={12} /> Delete Script
