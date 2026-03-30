@@ -511,61 +511,92 @@ router.post('/import', async (req, res) => {
           };
         }));
       } else {
-        // Google Docs — export via Drive API as HTML (preserves tables/structure perfectly),
-        // plain text as fallback. Avoids needing Google Docs API enabled separately.
+        // Google Docs — primary: Docs API (richest structure), fallback: HTML export → PDF export
         const accessToken = (await oauth2.getAccessToken()).token;
-
         let docContent = '';
-        let contentType = 'html';
+        let contentLabel = '';
 
-        // Try HTML first — best for scripts with tables and column structure
-        const htmlRes = await fetch(
-          `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/html`,
-          { headers: { Authorization: `Bearer ${accessToken}` } }
-        );
-        if (htmlRes.ok) {
-          docContent = await htmlRes.text();
-          contentType = 'html';
-        } else {
-          // Fall back to plain text
-          const textRes = await fetch(
-            `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`,
+        // ── Primary: Google Docs API ──────────────────────────────
+        try {
+          const docs = google.docs({ version: 'v1', auth: oauth2 });
+          const doc = await docs.documents.get({ documentId: fileId });
+          const blocks = doc.data.body?.content || [];
+          let fullText = '';
+          for (const block of blocks) {
+            if (block.paragraph) {
+              const style = block.paragraph.paragraphStyle?.namedStyleType || '';
+              const line = block.paragraph.elements?.map(el => el.textRun?.content || '').join('') || '';
+              if (style.startsWith('HEADING')) fullText += `\n## ${line.trim()}\n`;
+              else fullText += line;
+            } else if (block.table) {
+              for (const row of block.table.tableRows || []) {
+                const cells = (row.tableCells || []).map(cell => {
+                  return (cell.content || []).map(para =>
+                    (para.paragraph?.elements || []).map(el => el.textRun?.content || '').join('')
+                  ).join('').trim();
+                });
+                fullText += cells.join(' | ') + '\n';
+              }
+              fullText += '\n';
+            }
+          }
+          docContent = fullText.substring(0, 60000);
+          contentLabel = 'Google Doc (structured text with table rows as | separated columns)';
+        } catch (docsErr) {
+          console.warn('Google Docs API failed, falling back to HTML export:', docsErr.message);
+
+          // ── Fallback 1: HTML export (preserves table structure) ──
+          const htmlRes = await fetch(
+            `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/html`,
             { headers: { Authorization: `Bearer ${accessToken}` } }
           );
-          if (!textRes.ok) throw new Error(`Could not export Google Doc (${textRes.status}). Make sure the document is shared with the connected Google account.`);
-          docContent = await textRes.text();
-          contentType = 'text';
+          if (htmlRes.ok) {
+            let html = await htmlRes.text();
+            html = html
+              .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+              .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+              .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, '')
+              .substring(0, 60000);
+            docContent = html;
+            contentLabel = 'Google Doc HTML export (pay special attention to TABLE structure — rows = scenes, columns = location/what we see/what we hear)';
+          } else {
+            // ── Fallback 2: PDF export → Gemini ──────────────────
+            console.warn('HTML export failed, falling back to PDF export');
+            const pdfRes = await fetch(
+              `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=application/pdf`,
+              { headers: { Authorization: `Bearer ${accessToken}` } }
+            );
+            if (!pdfRes.ok) throw new Error(`Could not export Google Doc. Make sure it is shared with the connected Google account.`);
+            const pdfBuf = Buffer.from(await pdfRes.arrayBuffer());
+            const pdfBase64 = pdfBuf.toString('base64');
+            const pdfPrompt = `Extract this script/storyboard PDF into a JSON scenes array. For each scene: location, what_we_see, what_we_hear, duration, images_in_source (empty array if none). Return ONLY: {"scenes":[{"id":"<uuid>","order":0,"location":"","what_we_see":"","what_we_hear":"","duration":"","collapsed":false,"images_in_source":[],"images":[]}]}`;
+            const pdfText = process.env.GEMINI_API_KEY
+              ? await callGemini(pdfPrompt, pdfBase64, 'application/pdf')
+              : await callClaude(pdfPrompt, SCENE_SYSTEM_PROMPT);
+            scenes = parseSceneJson(pdfText);
+            // Skip the Claude call below — already have scenes
+            docContent = null;
+          }
         }
 
-        // Strip excessive HTML boilerplate but keep table structure
-        if (contentType === 'html') {
-          // Remove style blocks, scripts, keep readable structure
-          docContent = docContent
-            .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-            .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-            .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, '')
-            .substring(0, 60000); // cap to avoid token limits
-        }
-
-        const importPrompt = `Extract this Google Docs ${contentType === 'html' ? 'HTML export' : 'document'} into a structured JSON scenes array for a storyboard/script.
-
-${contentType === 'html' ? 'Pay special attention to TABLE STRUCTURE — rows are usually scenes, columns map to location/what we see/what we hear.' : ''}
+        if (docContent !== null) {
+          const importPrompt = `Extract this ${contentLabel} into a structured JSON scenes array for a storyboard/script.
 
 For each scene/row/section:
 - "location": scene heading or setting (e.g. "INT. STUDIO - DAY"), empty string if none
 - "what_we_see": visual directions, action description, what appears on screen
 - "what_we_hear": dialogue, voiceover, script text, audio directions
 - "duration": timing if mentioned (e.g. "5s", "10s"), empty string if none
-- "images_in_source": array of strings describing any images/visuals embedded in this scene. Empty array if none.
+- "images_in_source": array of strings describing any embedded images in this scene. Empty array if none.
 
-Document content:
+Content:
 ${docContent}
 
-Return ONLY this JSON object with NO markdown:
+Return ONLY this JSON with NO markdown:
 {"scenes":[{"id":"<uuid-v4>","order":0,"location":"","what_we_see":"","what_we_hear":"","duration":"","collapsed":false,"images_in_source":[],"images":[]}]}`;
-
-        const text = await callClaude(importPrompt, SCENE_SYSTEM_PROMPT);
-        scenes = parseSceneJson(text);
+          const text = await callClaude(importPrompt, SCENE_SYSTEM_PROMPT);
+          scenes = parseSceneJson(text);
+        }
       }
     } else if (fileBase64) {
       // File upload — Gemini primary (natively handles PDF/DOCX/PPTX/images), Claude fallback
