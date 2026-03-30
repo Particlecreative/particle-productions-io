@@ -31,6 +31,7 @@ export default function NewScriptModal({ defaultProductionId, defaultBrandId, on
   const [importFile, setImportFile] = useState(null);
   const [importStatus, setImportStatus] = useState('idle'); // idle | extracting | preview | error
   const [importScenes, setImportScenes] = useState([]);
+  const [importImagesFound, setImportImagesFound] = useState([]); // [{scene_order, descriptions:[]}]
   const [importError, setImportError] = useState('');
   const fileRef = useRef();
 
@@ -121,15 +122,21 @@ export default function NewScriptModal({ defaultProductionId, defaultBrandId, on
   async function handleImportExtract() {
     setImportStatus('extracting');
     setImportError('');
+    setImportImagesFound([]);
     try {
       let res;
       if (importFile) {
-        const fd = new FormData();
-        fd.append('file', importFile);
+        // Convert file to base64 for Gemini/Claude
+        const base64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = e => resolve(e.target.result.split(',')[1]);
+          reader.onerror = reject;
+          reader.readAsDataURL(importFile);
+        });
         res = await fetch(`${API}/api/scripts/import`, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${jwt()}` },
-          body: fd,
+          headers: { Authorization: `Bearer ${jwt()}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileBase64: base64, fileName: importFile.name, mimeType: importFile.type }),
         });
       } else if (importUrl.trim()) {
         res = await fetch(`${API}/api/scripts/import`, {
@@ -142,6 +149,7 @@ export default function NewScriptModal({ defaultProductionId, defaultBrandId, on
       const data = await res.json();
       if (data.scenes && Array.isArray(data.scenes)) {
         setImportScenes(data.scenes);
+        setImportImagesFound(data.images_found || []);
         setImportStatus('preview');
       } else {
         setImportError(data.error || 'Could not extract scenes. Please try again.');
@@ -412,6 +420,20 @@ export default function NewScriptModal({ defaultProductionId, defaultBrandId, on
                     <Check size={16} className="text-green-500" />
                     {importScenes.length} scenes extracted — review and accept
                   </div>
+                  {/* Images found notice */}
+                  {importImagesFound.length > 0 && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                      <p className="text-xs font-semibold text-amber-800 mb-1.5">📷 Images found in source</p>
+                      <div className="space-y-1">
+                        {importImagesFound.map((img, i) => (
+                          <div key={i} className="text-xs text-amber-700">
+                            <span className="font-medium">Scene {img.scene_order}:</span> {img.descriptions.join(', ')}
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-xs text-amber-600 mt-2">These images were described from the source. You can generate AI equivalents using ✨ AI Image on each scene row after importing.</p>
+                    </div>
+                  )}
                   <div className="border border-gray-200 rounded-xl overflow-hidden max-h-64 overflow-y-auto">
                     <table className="w-full text-xs">
                       <thead className="bg-gray-50 sticky top-0">

@@ -29,7 +29,7 @@ const STATUS_COLORS = {
 };
 
 // ── SortableSceneRow ──────────────────────────────────────────────────────────
-function SortableSceneRow({ scene, index, visibleCols, onUpdate, onDelete, onDuplicate, onAddScene, commentCount, onCommentClick, onImageUpload, onImageDelete, onImageGenerate, onLightbox, readOnly, isLastRow }) {
+function SortableSceneRow({ scene, index, visibleCols, onUpdate, onDelete, onDuplicate, onAddScene, commentCount, onCommentClick, onImageUpload, onImageDelete, onImageGenerate, onRegenImage, onRequestAIImage, onLightbox, readOnly, isLastRow }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: scene.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
 
@@ -47,11 +47,6 @@ function SortableSceneRow({ scene, index, visibleCols, onUpdate, onDelete, onDup
     setSelectionBtn({ scene_id: scene.id, cell, selected_text: sel.toString(), rect });
   };
 
-  const handleGenerate = async () => {
-    setGeneratingImg(true);
-    await onImageGenerate(scene.id);
-    setGeneratingImg(false);
-  };
 
   return (
     <tr ref={setNodeRef} style={style} className="border-b border-gray-100 hover:bg-gray-50/50 group align-top">
@@ -181,12 +176,23 @@ function SortableSceneRow({ scene, index, visibleCols, onUpdate, onDelete, onDup
                   onClick={() => onLightbox(img)}
                 />
                 {!readOnly && (
-                  <button
-                    onClick={() => onImageDelete(scene.id, img.id)}
-                    className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity"
-                  >
-                    <X size={8} />
-                  </button>
+                  <>
+                    <button
+                      onClick={() => onImageDelete(scene.id, img.id)}
+                      className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity"
+                    >
+                      <X size={8} />
+                    </button>
+                    {img.source === 'ai' && (
+                      <button
+                        onClick={() => onRegenImage(scene.id, img)}
+                        className="absolute -top-1.5 -left-1.5 w-4 h-4 bg-purple-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-opacity"
+                        title="Regenerate this image"
+                      >
+                        <RefreshCw size={8} />
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             ))}
@@ -200,10 +206,10 @@ function SortableSceneRow({ scene, index, visibleCols, onUpdate, onDelete, onDup
                   Upload
                 </button>
                 <button
-                  onClick={handleGenerate}
+                  onClick={() => onRequestAIImage(scene.id)}
                   disabled={generatingImg}
                   className="flex items-center gap-1 text-[10px] text-purple-500 hover:text-purple-700 px-1 disabled:opacity-50"
-                  title="Auto-generate storyboard image using AI (reads scene context)"
+                  title="Auto-generate storyboard image using AI"
                 >
                   {generatingImg ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
                   {generatingImg ? 'Generating...' : 'AI Image'}
@@ -264,6 +270,28 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
   const [newCommentText, setNewCommentText] = useState('');
   const [commenterName, setCommenterName] = useState(() => localStorage.getItem('cp_commenter_name') || '');
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+
+  // ── AI Image wizard & regeneration ──
+  const [showImageWizard, setShowImageWizard] = useState(false);
+  const [wizardStep, setWizardStep] = useState(1); // 1=choice 2=characters 3=style
+  const [wizardTargetSceneId, setWizardTargetSceneId] = useState(null);
+  const [wizardCharacters, setWizardCharacters] = useState([]); // [{name, description, photoBase64?, photoMime?}]
+  const [wizardStyleNotes, setWizardStyleNotes] = useState('');
+  const [extractingChars, setExtractingChars] = useState(false);
+  const [describingActor, setDescribingActor] = useState(null); // index being described
+  const actorPhotoRef = useRef();
+  const [actorPhotoTarget, setActorPhotoTarget] = useState(null); // index for which char photo is being uploaded
+
+  // Regeneration modal
+  const [regenModal, setRegenModal] = useState(null); // {sceneId, imageId, prompt}
+  const [regenMode, setRegenMode] = useState('same'); // 'same' | 'edit'
+  const [regenPrompt, setRegenPrompt] = useState('');
+  const [regenLoading, setRegenLoading] = useState(false);
+
+  // Character profiles stored per script in localStorage
+  const charProfilesKey = `script_chars_${scriptId}`;
+  const getCharProfiles = () => { try { return JSON.parse(localStorage.getItem(charProfilesKey) || '[]'); } catch { return []; } };
+  const saveCharProfiles = (profiles) => localStorage.setItem(charProfilesKey, JSON.stringify(profiles));
   const [aiLoading, setAiLoading] = useState(false);
   const [aiMode, setAiMode] = useState('generate');
   const [aiPrompt, setAiPrompt] = useState('');
@@ -416,10 +444,16 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
   };
 
   const handleImageGenerate = async (sceneId) => {
+    const charProfiles = getCharProfiles();
+    const styleNotes = localStorage.getItem(`script_style_${scriptId}`) || '';
     const res = await fetch(`${API}/api/scripts/${scriptId}/ai-image`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
-      body: JSON.stringify({ scene_id: sceneId }),
+      body: JSON.stringify({
+        scene_id: sceneId,
+        character_profiles: charProfiles.length > 0 ? charProfiles : undefined,
+        style_notes: styleNotes || undefined,
+      }),
     });
     const data = await res.json();
     if (data.url) {
@@ -595,6 +629,110 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
     const newScript = await res.json();
     if (newScript.id) onUpdated?.(newScript);
     setShowMoreMenu(false);
+  };
+
+  // ── AI Image wizard flow ──
+  const handleRequestAIImage = (sceneId) => {
+    // Check if setup was already done for this script
+    const existing = getCharProfiles();
+    const wizardDone = localStorage.getItem(`script_wizard_${scriptId}`);
+    if (wizardDone || existing.length > 0) {
+      // Already set up — go straight to generation
+      handleImageGenerate(sceneId);
+    } else {
+      // Show setup wizard
+      setWizardTargetSceneId(sceneId);
+      setWizardStep(1);
+      setShowImageWizard(true);
+    }
+  };
+
+  const handleWizardExtractChars = async () => {
+    setExtractingChars(true);
+    try {
+      const res = await fetch(`${API}/api/scripts/${scriptId}/extract-characters`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${jwt()}` },
+      });
+      const data = await res.json();
+      setWizardCharacters((data.characters || []).map(c => ({ ...c, description: c.description || '', photoBase64: null, photoMime: null })));
+    } catch (e) { console.warn('Character extraction failed:', e); }
+    setExtractingChars(false);
+  };
+
+  const handleActorPhotoUpload = async (e, charIndex) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      const dataUrl = ev.target.result;
+      const base64 = dataUrl.split(',')[1];
+      const mimeType = file.type || 'image/jpeg';
+      // Update state with photo
+      setWizardCharacters(prev => prev.map((c, i) => i === charIndex ? { ...c, photoBase64: base64, photoMime: mimeType } : c));
+      // Ask Claude to describe the actor
+      setDescribingActor(charIndex);
+      try {
+        const res = await fetch(`${API}/api/scripts/${scriptId}/describe-actor`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
+          body: JSON.stringify({ imageBase64: base64, mimeType, name: wizardCharacters[charIndex]?.name }),
+        });
+        const data = await res.json();
+        if (data.description) {
+          setWizardCharacters(prev => prev.map((c, i) => i === charIndex ? { ...c, description: data.description } : c));
+        }
+      } catch (e) { console.warn('Actor description failed:', e); }
+      setDescribingActor(null);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleWizardComplete = (proceedWithAI) => {
+    if (!proceedWithAI) {
+      // User has their own images — close wizard and open file upload
+      localStorage.setItem(`script_wizard_${scriptId}`, 'done');
+      setShowImageWizard(false);
+      return;
+    }
+    // Save character profiles
+    const profiles = wizardCharacters.filter(c => c.description).map(c => ({ name: c.name, description: c.description }));
+    saveCharProfiles(profiles);
+    if (wizardStyleNotes.trim()) localStorage.setItem(`script_style_${scriptId}`, wizardStyleNotes.trim());
+    localStorage.setItem(`script_wizard_${scriptId}`, 'done');
+    setShowImageWizard(false);
+    // Now generate the image that triggered the wizard
+    if (wizardTargetSceneId) handleImageGenerate(wizardTargetSceneId);
+  };
+
+  // ── Image regeneration ──
+  const handleRegenImage = (sceneId, img) => {
+    setRegenModal({ sceneId, imageId: img.id, prompt: img.prompt || '' });
+    setRegenMode('same');
+    setRegenPrompt(img.prompt || '');
+  };
+
+  const handleRegenConfirm = async () => {
+    if (!regenModal) return;
+    setRegenLoading(true);
+    const charProfiles = getCharProfiles();
+    const styleNotes = localStorage.getItem(`script_style_${scriptId}`) || '';
+    const res = await fetch(`${API}/api/scripts/${scriptId}/ai-image`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
+      body: JSON.stringify({
+        scene_id: regenModal.sceneId,
+        replace_image_id: regenModal.imageId,
+        prompt: regenMode === 'edit' ? regenPrompt : undefined, // undefined = let Claude auto-generate
+        character_profiles: charProfiles.length > 0 ? charProfiles : undefined,
+        style_notes: styleNotes || undefined,
+      }),
+    });
+    const data = await res.json();
+    setRegenLoading(false);
+    setRegenModal(null);
+    if (data.url) await loadScript();
+    else alert(data.error || 'Regeneration failed');
   };
 
   const getCommentCount = (sceneId) => comments.filter(c => c.scene_id === sceneId && c.status === 'open').length;
@@ -796,6 +934,8 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                         onImageUpload={handleImageUpload}
                         onImageDelete={handleImageDelete}
                         onImageGenerate={handleImageGenerate}
+                        onRegenImage={handleRegenImage}
+                        onRequestAIImage={handleRequestAIImage}
                         onLightbox={setLightbox}
                         readOnly={readOnly}
                       />
@@ -1143,6 +1283,156 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
         <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4" onClick={() => setLightbox(null)}>
           <button onClick={() => setLightbox(null)} className="absolute top-4 right-4 p-2 rounded-full bg-white/10 text-white hover:bg-white/20"><X size={20} /></button>
           <img src={lightbox.url} alt={lightbox.name || 'Visual'} className="max-w-full max-h-[90vh] rounded-lg shadow-2xl object-contain" onClick={e => e.stopPropagation()} />
+          {lightbox.prompt && <p className="absolute bottom-6 left-1/2 -translate-x-1/2 max-w-lg text-center text-xs text-white/60 bg-black/40 rounded-xl px-3 py-1.5">{lightbox.prompt}</p>}
+        </div>
+      )}
+
+      {/* ── Regenerate Image Modal ── */}
+      {regenModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-gray-900 flex items-center gap-2"><RefreshCw size={16} className="text-purple-500" /> Regenerate Image</h3>
+              <button onClick={() => setRegenModal(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div className="space-y-3 mb-4">
+              <label className="flex items-start gap-3 p-3 border-2 rounded-xl cursor-pointer transition-colors hover:border-purple-300" style={{ borderColor: regenMode === 'same' ? '#a855f7' : undefined }}>
+                <input type="radio" name="regenMode" value="same" checked={regenMode === 'same'} onChange={() => setRegenMode('same')} className="mt-0.5 accent-purple-500" />
+                <div>
+                  <p className="text-sm font-semibold text-gray-800">Same prompt, new generation</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Generate a fresh image with the same visual description</p>
+                </div>
+              </label>
+              <label className="flex items-start gap-3 p-3 border-2 rounded-xl cursor-pointer transition-colors hover:border-purple-300" style={{ borderColor: regenMode === 'edit' ? '#a855f7' : undefined }}>
+                <input type="radio" name="regenMode" value="edit" checked={regenMode === 'edit'} onChange={() => setRegenMode('edit')} className="mt-0.5 accent-purple-500" />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-gray-800">Edit prompt</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Modify the description before regenerating</p>
+                </div>
+              </label>
+              {regenMode === 'edit' && (
+                <textarea
+                  value={regenPrompt}
+                  onChange={e => setRegenPrompt(e.target.value)}
+                  className="w-full border border-gray-200 rounded-xl p-3 text-sm outline-none resize-none h-28 focus:border-purple-400 mt-2"
+                  placeholder="Edit the image description..."
+                />
+              )}
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setRegenModal(null)} className="flex-1 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">Cancel</button>
+              <button onClick={handleRegenConfirm} disabled={regenLoading || (regenMode === 'edit' && !regenPrompt.trim())}
+                className="flex-1 py-2 bg-purple-600 text-white rounded-xl text-sm font-semibold hover:bg-purple-700 disabled:opacity-50 flex items-center justify-center gap-2">
+                {regenLoading ? <><Loader2 size={14} className="animate-spin" /> Generating...</> : <><RefreshCw size={14} /> Regenerate</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── AI Image Setup Wizard ── */}
+      {showImageWizard && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="px-6 pt-5 pb-4 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h3 className="font-black text-gray-900 text-lg flex items-center gap-2"><Sparkles size={18} className="text-purple-500" /> AI Storyboard Images</h3>
+                <p className="text-xs text-gray-400 mt-0.5">Step {wizardStep} of 3</p>
+              </div>
+              <button onClick={() => setShowImageWizard(false)}><X size={18} className="text-gray-400" /></button>
+            </div>
+
+            {/* Step 1 — Choice */}
+            {wizardStep === 1 && (
+              <div className="p-6 space-y-4">
+                <p className="text-sm text-gray-600 mb-4">Do you have prepared reference images, or should AI generate the storyboard frames?</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <button onClick={() => { handleWizardComplete(false); }}
+                    className="flex flex-col items-center gap-3 p-5 border-2 border-gray-200 rounded-2xl hover:border-gray-400 transition-colors text-left">
+                    <Upload size={28} className="text-gray-500" />
+                    <div>
+                      <p className="text-sm font-bold text-gray-800">I have images</p>
+                      <p className="text-xs text-gray-500 mt-0.5">Upload your own photos, renders, or references</p>
+                    </div>
+                  </button>
+                  <button onClick={() => { setWizardStep(2); handleWizardExtractChars(); }}
+                    className="flex flex-col items-center gap-3 p-5 border-2 border-purple-200 rounded-2xl hover:border-purple-500 transition-colors text-left bg-purple-50">
+                    <Sparkles size={28} className="text-purple-500" />
+                    <div>
+                      <p className="text-sm font-bold text-gray-800">AI Generate</p>
+                      <p className="text-xs text-gray-500 mt-0.5">Claude + Nano Banana 2 creates storyboard frames</p>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Step 2 — Characters */}
+            {wizardStep === 2 && (
+              <div className="p-6">
+                <p className="text-sm text-gray-600 mb-4">
+                  {extractingChars ? 'Reading your script for characters...' : `Found ${wizardCharacters.length} character${wizardCharacters.length !== 1 ? 's' : ''} in this script. Upload actor photos for visual consistency (optional).`}
+                </p>
+                {extractingChars ? (
+                  <div className="flex justify-center py-8"><Loader2 size={24} className="animate-spin text-purple-400" /></div>
+                ) : (
+                  <div className="space-y-3 max-h-64 overflow-y-auto mb-4">
+                    {wizardCharacters.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No specific characters detected. AI will generate based on script context.</p>}
+                    {wizardCharacters.map((char, i) => (
+                      <div key={i} className="flex items-start gap-3 p-3 border border-gray-200 rounded-xl">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-gray-800">{char.name}</p>
+                          {describingActor === i ? (
+                            <p className="text-xs text-purple-500 mt-1 flex items-center gap-1"><Loader2 size={10} className="animate-spin" /> Analyzing photo...</p>
+                          ) : (
+                            <p className="text-xs text-gray-500 mt-1 line-clamp-2">{char.description || 'No description yet'}</p>
+                          )}
+                        </div>
+                        {char.photoBase64 ? (
+                          <img src={`data:${char.photoMime};base64,${char.photoBase64}`} alt={char.name} className="w-12 h-12 rounded-lg object-cover border border-gray-200" />
+                        ) : (
+                          <button
+                            onClick={() => { setActorPhotoTarget(i); actorPhotoRef.current?.click(); }}
+                            className="flex-shrink-0 w-12 h-12 rounded-lg border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-400 hover:border-purple-300 hover:text-purple-400 transition-colors"
+                          >
+                            <Upload size={14} />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <input ref={actorPhotoRef} type="file" accept="image/*" className="hidden" onChange={e => { if (actorPhotoTarget !== null) handleActorPhotoUpload(e, actorPhotoTarget); e.target.value = ''; setActorPhotoTarget(null); }} />
+                <div className="flex gap-2 mt-2">
+                  <button onClick={() => setWizardStep(1)} className="px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">Back</button>
+                  <button onClick={() => setWizardStep(3)} className="flex-1 py-2 bg-purple-600 text-white rounded-xl text-sm font-bold hover:bg-purple-700">
+                    Continue →
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Step 3 — Visual Style */}
+            {wizardStep === 3 && (
+              <div className="p-6">
+                <p className="text-sm text-gray-600 mb-3">Describe the visual style for this storyboard (optional). This applies to all generated images.</p>
+                <textarea
+                  value={wizardStyleNotes}
+                  onChange={e => setWizardStyleNotes(e.target.value)}
+                  placeholder="e.g. Cinematic, high-contrast, warm golden hour lighting. Urban setting. Nike campaign aesthetic. Clean and powerful."
+                  className="w-full border border-gray-200 rounded-xl p-3 text-sm outline-none resize-none h-24 focus:border-purple-400 mb-4"
+                />
+                <div className="flex gap-2">
+                  <button onClick={() => setWizardStep(2)} className="px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">Back</button>
+                  <button onClick={() => handleWizardComplete(true)}
+                    className="flex-1 py-2.5 bg-purple-600 text-white rounded-xl text-sm font-bold hover:bg-purple-700 flex items-center justify-center gap-2">
+                    <Sparkles size={14} /> Generate Image
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

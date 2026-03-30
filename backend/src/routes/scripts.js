@@ -372,14 +372,14 @@ router.post('/import', async (req, res) => {
         const pres = await slides.presentations.get({ presentationId: fileId });
         const slideList = pres.data.slides || [];
 
-        scenes = slideList.map((slide, idx) => {
+        // Process slides — fetch thumbnails in parallel
+        scenes = await Promise.all(slideList.map(async (slide, idx) => {
           let whatWeSee = '';
           let whatWeHear = '';
           // Extract text from shapes
           for (const element of slide.pageElements || []) {
             const text = element.shape?.text?.textElements?.map(te => te.textRun?.content || '').join('').trim();
             if (!text) continue;
-            // Speaker notes go to "what we hear"
             if (element.objectId?.includes('note')) { whatWeHear += text + ' '; }
             else { whatWeSee += text + ' '; }
           }
@@ -391,6 +391,42 @@ router.post('/import', async (req, res) => {
               if (noteText) whatWeHear = noteText;
             }
           }
+
+          // Fetch slide thumbnail (actual visual from the slide)
+          const images = [];
+          try {
+            const thumbRes = await slides.presentations.pages.getThumbnail({
+              presentationId: fileId,
+              pageObjectId: slide.objectId,
+              'thumbnailProperties.thumbnailSize': 'MEDIUM',
+            });
+            const thumbUrl = thumbRes.data.contentUrl;
+            if (thumbUrl) {
+              // Upload thumbnail to Drive for persistence
+              const accessToken = (await oauth2.getAccessToken()).token;
+              const imgRes = await fetch(thumbUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+              if (imgRes.ok) {
+                const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
+                try {
+                  const { drive } = await getGoogleDrive();
+                  const driveUrl = await driveUploadBuffer({
+                    drive,
+                    fileName: `slide-${idx + 1}-thumbnail-${Date.now()}.png`,
+                    buffer: imgBuffer,
+                    mimeType: 'image/png',
+                    subfolder: 'Scripts/Imported Slides',
+                  });
+                  images.push({ id: crypto.randomUUID(), url: driveUrl, name: `Slide ${idx + 1}`, source: 'import' });
+                } catch {
+                  // Fall back to base64 data URL if Drive fails
+                  images.push({ id: crypto.randomUUID(), url: `data:image/png;base64,${imgBuffer.toString('base64')}`, name: `Slide ${idx + 1}`, source: 'import' });
+                }
+              }
+            }
+          } catch (thumbErr) {
+            console.warn(`Could not fetch thumbnail for slide ${idx + 1}:`, thumbErr.message);
+          }
+
           return {
             id: crypto.randomUUID(),
             order: idx,
@@ -399,9 +435,9 @@ router.post('/import', async (req, res) => {
             what_we_hear: whatWeHear.trim(),
             duration: '',
             collapsed: false,
-            images: [],
+            images,
           };
-        });
+        }));
       } else {
         // Google Docs — use Claude to parse the content
         const docs = google.docs({ version: 'v1', auth: oauth2 });
@@ -434,25 +470,63 @@ router.post('/import', async (req, res) => {
         scenes = parseSceneJson(text);
       }
     } else if (fileBase64) {
-      // File upload — use Gemini if available, else Claude
-      const importPrompt = `Extract this script/storyboard document into a JSON scenes array. Identify scenes by their visual and audio content. Map visual descriptions to "what_we_see" and audio/voiceover/dialogue to "what_we_hear". Set location from scene headings. Return ONLY the JSON object.`;
+      // File upload — Gemini primary (natively handles PDF/DOCX/PPTX/images), Claude fallback
+      const importPrompt = `Analyze this script, storyboard, or presentation document and extract it into a structured JSON scenes array.
+
+For each scene/slide/section:
+- "location": scene heading or setting (e.g. "INT. STUDIO - DAY"), empty string if none
+- "what_we_see": visual directions, camera moves, action description, visual text on screen
+- "what_we_hear": dialogue, voiceover, script text, speaker notes, audio directions
+- "duration": timing if mentioned (e.g. "5s", "10s"), empty string if none
+- "images_in_source": array of strings describing any images/visuals physically embedded in this scene/slide (e.g. "Product shot of sneakers on white background", "Photo of athlete running on track"). Empty array if no images found.
+
+Return ONLY this JSON object with NO markdown:
+{
+  "scenes": [
+    {
+      "id": "<uuid-v4>",
+      "order": 0,
+      "location": "...",
+      "what_we_see": "...",
+      "what_we_hear": "...",
+      "duration": "",
+      "collapsed": false,
+      "images_in_source": ["description of image 1", "..."],
+      "images": []
+    }
+  ]
+}`;
+
       let text;
       if (process.env.GEMINI_API_KEY) {
         text = await callGemini(importPrompt, fileBase64, mimeType || 'application/pdf');
       } else {
-        // Use Claude with vision if image, else send as text
         const isImage = mimeType?.startsWith('image/');
         if (isImage) {
           text = await callClaude(importPrompt, SCENE_SYSTEM_PROMPT, [{ base64: fileBase64, mimeType }]);
         } else {
-          // For non-image files, try to extract text and send to Claude
-          text = await callClaude(
-            `The file "${fileName || 'script'}" has been uploaded. ${importPrompt}\n\nFile content (base64): [file provided as attachment]`,
-            SCENE_SYSTEM_PROMPT
-          );
+          text = await callClaude(`Document: "${fileName || 'script'}"\n\n${importPrompt}`, SCENE_SYSTEM_PROMPT);
         }
       }
-      scenes = parseSceneJson(text);
+
+      // Parse — handle images_in_source field
+      const cleaned = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+      const parsed = JSON.parse(cleaned);
+      if (!Array.isArray(parsed.scenes)) throw new Error('Invalid scene format from AI');
+
+      // Separate images_in_source from the scene (it's metadata, not stored in images array)
+      const imagesFound = [];
+      scenes = parsed.scenes.map((s, i) => {
+        const imgsInSource = s.images_in_source || [];
+        if (imgsInSource.length > 0) {
+          imagesFound.push({ scene_order: i + 1, descriptions: imgsInSource });
+        }
+        const { images_in_source: _, ...cleanScene } = s;
+        return ensureScenes([cleanScene])[0];
+      });
+
+      // Return images_found so the frontend can ask what to do with them
+      return res.json({ scenes, images_found: imagesFound });
     } else {
       return res.status(400).json({ error: 'Provide either url or fileBase64' });
     }
@@ -499,10 +573,10 @@ router.post('/:id/ai-generate', async (req, res) => {
 });
 
 // POST /api/scripts/:id/ai-image — Gemini image generation (Nano Banana 2)
-// Auto-generates prompt using Claude based on scene context + surrounding scenes for consistency
+// Accepts optional: prompt (override), replace_image_id (replace vs append), character_profiles, style_notes
 router.post('/:id/ai-image', async (req, res) => {
   try {
-    const { scene_id } = req.body;
+    const { scene_id, prompt: promptOverride, replace_image_id, character_profiles, style_notes } = req.body;
     if (!scene_id) return res.status(400).json({ error: 'scene_id is required' });
 
     if (!process.env.GEMINI_API_KEY) {
@@ -520,17 +594,30 @@ router.post('/:id/ai-image', async (req, res) => {
     const prevScene = sceneIndex > 0 ? scenes[sceneIndex - 1] : null;
     const nextScene = sceneIndex < scenes.length - 1 ? scenes[sceneIndex + 1] : null;
 
-    // All images already in storyboard for visual consistency context
+    // All existing image prompts for visual consistency
     const existingImagePrompts = scenes
       .filter(s => s.id !== scene_id)
       .flatMap(s => (s.images || []).filter(img => img.prompt).map(img => img.prompt))
       .slice(0, 5);
 
-    // Ask Claude to craft a detailed image generation prompt
-    const contextPrompt = `You are writing an image generation prompt for a professional storyboard frame.
+    let imagePrompt = promptOverride; // use override if provided (regenerate with edited prompt)
+
+    if (!imagePrompt) {
+      // Build character profiles context
+      const charContext = Array.isArray(character_profiles) && character_profiles.length > 0
+        ? `\nCHARACTERS IN THIS PRODUCTION (maintain exact visual consistency for each):\n${character_profiles.map(c => `- ${c.name}: ${c.description}`).join('\n')}\n`
+        : '';
+
+      // Build style notes context
+      const styleContext = style_notes
+        ? `\nVISUAL STYLE FOR THIS PRODUCTION:\n${style_notes}\n`
+        : '';
+
+      // Ask Claude to craft a detailed image generation prompt
+      const contextPrompt = `You are writing an image generation prompt for a professional storyboard frame.
 
 Script title: "${rows[0].title}"
-
+${charContext}${styleContext}
 ${prevScene ? `PREVIOUS SCENE (Scene ${sceneIndex}):
 - Location: ${prevScene.location || ''}
 - What We See: ${prevScene.what_we_see || ''}
@@ -547,24 +634,25 @@ ${nextScene ? `NEXT SCENE (Scene ${sceneIndex + 2}):
 - What We See: ${nextScene.what_we_see || ''}
 - What We Hear: ${nextScene.what_we_hear || ''}
 ` : ''}
-${existingImagePrompts.length > 0 ? `VISUAL CONSISTENCY — other frames in this storyboard use these styles:
-${existingImagePrompts.map((p, i) => `- ${p}`).join('\n')}
+${existingImagePrompts.length > 0 ? `VISUAL CONSISTENCY — other frames in this storyboard already use:
+${existingImagePrompts.map(p => `- ${p}`).join('\n')}
 ` : ''}
 
 Write a single, detailed image generation prompt (2-4 sentences) for the CURRENT SCENE only.
 - Cinematic storyboard frame style
 - Include camera angle, lighting, composition, mood
-- Keep visual consistency with the other frames if style info is provided
+- If characters are listed above, include their exact visual descriptions
+- Match the visual style of existing frames for consistency
 - Do NOT include text overlays, titles, or watermarks
 - Return ONLY the prompt text, nothing else`;
 
-    let imagePrompt;
-    try {
-      imagePrompt = await callClaude(contextPrompt, 'You are a professional storyboard artist and cinematographer. Write concise, vivid image generation prompts.');
-      imagePrompt = imagePrompt.trim().replace(/^["']|["']$/g, '');
-    } catch (claudeErr) {
-      console.warn('Claude prompt generation failed, using fallback:', claudeErr.message);
-      imagePrompt = `Cinematic storyboard frame: ${targetScene.location || ''}. ${targetScene.what_we_see || ''}. Professional film production style, dramatic lighting.`;
+      try {
+        imagePrompt = await callClaude(contextPrompt, 'You are a professional storyboard artist and cinematographer. Write concise, vivid image generation prompts.');
+        imagePrompt = imagePrompt.trim().replace(/^["']|["']$/g, '');
+      } catch (claudeErr) {
+        console.warn('Claude prompt generation failed, using fallback:', claudeErr.message);
+        imagePrompt = `Cinematic storyboard frame: ${targetScene.location || ''}. ${targetScene.what_we_see || ''}. Professional film production style, dramatic lighting.`;
+      }
     }
 
     // Generate image via Gemini (Nano Banana 2)
@@ -588,17 +676,80 @@ Write a single, detailed image generation prompt (2-4 sentences) for the CURRENT
       finalUrl = `data:${mimeType};base64,${base64}`;
     }
 
-    // Append image to scene
+    const newImageEntry = { id: crypto.randomUUID(), url: finalUrl, prompt: imagePrompt, source: 'ai' };
+
+    // Replace existing image OR append new one
     const updated = scenes.map(s => {
       if (s.id !== scene_id) return s;
-      return { ...s, images: [...(s.images || []), { id: crypto.randomUUID(), url: finalUrl, prompt: imagePrompt, source: 'ai' }] };
+      const imgs = s.images || [];
+      if (replace_image_id) {
+        return { ...s, images: imgs.map(img => img.id === replace_image_id ? newImageEntry : img) };
+      }
+      return { ...s, images: [...imgs, newImageEntry] };
     });
     await db.query('UPDATE scripts SET scenes = $1, updated_at = NOW() WHERE id = $2', [JSON.stringify(updated), req.params.id]);
 
-    res.json({ url: finalUrl, prompt: imagePrompt });
+    res.json({ url: finalUrl, prompt: imagePrompt, image_id: newImageEntry.id });
   } catch (err) {
     console.error('POST /scripts/:id/ai-image error:', err);
     res.status(500).json({ error: err.message || 'Image generation failed' });
+  }
+});
+
+// POST /api/scripts/:id/extract-characters — Claude reads all scenes and extracts characters
+router.post('/:id/extract-characters', async (req, res) => {
+  try {
+    const { rows } = await db.query('SELECT scenes, title FROM scripts WHERE id = $1', [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Script not found' });
+    const scenes = rows[0].scenes || [];
+
+    const scriptText = scenes.map((s, i) =>
+      `Scene ${i + 1} [${s.location || 'no location'}]:\n  See: ${s.what_we_see || ''}\n  Hear: ${s.what_we_hear || ''}`
+    ).join('\n\n');
+
+    const prompt = `Analyze this storyboard script and extract all characters (people, actors) who appear.
+For each character provide:
+- name: their name or role (e.g. "Hero", "Athlete", "Brand Ambassador", "Woman in Red")
+- description: visual description for image generation (gender, age range, build, hair, style, notable features)
+- scenes: array of scene numbers where they appear
+
+Script title: "${rows[0].title}"
+
+${scriptText}
+
+Return ONLY valid JSON:
+{"characters": [{"name": "...", "description": "...", "scenes": [1, 2, 3]}]}
+If no specific characters found, return {"characters": []}`;
+
+    const text = await callClaude(prompt, 'You are a script analyst. Return only valid JSON.');
+    const cleaned = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+    const { characters } = JSON.parse(cleaned);
+
+    res.json({ characters: Array.isArray(characters) ? characters : [] });
+  } catch (err) {
+    console.error('POST /scripts/:id/extract-characters error:', err);
+    res.status(500).json({ error: err.message || 'Character extraction failed' });
+  }
+});
+
+// POST /api/scripts/:id/describe-actor — Claude vision describes an actor photo for consistency prompts
+router.post('/:id/describe-actor', async (req, res) => {
+  try {
+    const { imageBase64, mimeType, name } = req.body;
+    if (!imageBase64) return res.status(400).json({ error: 'imageBase64 is required' });
+
+    const prompt = `Describe this person's appearance in detail for use in AI image generation prompts.
+Focus on: gender, approximate age range, hair color & style, skin tone, build/physique, distinctive facial features, style/vibe.
+Be specific enough that an AI image generator can reproduce this person consistently.
+Name/role: ${name || 'unknown'}
+Return ONLY a 2-3 sentence description, no preamble.`;
+
+    const description = await callClaude(prompt, 'You are a visual description specialist for AI image generation.', [{ base64: imageBase64, mimeType: mimeType || 'image/jpeg' }]);
+
+    res.json({ description: description.trim() });
+  } catch (err) {
+    console.error('POST /scripts/:id/describe-actor error:', err);
+    res.status(500).json({ error: err.message || 'Actor description failed' });
   }
 });
 
