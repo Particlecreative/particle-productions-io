@@ -25,18 +25,7 @@ router.get('/share/:token', async (req, res) => {
       productions = prods;
     }
 
-    // Fetch comments for selected_comment_ids
-    const allCommentIds = (report.entries || []).flatMap(e => e.selected_comment_ids || []);
-    let comments = [];
-    if (allCommentIds.length > 0) {
-      const { rows: cmts } = await db.query(
-        `SELECT id, body, production_id FROM comments WHERE id = ANY($1)`,
-        [allCommentIds]
-      );
-      comments = cmts;
-    }
-
-    res.json({ report, productions, comments });
+    res.json({ report, productions });
   } catch (err) {
     console.error('GET /weekly-reports/share/:token error:', err);
     res.status(500).json({ error: 'Server error' });

@@ -217,75 +217,63 @@ function StatusDropdown({ value, onChange }) {
 // ProductionEntry (edit mode)
 // ============================================================================
 
-function ProductionEntry({ entry, prod, comments, links, onUpdate, onRemove, isEditor }) {
-  const [showComments, setShowComments] = useState(false);
+function ProductionEntry({ entry, prod, links, onUpdate, onRemove, isEditor }) {
   const [showLinks, setShowLinks] = useState(false);
   const [addLinkMode, setAddLinkMode] = useState(null);
   const [customLink, setCustomLink] = useState({ title: '', url: '' });
   const [collapsed, setCollapsed] = useState(false);
+  const [editingBulletLink, setEditingBulletLink] = useState(null);
+  const [bulletLinkDraft, setBulletLinkDraft] = useState('');
+  const bulletRef = useRef(null);
 
   if (!prod) return null;
 
-  function toggleComment(id) {
-    const cur = entry.selected_comment_ids || [];
-    const next = cur.includes(id) ? cur.filter(x => x !== id) : [...cur, id];
-    onUpdate({ selected_comment_ids: next });
-  }
+  // Backward compat: use long_text or fall back to note
+  const longText = entry.long_text ?? entry.note ?? '';
+  const bullets = entry.bullets || [];
 
-  function toggleCommentApproval(id) {
-    const cur = entry.approved_comment_ids || [];
-    const next = cur.includes(id) ? cur.filter(x => x !== id) : [...cur, id];
-    onUpdate({ approved_comment_ids: next });
+  function addBullet() {
+    const next = [...bullets, { id: crypto.randomUUID(), text: '', link: '' }];
+    onUpdate({ bullets: next });
+    setTimeout(() => bulletRef.current?.focus(), 50);
+  }
+  function updateBullet(id, patch) {
+    onUpdate({ bullets: bullets.map(b => b.id === id ? { ...b, ...patch } : b) });
+  }
+  function removeBullet(id) {
+    onUpdate({ bullets: bullets.filter(b => b.id !== id) });
+  }
+  function saveBulletLink(id) {
+    updateBullet(id, { link: bulletLinkDraft.trim() });
+    setEditingBulletLink(null);
+    setBulletLinkDraft('');
   }
 
   function addProductionLink(link) {
     if ((entry.weekly_links || []).some(l => l.link_id === link.id)) return;
     onUpdate({
       weekly_links: [...(entry.weekly_links || []), {
-        id: generateId('wl'),
-        type: 'production',
-        link_id: link.id,
-        title: link.title || link.url,
-        url: link.url,
-        approved: false,
-        approved_by: null,
-        approved_at: null,
+        id: generateId('wl'), type: 'production', link_id: link.id,
+        title: link.title || link.url, url: link.url, approved: false,
       }],
     });
     setAddLinkMode(null);
   }
-
   function addCustomLink() {
     if (!customLink.url.trim()) return;
     onUpdate({
       weekly_links: [...(entry.weekly_links || []), {
-        id: generateId('wl'),
-        type: 'custom',
-        link_id: null,
-        title: customLink.title.trim() || customLink.url,
-        url: customLink.url.trim(),
-        approved: false,
-        approved_by: null,
-        approved_at: null,
+        id: generateId('wl'), type: 'custom', link_id: null,
+        title: customLink.title.trim() || customLink.url, url: customLink.url.trim(), approved: false,
       }],
     });
     setCustomLink({ title: '', url: '' });
     setAddLinkMode(null);
   }
-
-  function toggleLinkApproval(wlId) {
-    onUpdate({
-      weekly_links: (entry.weekly_links || []).map(l =>
-        l.id === wlId ? { ...l, approved: !l.approved } : l
-      ),
-    });
-  }
-
   function removeLink(wlId) {
     onUpdate({ weekly_links: (entry.weekly_links || []).filter(l => l.id !== wlId) });
   }
 
-  const selectedComments = comments.filter(c => (entry.selected_comment_ids || []).includes(c.id));
   const availableLinks = links.filter(l => !(entry.weekly_links || []).some(wl => wl.link_id === l.id));
 
   return (
@@ -300,19 +288,13 @@ function ProductionEntry({ entry, prod, comments, links, onUpdate, onRemove, isE
           </div>
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
-          <button
-            onClick={() => setCollapsed(c => !c)}
+          <button onClick={() => setCollapsed(c => !c)}
             className="p-1 rounded text-gray-300 hover:text-gray-500 transition-colors"
-            title={collapsed ? 'Expand' : 'Collapse'}
-          >
+            title={collapsed ? 'Expand' : 'Collapse'}>
             <ChevronDown size={15} className={clsx('transition-transform', collapsed && '-rotate-90')} />
           </button>
           {isEditor && (
-            <button
-              onClick={onRemove}
-              className="p-1 rounded text-gray-300 hover:text-red-400 transition-colors"
-              title="Remove from weekly"
-            >
+            <button onClick={onRemove} className="p-1 rounded text-gray-300 hover:text-red-400 transition-colors" title="Remove from weekly">
               <Trash2 size={13} />
             </button>
           )}
@@ -322,88 +304,86 @@ function ProductionEntry({ entry, prod, comments, links, onUpdate, onRemove, isE
       {!collapsed && (
         <div className="px-4 pb-4 space-y-4 border-t border-gray-100 pt-3">
 
-          {/* Weekly note */}
+          {/* Notes (long text) */}
           <div>
-            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1.5">
-              Weekly Note (this report only)
-            </label>
-            <textarea
-              value={entry.note || ''}
-              onChange={e => onUpdate({ note: e.target.value })}
-              placeholder="Status update, key decisions, blockers\u2026"
-              rows={2}
-              className="w-full text-sm text-gray-700 border border-gray-200 rounded-xl px-3 py-2 resize-none outline-none focus:border-[var(--brand-accent)] transition-colors placeholder-gray-300"
-            />
+            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1.5">Notes</label>
+            {isEditor ? (
+              <textarea
+                value={longText}
+                onChange={e => onUpdate({ long_text: e.target.value })}
+                placeholder="Status update, key decisions, blockers\u2026"
+                rows={2}
+                className="w-full text-sm text-gray-700 border border-gray-200 rounded-xl px-3 py-2 resize-none outline-none focus:border-[var(--brand-accent)] transition-colors placeholder-gray-300"
+              />
+            ) : longText ? (
+              <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{longText}</p>
+            ) : null}
           </div>
 
-          {/* Production comments */}
+          {/* Key Points (bullets) */}
           <div>
-            <button
-              onClick={() => setShowComments(v => !v)}
-              className="flex items-center gap-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider hover:text-gray-600 transition-colors"
-            >
-              <ChevronDown size={11} className={clsx('transition-transform', !showComments && '-rotate-90')} />
-              Updates from production ({selectedComments.length} selected)
-            </button>
-
-            {showComments && (
-              <div className="mt-2 space-y-1.5 max-h-52 overflow-y-auto pr-1">
-                {comments.length === 0 ? (
-                  <p className="text-xs text-gray-400 italic pl-1">No production updates yet</p>
-                ) : comments.map(c => {
-                  const checked = (entry.selected_comment_ids || []).includes(c.id);
-                  const approved = (entry.approved_comment_ids || []).includes(c.id);
-                  return (
-                    <div
-                      key={c.id}
-                      className={clsx(
-                        'flex items-start gap-2 p-2.5 rounded-lg border transition-all cursor-pointer group',
-                        checked ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-transparent hover:border-gray-200'
-                      )}
-                      onClick={() => toggleComment(c.id)}
-                    >
-                      <div className={clsx(
-                        'w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-all',
-                        checked ? 'bg-blue-500 border-blue-500' : 'border-gray-300'
-                      )}>
-                        {checked && <Check size={10} className="text-white" />}
+            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1.5">Key Points</label>
+            <div className="space-y-1">
+              {bullets.map((b, i) => (
+                <div key={b.id} className="group flex items-start gap-2 py-1 rounded-lg hover:bg-gray-50 px-1 -mx-1 transition-colors">
+                  <div className="w-1.5 h-1.5 rounded-full mt-2 flex-shrink-0" style={{ background: 'var(--brand-accent)', opacity: 0.6 }} />
+                  <div className="flex-1 min-w-0">
+                    {isEditor ? (
+                      <input
+                        ref={i === bullets.length - 1 ? bulletRef : undefined}
+                        className="w-full text-sm text-gray-700 bg-transparent border-none outline-none placeholder:text-gray-300"
+                        placeholder="Key point\u2026"
+                        value={b.text}
+                        onChange={e => updateBullet(b.id, { text: e.target.value })}
+                      />
+                    ) : (
+                      <span className="text-sm text-gray-700">{b.text}</span>
+                    )}
+                    {editingBulletLink === b.id && (
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <input autoFocus className="flex-1 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-blue-300"
+                          placeholder="https://\u2026" value={bulletLinkDraft}
+                          onChange={e => setBulletLinkDraft(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') saveBulletLink(b.id); if (e.key === 'Escape') setEditingBulletLink(null); }} />
+                        <button onClick={() => saveBulletLink(b.id)} className="p-1 rounded hover:bg-green-50 text-green-500"><Check size={13} /></button>
+                        <button onClick={() => setEditingBulletLink(null)} className="p-1 rounded hover:bg-gray-100 text-gray-400"><X size={13} /></button>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 mb-0.5">
-                          <span className="text-[10px] font-semibold text-gray-600">{c.author}</span>
-                          <span className="text-[10px] text-gray-400">
-                            {new Date(c.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                          </span>
-                        </div>
-                        <p className="text-xs text-gray-700 leading-relaxed">{c.body}</p>
-                      </div>
-                      {checked && (
-                        <button
-                          onClick={e => { e.stopPropagation(); toggleCommentApproval(c.id); }}
-                          title={approved ? 'Approved \u2014 click to unapprove' : 'Click to approve'}
-                          className={clsx(
-                            'flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] transition-all border',
-                            approved
-                              ? 'bg-green-500 border-green-500 text-white'
-                              : 'border-gray-300 text-gray-300 hover:border-green-400 hover:text-green-500'
-                          )}
-                        >
-                          \u2713
-                        </button>
-                      )}
+                    )}
+                  </div>
+                  {b.link && editingBulletLink !== b.id && (
+                    <a href={b.link} target="_blank" rel="noopener noreferrer"
+                      className="p-1 rounded hover:bg-blue-50 text-blue-400 hover:text-blue-600 transition-colors flex-shrink-0" title={b.link}>
+                      <ExternalLink size={12} />
+                    </a>
+                  )}
+                  {isEditor && editingBulletLink !== b.id && (
+                    <div className="flex items-center gap-0.5 sm:opacity-0 opacity-60 sm:group-hover:opacity-100 transition-opacity flex-shrink-0">
+                      <button onClick={() => { setEditingBulletLink(b.id); setBulletLinkDraft(b.link || ''); }}
+                        className={`p-1 rounded hover:bg-blue-50 transition-colors ${b.link ? 'text-blue-400' : 'text-gray-300 hover:text-blue-400'}`}
+                        title={b.link ? 'Edit link' : 'Add link'}>
+                        <Link2 size={11} />
+                      </button>
+                      <button onClick={() => removeBullet(b.id)}
+                        className="p-1 rounded hover:bg-red-50 text-gray-300 hover:text-red-400 transition-colors" title="Remove">
+                        <Trash2 size={11} />
+                      </button>
                     </div>
-                  );
-                })}
-              </div>
+                  )}
+                </div>
+              ))}
+            </div>
+            {isEditor && (
+              <button onClick={addBullet}
+                className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-[var(--brand-accent)] transition-colors mt-1.5 py-0.5">
+                <Plus size={12} /> Add point
+              </button>
             )}
           </div>
 
           {/* Links */}
           <div>
-            <button
-              onClick={() => setShowLinks(v => !v)}
-              className="flex items-center gap-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider hover:text-gray-600 transition-colors"
-            >
+            <button onClick={() => setShowLinks(v => !v)}
+              className="flex items-center gap-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider hover:text-gray-600 transition-colors">
               <ChevronDown size={11} className={clsx('transition-transform', !showLinks && '-rotate-90')} />
               Links ({(entry.weekly_links || []).length})
             </button>
@@ -412,51 +392,27 @@ function ProductionEntry({ entry, prod, comments, links, onUpdate, onRemove, isE
               <div className="mt-2 space-y-1.5">
                 {(entry.weekly_links || []).map(wl => (
                   <div key={wl.id} className="flex items-center gap-2 px-2.5 py-1.5 bg-gray-50 rounded-lg border border-gray-200">
-                    <button
-                      onClick={() => toggleLinkApproval(wl.id)}
-                      title={wl.approved ? 'Approved \u2014 click to remove' : 'Click to approve'}
-                      className={clsx(
-                        'w-5 h-5 rounded-full flex items-center justify-center text-[10px] flex-shrink-0 border transition-all',
-                        wl.approved
-                          ? 'bg-green-500 border-green-500 text-white'
-                          : 'border-gray-300 text-gray-300 hover:border-green-400 hover:text-green-500'
-                      )}
-                    >
-                      \u2713
-                    </button>
-                    <a
-                      href={wl.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={e => e.stopPropagation()}
-                      className="flex-1 text-xs text-blue-600 hover:underline truncate flex items-center gap-1"
-                    >
+                    <a href={wl.url} target="_blank" rel="noopener noreferrer"
+                      className="flex-1 text-xs text-blue-600 hover:underline truncate flex items-center gap-1">
                       <ExternalLink size={9} className="flex-shrink-0" />
                       {wl.title || wl.url}
                     </a>
-                    {wl.type === 'custom' && (
-                      <span className="text-[9px] text-gray-400 px-1.5 py-0.5 bg-gray-100 rounded-full">custom</span>
+                    {isEditor && (
+                      <button onClick={() => removeLink(wl.id)} className="text-gray-300 hover:text-red-400 transition-colors">
+                        <X size={12} />
+                      </button>
                     )}
-                    <button onClick={() => removeLink(wl.id)} className="text-gray-300 hover:text-red-400 transition-colors">
-                      <X size={12} />
-                    </button>
                   </div>
                 ))}
 
-                {/* Add link controls */}
                 {addLinkMode === null && isEditor && (
                   <div className="flex gap-2 pt-1">
-                    <button
-                      onClick={() => setAddLinkMode('production')}
-                      disabled={availableLinks.length === 0}
-                      className="text-[11px] px-2.5 py-1 rounded-lg border border-dashed border-gray-300 text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-all disabled:opacity-40"
-                    >
+                    <button onClick={() => setAddLinkMode('production')} disabled={availableLinks.length === 0}
+                      className="text-[11px] px-2.5 py-1 rounded-lg border border-dashed border-gray-300 text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-all disabled:opacity-40">
                       + From production
                     </button>
-                    <button
-                      onClick={() => setAddLinkMode('custom')}
-                      className="text-[11px] px-2.5 py-1 rounded-lg border border-dashed border-gray-300 text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-all"
-                    >
+                    <button onClick={() => setAddLinkMode('custom')}
+                      className="text-[11px] px-2.5 py-1 rounded-lg border border-dashed border-gray-300 text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-all">
                       + Custom link
                     </button>
                   </div>
@@ -464,43 +420,26 @@ function ProductionEntry({ entry, prod, comments, links, onUpdate, onRemove, isE
 
                 {addLinkMode === 'production' && (
                   <div className="space-y-1 pt-1">
-                    {availableLinks.length === 0 ? (
-                      <p className="text-xs text-gray-400 italic">All production links already added</p>
-                    ) : availableLinks.map(l => (
-                      <button
-                        key={l.id}
-                        onClick={() => addProductionLink(l)}
-                        className="w-full flex items-center gap-2 text-left text-xs px-2.5 py-1.5 rounded-lg bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-colors"
-                      >
+                    {availableLinks.map(l => (
+                      <button key={l.id} onClick={() => addProductionLink(l)}
+                        className="w-full flex items-center gap-2 text-left text-xs px-2.5 py-1.5 rounded-lg bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-colors">
                         <Link2 size={10} className="text-blue-500 flex-shrink-0" />
                         <span className="truncate text-blue-700">{l.title || l.url}</span>
-                        <span className="text-blue-400 text-[10px] ml-auto">{l.category}</span>
                       </button>
                     ))}
-                    <button onClick={() => setAddLinkMode(null)} className="text-[11px] text-gray-400 hover:text-gray-600 mt-1">
-                      Cancel
-                    </button>
+                    <button onClick={() => setAddLinkMode(null)} className="text-[11px] text-gray-400 hover:text-gray-600 mt-1">Cancel</button>
                   </div>
                 )}
 
                 {addLinkMode === 'custom' && (
                   <div className="space-y-2 pt-1 p-3 bg-gray-50 rounded-xl border border-gray-200">
-                    <input
-                      autoFocus
-                      type="text"
-                      placeholder="Title (optional)"
-                      value={customLink.title}
+                    <input autoFocus type="text" placeholder="Title (optional)" value={customLink.title}
                       onChange={e => setCustomLink(p => ({ ...p, title: e.target.value }))}
-                      className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-[var(--brand-accent)]"
-                    />
-                    <input
-                      type="url"
-                      placeholder="https://\u2026"
-                      value={customLink.url}
+                      className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-[var(--brand-accent)]" />
+                    <input type="url" placeholder="https://\u2026" value={customLink.url}
                       onChange={e => setCustomLink(p => ({ ...p, url: e.target.value }))}
                       onKeyDown={e => { if (e.key === 'Enter') addCustomLink(); if (e.key === 'Escape') setAddLinkMode(null); }}
-                      className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-[var(--brand-accent)]"
-                    />
+                      className="w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-[var(--brand-accent)]" />
                     <div className="flex gap-2">
                       <button onClick={addCustomLink} className="text-[11px] px-2.5 py-1 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors">Add</button>
                       <button onClick={() => { setAddLinkMode(null); setCustomLink({ title: '', url: '' }); }} className="text-[11px] text-gray-400 hover:text-gray-600">Cancel</button>
@@ -801,47 +740,39 @@ function PresentCard({ entry, prod }) {
       </div>
 
       <div className="flex-1 px-5 py-4 space-y-3">
-        {entry.note && (
-          <p className="text-sm text-gray-700 leading-relaxed">{entry.note}</p>
+        {/* Notes */}
+        {(entry.long_text || entry.note) && (
+          <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{entry.long_text || entry.note}</p>
         )}
 
-        {(entry.selected_comment_ids || []).length > 0 && (
+        {/* Key Points */}
+        {(entry.bullets || []).length > 0 && (
           <div className="space-y-1.5">
-            {entry.selected_comment_ids.map(cid => {
-              const approved = (entry.approved_comment_ids || []).includes(cid);
-              return (
-                <div key={cid} className="flex items-start gap-2 text-xs text-gray-700">
-                  <span className={clsx(
-                    'flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[9px] mt-0.5',
-                    approved ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'
-                  )}>
-                    {approved ? '\u2713' : '\u2022'}
-                  </span>
-                  <span className={clsx(approved && 'font-medium text-gray-800')} data-comment-id={cid}>
-                    <CommentBodyPlaceholder cid={cid} />
-                  </span>
+            {entry.bullets.map(b => (
+              <div key={b.id} className="flex items-start gap-2">
+                <div className="w-1.5 h-1.5 rounded-full mt-[7px] flex-shrink-0" style={{ background: 'var(--brand-accent)', opacity: 0.5 }} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-gray-700 leading-relaxed">{b.text}</p>
+                  {b.link && (
+                    <a href={b.link} target="_blank" rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-[10px] mt-0.5 hover:underline" style={{ color: 'var(--brand-accent)' }}>
+                      <ExternalLink size={9} />
+                      {(() => { try { return new URL(b.link).hostname; } catch { return 'Link'; } })()}
+                    </a>
+                  )}
                 </div>
-              );
-            })}
+              </div>
+            ))}
           </div>
         )}
 
+        {/* Links */}
         {(entry.weekly_links || []).length > 0 && (
           <div className="flex flex-wrap gap-1.5 pt-1">
             {entry.weekly_links.map(wl => (
-              <a
-                key={wl.id}
-                href={wl.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={clsx(
-                  'flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full border transition-all font-medium',
-                  wl.approved
-                    ? 'bg-green-50 border-green-300 text-green-700 hover:bg-green-100'
-                    : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-blue-300 hover:text-blue-600'
-                )}
-              >
-                {wl.approved ? '\u2705' : '\uD83D\uDD17'} {wl.title || wl.url}
+              <a key={wl.id} href={wl.url} target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full border bg-gray-50 border-gray-200 text-gray-600 hover:border-blue-300 hover:text-blue-600 transition-all font-medium">
+                🔗 {wl.title || wl.url}
               </a>
             ))}
           </div>
@@ -851,23 +782,11 @@ function PresentCard({ entry, prod }) {
   );
 }
 
-function CommentBodyPlaceholder({ cid }) {
-  return <span className="text-[11px]">{window.__weeklyComments?.[cid] || '\u2026'}</span>;
-}
-
 // ============================================================================
 // PresentationMode
 // ============================================================================
 
-function PresentationMode({ report, productions, commentsByProd, brand, onClose }) {
-  useEffect(() => {
-    const lookup = {};
-    Object.values(commentsByProd).forEach(arr =>
-      arr.forEach(c => { lookup[c.id] = c.body; })
-    );
-    window.__weeklyComments = lookup;
-    return () => { delete window.__weeklyComments; };
-  }, [commentsByProd]);
+function PresentationMode({ report, productions, brand, onClose }) {
 
   const STAGE_SORT = { 'Production': 0, 'Pre Production': 1, 'Post': 2, 'Pending': 3, 'Paused': 4, 'Completed': 5 };
   const sorted = [...(report.entries || [])].sort((a, b) => {
@@ -1441,7 +1360,6 @@ function WeeklyReportsTab({ productions, brandId, selectedYear }) {
       <PresentationMode
         report={report}
         productions={productions}
-        commentsByProd={commentsByProd}
         brand={brand}
         onClose={() => setMode('edit')}
       />
@@ -1612,7 +1530,6 @@ function WeeklyReportsTab({ productions, brandId, selectedYear }) {
                   key={entry.production_id}
                   entry={entry}
                   prod={prod}
-                  comments={commentsByProd[entry.production_id] || []}
                   links={linksByProd[entry.production_id] || []}
                   onUpdate={patch => updateEntry(entry.production_id, patch)}
                   onRemove={() => removeEntry(entry.production_id)}

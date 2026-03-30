@@ -46,9 +46,7 @@ export default function WeeklySharePage() {
     </div>
   );
 
-  const { report, productions, comments } = data;
-  const commentLookup = {};
-  (comments || []).forEach(c => { commentLookup[c.id] = c.body; });
+  const { report, productions } = data;
 
   const STAGE_SORT = { 'Production': 0, 'Pre Production': 1, 'Post': 2, 'Pending': 3, 'Paused': 4, 'Completed': 5 };
   const sorted = [...(report.entries || [])].sort((a, b) => {
@@ -182,34 +180,33 @@ export default function WeeklySharePage() {
                     <span className="font-mono text-[10px] text-gray-400">{prod.id}</span>
                   </div>
                   <div className="flex-1 px-5 py-4 space-y-3">
-                    {entry.note && <p className="text-sm text-gray-700 leading-relaxed">{entry.note}</p>}
-                    {(entry.selected_comment_ids || []).length > 0 && (
+                    {(entry.long_text || entry.note) && (
+                      <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{entry.long_text || entry.note}</p>
+                    )}
+                    {(entry.bullets || []).length > 0 && (
                       <div className="space-y-1.5">
-                        {entry.selected_comment_ids.map(cid => {
-                          const approved = (entry.approved_comment_ids || []).includes(cid);
-                          return (
-                            <div key={cid} className="flex items-start gap-2 text-xs text-gray-700">
-                              <span className={`flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-[9px] mt-0.5 ${approved ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'}`}>
-                                {approved ? '✓' : '•'}
-                              </span>
-                              <span className={approved ? 'font-medium text-gray-800 text-[11px]' : 'text-[11px]'}>
-                                {commentLookup[cid] || '…'}
-                              </span>
+                        {entry.bullets.map(b => (
+                          <div key={b.id} className="flex items-start gap-2">
+                            <div className="w-1.5 h-1.5 rounded-full mt-[7px] flex-shrink-0 bg-indigo-400 opacity-50" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs text-gray-700 leading-relaxed">{b.text}</p>
+                              {b.link && (
+                                <a href={b.link} target="_blank" rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-[10px] mt-0.5 text-indigo-500 hover:underline">
+                                  <ExternalLink size={9} /> {(() => { try { return new URL(b.link).hostname; } catch { return 'Link'; } })()}
+                                </a>
+                              )}
                             </div>
-                          );
-                        })}
+                          </div>
+                        ))}
                       </div>
                     )}
                     {(entry.weekly_links || []).length > 0 && (
                       <div className="flex flex-wrap gap-1.5 pt-1">
                         {entry.weekly_links.map(wl => (
                           <a key={wl.id} href={wl.url} target="_blank" rel="noopener noreferrer"
-                            className={`flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full border transition-all font-medium ${
-                              wl.approved
-                                ? 'bg-green-50 border-green-300 text-green-700 hover:bg-green-100'
-                                : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-blue-300 hover:text-blue-600'
-                            }`}>
-                            {wl.approved ? '✅' : '🔗'} {wl.title || wl.url}
+                            className="flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full border bg-gray-50 border-gray-200 text-gray-600 hover:border-blue-300 hover:text-blue-600 transition-all font-medium">
+                            🔗 {wl.title || wl.url}
                           </a>
                         ))}
                       </div>
