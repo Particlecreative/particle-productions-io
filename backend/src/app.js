@@ -77,6 +77,7 @@ app.use('/api/casting',        require('./routes/casting'));
 app.use('/api/call-sheets',    require('./routes/callSheets'));
 app.use('/api/cc-purchases',   require('./routes/ccPurchases'));
 app.use('/api/weekly-reports', require('./routes/weeklyReports'));
+app.use('/api/scripts',        require('./routes/scripts'));
 app.use('/api/admin',          require('./routes/admin'));
 app.use('/api/casting-auto',   require('./routes/castingAutomation'));
 app.use('/api/drive',          require('./routes/drive'));

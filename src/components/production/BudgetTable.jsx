@@ -18,7 +18,6 @@ import {
   getProductionCustomCols,
   createCastMember,
   deleteCastMember,
-  getCastMembers,
   createGanttEvent,
   getCCPurchases,
 } from '../../lib/dataService';

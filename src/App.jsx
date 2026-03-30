@@ -32,6 +32,8 @@ import CallSheets from './pages/CallSheets';
 import Manual from './pages/Manual';
 import ContractSign from './pages/ContractSign';
 import WeeklySharePage from './pages/WeeklySharePage';
+import Scripts from './pages/Scripts';
+import ScriptSharePage from './pages/ScriptSharePage';
 
 function ProtectedRoute({ children, adminOnly = false, blockForAccounting = false }) {
   const { user, loading, isAdmin, isAccounting } = useAuth();
@@ -114,6 +116,8 @@ function AppRoutes() {
         <Route path="/cc-payment/:productionId" element={<CCPaymentForm />} />
         <Route path="/sign/:contractId/:token" element={<ErrorBoundary><ContractSign /></ErrorBoundary>} />
         <Route path="/weekly/:token" element={<WeeklySharePage />} />
+        <Route path="/script/:token" element={<ScriptSharePage />} />
+        <Route path="/scripts" element={<ProtectedRoute blockForAccounting><AppShell><ErrorBoundary><Scripts /></ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>

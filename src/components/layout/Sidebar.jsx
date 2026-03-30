@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, DollarSign, BookOpen, Settings, Users, ChevronLeft, ChevronRight,
   History, FileText, Link, FileSignature, Clapperboard, Users2, GripVertical,
-  GanttChartSquare, Check, Star, Sun, Moon, Grid3x3, X as XIcon,
+  GanttChartSquare, Check, Star, Sun, Moon, Grid3x3, X as XIcon, Scroll,
 } from 'lucide-react';
 import {
   DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors,
@@ -34,6 +34,7 @@ const DEFAULT_NAV_ITEMS = [
   { to: '/invoices',       icon: FileText,         label: 'Invoices' },
   { to: '/history',        icon: History,          label: 'History' },
   { to: '/casting-rights', icon: Star,             label: 'Casting',      accountingHide: true },
+  { to: '/scripts',        icon: Scroll,           label: 'Scripts',      accountingHide: true },
   { to: '/manual',         icon: BookOpen,         label: 'Manual',       accountingHide: true },
 ];
 
