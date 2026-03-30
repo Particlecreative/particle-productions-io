@@ -62,7 +62,9 @@ async function driveUploadBuffer({ drive, fileName, buffer, mimeType, subfolder 
     resource: { role: 'reader', type: 'anyone' },
     supportsAllDrives: true,
   });
-  return file.data.webViewLink;
+  // Return a direct-access thumbnail URL that works without authentication
+  // webViewLink requires login; thumbnail URL serves public files directly
+  return `https://drive.google.com/thumbnail?id=${file.data.id}&sz=w2000`;
 }
 
 async function callClaude(prompt, systemPrompt, images = []) {
@@ -1365,11 +1367,25 @@ function estimateDuration(text) {
   return Math.round((words / VO_WPM) * 60); // seconds
 }
 
-async function elevenLabsTTS(text, voiceIdOverride) {
+async function elevenLabsTTS(text, voiceIdOverride, options = {}) {
   const apiKey = process.env.ELEVENLABS_API_KEY;
   if (!apiKey) throw new Error('ELEVENLABS_API_KEY not configured');
-  // Default voice: Rachel (professional, clear narration)
   const voiceId = voiceIdOverride || process.env.ELEVENLABS_VOICE_ID || '21m00Tcm4TlvDq8ikWAM';
+  // Strip any remaining HTML tags and decode HTML entities
+  const cleanText = text
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .substring(0, 2500);
+  if (!cleanText) throw new Error('No text to synthesize after cleaning');
+  const speed = typeof options.speed === 'number' ? Math.max(0.25, Math.min(4.0, options.speed)) : 1.0;
+  const stability = typeof options.stability === 'number' ? options.stability : 0.5;
+  const similarity_boost = typeof options.similarity_boost === 'number' ? options.similarity_boost : 0.75;
   const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
     method: 'POST',
     headers: {
@@ -1378,13 +1394,30 @@ async function elevenLabsTTS(text, voiceIdOverride) {
       'Accept': 'audio/mpeg',
     },
     body: JSON.stringify({
-      text: text.substring(0, 2500), // ElevenLabs limit per request
-      model_id: 'eleven_turbo_v2',
-      voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+      text: cleanText,
+      model_id: 'eleven_turbo_v2_5',
+      voice_settings: { stability, similarity_boost, style: 0, use_speaker_boost: true },
+      ...(speed !== 1.0 ? { speed } : {}),
     }),
   });
   if (!res.ok) {
     const err = await res.text();
+    // Fallback: try older model if new one fails
+    if (res.status === 400 || res.status === 422) {
+      const res2 = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+        method: 'POST',
+        headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
+        body: JSON.stringify({
+          text: cleanText,
+          model_id: 'eleven_multilingual_v2',
+          voice_settings: { stability, similarity_boost },
+        }),
+      });
+      if (res2.ok) {
+        const buffer2 = Buffer.from(await res2.arrayBuffer());
+        return buffer2.toString('base64');
+      }
+    }
     throw new Error(`ElevenLabs error: ${res.status} — ${err.slice(0, 200)}`);
   }
   const buffer = Buffer.from(await res.arrayBuffer());
@@ -1394,10 +1427,10 @@ async function elevenLabsTTS(text, voiceIdOverride) {
 // POST /api/scripts/voice-preview — preview a voice (no script needed)
 router.post('/voice-preview', async (req, res) => {
   try {
-    const { voice_id, text } = req.body;
+    const { voice_id, text, speed, stability, similarity_boost } = req.body;
     const vid = voice_id || '21m00Tcm4TlvDq8ikWAM';
-    const previewText = (text || 'This is a preview of how your voiceover will sound.').substring(0, 200);
-    const audioBase64 = await elevenLabsTTS(previewText, vid);
+    const previewText = (text || 'This is a preview of how your voiceover will sound in the final commercial.').substring(0, 200);
+    const audioBase64 = await elevenLabsTTS(previewText, vid, { speed, stability, similarity_boost });
     res.json({ audio_base64: audioBase64, mime_type: 'audio/mpeg' });
   } catch (err) {
     console.error('POST /scripts/voice-preview error:', err);
@@ -1408,21 +1441,88 @@ router.post('/voice-preview', async (req, res) => {
 // POST /api/scripts/:id/tts — generate VO for a single scene
 router.post('/:id/tts', async (req, res) => {
   try {
-    const { scene_id, voice_id } = req.body;
+    const { scene_id, voice_id, speed, stability, similarity_boost } = req.body;
     if (!scene_id) return res.status(400).json({ error: 'scene_id required' });
     const { rows } = await db.query('SELECT scenes FROM scripts WHERE id = $1', [req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Script not found' });
     const scene = (rows[0].scenes || []).find(s => s.id === scene_id);
     if (!scene) return res.status(404).json({ error: 'Scene not found' });
     const rawText = scene.what_we_hear || '';
-    // Strip HTML tags for TTS (scene may contain rich text)
-    const text = rawText.replace(/<[^>]*>/g, '') || '';
-    if (!text.trim()) return res.status(400).json({ error: 'Scene has no VO text' });
-    const audioBase64 = await elevenLabsTTS(text, voice_id);
-    const estimated = estimateDuration(text);
+    if (!rawText.trim()) return res.status(400).json({ error: 'Scene has no VO text' });
+    const audioBase64 = await elevenLabsTTS(rawText, voice_id, { speed, stability, similarity_boost });
+    // Estimate duration from clean text
+    const cleanForEstimate = rawText.replace(/<[^>]*>/g, '').trim();
+    const estimated = estimateDuration(cleanForEstimate);
     res.json({ audio_base64: audioBase64, mime_type: 'audio/mpeg', duration_seconds: estimated });
   } catch (err) {
     console.error('POST /scripts/:id/tts error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/scripts/voices — fetch voices from ElevenLabs account
+router.get('/voices', async (req, res) => {
+  try {
+    const apiKey = process.env.ELEVENLABS_API_KEY;
+    if (!apiKey) return res.status(501).json({ error: 'ELEVENLABS_API_KEY not configured' });
+    const r = await fetch('https://api.elevenlabs.io/v1/voices', {
+      headers: { 'xi-api-key': apiKey },
+    });
+    if (!r.ok) return res.status(r.status).json({ error: `ElevenLabs error: ${r.status}` });
+    const data = await r.json();
+    // Sort: cloned/custom first, then premade; alphabetical within each group
+    const voices = (data.voices || [])
+      .map(v => ({
+        voice_id: v.voice_id,
+        name: v.name,
+        category: v.category || 'premade',
+        preview_url: v.preview_url || null,
+        labels: v.labels || {},
+        gender: v.labels?.gender || '',
+        description: [v.labels?.accent, v.labels?.description, v.labels?.use_case].filter(Boolean).join(' · ') || '',
+      }))
+      .sort((a, b) => {
+        const catOrder = { 'cloned': 0, 'generated': 1, 'premade': 2 };
+        const ca = catOrder[a.category] ?? 3;
+        const cb = catOrder[b.category] ?? 3;
+        if (ca !== cb) return ca - cb;
+        return a.name.localeCompare(b.name);
+      });
+    res.json({ voices });
+  } catch (err) {
+    console.error('GET /scripts/voices error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/scripts/:id/tts-full — generate full script VO as downloadable MP3
+router.post('/:id/tts-full', async (req, res) => {
+  try {
+    const { voice_id, speed, stability, similarity_boost } = req.body;
+    const { rows } = await db.query('SELECT scenes, title FROM scripts WHERE id = $1', [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Script not found' });
+    const scenes = rows[0].scenes || [];
+    const scriptTitle = rows[0].title || 'script';
+
+    // Collect all VO text, stripping HTML, with scene number labels
+    const parts = scenes
+      .map((s, i) => {
+        const raw = (s.what_we_hear || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+        return raw ? `Scene ${i + 1}. ${raw}` : null;
+      })
+      .filter(Boolean);
+
+    if (parts.length === 0) return res.status(400).json({ error: 'No VO text found in any scene' });
+
+    const fullText = parts.join('\n\n').substring(0, 5000); // ElevenLabs limit
+    const audioBase64 = await elevenLabsTTS(fullText, voice_id, { speed, stability, similarity_boost });
+    const buf = Buffer.from(audioBase64, 'base64');
+    const filename = `${scriptTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_vo.mp3`;
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buf);
+  } catch (err) {
+    console.error('POST /scripts/:id/tts-full error:', err);
     res.status(500).json({ error: err.message });
   }
 });

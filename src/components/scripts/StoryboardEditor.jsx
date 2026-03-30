@@ -418,6 +418,10 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
   const [showVoicePicker, setShowVoicePicker] = useState(false);
   const [previewingVoice, setPreviewingVoice] = useState(null);
   const [voicePreviewError, setVoicePreviewError] = useState(null);
+  const [accountVoices, setAccountVoices] = useState([]);
+  const [loadingVoices, setLoadingVoices] = useState(false);
+  const [downloadingFullVO, setDownloadingFullVO] = useState(false);
+  const previewAudioRef = useRef(null);
 
   // ── Format toolbar ──
   const [formatToolbar, setFormatToolbar] = useState(null);
@@ -746,9 +750,24 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
   };
 
   const handlePreviewVoice = async (vid) => {
-    if (previewingVoice) return;
+    // Stop any existing preview
+    if (previewAudioRef.current) { previewAudioRef.current.pause(); previewAudioRef.current = null; }
+    if (previewingVoice === vid) { setPreviewingVoice(null); return; }
     setPreviewingVoice(vid);
     setVoicePreviewError(null);
+
+    // Use ElevenLabs preview_url if available (instant, no credits)
+    const voice = accountVoices.find(v => v.voice_id === vid);
+    if (voice?.preview_url) {
+      const audio = new Audio(voice.preview_url);
+      previewAudioRef.current = audio;
+      audio.onended = () => { setPreviewingVoice(null); previewAudioRef.current = null; };
+      audio.onerror = () => { setPreviewingVoice(null); setVoicePreviewError('Playback error'); previewAudioRef.current = null; };
+      audio.play().catch(e => { setPreviewingVoice(null); setVoicePreviewError('Blocked by browser — tap to unlock audio'); });
+      return;
+    }
+
+    // Fallback: call TTS
     try {
       const res = await fetch(`${API}/api/scripts/voice-preview`, {
         method: 'POST',
@@ -758,14 +777,55 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
       const data = await res.json();
       if (data.audio_base64) {
         const audio = new Audio(`data:audio/mpeg;base64,${data.audio_base64}`);
-        audio.onended = () => setPreviewingVoice(null);
-        audio.onerror = (e) => { setPreviewingVoice(null); setVoicePreviewError('Playback error'); };
-        audio.play().catch(e => { setPreviewingVoice(null); setVoicePreviewError('Blocked by browser — tap anywhere first'); });
+        previewAudioRef.current = audio;
+        audio.onended = () => { setPreviewingVoice(null); previewAudioRef.current = null; };
+        audio.onerror = () => { setPreviewingVoice(null); setVoicePreviewError('Playback error'); previewAudioRef.current = null; };
+        audio.play().catch(e => { setPreviewingVoice(null); setVoicePreviewError('Blocked by browser — tap to unlock audio'); });
       } else {
         setVoicePreviewError(data.error || 'Preview failed');
         setPreviewingVoice(null);
       }
     } catch (e) { setVoicePreviewError(e.message); setPreviewingVoice(null); }
+  };
+
+  const loadAccountVoices = async () => {
+    if (accountVoices.length > 0) return; // already loaded
+    setLoadingVoices(true);
+    try {
+      const res = await fetch(`${API}/api/scripts/voices`, {
+        headers: { Authorization: `Bearer ${jwt()}` },
+      });
+      const data = await res.json();
+      if (data.voices) setAccountVoices(data.voices);
+      else setVoicePreviewError(data.error || 'Could not load voices');
+    } catch (e) { setVoicePreviewError(e.message); }
+    setLoadingVoices(false);
+  };
+
+  const handleDownloadFullVO = async () => {
+    if (downloadingFullVO) return;
+    setDownloadingFullVO(true);
+    try {
+      const res = await fetch(`${API}/api/scripts/${scriptId}/tts-full`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
+        body: JSON.stringify({ voice_id: voiceId, speed: voiceSpeed, stability: voiceStability, similarity_boost: 0.75 }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || `Download failed (${res.status})`);
+        return;
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get('Content-Disposition') || '';
+      const match = disposition.match(/filename="([^"]+)"/);
+      const filename = match ? match[1] : `${(script.title || 'script').replace(/\s+/g, '_')}_vo.mp3`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename; a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) { alert('Download error: ' + e.message); }
+    setDownloadingFullVO(false);
   };
 
   const handleStatusChange = async (status) => {
@@ -1087,12 +1147,12 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
             </span>
             <span className="text-[11px] text-gray-400 shrink-0">/ target:</span>
             <button
-              onClick={() => { setShowVoicePicker(true); setVoicePreviewError(null); }}
+              onClick={() => { setShowVoicePicker(true); setVoicePreviewError(null); loadAccountVoices(); }}
               className="shrink-0 flex items-center gap-1 text-[10px] px-2 py-1 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-600 hover:bg-indigo-100 transition-colors font-semibold"
               title="Voice settings — speed, stability"
             >
               <Volume2 size={10} />
-              {ELEVEN_VOICES.find(v => v.id === voiceId)?.name || 'Voice'}
+              {accountVoices.find(v => v.voice_id === voiceId)?.name || 'Voice'}
               {voiceSpeed !== 1.0 && <span className="text-[9px] opacity-70">{voiceSpeed}x</span>}
             </button>
             <div className="flex items-center gap-0.5 bg-gray-100 rounded-md p-0.5 shrink-0">
@@ -1335,11 +1395,20 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
           <div className="max-w-2xl mx-auto py-8 px-6">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">Audio / Voiceover Script</h3>
-              {totalVoSeconds > 0 && (
-                <span className={`text-xs font-mono font-semibold ${timingColor}`}>
-                  Total: {fmtSeconds(totalVoSeconds)} / {targetSeconds}s target
-                </span>
-              )}
+              <div className="flex items-center gap-3">
+                {totalVoSeconds > 0 && (
+                  <span className={`text-xs font-mono font-semibold ${timingColor}`}>
+                    {fmtSeconds(totalVoSeconds)} / {targetSeconds}s
+                  </span>
+                )}
+                {!readOnly && (
+                  <button onClick={handleDownloadFullVO} disabled={downloadingFullVO}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors">
+                    {downloadingFullVO ? <Loader2 size={11} className="animate-spin" /> : <Download size={11} />}
+                    {downloadingFullVO ? 'Generating…' : 'Download Full VO'}
+                  </button>
+                )}
+              </div>
             </div>
             {scenes.map((scene, idx) => {
               const secs = estimateSeconds(scene.what_we_hear);
@@ -1794,28 +1863,54 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
               </div>
               <button onClick={() => setShowVoicePicker(false)}><X size={16} className="text-gray-400" /></button>
             </div>
-            <div className="p-4 space-y-2 max-h-60 overflow-y-auto">
-              {ELEVEN_VOICES.map(v => (
-                <div key={v.id}
-                  className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all cursor-pointer ${voiceId === v.id ? 'border-indigo-400 bg-indigo-50' : 'border-gray-100 hover:border-gray-200'}`}
-                  onClick={() => setVoiceId(v.id)}
-                >
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${voiceId === v.id ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600'}`}>
-                    {v.gender}
-                  </div>
-                  <div className="flex-1">
-                    <p className={`text-sm font-bold ${voiceId === v.id ? 'text-indigo-800' : 'text-gray-800'}`}>{v.name}</p>
-                    <p className="text-xs text-gray-400">{v.desc}</p>
-                  </div>
-                  <button
-                    onClick={e => { e.stopPropagation(); handlePreviewVoice(v.id); }}
-                    disabled={!!previewingVoice}
-                    className="w-7 h-7 flex items-center justify-center rounded-full bg-gray-100 hover:bg-indigo-100 text-gray-500 hover:text-indigo-600 transition-colors disabled:opacity-50"
-                  >
-                    {previewingVoice === v.id ? <Loader2 size={12} className="animate-spin" /> : <Play size={11} />}
-                  </button>
+            <div className="p-4 space-y-2 max-h-72 overflow-y-auto">
+              {loadingVoices ? (
+                <div className="flex items-center justify-center py-8 text-gray-400">
+                  <Loader2 size={18} className="animate-spin mr-2" /> Loading your voices...
                 </div>
-              ))}
+              ) : accountVoices.length === 0 ? (
+                <div className="text-center py-6 text-gray-400 text-sm">No voices loaded</div>
+              ) : (() => {
+                const custom = accountVoices.filter(v => v.category !== 'premade');
+                const premade = accountVoices.filter(v => v.category === 'premade');
+                const renderVoice = (v) => (
+                  <div key={v.voice_id}
+                    className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all cursor-pointer ${voiceId === v.voice_id ? 'border-indigo-400 bg-indigo-50' : 'border-gray-100 hover:border-gray-200'}`}
+                    onClick={() => setVoiceId(v.voice_id)}
+                  >
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${voiceId === v.voice_id ? 'bg-indigo-600 text-white' : v.category === 'cloned' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}`}>
+                      {v.gender ? v.gender.charAt(0).toUpperCase() : v.name.charAt(0)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm font-bold truncate ${voiceId === v.voice_id ? 'text-indigo-800' : 'text-gray-800'}`}>{v.name}</p>
+                      {v.description && <p className="text-xs text-gray-400 truncate">{v.description}</p>}
+                    </div>
+                    <button
+                      onClick={e => { e.stopPropagation(); handlePreviewVoice(v.voice_id); }}
+                      className="w-7 h-7 flex items-center justify-center rounded-full bg-gray-100 hover:bg-indigo-100 text-gray-500 hover:text-indigo-600 transition-colors shrink-0"
+                    >
+                      {previewingVoice === v.voice_id ? <Loader2 size={12} className="animate-spin" /> : <Play size={11} />}
+                    </button>
+                  </div>
+                );
+                return (
+                  <>
+                    {custom.length > 0 && (
+                      <>
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-purple-500 px-1 pt-1">Your Voices</p>
+                        {custom.map(renderVoice)}
+                        {premade.length > 0 && <div className="border-t border-gray-100 my-1" />}
+                      </>
+                    )}
+                    {premade.length > 0 && (
+                      <>
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 px-1 pt-1">Premade</p>
+                        {premade.map(renderVoice)}
+                      </>
+                    )}
+                  </>
+                );
+              })()}
             </div>
             {voicePreviewError && (
               <div className="mx-4 mb-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-600">{voicePreviewError}</div>
@@ -1867,7 +1962,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                 }}
                 className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700"
               >
-                Save — {ELEVEN_VOICES.find(v => v.id === voiceId)?.name || 'this voice'}
+                Save — {accountVoices.find(v => v.voice_id === voiceId)?.name || 'this voice'}
               </button>
             </div>
           </div>
