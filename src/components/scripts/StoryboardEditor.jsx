@@ -411,8 +411,10 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
   const actorPhotoRef = useRef();
   const [actorPhotoTarget, setActorPhotoTarget] = useState(null); // index for which char photo is being uploaded
 
-  // ── Voice picker ──
+  // ── Voice picker & settings ──
   const [voiceId, setVoiceId] = useState(() => localStorage.getItem('cp_voice_id') || '21m00Tcm4TlvDq8ikWAM');
+  const [voiceSpeed, setVoiceSpeed] = useState(() => parseFloat(localStorage.getItem('cp_voice_speed') || '1.0'));
+  const [voiceStability, setVoiceStability] = useState(() => parseFloat(localStorage.getItem('cp_voice_stability') || '0.5'));
   const [showVoicePicker, setShowVoicePicker] = useState(false);
   const [previewingVoice, setPreviewingVoice] = useState(null);
 
@@ -558,16 +560,9 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
   const handleImageUpload = async (sceneId, file) => {
     const reader = new FileReader();
     reader.onload = async (e) => {
-      const base64 = e.target.result.split(',')[1];
-      const res = await fetch(`${API}/api/drive/upload-dual`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
-        body: JSON.stringify({ fileName: file.name, fileContent: base64, mimeType: file.type, subfolder: 'Scripts/Visuals', category: 'script' }),
-      });
-      const data = await res.json();
-      const url = data.drive?.viewLink || data.viewLink;
-      if (!url) return;
-      const newImg = { id: crypto.randomUUID(), url, name: file.name, source: 'upload' };
+      // Store as base64 data URL — avoids Drive auth issues, displays instantly
+      const dataUrl = e.target.result;
+      const newImg = { id: crypto.randomUUID(), url: dataUrl, name: file.name, source: 'upload' };
       setScript(prev => {
         const updated = { ...prev, scenes: prev.scenes.map(s => s.id === sceneId ? { ...s, images: [...(s.images || []), newImg] } : s) };
         debounceSave(updated);
@@ -729,19 +724,12 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
   const handlePlayTTS = async (sceneId) => {
     if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
     if (playingSceneId === sceneId) { setPlayingSceneId(null); return; }
-
-    // First time: show voice picker
-    if (!localStorage.getItem('cp_voice_id')) {
-      setShowVoicePicker(true);
-      return;
-    }
-
     setPlayingSceneId(sceneId);
     try {
       const res = await fetch(`${API}/api/scripts/${scriptId}/tts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
-        body: JSON.stringify({ scene_id: sceneId, voice_id: voiceId }),
+        body: JSON.stringify({ scene_id: sceneId, voice_id: voiceId, speed: voiceSpeed, stability: voiceStability }),
       });
       const data = await res.json();
       if (!data.audio_base64) { alert(data.error || 'TTS failed'); setPlayingSceneId(null); return; }
@@ -760,11 +748,10 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
     if (previewingVoice) return;
     setPreviewingVoice(vid);
     try {
-      const previewText = 'This is a preview of how your voiceover will sound in the final commercial.';
       const res = await fetch(`${API}/api/scripts/voice-preview`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
-        body: JSON.stringify({ voice_id: vid, text: previewText }),
+        body: JSON.stringify({ voice_id: vid, speed: voiceSpeed, stability: voiceStability }),
       });
       const data = await res.json();
       if (data.audio_base64) {
@@ -773,6 +760,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
         audio.onerror = () => setPreviewingVoice(null);
         audio.play();
       } else {
+        alert(data.error || 'Preview failed');
         setPreviewingVoice(null);
       }
     } catch { setPreviewingVoice(null); }
@@ -1097,11 +1085,12 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
             <span className="text-[11px] text-gray-400 shrink-0">/ target:</span>
             <button
               onClick={() => setShowVoicePicker(true)}
-              className="shrink-0 flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-md text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
-              title="Change VO voice"
+              className="shrink-0 flex items-center gap-1 text-[10px] px-2 py-1 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-600 hover:bg-indigo-100 transition-colors font-semibold"
+              title="Voice settings — speed, stability"
             >
               <Volume2 size={10} />
               {ELEVEN_VOICES.find(v => v.id === voiceId)?.name || 'Voice'}
+              {voiceSpeed !== 1.0 && <span className="text-[9px] opacity-70">{voiceSpeed}x</span>}
             </button>
             <div className="flex items-center gap-0.5 bg-gray-100 rounded-md p-0.5 shrink-0">
               {['30', '60'].map(t => (
@@ -1162,6 +1151,15 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors">
                 <Sparkles size={12} /> AI
               </button>
+              {scenes.some(s => !s.images || s.images.length === 0) && (
+                <button onClick={() => handleGenerateAll()} disabled={generatingAll}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 transition-colors">
+                  {generatingAll
+                    ? <><Loader2 size={12} className="animate-spin" /> {generateAllProgress.current}/{generateAllProgress.total}</>
+                    : <><ImageIcon size={12} /> Generate All ({scenes.filter(s => !s.images || s.images.length === 0).length})</>
+                  }
+                </button>
+              )}
               <button onClick={() => { setShowComments(true); loadComments(); }}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${openCommentCount > 0 ? 'border-amber-300 bg-amber-50 text-amber-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
                 <MessageSquare size={12} /> {openCommentCount > 0 ? openCommentCount : 'Comments'}
@@ -1788,12 +1786,12 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
             <div className="px-5 pt-5 pb-3 border-b border-gray-100 flex items-center justify-between">
               <div>
-                <h3 className="font-black text-gray-900 flex items-center gap-2"><Volume2 size={16} className="text-indigo-500" /> Choose a Voice</h3>
-                <p className="text-xs text-gray-400 mt-0.5">Select the voice for VO preview playback</p>
+                <h3 className="font-black text-gray-900 flex items-center gap-2"><Volume2 size={16} className="text-indigo-500" /> Voice Settings</h3>
+                <p className="text-xs text-gray-400 mt-0.5">Pick a voice, speed, and style for VO preview</p>
               </div>
               <button onClick={() => setShowVoicePicker(false)}><X size={16} className="text-gray-400" /></button>
             </div>
-            <div className="p-4 space-y-2 max-h-80 overflow-y-auto">
+            <div className="p-4 space-y-2 max-h-60 overflow-y-auto">
               {ELEVEN_VOICES.map(v => (
                 <div key={v.id}
                   className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all cursor-pointer ${voiceId === v.id ? 'border-indigo-400 bg-indigo-50' : 'border-gray-100 hover:border-gray-200'}`}
@@ -1816,15 +1814,54 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                 </div>
               ))}
             </div>
-            <div className="px-4 pb-4">
+            {/* Speed + Stability sliders */}
+            <div className="px-4 pb-2 space-y-4 border-t border-gray-100 pt-4">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-semibold text-gray-700">Speed</label>
+                  <span className="text-xs text-indigo-600 font-mono font-bold">
+                    {voiceSpeed <= 0.7 ? '🐢 Slow' : voiceSpeed >= 1.25 ? '⚡ Fast' : '✓ Normal'} · {voiceSpeed.toFixed(2)}x
+                  </span>
+                </div>
+                <input
+                  type="range" min="0.5" max="1.5" step="0.05"
+                  value={voiceSpeed}
+                  onChange={e => setVoiceSpeed(parseFloat(e.target.value))}
+                  className="w-full accent-indigo-600 h-1.5 rounded-full"
+                />
+                <div className="flex justify-between text-[10px] text-gray-400 mt-0.5">
+                  <span>0.5x Slow</span><span>1.0x Normal</span><span>1.5x Fast</span>
+                </div>
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-semibold text-gray-700">Style</label>
+                  <span className="text-xs text-indigo-600 font-mono font-bold">
+                    {voiceStability <= 0.35 ? '🎭 Expressive' : voiceStability >= 0.7 ? '🎙️ Stable' : '⚖️ Balanced'} · {Math.round(voiceStability * 100)}%
+                  </span>
+                </div>
+                <input
+                  type="range" min="0" max="1" step="0.05"
+                  value={voiceStability}
+                  onChange={e => setVoiceStability(parseFloat(e.target.value))}
+                  className="w-full accent-indigo-600 h-1.5 rounded-full"
+                />
+                <div className="flex justify-between text-[10px] text-gray-400 mt-0.5">
+                  <span>Expressive</span><span>Balanced</span><span>Stable</span>
+                </div>
+              </div>
+            </div>
+            <div className="px-4 pb-4 pt-2">
               <button
                 onClick={() => {
                   localStorage.setItem('cp_voice_id', voiceId);
+                  localStorage.setItem('cp_voice_speed', voiceSpeed.toString());
+                  localStorage.setItem('cp_voice_stability', voiceStability.toString());
                   setShowVoicePicker(false);
                 }}
                 className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700"
               >
-                Use {ELEVEN_VOICES.find(v => v.id === voiceId)?.name || 'this voice'}
+                Save — {ELEVEN_VOICES.find(v => v.id === voiceId)?.name || 'this voice'}
               </button>
             </div>
           </div>
