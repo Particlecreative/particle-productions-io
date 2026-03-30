@@ -196,7 +196,7 @@ export default function NewScriptModal({ defaultProductionId, defaultBrandId, on
                 >
                   <option value="">No production (standalone)</option>
                   {productions.map(p => (
-                    <option key={p.id} value={p.id}>{p.name || p.title}</option>
+                    <option key={p.id} value={p.id}>{p.project_name || p.name || p.title}</option>
                   ))}
                 </select>
               </div>

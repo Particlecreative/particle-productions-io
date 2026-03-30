@@ -177,7 +177,7 @@ export default function Scripts() {
                       className="w-full flex items-center gap-1.5 px-3 py-2 text-[11px] font-semibold text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
                     >
                       {isOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
-                      <span className="truncate">{prod?.name || prod?.title || 'Unknown Production'}</span>
+                      <span className="truncate">{prod?.project_name || prod?.name || prod?.title || 'Unknown Production'}</span>
                       <span className="ml-auto text-gray-400 font-normal">{prodScripts.length}</span>
                     </button>
                     {isOpen && (
