@@ -1064,30 +1064,36 @@ router.post('/:id/extract-product', async (req, res) => {
     const { rows } = await db.query('SELECT scenes, title FROM scripts WHERE id = $1', [req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Script not found' });
     const scenes = rows[0].scenes || [];
+
+    // Strip HTML tags and decode entities before sending to Claude
+    const stripHtml = (s) => (s || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim();
+
     const allText = scenes.map((s, i) =>
-      `Scene ${i + 1}:\nLocation: ${s.location || ''}\nWhat We See: ${s.what_we_see || ''}\nWhat We Hear: ${s.what_we_hear || ''}`
+      `Scene ${i + 1}:\nLocation: ${stripHtml(s.location)}\nWhat We See: ${stripHtml(s.what_we_see)}\nWhat We Hear: ${stripHtml(s.what_we_hear)}`
     ).join('\n\n');
 
-    const prompt = `Analyze this commercial/advertisement script and identify the main product, brand, or item being advertised or prominently featured.
+    const prompt = `You are reading a commercial/advertisement script. Your job is to identify the SPECIFIC PRODUCT or BRAND NAME being advertised — the actual name as it appears in the script, not a generic description.
 
 Script title: "${rows[0].title}"
 
 ${allText}
 
-Look for: product names, brand mentions, items being held/used/shown, things in dialogue (VO), items in scene descriptions.
+Rules:
+- Return the FULL product/brand name exactly as written (e.g. "Particle Anti-Gray Serum", "Nike Air Max 90", "iPhone 15 Pro")
+- If you see a brand name + product type together, return both (e.g. "Particle Hand Cream")
+- Do NOT return generic descriptions like "men's hand cream" — return the brand/product name
+- If the script title contains the product name, that's a strong hint
+- If genuinely uncertain, return an empty string
 
-Return ONLY valid JSON in this exact format:
-{"product_name": "Product Name Here", "confidence": "detected"}
+Return ONLY valid JSON:
+{"product_name": "Exact Product Name Here"}
 
-If no specific product can be identified with confidence, return:
-{"product_name": "", "confidence": "uncertain"}
+Return ONLY the JSON, nothing else.`;
 
-Return ONLY the JSON object, nothing else.`;
-
-    const result = await callClaude(prompt, 'You are a script analyst. Identify the main product or brand featured in this commercial script. Be specific — if it says "Nike shoes" say "Nike shoes", not just "shoes".');
-    let parsed = { product_name: '', confidence: 'uncertain' };
+    const result = await callClaude(prompt, 'You extract product and brand names from ad scripts. Return only JSON.');
+    let parsed = { product_name: '' };
     try {
-      const match = result.match(/\{[\s\S]*\}/);
+      const match = result.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim().match(/\{[\s\S]*\}/);
       if (match) parsed = JSON.parse(match[0]);
     } catch (e) { /* silent */ }
     res.json(parsed);
