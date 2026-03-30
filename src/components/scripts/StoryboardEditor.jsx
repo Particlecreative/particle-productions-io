@@ -417,6 +417,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
   const [voiceStability, setVoiceStability] = useState(() => parseFloat(localStorage.getItem('cp_voice_stability') || '0.5'));
   const [showVoicePicker, setShowVoicePicker] = useState(false);
   const [previewingVoice, setPreviewingVoice] = useState(null);
+  const [voicePreviewError, setVoicePreviewError] = useState(null);
 
   // ── Format toolbar ──
   const [formatToolbar, setFormatToolbar] = useState(null);
@@ -747,23 +748,24 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
   const handlePreviewVoice = async (vid) => {
     if (previewingVoice) return;
     setPreviewingVoice(vid);
+    setVoicePreviewError(null);
     try {
       const res = await fetch(`${API}/api/scripts/voice-preview`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
-        body: JSON.stringify({ voice_id: vid, speed: voiceSpeed, stability: voiceStability }),
+        body: JSON.stringify({ voice_id: vid, speed: voiceSpeed, stability: voiceStability, similarity_boost: 0.75 }),
       });
       const data = await res.json();
       if (data.audio_base64) {
         const audio = new Audio(`data:audio/mpeg;base64,${data.audio_base64}`);
         audio.onended = () => setPreviewingVoice(null);
-        audio.onerror = () => setPreviewingVoice(null);
-        audio.play();
+        audio.onerror = (e) => { setPreviewingVoice(null); setVoicePreviewError('Playback error'); };
+        audio.play().catch(e => { setPreviewingVoice(null); setVoicePreviewError('Blocked by browser — tap anywhere first'); });
       } else {
-        alert(data.error || 'Preview failed');
+        setVoicePreviewError(data.error || 'Preview failed');
         setPreviewingVoice(null);
       }
-    } catch { setPreviewingVoice(null); }
+    } catch (e) { setVoicePreviewError(e.message); setPreviewingVoice(null); }
   };
 
   const handleStatusChange = async (status) => {
@@ -1008,8 +1010,9 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
     return () => document.removeEventListener('mouseup', handleMouseUp);
   }, []);
 
-  // ── Commercial timing ──
-  const totalVoSeconds = scenes.reduce((sum, s) => sum + estimateSeconds(stripHtml(s.what_we_hear)), 0);
+  // ── Commercial timing (speed-adjusted) ──
+  const rawVoSeconds = scenes.reduce((sum, s) => sum + estimateSeconds(stripHtml(s.what_we_hear)), 0);
+  const totalVoSeconds = Math.round(rawVoSeconds / voiceSpeed);
   const targetSeconds = parseInt(commercialTarget) || 30;
   const timingRatio = totalVoSeconds / targetSeconds;
   const timingColor = timingRatio <= 0.9 ? 'text-gray-500' : timingRatio <= 1.05 ? 'text-green-600' : timingRatio <= 1.2 ? 'text-amber-600' : 'text-red-600';
@@ -1084,7 +1087,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
             </span>
             <span className="text-[11px] text-gray-400 shrink-0">/ target:</span>
             <button
-              onClick={() => setShowVoicePicker(true)}
+              onClick={() => { setShowVoicePicker(true); setVoicePreviewError(null); }}
               className="shrink-0 flex items-center gap-1 text-[10px] px-2 py-1 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-600 hover:bg-indigo-100 transition-colors font-semibold"
               title="Voice settings — speed, stability"
             >
@@ -1814,6 +1817,9 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                 </div>
               ))}
             </div>
+            {voicePreviewError && (
+              <div className="mx-4 mb-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-600">{voicePreviewError}</div>
+            )}
             {/* Speed + Stability sliders */}
             <div className="px-4 pb-2 space-y-4 border-t border-gray-100 pt-4">
               <div>
