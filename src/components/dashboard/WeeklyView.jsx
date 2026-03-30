@@ -2655,7 +2655,7 @@ function DayGrid({ anchor, events, showUS, showIL, onSlotClick, prodColorMap }) 
 // ============================================================================
 
 export default function WeeklyView({ productions, brandId, selectedYear }) {
-  const [activeTab, setActiveTab] = useState('calendar');
+  const [activeTab, setActiveTab] = useState('reports');
 
   return (
     <div>
