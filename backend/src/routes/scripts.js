@@ -348,9 +348,66 @@ router.use(verifyJWT);
 // POST /api/scripts/temp/ai-generate — AI generate before script is created (modal)
 router.post('/temp/ai-generate', async (req, res) => {
   try {
-    const { prompt } = req.body;
+    const { prompt, product, reference_url } = req.body;
     if (!prompt) return res.status(400).json({ error: 'prompt is required' });
-    const text = await callClaude(prompt, SCENE_SYSTEM_PROMPT);
+
+    // Build enriched prompt with product context + reference material
+    let enrichedPrompt = prompt;
+
+    if (product?.trim()) {
+      enrichedPrompt = `PRODUCT: ${product.trim()}\n\n${enrichedPrompt}`;
+    }
+
+    // Fetch reference URL content (SSRF-guarded, 8s timeout)
+    if (reference_url?.trim()) {
+      try {
+        const parsedUrl = new URL(reference_url.trim());
+        const isInternal = /^(localhost|127\.|0\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|169\.254\.)/.test(parsedUrl.hostname);
+        if (!isInternal) {
+          let refContent = '';
+          // Google Docs/Slides — export as plain text via Drive API
+          if (parsedUrl.hostname === 'docs.google.com') {
+            const docIdMatch = parsedUrl.pathname.match(/\/d\/([a-zA-Z0-9_-]+)/);
+            if (docIdMatch) {
+              try {
+                const { drive } = await getGoogleDrive();
+                const htmlRes = await drive.files.export(
+                  { fileId: docIdMatch[1], mimeType: 'text/plain' },
+                  { responseType: 'text' }
+                );
+                refContent = (htmlRes.data || '').substring(0, 6000);
+              } catch (gErr) {
+                console.warn('Google export for reference URL failed:', gErr.message);
+              }
+            }
+          }
+          // Generic URL — fetch and strip HTML
+          if (!refContent) {
+            const refRes = await fetch(reference_url.trim(), {
+              signal: AbortSignal.timeout(8000),
+              headers: { 'User-Agent': 'Mozilla/5.0' },
+            });
+            if (refRes.ok) {
+              const raw = await refRes.text();
+              refContent = raw
+                .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+                .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+                .replace(/<[^>]+>/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim()
+                .substring(0, 6000);
+            }
+          }
+          if (refContent) {
+            enrichedPrompt = `REFERENCE MATERIAL (use as style/format/tone guidance — do NOT copy verbatim):\n"""\n${refContent}\n"""\n\n${enrichedPrompt}`;
+          }
+        }
+      } catch (refErr) {
+        console.warn('Could not fetch reference URL (non-fatal):', refErr.message);
+      }
+    }
+
+    const text = await callClaude(enrichedPrompt, SCENE_SYSTEM_PROMPT);
     const scenes = parseSceneJson(text);
     res.json({ scenes });
   } catch (err) {

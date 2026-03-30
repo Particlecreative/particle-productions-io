@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, FileText, Sparkles, Upload, Loader2, ArrowLeft, Clock, Film } from 'lucide-react';
+import { X, FileText, Sparkles, Upload, Loader2, ArrowLeft, Link, Package } from 'lucide-react';
 import clsx from 'clsx';
 
 const API = import.meta.env.VITE_API_URL || '';
@@ -27,6 +27,9 @@ export default function NewScriptModal({ defaultProductionId, defaultBrandId, on
 
   // AI state
   const [aiPrompt, setAiPrompt] = useState('');
+  const [aiProduct, setAiProduct] = useState('');
+  const [aiReferenceUrl, setAiReferenceUrl] = useState('');
+  const [aiReferenceFetching, setAiReferenceFetching] = useState(false);
   const [tone, setTone] = useState('Cinematic');
   const [duration, setDuration] = useState('30s');
   const [sceneCount, setSceneCount] = useState('4');
@@ -103,6 +106,8 @@ export default function NewScriptModal({ defaultProductionId, defaultBrandId, on
         body: JSON.stringify({
           mode: 'generate',
           prompt: `${aiPrompt}\n\nTone: ${tone}. Duration: ${duration}. Number of scenes: ${sceneCount}.`,
+          product: aiProduct.trim() || undefined,
+          reference_url: aiReferenceUrl.trim() || undefined,
         }),
       });
       clearInterval(interval);
@@ -397,16 +402,54 @@ export default function NewScriptModal({ defaultProductionId, defaultBrandId, on
               )}
               {(aiStatus === 'idle' || aiStatus === 'error') && (
                 <>
+                  {/* Product + Reference — context inputs */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 mb-1.5">
+                        <Package size={11} /> Product
+                        <span className="font-normal text-gray-300">optional</span>
+                      </label>
+                      <input
+                        value={aiProduct}
+                        onChange={e => setAiProduct(e.target.value)}
+                        placeholder="e.g. Nike Air Max, iPhone 15..."
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-300 placeholder-gray-300"
+                      />
+                    </div>
+                    <div>
+                      <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 mb-1.5">
+                        <Link size={11} /> Reference link
+                        <span className="font-normal text-gray-300">optional</span>
+                      </label>
+                      <div className="relative">
+                        <input
+                          value={aiReferenceUrl}
+                          onChange={e => setAiReferenceUrl(e.target.value)}
+                          placeholder="Script guidelines, past scripts..."
+                          className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-300 placeholder-gray-300 pr-8"
+                        />
+                        {aiReferenceUrl.trim() && (
+                          <button onClick={() => setAiReferenceUrl('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500">
+                            <X size={12} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Brief */}
                   <div>
+                    <label className="text-xs font-semibold text-gray-500 mb-1.5 block">Script brief</label>
                     <textarea
                       value={aiPrompt}
                       onChange={e => setAiPrompt(e.target.value)}
                       placeholder="Describe your spot... e.g. '30-second Nike ad for Instagram. Athlete running at dawn. Voiceover on perseverance. Powerful and emotional.'"
-                      rows={5}
+                      rows={4}
                       className="w-full border border-gray-200 rounded-2xl p-4 text-sm text-gray-800 outline-none resize-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 placeholder-gray-300 leading-relaxed"
                     />
                     {aiError && <p className="text-xs text-red-500 mt-1">{aiError}</p>}
                   </div>
+
                   <ChipRow label="Tone" options={TONES} value={tone} onChange={setTone} />
                   <ChipRow label="Duration" options={DURATIONS} value={duration} onChange={setDuration} />
                   <ChipRow label="Scenes" options={SCENE_COUNTS} value={sceneCount} onChange={setSceneCount} />
