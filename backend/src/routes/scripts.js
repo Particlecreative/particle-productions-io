@@ -187,14 +187,65 @@ function parseSceneJson(text) {
   return ensureScenes(parsed.scenes);
 }
 
-async function sendSlackNotification(message) {
+const APP_URL = process.env.APP_URL || 'https://particlepdio.particleface.com';
+
+function scriptUrl(script) {
+  if (script.production_id)
+    return `${APP_URL}/production/${script.production_id}?tab=Scripts&script_id=${script.id}`;
+  return `${APP_URL}/scripts?script_id=${script.id}`;
+}
+
+async function sendSlackNotification(payload) {
   const webhookUrl = process.env.SLACK_SCRIPTS_WEBHOOK_URL;
   if (!webhookUrl) return;
+  // Accept plain string (legacy) or full block kit payload
+  const body = typeof payload === 'string' ? { text: payload } : payload;
   await fetch(webhookUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text: message }),
+    body: JSON.stringify(body),
   }).catch(err => console.error('Slack notification failed:', err.message));
+}
+
+function slackScriptPayload({ emoji, headline, script, fields = [], footer = '' }) {
+  const url = scriptUrl(script);
+  const prod = script.project_name || script.production_id || null;
+  const sceneCount = Array.isArray(script.scenes) ? script.scenes.length : (script.scene_count ?? 0);
+  const statusEmoji = { draft: '📄', review: '👀', approved: '✅', archived: '🗄️' }[script.status] || '📄';
+
+  const contextParts = [
+    prod ? `*Production:* ${prod}` : null,
+    `*Status:* ${statusEmoji} ${script.status}`,
+    `*Scenes:* ${sceneCount}`,
+    ...fields,
+  ].filter(Boolean);
+
+  return {
+    text: `${emoji} ${headline}`,
+    blocks: [
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `${emoji} *${headline}*`,
+        },
+        accessory: {
+          type: 'button',
+          text: { type: 'plain_text', text: 'Open Script →', emoji: true },
+          url,
+          action_id: 'open_script',
+        },
+      },
+      {
+        type: 'context',
+        elements: [
+          { type: 'mrkdwn', text: `*Script:* <${url}|${script.title}>` },
+          ...contextParts.map(t => ({ type: 'mrkdwn', text: t })),
+          ...(footer ? [{ type: 'mrkdwn', text: footer }] : []),
+        ],
+      },
+    ],
+  };
 }
 
 // ── PUBLIC: share endpoint (no auth) ─────────────────────────────────────────
@@ -345,7 +396,11 @@ router.post('/', async (req, res) => {
       const { rows: p } = await db.query('SELECT project_name FROM productions WHERE id = $1', [production_id]);
       prodName = p[0]?.project_name || production_id;
     }
-    sendSlackNotification(`📝 New script "${rows[0].title}" added${prodName ? ` to ${prodName}` : ''}`);
+    sendSlackNotification(slackScriptPayload({
+      emoji: '📝', headline: 'New script created',
+      script: { ...rows[0], project_name: prodName },
+      fields: [`*Created by:* ${authorName}`],
+    }));
     res.json(rows[0]);
   } catch (err) {
     console.error('POST /scripts error:', err);
@@ -900,7 +955,14 @@ router.post('/:id/approve', async (req, res) => {
       ['approved', driveUrl, req.params.id]
     );
 
-    sendSlackNotification(`✅ Script "${script.title}" approved${script.project_name ? ` — ${script.project_name}` : ''}${driveUrl ? `\nDrive: ${driveUrl}` : ''}`);
+    sendSlackNotification(slackScriptPayload({
+      emoji: '✅', headline: 'Script approved',
+      script: { ...rows[0], project_name: script.project_name, scenes: script.scenes },
+      fields: [
+        `*Approved by:* ${req.user?.name || req.user?.email || 'Unknown'}`,
+        driveUrl ? `*Drive:* <${driveUrl}|View PDF>` : null,
+      ].filter(Boolean),
+    }));
     res.json(rows[0]);
   } catch (err) {
     console.error('POST /scripts/:id/approve error:', err);
@@ -918,14 +980,28 @@ router.post('/:id/comments', async (req, res) => {
       'INSERT INTO script_comments (id, script_id, scene_id, cell, selected_text, text, author_name) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
       [crypto.randomUUID(), req.params.id, scene_id || null, cell || null, selected_text || null, text, authorName]
     );
-    // Fetch script title + production for Slack
+    // Fetch script + production for Slack
     const { rows: s } = await db.query(
-      `SELECT s.title, p.project_name, sc.location FROM scripts s LEFT JOIN productions p ON s.production_id = p.id, jsonb_to_recordset(s.scenes) AS sc(id TEXT, location TEXT) WHERE s.id = $1 AND sc.id = $2`,
-      [req.params.id, scene_id]
+      `SELECT s.id, s.title, s.status, s.production_id, s.scenes, p.project_name FROM scripts s LEFT JOIN productions p ON s.production_id = p.id WHERE s.id = $1`,
+      [req.params.id]
     ).catch(() => ({ rows: [] }));
-    const scriptTitle = s[0]?.title || 'Script';
-    const location = s[0]?.location || '';
-    sendSlackNotification(`💬 Comment on "${scriptTitle}"${location ? ` (${location})` : ''}: "${text.substring(0, 100)}${text.length > 100 ? '...' : ''}"`);
+    if (s[0]) {
+      // Try to find the scene location from the scenes JSONB
+      const sceneRow = scene_id ? (s[0].scenes || []).find(sc => sc.id === scene_id) : null;
+      const location = sceneRow?.location || '';
+      const cellLabel = { what_we_see: 'What We See', what_we_hear: 'What We Hear', location: 'Location', scene: 'Scene' }[cell] || cell || '';
+      const snippetNote = selected_text ? `\n> _"${selected_text.substring(0, 80)}${selected_text.length > 80 ? '...' : ''}"_` : '';
+      sendSlackNotification(slackScriptPayload({
+        emoji: '💬', headline: `New comment by ${authorName}`,
+        script: s[0],
+        fields: [
+          location ? `*Scene:* ${location}` : null,
+          cellLabel ? `*In:* ${cellLabel}` : null,
+          `*Comment:* "${text.substring(0, 120)}${text.length > 120 ? '...' : ''}"`,
+        ].filter(Boolean),
+        footer: snippetNote,
+      }));
+    }
     res.json(rows[0]);
   } catch (err) {
     console.error('POST /scripts/:id/comments error:', err);
@@ -972,10 +1048,30 @@ router.put('/:id', async (req, res) => {
     );
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
 
-    // Slack on status change to review
-    if (status === 'review') {
+    // Slack on status changes
+    if (status && status !== rows[0]._prev_status) {
       const { rows: p } = await db.query('SELECT project_name FROM productions WHERE id = $1', [rows[0].production_id]).catch(() => ({ rows: [] }));
-      sendSlackNotification(`👀 "${rows[0].title}" is ready for review${p[0]?.project_name ? ` — ${p[0].project_name}` : ''}`);
+      const scriptWithProd = { ...rows[0], project_name: p[0]?.project_name || null };
+      const byUser = req.user?.name || req.user?.email || null;
+      if (status === 'review') {
+        sendSlackNotification(slackScriptPayload({
+          emoji: '👀', headline: 'Script sent for review',
+          script: scriptWithProd,
+          fields: byUser ? [`*Sent by:* ${byUser}`] : [],
+        }));
+      } else if (status === 'draft') {
+        sendSlackNotification(slackScriptPayload({
+          emoji: '📄', headline: 'Script moved back to draft',
+          script: scriptWithProd,
+          fields: byUser ? [`*By:* ${byUser}`] : [],
+        }));
+      } else if (status === 'archived') {
+        sendSlackNotification(slackScriptPayload({
+          emoji: '🗄️', headline: 'Script archived',
+          script: scriptWithProd,
+          fields: byUser ? [`*By:* ${byUser}`] : [],
+        }));
+      }
     }
     res.json(rows[0]);
   } catch (err) {
