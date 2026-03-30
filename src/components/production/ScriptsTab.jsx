@@ -33,12 +33,20 @@ export default function ScriptsTab({ productionId, production }) {
     fetchScripts();
   }, [productionId]);
 
-  // Sync selected script from URL param
+  // Sync selected script from URL param on mount
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const sid = params.get('script_id');
     if (sid) setSelectedId(sid);
   }, []);
+
+  // Keep URL in sync when selection changes
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (selectedId) url.searchParams.set('script_id', selectedId);
+    else url.searchParams.delete('script_id');
+    window.history.replaceState(null, '', url);
+  }, [selectedId]);
 
   async function fetchScripts() {
     setLoading(true);
@@ -69,7 +77,11 @@ export default function ScriptsTab({ productionId, production }) {
   }
 
   function handleScriptUpdated(updated) {
-    setScripts(prev => prev.map(s => s.id === updated.id ? { ...s, ...updated } : s));
+    setScripts(prev => {
+      const exists = prev.some(s => s.id === updated.id);
+      if (!exists) { setSelectedId(updated.id); return [updated, ...prev]; }
+      return prev.map(s => s.id === updated.id ? { ...s, ...updated } : s);
+    });
   }
 
   const filtered = scripts.filter(s =>

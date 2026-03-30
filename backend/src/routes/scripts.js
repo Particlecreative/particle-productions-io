@@ -303,7 +303,9 @@ router.post('/temp/ai-generate', async (req, res) => {
 // GET /api/scripts
 router.get('/', async (req, res) => {
   try {
-    const { brand_id, production_id, status } = req.query;
+    const { production_id, status } = req.query;
+    // Always enforce brand from JWT — never trust client-supplied brand_id
+    const brand_id = req.user?.brand_id || req.query.brand_id;
     const vals = [], where = [];
     if (brand_id) where.push(`s.brand_id = $${vals.push(brand_id)}`);
     if (production_id) where.push(`s.production_id = $${vals.push(production_id)}`);
@@ -329,12 +331,14 @@ router.get('/', async (req, res) => {
 // GET /api/scripts/:id
 router.get('/:id', async (req, res) => {
   try {
+    const brand_id = req.user?.brand_id || null;
     const { rows } = await db.query(
       `SELECT s.*, p.project_name, p.stage,
+              jsonb_array_length(COALESCE(s.scenes, '[]'::jsonb)) AS scene_count,
               (SELECT COUNT(*)::int FROM script_comments sc WHERE sc.script_id = s.id AND sc.status = 'open') AS open_comments
        FROM scripts s LEFT JOIN productions p ON s.production_id = p.id
-       WHERE s.id = $1`,
-      [req.params.id]
+       WHERE s.id = $1 AND ($2::text IS NULL OR s.brand_id = $2)`,
+      [req.params.id, brand_id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
     res.json(rows[0]);
@@ -375,7 +379,9 @@ router.get('/:id/comments', async (req, res) => {
 // POST /api/scripts (create)
 router.post('/', async (req, res) => {
   try {
-    const { brand_id, production_id, title, scenes } = req.body;
+    const { production_id, title, scenes } = req.body;
+    // Always use brand_id from JWT — ignore client-supplied value for security
+    const brand_id = req.user?.brand_id || req.body.brand_id;
     const authorName = req.user?.name || req.user?.email || 'Unknown';
     const { rows } = await db.query(
       `INSERT INTO scripts (id, brand_id, production_id, title, scenes, created_by, created_by_name)
@@ -412,6 +418,10 @@ router.post('/', async (req, res) => {
 router.post('/import', async (req, res) => {
   try {
     const { url, fileBase64, fileName, mimeType, production_id } = req.body;
+    // Guard: 50MB max (base64 is ~4/3 overhead, so check string length)
+    if (fileBase64 && fileBase64.length > 50 * 1024 * 1024 * 1.4) {
+      return res.status(413).json({ error: 'File too large. Maximum 50MB.' });
+    }
     let scenes = [];
 
     if (url) {
@@ -722,8 +732,12 @@ Write a single, detailed image generation prompt (2-4 sentences) for the CURRENT
     if (reference_image?.base64) {
       refImages.push({ base64: reference_image.base64, mimeType: reference_image.mimeType || 'image/jpeg' });
     } else if (reference_image_url) {
+      // SSRF guard — block internal/private IPs
       try {
-        const refRes = await fetch(reference_image_url);
+        const parsedRefUrl = new URL(reference_image_url);
+        const isInternal = /^(localhost|127\.|0\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|169\.254\.)/.test(parsedRefUrl.hostname);
+        if (isInternal) return res.status(400).json({ error: 'Internal URLs not allowed as reference images' });
+        const refRes = await fetch(reference_image_url, { signal: AbortSignal.timeout(8000) });
         if (refRes.ok) {
           const refBuf = Buffer.from(await refRes.arrayBuffer());
           const refMime = refRes.headers.get('content-type') || 'image/jpeg';
@@ -1030,26 +1044,39 @@ router.patch('/:id/comments/:cId', async (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const { scenes, title, status, production_id } = req.body;
+    const brand_id = req.user?.brand_id || null;
+
+    // Fetch current status before update (for change detection)
+    const { rows: prev } = await db.query(
+      'SELECT status FROM scripts WHERE id = $1 AND ($2::text IS NULL OR brand_id = $2)',
+      [req.params.id, brand_id]
+    );
+    if (!prev[0]) return res.status(404).json({ error: 'Not found' });
+    const prevStatus = prev[0].status;
+
     const { rows } = await db.query(
       `UPDATE scripts SET
-        scenes       = COALESCE($1, scenes),
-        title        = COALESCE($2, title),
-        status       = COALESCE($3, status),
+        scenes        = COALESCE($1, scenes),
+        title         = COALESCE($2, title),
+        status        = COALESCE($3, status),
         production_id = COALESCE($4, production_id),
-        updated_at   = NOW()
-       WHERE id = $5 RETURNING *`,
+        updated_at    = NOW()
+       WHERE id = $5 AND ($6::text IS NULL OR brand_id = $6)
+       RETURNING *,
+         jsonb_array_length(COALESCE(scenes, '[]'::jsonb)) AS scene_count`,
       [
         scenes !== undefined ? JSON.stringify(scenes) : null,
         title || null,
         status || null,
         production_id !== undefined ? (production_id || null) : null,
         req.params.id,
+        brand_id,
       ]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
 
     // Slack on status changes
-    if (status && status !== rows[0]._prev_status) {
+    if (status && status !== prevStatus) {
       const { rows: p } = await db.query('SELECT project_name FROM productions WHERE id = $1', [rows[0].production_id]).catch(() => ({ rows: [] }));
       const scriptWithProd = { ...rows[0], project_name: p[0]?.project_name || null };
       const byUser = req.user?.name || req.user?.email || null;
@@ -1083,7 +1110,12 @@ router.put('/:id', async (req, res) => {
 // DELETE /api/scripts/:id
 router.delete('/:id', async (req, res) => {
   try {
-    await db.query('DELETE FROM scripts WHERE id = $1', [req.params.id]);
+    const brand_id = req.user?.brand_id || null;
+    const { rowCount } = await db.query(
+      'DELETE FROM scripts WHERE id = $1 AND ($2::text IS NULL OR brand_id = $2)',
+      [req.params.id, brand_id]
+    );
+    if (rowCount === 0) return res.status(404).json({ error: 'Not found or access denied' });
     res.json({ success: true });
   } catch (err) {
     console.error('DELETE /scripts/:id error:', err);

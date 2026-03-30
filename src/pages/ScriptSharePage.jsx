@@ -32,7 +32,10 @@ export default function ScriptSharePage() {
   const [presentIndex, setPresentIndex] = useState(0);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [expandedAudio, setExpandedAudio] = useState({});
   const saveTimer = useRef(null);
+  // Touch swipe for present mode
+  const touchStartX = useRef(null);
 
   const readOnly = script?.share_mode !== 'edit';
 
@@ -70,7 +73,7 @@ export default function ScriptSharePage() {
         setTimeout(() => setSaved(false), 2000);
       } catch (e) { console.error(e); }
       setSaving(false);
-    }, 1500);
+    }, 800);
   }, [token, readOnly]);
 
   function handleCellChange(sceneId, field, value) {
@@ -119,7 +122,17 @@ export default function ScriptSharePage() {
     <>
       {/* Present Mode Overlay */}
       {presentMode && (
-        <div className="fixed inset-0 z-50 bg-black flex flex-col">
+        <div
+          className="fixed inset-0 z-50 bg-black flex flex-col"
+          onTouchStart={e => { touchStartX.current = e.touches[0].clientX; }}
+          onTouchEnd={e => {
+            if (touchStartX.current === null) return;
+            const dx = e.changedTouches[0].clientX - touchStartX.current;
+            touchStartX.current = null;
+            if (dx > 60) setPresentIndex(i => Math.max(i - 1, 0));
+            if (dx < -60) setPresentIndex(i => Math.min(i + 1, scenes.length - 1));
+          }}
+        >
           <div className="flex items-center justify-between px-8 py-4 text-white/50 text-sm">
             <span className="font-bold text-white text-base">{script.title}</span>
             <span>Scene {presentIndex + 1} / {scenes.length}</span>
@@ -158,7 +171,7 @@ export default function ScriptSharePage() {
             <button
               onClick={() => setPresentIndex(i => Math.max(i - 1, 0))}
               disabled={presentIndex === 0}
-              className="text-white/60 hover:text-white disabled:opacity-20 transition-colors"
+              className="w-12 h-12 flex items-center justify-center rounded-full text-white/60 hover:text-white hover:bg-white/10 disabled:opacity-20 transition-colors"
             >
               <ChevronLeft size={32} />
             </button>
@@ -167,14 +180,14 @@ export default function ScriptSharePage() {
                 <button
                   key={i}
                   onClick={() => setPresentIndex(i)}
-                  className={clsx('w-2 h-2 rounded-full transition-all', i === presentIndex ? 'bg-white scale-125' : 'bg-white/30')}
+                  className={clsx('w-2.5 h-2.5 rounded-full transition-all', i === presentIndex ? 'bg-white scale-125' : 'bg-white/30')}
                 />
               ))}
             </div>
             <button
               onClick={() => setPresentIndex(i => Math.min(i + 1, scenes.length - 1))}
               disabled={presentIndex === scenes.length - 1}
-              className="text-white/60 hover:text-white disabled:opacity-20 transition-colors"
+              className="w-12 h-12 flex items-center justify-center rounded-full text-white/60 hover:text-white hover:bg-white/10 disabled:opacity-20 transition-colors"
             >
               <ChevronRight size={32} />
             </button>
@@ -255,7 +268,8 @@ export default function ScriptSharePage() {
           {/* ── TABLE VIEW ──────────────────────────────────── */}
           {view === 'table' && (
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-              <table className="w-full scripts-table">
+              <div className="overflow-x-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
+              <table className="w-full scripts-table min-w-[640px]">
                 <thead className="bg-gray-50 text-[11px] uppercase tracking-widest text-gray-400 font-bold">
                   <tr>
                     <th className="w-12 px-3 py-3 text-center">#</th>
@@ -329,6 +343,7 @@ export default function ScriptSharePage() {
                   )}
                 </tbody>
               </table>
+              </div>
             </div>
           )}
 
@@ -405,7 +420,17 @@ export default function ScriptSharePage() {
                       <p className="text-xs text-gray-700 line-clamp-2 leading-relaxed">{scene.what_we_see}</p>
                     )}
                     {scene.what_we_hear && (
-                      <p className="text-xs text-indigo-600 italic line-clamp-1 mt-1">{scene.what_we_hear}</p>
+                      <button
+                        className="text-left w-full mt-1"
+                        onClick={() => setExpandedAudio(prev => ({ ...prev, [scene.id]: !prev[scene.id] }))}
+                      >
+                        <p className={clsx('text-xs text-indigo-600 italic', expandedAudio[scene.id] ? '' : 'line-clamp-2')}>
+                          {scene.what_we_hear}
+                        </p>
+                        {scene.what_we_hear.length > 80 && (
+                          <span className="text-[10px] text-indigo-400">{expandedAudio[scene.id] ? 'less ▲' : 'more ▼'}</span>
+                        )}
+                      </button>
                     )}
                     {scene.images?.length > 1 && (
                       <div className="flex gap-1 mt-2 overflow-x-auto">

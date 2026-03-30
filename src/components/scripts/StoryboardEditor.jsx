@@ -463,6 +463,8 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
     const data = await res.json();
     if (data.url) {
       await loadScript();
+      // Notify parent so list badges (scene count etc.) stay in sync
+      onUpdated?.({ id: scriptId });
     } else {
       alert(data.error || 'Image generation failed');
     }
@@ -895,10 +897,19 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                 ⋯
               </button>
               {showMoreMenu && (
-                <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg py-1 z-30 min-w-[160px]">
+                <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg py-1 z-30 min-w-[180px]">
                   <button onClick={handleDuplicateScript}
                     className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50">
                     <Copy size={12} /> Duplicate Script
+                  </button>
+                  <button onClick={() => {
+                    setShowMoreMenu(false);
+                    localStorage.removeItem(`script_wizard_${scriptId}`);
+                    localStorage.removeItem(`script_chars_${scriptId}`);
+                    localStorage.removeItem(`script_style_${scriptId}`);
+                    alert('AI image setup reset. Next time you generate an image, the wizard will run again.');
+                  }} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50">
+                    <Sparkles size={12} /> Reset AI Image Setup
                   </button>
                   <div className="border-t border-gray-100 my-1" />
                   <button onClick={() => { setShowMoreMenu(false); handleDeleteScript(); }}
@@ -917,7 +928,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
 
         {/* Table View */}
         {activeView === 'table' && (
-          <div className="overflow-x-auto scripts-printable">
+          <div className="overflow-x-auto scripts-printable" style={{ WebkitOverflowScrolling: 'touch' }}>
             <table className="w-full border-collapse min-w-[700px] scripts-table">
               <thead className="sticky top-0 z-10 bg-gray-50">
                 <tr className="text-xs font-semibold text-gray-400 uppercase tracking-wider border-b border-gray-200">

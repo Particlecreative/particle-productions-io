@@ -233,7 +233,7 @@ export default function NewScriptModal({ defaultProductionId, defaultBrandId, on
 
           {/* ── STEP 2: Method picker ─────────────────────── */}
           {step === 2 && (
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {[
                 {
                   key: 'empty',
