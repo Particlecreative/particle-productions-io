@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { ExternalLink, FileText, Link2, Paperclip, X, Download } from 'lucide-react';
+import { ExternalLink, FileText, Link2, X } from 'lucide-react';
 import { getDriveThumbnail } from '../components/shared/FileUploadButton';
 import StageBadge from '../components/ui/StageBadge';
 
@@ -68,8 +68,7 @@ export default function WeeklySharePage() {
 
   const generalUpdates = report.general_updates || [];
   const creativeLink = report.creative_link;
-  const weeklyFiles = report.weekly_files || [];
-  const hasOverview = generalUpdates.length > 0 || creativeLink?.url || weeklyFiles.length > 0;
+  const hasOverview = generalUpdates.length > 0 || creativeLink?.url;
   const [lightbox, setLightbox] = useState(null);
 
   return (
@@ -109,13 +108,25 @@ export default function WeeklySharePage() {
                       <div className="w-2 h-2 rounded-full mt-[7px] flex-shrink-0 bg-indigo-400 opacity-50" />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-gray-700 leading-relaxed">{dot.text}</p>
-                        {dot.link && (
-                          <a href={dot.link} target="_blank" rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-xs mt-1 text-indigo-500 hover:underline">
-                            <ExternalLink size={11} />
-                            {(() => { try { return new URL(dot.link).hostname; } catch { return 'Link'; } })()}
-                          </a>
-                        )}
+                        <div className="flex items-center gap-3 mt-1 flex-wrap">
+                          {dot.link && (
+                            <a href={dot.link} target="_blank" rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-xs text-indigo-500 hover:underline">
+                              <ExternalLink size={11} />
+                              {(() => { try { return new URL(dot.link).hostname; } catch { return 'Link'; } })()}
+                            </a>
+                          )}
+                          {dot.file && (
+                            dot.file.mime_type?.startsWith('image/')
+                              ? <img src={getDriveThumbnail(dot.file.view_url, 120)} alt={dot.file.name}
+                                  className="h-12 rounded-md border border-gray-200 cursor-pointer mt-1"
+                                  onClick={() => setLightbox(dot.file)} />
+                              : <a href={dot.file.view_url} target="_blank" rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-xs text-blue-500 hover:underline">
+                                  <FileText size={11} /> {dot.file.name}
+                                </a>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -145,36 +156,6 @@ export default function WeeklySharePage() {
                 </a>
               </div>
             )}
-          </div>
-        )}
-
-        {/* Weekly Files */}
-        {weeklyFiles.length > 0 && (
-          <div className="bg-white rounded-2xl border border-gray-200 p-7 shadow-sm">
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
-                <Paperclip size={15} className="text-gray-500" />
-              </div>
-              <h2 className="text-base font-black text-gray-800">Files</h2>
-              <span className="text-xs font-semibold text-gray-400 bg-gray-100 rounded-full px-2.5 py-0.5">{weeklyFiles.length}</span>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-              {weeklyFiles.map(f => {
-                const isImg = f.mime_type?.startsWith('image/');
-                const thumb = isImg ? getDriveThumbnail(f.view_url, 200) : null;
-                return (
-                  <div key={f.id} className="rounded-xl border border-gray-100 overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
-                    onClick={() => isImg ? setLightbox(f) : window.open(f.view_url, '_blank')}>
-                    <div className="h-24 flex items-center justify-center bg-gray-50">
-                      {thumb ? <img src={thumb} alt={f.name} className="w-full h-full object-cover" /> : <FileText size={28} className="text-gray-300" />}
-                    </div>
-                    <div className="px-2 py-1.5">
-                      <p className="text-[11px] font-medium text-gray-600 truncate">{f.name}</p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
           </div>
         )}
 

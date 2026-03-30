@@ -389,8 +389,8 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── Summary Strip (collapsible) ──────────────────────────── */}
-      {(() => {
+      {/* ── Summary Strip (collapsible) — hidden on weekly tab ──── */}
+      {activeTab !== 'weekly' && (() => {
         const [showSummary, setShowSummary] = [summaryOpen, setSummaryOpen];
         return (
           <div className="mb-4">
@@ -463,7 +463,7 @@ export default function Dashboard() {
         );
       })()}
 
-      {customOrder && !search && !stageFilter && !productTypeFilter && (
+      {activeTab !== 'weekly' && customOrder && !search && !stageFilter && !productTypeFilter && (
         <button
           onClick={handleSaveViewClick}
           className="flex items-center gap-2 px-3 py-2 mb-3 rounded-full text-xs font-semibold border border-green-300 text-green-700 bg-green-50 hover:bg-green-100 transition-all"
@@ -473,8 +473,8 @@ export default function Dashboard() {
         </button>
       )}
 
-      {/* Toolbar */}
-      <div className="flex items-center gap-3 mb-4 flex-wrap">
+      {/* Toolbar — hidden on weekly tab */}
+      {activeTab !== 'weekly' && <div className="flex items-center gap-3 mb-4 flex-wrap">
         {/* Year Switcher */}
         <div className="flex items-center gap-0 border rounded-xl overflow-hidden bg-white" style={{ borderColor: 'var(--brand-border)' }}>
           {YEARS.map(y => (
@@ -629,7 +629,7 @@ export default function Dashboard() {
             {customOrder ? '⋮⋮ Drag rows to reorder' : 'Drag rows to reorder'}
           </span>
         )}
-      </div>
+      </div>}
 
       {/* Tab Bar + New Production */}
       <div className="flex items-center gap-1 border-b border-gray-100 mb-4">
@@ -647,26 +647,28 @@ export default function Dashboard() {
             {t.label}
           </button>
         ))}
-        <div className="ml-auto flex items-center gap-2">
-          <button
-            onClick={() => setCompactMode(v => { const n = !v; localStorage.setItem('cp_dash_compact', JSON.stringify(n)); return n; })}
-            className={clsx(
-              'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all',
-              compactMode ? 'bg-violet-50 border-violet-200 text-violet-700' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'
-            )}
-          >
-            {compactMode ? '⊟' : '⊞'} {compactMode ? 'Compact' : 'Fit'}
-          </button>
-          {isEditor && (
+        {activeTab !== 'weekly' && (
+          <div className="ml-auto flex items-center gap-2">
             <button
-              className="btn-cta flex items-center gap-1.5 text-xs px-4 py-1.5"
-              onClick={() => setShowNewModal(true)}
+              onClick={() => setCompactMode(v => { const n = !v; localStorage.setItem('cp_dash_compact', JSON.stringify(n)); return n; })}
+              className={clsx(
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all',
+                compactMode ? 'bg-violet-50 border-violet-200 text-violet-700' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'
+              )}
             >
-              <Plus size={13} strokeWidth={2.5} />
-              New Production
+              {compactMode ? '⊟' : '⊞'} {compactMode ? 'Compact' : 'Fit'}
             </button>
-          )}
-        </div>
+            {isEditor && (
+              <button
+                className="btn-cta flex items-center gap-1.5 text-xs px-4 py-1.5"
+                onClick={() => setShowNewModal(true)}
+              >
+                <Plus size={13} strokeWidth={2.5} />
+                New Production
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Table */}

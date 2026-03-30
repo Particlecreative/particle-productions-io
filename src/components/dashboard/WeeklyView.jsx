@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   ChevronLeft, ChevronRight, Plus, Trash2, Check, X, Link2,
   ExternalLink, Presentation, Clock, Edit3, ChevronDown,
-  Calendar as CalendarIcon, FileText, Copy, Share2, Paperclip, Download, Image,
+  Calendar as CalendarIcon, FileText, Copy, Share2,
 } from 'lucide-react';
 import {
   getWeeklyReports, getWeeklyReport, saveWeeklyReport, deleteWeeklyReport,
@@ -520,13 +520,14 @@ function ProductionEntry({ entry, prod, comments, links, onUpdate, onRemove, isE
 // GeneralUpdatesSection
 // ============================================================================
 
-function GeneralUpdatesSection({ updates = [], onUpdate, isEditor, prevWeekUpdates }) {
+function GeneralUpdatesSection({ updates = [], onUpdate, isEditor, prevWeekUpdates, subfolder }) {
   const [editingLink, setEditingLink] = useState(null);
   const [linkDraft, setLinkDraft] = useState('');
+  const [lightbox, setLightbox] = useState(null);
   const newRef = useRef(null);
 
   function addDot() {
-    const next = [...updates, { id: crypto.randomUUID(), text: '', link: '' }];
+    const next = [...updates, { id: crypto.randomUUID(), text: '', link: '', file: null }];
     onUpdate(next);
     setTimeout(() => newRef.current?.focus(), 50);
   }
@@ -556,7 +557,19 @@ function GeneralUpdatesSection({ updates = [], onUpdate, isEditor, prevWeekUpdat
     setLinkDraft('');
   }
 
+  function handleFileUploaded(dotId, data) {
+    updateDot(dotId, {
+      file: {
+        name: data.originalFileName || 'File',
+        view_url: data.drive?.viewLink || '',
+        download_url: data.drive?.downloadLink || '',
+        mime_type: data.originalMimeType || '',
+      }
+    });
+  }
+
   return (
+    <>
     <div className="brand-card overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
@@ -577,73 +590,99 @@ function GeneralUpdatesSection({ updates = [], onUpdate, isEditor, prevWeekUpdat
           <p className="text-xs text-gray-400 italic py-2">No general updates for this week.</p>
         )}
 
-        <div className="space-y-1.5">
+        <div className="space-y-1">
           {updates.map((dot, i) => (
-            <div key={dot.id} className="group flex items-start gap-2 py-1 rounded-lg hover:bg-gray-50 px-1 -mx-1 transition-colors">
-              {/* Dot marker */}
-              <div className="w-2 h-2 rounded-full mt-2 flex-shrink-0" style={{ background: 'var(--brand-accent)', opacity: 0.7 }} />
+            <div key={dot.id} className="group rounded-lg hover:bg-gray-50 px-1 -mx-1 py-1.5 transition-colors">
+              <div className="flex items-start gap-2">
+                {/* Dot marker */}
+                <div className="w-2 h-2 rounded-full mt-2 flex-shrink-0" style={{ background: 'var(--brand-accent)', opacity: 0.7 }} />
 
-              {/* Text */}
-              <div className="flex-1 min-w-0">
-                {isEditor ? (
-                  <input
-                    ref={i === updates.length - 1 ? newRef : undefined}
-                    className="w-full text-sm text-gray-700 bg-transparent border-none outline-none placeholder:text-gray-300"
-                    placeholder="Type an update..."
-                    value={dot.text}
-                    onChange={e => updateDot(dot.id, { text: e.target.value })}
-                  />
-                ) : (
-                  <span className="text-sm text-gray-700">{dot.text}</span>
+                {/* Text */}
+                <div className="flex-1 min-w-0">
+                  {isEditor ? (
+                    <input
+                      ref={i === updates.length - 1 ? newRef : undefined}
+                      className="w-full text-sm text-gray-700 bg-transparent border-none outline-none placeholder:text-gray-300"
+                      placeholder="Type an update..."
+                      value={dot.text}
+                      onChange={e => updateDot(dot.id, { text: e.target.value })}
+                    />
+                  ) : (
+                    <span className="text-sm text-gray-700">{dot.text}</span>
+                  )}
+
+                  {/* Link editor popover */}
+                  {editingLink === dot.id && (
+                    <div className="flex items-center gap-1.5 mt-1.5">
+                      <input
+                        autoFocus
+                        className="flex-1 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-blue-300"
+                        placeholder="https://..."
+                        value={linkDraft}
+                        onChange={e => setLinkDraft(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') saveLink(dot.id); if (e.key === 'Escape') setEditingLink(null); }}
+                      />
+                      <button onClick={() => saveLink(dot.id)} className="p-1 rounded hover:bg-green-50 text-green-500"><Check size={13} /></button>
+                      <button onClick={() => setEditingLink(null)} className="p-1 rounded hover:bg-gray-100 text-gray-400"><X size={13} /></button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Link icon */}
+                {dot.link && editingLink !== dot.id && (
+                  <a href={dot.link} target="_blank" rel="noopener noreferrer"
+                    className="p-1 rounded hover:bg-blue-50 text-blue-400 hover:text-blue-600 transition-colors flex-shrink-0" title={dot.link}>
+                    <ExternalLink size={13} />
+                  </a>
                 )}
 
-                {/* Link editor popover */}
-                {editingLink === dot.id && (
-                  <div className="flex items-center gap-1.5 mt-1.5">
-                    <input
-                      autoFocus
-                      className="flex-1 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-blue-300"
-                      placeholder="https://..."
-                      value={linkDraft}
-                      onChange={e => setLinkDraft(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') saveLink(dot.id); if (e.key === 'Escape') setEditingLink(null); }}
+                {/* Editor controls */}
+                {isEditor && editingLink !== dot.id && (
+                  <div className="flex items-center gap-0.5 sm:opacity-0 opacity-60 sm:group-hover:opacity-100 transition-opacity flex-shrink-0">
+                    <button onClick={() => openLinkEditor(dot)}
+                      className={`p-1 rounded hover:bg-blue-50 transition-colors ${dot.link ? 'text-blue-400' : 'text-gray-300 hover:text-blue-400'}`}
+                      title={dot.link ? 'Edit link' : 'Add link'}>
+                      <Link2 size={12} />
+                    </button>
+                    <FileUploadButton
+                      category="weekly-reports"
+                      subfolder={subfolder}
+                      accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx"
+                      label=""
+                      size="sm"
+                      className={`!p-1 !px-1 !border-none !shadow-none !bg-transparent ${dot.file ? 'text-green-500' : 'text-gray-300 hover:text-green-500'}`}
+                      onUploaded={data => handleFileUploaded(dot.id, data)}
                     />
-                    <button onClick={() => saveLink(dot.id)} className="p-1 rounded hover:bg-green-50 text-green-500"><Check size={13} /></button>
-                    <button onClick={() => setEditingLink(null)} className="p-1 rounded hover:bg-gray-100 text-gray-400"><X size={13} /></button>
+                    <button onClick={() => removeDot(dot.id)}
+                      className="p-1 rounded hover:bg-red-50 text-gray-300 hover:text-red-400 transition-colors" title="Remove">
+                      <Trash2 size={12} />
+                    </button>
                   </div>
                 )}
               </div>
 
-              {/* Link icon (if has link) */}
-              {dot.link && editingLink !== dot.id && (
-                <a
-                  href={dot.link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-1 rounded hover:bg-blue-50 text-blue-400 hover:text-blue-600 transition-colors flex-shrink-0"
-                  title={dot.link}
-                >
-                  <ExternalLink size={13} />
-                </a>
-              )}
-
-              {/* Editor controls */}
-              {isEditor && editingLink !== dot.id && (
-                <div className="flex items-center gap-0.5 sm:opacity-0 opacity-60 sm:group-hover:opacity-100 transition-opacity flex-shrink-0">
-                  <button
-                    onClick={() => openLinkEditor(dot)}
-                    className={`p-1 rounded hover:bg-blue-50 transition-colors ${dot.link ? 'text-blue-400' : 'text-gray-300 hover:text-blue-400'}`}
-                    title={dot.link ? 'Edit link' : 'Add link'}
-                  >
-                    <Link2 size={12} />
-                  </button>
-                  <button
-                    onClick={() => removeDot(dot.id)}
-                    className="p-1 rounded hover:bg-red-50 text-gray-300 hover:text-red-400 transition-colors"
-                    title="Remove"
-                  >
-                    <Trash2 size={12} />
-                  </button>
+              {/* Attached file display */}
+              {dot.file && (
+                <div className="ml-4 mt-1.5 flex items-center gap-2">
+                  {dot.file.mime_type?.startsWith('image/') ? (
+                    <div className="cursor-pointer rounded-lg overflow-hidden border border-gray-200 hover:shadow-md transition-shadow"
+                      onClick={() => setLightbox(dot.file)}>
+                      <img src={getDriveThumbnail(dot.file.view_url, 120)} alt={dot.file.name}
+                        className="h-16 w-auto object-cover" />
+                    </div>
+                  ) : (
+                    <a href={dot.file.view_url} target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 text-xs text-blue-500 hover:underline bg-blue-50 rounded-lg px-2.5 py-1.5">
+                      <FileText size={12} />
+                      {dot.file.name}
+                    </a>
+                  )}
+                  {isEditor && (
+                    <button onClick={() => updateDot(dot.id, { file: null })}
+                      className="p-0.5 rounded text-gray-300 hover:text-red-400 transition-colors" title="Remove file">
+                      <X size={11} />
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -653,26 +692,30 @@ function GeneralUpdatesSection({ updates = [], onUpdate, isEditor, prevWeekUpdat
         {/* Action buttons */}
         {isEditor && (
           <div className="flex items-center gap-2 mt-3 pt-2 border-t border-gray-50">
-            <button
-              onClick={addDot}
-              className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-[var(--brand-accent)] transition-colors py-1"
-            >
-              <Plus size={13} />
-              Add update
+            <button onClick={addDot}
+              className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-[var(--brand-accent)] transition-colors py-1">
+              <Plus size={13} /> Add update
             </button>
             {prevWeekUpdates?.length > 0 && (
-              <button
-                onClick={copyFromLastWeek}
-                className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-[var(--brand-accent)] transition-colors py-1 ml-2"
-              >
-                <Copy size={12} />
-                Copy from last week
+              <button onClick={copyFromLastWeek}
+                className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-[var(--brand-accent)] transition-colors py-1 ml-2">
+                <Copy size={12} /> Copy from last week
               </button>
             )}
           </div>
         )}
       </div>
     </div>
+
+    {/* Image Lightbox */}
+    {lightbox && (
+      <div className="fixed inset-0 z-[60] bg-black/85 flex items-center justify-center p-4" onClick={() => setLightbox(null)}>
+        <button onClick={() => setLightbox(null)} className="absolute top-4 right-4 p-2 rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors"><X size={20} /></button>
+        <img src={getDriveThumbnail(lightbox.view_url, 1200)} alt={lightbox.name} className="max-w-full max-h-[90vh] rounded-lg shadow-2xl object-contain" onClick={e => e.stopPropagation()} />
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/70 text-xs bg-black/40 px-3 py-1 rounded-full">{lightbox.name}</div>
+      </div>
+    )}
+    </>
   );
 }
 
@@ -737,160 +780,6 @@ function CreativeWeeklyLink({ link, onUpdate, isEditor }) {
         )}
       </div>
     </div>
-  );
-}
-
-// ============================================================================
-// WeeklyFilesSection
-// ============================================================================
-
-function FileCard({ file, isEditor, onRemove, onPreview }) {
-  const isImage = file.mime_type?.startsWith('image/');
-  const thumb = isImage ? getDriveThumbnail(file.view_url, 160) : null;
-
-  return (
-    <div className="group relative rounded-xl border border-gray-200 bg-white overflow-hidden hover:shadow-md transition-shadow">
-      {/* Thumbnail / Icon */}
-      <div
-        className={clsx(
-          'h-28 flex items-center justify-center bg-gray-50',
-          isImage && 'cursor-pointer'
-        )}
-        onClick={() => isImage && onPreview(file)}
-      >
-        {thumb ? (
-          <img src={thumb} alt={file.name} className="w-full h-full object-cover" />
-        ) : (
-          <FileText size={32} className="text-gray-300" />
-        )}
-      </div>
-
-      {/* Info */}
-      <div className="px-3 py-2">
-        <p className="text-xs font-medium text-gray-700 truncate" title={file.name}>{file.name}</p>
-        <div className="flex items-center gap-2 mt-1">
-          {file.view_url && (
-            <a href={file.view_url} target="_blank" rel="noopener noreferrer"
-              className="text-blue-400 hover:text-blue-600 transition-colors" title="Open in Drive">
-              <ExternalLink size={12} />
-            </a>
-          )}
-          {file.download_url && (
-            <a href={file.download_url} target="_blank" rel="noopener noreferrer"
-              className="text-gray-400 hover:text-gray-600 transition-colors" title="Download">
-              <Download size={12} />
-            </a>
-          )}
-        </div>
-      </div>
-
-      {/* Delete */}
-      {isEditor && (
-        <button
-          onClick={() => onRemove(file.id)}
-          className="absolute top-1.5 right-1.5 p-1 rounded-full bg-white/80 backdrop-blur-sm border border-gray-200 text-gray-300 hover:text-red-500 hover:border-red-200 sm:opacity-0 opacity-60 sm:group-hover:opacity-100 transition-all"
-          title="Remove"
-        >
-          <Trash2 size={11} />
-        </button>
-      )}
-    </div>
-  );
-}
-
-function WeeklyFilesSection({ files = [], onUpdate, isEditor, subfolder }) {
-  const [lightbox, setLightbox] = useState(null);
-  const { user } = useAuth();
-
-  function handleUploaded(data) {
-    const newFile = {
-      id: crypto.randomUUID(),
-      name: data.originalFileName || 'File',
-      drive_file_id: data.drive?.fileId || '',
-      view_url: data.drive?.viewLink || '',
-      download_url: data.drive?.downloadLink || '',
-      mime_type: data.originalMimeType || '',
-      uploaded_by: user?.name || '',
-      uploaded_at: new Date().toISOString(),
-    };
-    onUpdate([...files, newFile]);
-  }
-
-  function removeFile(id) {
-    onUpdate(files.filter(f => f.id !== id));
-  }
-
-  return (
-    <>
-      <div className="brand-card overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
-          <div className="flex items-center gap-2">
-            <Paperclip size={13} className="text-gray-400" />
-            <h3 className="text-sm font-bold text-gray-700">Weekly Files</h3>
-            {files.length > 0 && (
-              <span className="text-[10px] font-semibold text-gray-400 bg-gray-100 rounded-full px-2 py-0.5">
-                {files.length}
-              </span>
-            )}
-          </div>
-        </div>
-
-        <div className="px-5 py-3">
-          {files.length > 0 && (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-3">
-              {files.map(f => (
-                <FileCard
-                  key={f.id}
-                  file={f}
-                  isEditor={isEditor}
-                  onRemove={removeFile}
-                  onPreview={setLightbox}
-                />
-              ))}
-            </div>
-          )}
-
-          {files.length === 0 && !isEditor && (
-            <p className="text-xs text-gray-400 italic py-2">No files uploaded for this week.</p>
-          )}
-
-          {isEditor && (
-            <FileUploadButton
-              category="weekly-reports"
-              subfolder={subfolder}
-              accept="*/*"
-              label="Upload File"
-              size="sm"
-              onUploaded={handleUploaded}
-            />
-          )}
-        </div>
-      </div>
-
-      {/* Image Lightbox */}
-      {lightbox && (
-        <div
-          className="fixed inset-0 z-[60] bg-black/85 flex items-center justify-center p-4"
-          onClick={() => setLightbox(null)}
-        >
-          <button
-            onClick={() => setLightbox(null)}
-            className="absolute top-4 right-4 p-2 rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors"
-          >
-            <X size={20} />
-          </button>
-          <img
-            src={getDriveThumbnail(lightbox.view_url, 1200)}
-            alt={lightbox.name}
-            className="max-w-full max-h-[90vh] rounded-lg shadow-2xl object-contain"
-            onClick={e => e.stopPropagation()}
-          />
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/70 text-xs bg-black/40 px-3 py-1 rounded-full">
-            {lightbox.name}
-          </div>
-        </div>
-      )}
-    </>
   );
 }
 
@@ -971,8 +860,6 @@ function CommentBodyPlaceholder({ cid }) {
 // ============================================================================
 
 function PresentationMode({ report, productions, commentsByProd, brand, onClose }) {
-  const [presentLightbox, setPresentLightbox] = useState(null);
-
   useEffect(() => {
     const lookup = {};
     Object.values(commentsByProd).forEach(arr =>
@@ -1000,8 +887,7 @@ function PresentationMode({ report, productions, commentsByProd, brand, onClose 
 
   const generalUpdates = report.general_updates || [];
   const creativeLink = report.creative_link;
-  const weeklyFiles = report.weekly_files || [];
-  const hasOverview = generalUpdates.length > 0 || creativeLink?.url || weeklyFiles.length > 0;
+  const hasOverview = generalUpdates.length > 0 || creativeLink?.url;
 
   return (
     <div className="fixed inset-0 z-50 bg-gradient-to-br from-gray-50 to-white overflow-y-auto">
@@ -1053,18 +939,23 @@ function PresentationMode({ report, productions, commentsByProd, brand, onClose 
                       <div className="w-2 h-2 rounded-full mt-[7px] flex-shrink-0" style={{ background: 'var(--brand-accent)', opacity: 0.5 }} />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-gray-700 leading-relaxed">{dot.text}</p>
-                        {dot.link && (
-                          <a
-                            href={dot.link}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-xs mt-1 hover:underline"
-                            style={{ color: 'var(--brand-accent)' }}
-                          >
-                            <ExternalLink size={11} />
-                            {(() => { try { return new URL(dot.link).hostname; } catch { return 'Link'; } })()}
-                          </a>
-                        )}
+                        <div className="flex items-center gap-3 mt-1 flex-wrap">
+                          {dot.link && (
+                            <a href={dot.link} target="_blank" rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-xs hover:underline" style={{ color: 'var(--brand-accent)' }}>
+                              <ExternalLink size={11} />
+                              {(() => { try { return new URL(dot.link).hostname; } catch { return 'Link'; } })()}
+                            </a>
+                          )}
+                          {dot.file && (
+                            dot.file.mime_type?.startsWith('image/')
+                              ? <img src={getDriveThumbnail(dot.file.view_url, 120)} alt={dot.file.name} className="h-12 rounded-md border border-gray-200 mt-1" />
+                              : <a href={dot.file.view_url} target="_blank" rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-xs text-blue-500 hover:underline">
+                                  <FileText size={11} /> {dot.file.name}
+                                </a>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -1102,45 +993,6 @@ function PresentationMode({ report, productions, commentsByProd, brand, onClose 
           </div>
         )}
 
-        {/* Weekly Files */}
-        {weeklyFiles.length > 0 && (
-          <div className="bg-white rounded-2xl border border-gray-200 p-7 shadow-sm">
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
-                <Paperclip size={15} className="text-gray-500" />
-              </div>
-              <h2 className="text-base font-black text-gray-800">Files</h2>
-              <span className="text-xs font-semibold text-gray-400 bg-gray-100 rounded-full px-2.5 py-0.5">{weeklyFiles.length}</span>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-              {weeklyFiles.map(f => {
-                const isImg = f.mime_type?.startsWith('image/');
-                const thumb = isImg ? getDriveThumbnail(f.view_url, 200) : null;
-                return (
-                  <div key={f.id} className="rounded-xl border border-gray-100 overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
-                    onClick={() => isImg ? setPresentLightbox(f) : window.open(f.view_url, '_blank')}>
-                    <div className="h-24 flex items-center justify-center bg-gray-50">
-                      {thumb ? <img src={thumb} alt={f.name} className="w-full h-full object-cover" /> : <FileText size={28} className="text-gray-300" />}
-                    </div>
-                    <div className="px-2 py-1.5">
-                      <p className="text-[11px] font-medium text-gray-600 truncate">{f.name}</p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Lightbox */}
-        {presentLightbox && (
-          <div className="fixed inset-0 z-[60] bg-black/85 flex items-center justify-center p-4" onClick={() => setPresentLightbox(null)}>
-            <button onClick={() => setPresentLightbox(null)} className="absolute top-4 right-4 p-2 rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors"><X size={20} /></button>
-            <img src={getDriveThumbnail(presentLightbox.view_url, 1200)} alt={presentLightbox.name} className="max-w-full max-h-[90vh] rounded-lg shadow-2xl object-contain" onClick={e => e.stopPropagation()} />
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/70 text-xs bg-black/40 px-3 py-1 rounded-full">{presentLightbox.name}</div>
-          </div>
-        )}
-
         {/* Divider */}
         {hasOverview && sorted.length > 0 && (
           <div className="flex items-center gap-4">
@@ -1172,10 +1024,36 @@ function PresentationMode({ report, productions, commentsByProd, brand, onClose 
 
 function HistorySidebar({ history, weekStart, onSelect, onDelete, isEditor }) {
   const weekStr = toDateStr(weekStart);
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('cp_weekly_history_collapsed')); } catch { return false; }
+  });
+
+  function toggle() {
+    const next = !collapsed;
+    setCollapsed(next);
+    localStorage.setItem('cp_weekly_history_collapsed', JSON.stringify(next));
+  }
+
+  if (collapsed) {
+    return (
+      <div className="flex-shrink-0">
+        <button onClick={toggle}
+          className="p-2 rounded-xl border border-gray-200 hover:bg-gray-50 text-gray-400 hover:text-gray-600 transition-all"
+          title="Show history">
+          <Clock size={14} />
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="w-40 flex-shrink-0 flex flex-col gap-1">
-      <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-1 mb-1">History</div>
+      <div className="flex items-center justify-between px-1 mb-1">
+        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">History</div>
+        <button onClick={toggle} className="p-0.5 rounded text-gray-300 hover:text-gray-500 transition-colors" title="Collapse">
+          <ChevronLeft size={12} />
+        </button>
+      </div>
       {history.length === 0 && (
         <p className="text-xs text-gray-400 italic px-1">No saved reports yet</p>
       )}
@@ -1514,7 +1392,7 @@ function WeeklyReportsTab({ productions, brandId, selectedYear }) {
     setShareLoading(true);
     try {
       const API = import.meta.env.VITE_API_URL || '';
-      const token = localStorage.getItem('cp_token');
+      const token = localStorage.getItem('cp_auth_token');
       const res = await fetch(`${API}/api/weekly-reports/${report.id}/share`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
@@ -1615,7 +1493,6 @@ function WeeklyReportsTab({ productions, brandId, selectedYear }) {
                 <p className="text-[11px] text-gray-400">
                   {report ? `${(report.entries || []).length} productions` : 'No report yet'}
                   {dirty && <span className="ml-2 text-amber-500">\u2022 saving\u2026</span>}
-                  {!dirty && report && <span className="ml-2 text-green-500">\u2022 saved</span>}
                 </p>
               </div>
               <button
@@ -1685,6 +1562,7 @@ function WeeklyReportsTab({ productions, brandId, selectedYear }) {
               updates={report.general_updates || []}
               onUpdate={val => patchReport({ general_updates: val })}
               isEditor={isEditor}
+              subfolder={`${new Date(weekStart).getFullYear()}/Week of ${fmtWeekLabel(weekStart)}`}
               prevWeekUpdates={(() => {
                 const prev = toDateStr(addDays(weekStart, -7));
                 const prevReport = history.find(r => r.week_start === prev);
@@ -1695,12 +1573,6 @@ function WeeklyReportsTab({ productions, brandId, selectedYear }) {
               link={report.creative_link}
               onUpdate={val => patchReport({ creative_link: val })}
               isEditor={isEditor}
-            />
-            <WeeklyFilesSection
-              files={report.weekly_files || []}
-              onUpdate={val => patchReport({ weekly_files: val })}
-              isEditor={isEditor}
-              subfolder={`${new Date(weekStart).getFullYear()}/Week of ${fmtWeekLabel(weekStart)}`}
             />
           </>
         )}
