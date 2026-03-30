@@ -974,10 +974,15 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
     const charProfiles = getCharProfiles();
     if (!skipWizardCheck && !wizardDone && charProfiles.length === 0) {
       setWizardTargetSceneId('__all__');
-      setWizardStep(1);
+      setWizardStep(2); // Skip step 1 — user chose "Generate All", so AI is obvious
       setWizardProductName('');
       setWizardProductPhotos([]);
       setShowImageWizard(true);
+      // Kick off both in parallel: character extraction + product detection
+      handleWizardExtractChars();
+      fetch(`${API}/api/scripts/${scriptId}/extract-product`, {
+        method: 'POST', headers: { Authorization: `Bearer ${jwt()}` },
+      }).then(r => r.json()).then(d => { if (d.product_name) setWizardProductName(d.product_name); }).catch(() => {});
       return;
     }
 
@@ -1976,8 +1981,12 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
             {/* Header */}
             <div className="px-6 pt-5 pb-4 border-b border-gray-100 flex items-center justify-between">
               <div>
-                <h3 className="font-black text-gray-900 text-lg flex items-center gap-2"><Sparkles size={18} className="text-purple-500" /> AI Storyboard Images</h3>
-                <p className="text-xs text-gray-400 mt-0.5">Step {wizardStep} of 4</p>
+                <h3 className="font-black text-gray-900 text-lg flex items-center gap-2"><Sparkles size={18} className="text-purple-500" /> Before we generate...</h3>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  {wizardTargetSceneId === '__all__'
+                    ? wizardStep === 2 ? 'Who\'s in this script?' : wizardStep === 3 ? 'What product is featured?' : 'Visual style'
+                    : `Step ${wizardStep} of 4`}
+                </p>
               </div>
               <button onClick={() => setShowImageWizard(false)}><X size={18} className="text-gray-400" /></button>
             </div>
@@ -2011,7 +2020,11 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
             {wizardStep === 2 && (
               <div className="p-6">
                 <p className="text-sm text-gray-600 mb-4">
-                  {extractingChars ? 'Reading your script for characters...' : `Found ${wizardCharacters.length} character${wizardCharacters.length !== 1 ? 's' : ''} in this script. Upload actor photos for visual consistency (optional).`}
+                  {extractingChars
+                    ? '✨ Reading your script...'
+                    : wizardCharacters.length > 0
+                      ? `We found ${wizardCharacters.length} character${wizardCharacters.length !== 1 ? 's' : ''}. Got a photo of your main actor? Drop it in — AI will keep them consistent across every scene.`
+                      : 'No specific characters detected — AI will generate based on the script context.'}
                 </p>
                 {extractingChars ? (
                   <div className="flex justify-center py-8"><Loader2 size={24} className="animate-spin text-purple-400" /></div>
@@ -2056,7 +2069,11 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
             {wizardStep === 3 && (
               <div className="p-6">
                 <p className="text-sm text-gray-600 mb-4">
-                  Does this script feature a specific product that must appear in frames? (e.g. a shoe, phone, drink, car)
+                  {detectingProduct
+                    ? '✨ Detecting the product from your script...'
+                    : wizardProductName
+                      ? `We think this script is about "${wizardProductName}". Drop in a product photo and AI will place it exactly right in every frame.`
+                      : 'Is there a specific product in this script — like a cream, gadget, or drink? Add a photo and AI will keep it pixel-perfect across scenes.'}
                 </p>
 
                 <div className="mb-4">
@@ -2065,7 +2082,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                     <input
                       value={wizardProductName}
                       onChange={e => setWizardProductName(e.target.value)}
-                      placeholder="e.g. Nike Air Max 90, iPhone 15, Coca-Cola Classic..."
+                      placeholder="e.g. Particle Anti-Gray Serum, Nike Air Max, iPhone 15..."
                       className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-300"
                     />
                     <button
@@ -2084,7 +2101,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                       className="flex items-center gap-1 px-3 py-2 text-xs bg-purple-100 text-purple-700 rounded-xl hover:bg-purple-200 transition-colors disabled:opacity-50"
                     >
                       {detectingProduct ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-                      Detect
+                      Auto-detect
                     </button>
                   </div>
                 </div>
@@ -2136,14 +2153,14 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                       }}
                     />
                     <p className="text-[11px] text-gray-400 mt-2">
-                      AI will ensure the product appears with exact accuracy in every scene where it's visible.
+                      AI will keep the product exactly as it looks — same shape, color, and packaging — in every scene.
                     </p>
                   </div>
                 )}
 
-                {!wizardProductName.trim() && (
+                {!wizardProductName.trim() && !detectingProduct && (
                   <div className="mb-4 p-3 bg-gray-50 rounded-xl text-xs text-gray-500 text-center">
-                    No product → leave empty and continue
+                    No product in this script? Just leave it empty and continue.
                   </div>
                 )}
 
