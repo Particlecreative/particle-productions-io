@@ -511,47 +511,61 @@ router.post('/import', async (req, res) => {
           };
         }));
       } else {
-        // Google Docs — export via Drive API as PDF, then process with Gemini
-        // (avoids needing Google Docs API to be enabled separately)
+        // Google Docs — export via Drive API as HTML (preserves tables/structure perfectly),
+        // plain text as fallback. Avoids needing Google Docs API enabled separately.
         const accessToken = (await oauth2.getAccessToken()).token;
-        const exportUrl = `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=application/pdf`;
-        const exportRes = await fetch(exportUrl, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        if (!exportRes.ok) {
-          // Fall back to plain text export if PDF fails
-          const textExportUrl = `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`;
-          const textRes = await fetch(textExportUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
-          if (!textRes.ok) throw new Error(`Could not export Google Doc (${textRes.status}). Make sure the document is shared with the connected Google account.`);
-          const fullText = await textRes.text();
-          const text = await callClaude(
-            `Extract this script/storyboard document into a JSON scenes array. The document content:\n\n${fullText.substring(0, 40000)}`,
-            SCENE_SYSTEM_PROMPT
-          );
-          scenes = parseSceneJson(text);
-        } else {
-          // Send PDF to Gemini for extraction
-          const pdfBuffer = Buffer.from(await exportRes.arrayBuffer());
-          const pdfBase64 = pdfBuffer.toString('base64');
-          const importPrompt = `Analyze this script, storyboard, or document and extract it into a structured JSON scenes array.
 
-For each scene/section/slide:
+        let docContent = '';
+        let contentType = 'html';
+
+        // Try HTML first — best for scripts with tables and column structure
+        const htmlRes = await fetch(
+          `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/html`,
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+        if (htmlRes.ok) {
+          docContent = await htmlRes.text();
+          contentType = 'html';
+        } else {
+          // Fall back to plain text
+          const textRes = await fetch(
+            `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`,
+            { headers: { Authorization: `Bearer ${accessToken}` } }
+          );
+          if (!textRes.ok) throw new Error(`Could not export Google Doc (${textRes.status}). Make sure the document is shared with the connected Google account.`);
+          docContent = await textRes.text();
+          contentType = 'text';
+        }
+
+        // Strip excessive HTML boilerplate but keep table structure
+        if (contentType === 'html') {
+          // Remove style blocks, scripts, keep readable structure
+          docContent = docContent
+            .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+            .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+            .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, '')
+            .substring(0, 60000); // cap to avoid token limits
+        }
+
+        const importPrompt = `Extract this Google Docs ${contentType === 'html' ? 'HTML export' : 'document'} into a structured JSON scenes array for a storyboard/script.
+
+${contentType === 'html' ? 'Pay special attention to TABLE STRUCTURE — rows are usually scenes, columns map to location/what we see/what we hear.' : ''}
+
+For each scene/row/section:
 - "location": scene heading or setting (e.g. "INT. STUDIO - DAY"), empty string if none
-- "what_we_see": visual directions, action description, visual text on screen
+- "what_we_see": visual directions, action description, what appears on screen
 - "what_we_hear": dialogue, voiceover, script text, audio directions
 - "duration": timing if mentioned (e.g. "5s", "10s"), empty string if none
-- "images_in_source": array of strings describing any images/visuals physically embedded in this scene/slide. Empty array if no images.
+- "images_in_source": array of strings describing any images/visuals embedded in this scene. Empty array if none.
+
+Document content:
+${docContent}
 
 Return ONLY this JSON object with NO markdown:
 {"scenes":[{"id":"<uuid-v4>","order":0,"location":"","what_we_see":"","what_we_hear":"","duration":"","collapsed":false,"images_in_source":[],"images":[]}]}`;
-          let text;
-          if (process.env.GEMINI_API_KEY) {
-            text = await callGemini(importPrompt, pdfBase64, 'application/pdf');
-          } else {
-            text = await callClaude(importPrompt, SCENE_SYSTEM_PROMPT);
-          }
-          scenes = parseSceneJson(text);
-        }
+
+        const text = await callClaude(importPrompt, SCENE_SYSTEM_PROMPT);
+        scenes = parseSceneJson(text);
       }
     } else if (fileBase64) {
       // File upload — Gemini primary (natively handles PDF/DOCX/PPTX/images), Claude fallback
