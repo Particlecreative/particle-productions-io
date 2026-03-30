@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   ChevronLeft, ChevronRight, Plus, Trash2, Check, X, Link2,
   ExternalLink, Presentation, Clock, Edit3, ChevronDown,
-  Calendar as CalendarIcon, FileText, Copy, Share2,
+  Calendar as CalendarIcon, FileText, Copy, Share2, Paperclip, Download, Image,
 } from 'lucide-react';
 import {
   getWeeklyReports, getWeeklyReport, saveWeeklyReport, deleteWeeklyReport,
@@ -13,6 +13,7 @@ import { getAllGanttEvents, createGanttEvent, DEFAULT_PHASES } from '../../lib/g
 import { useAuth } from '../../context/AuthContext';
 import { useBrand } from '../../context/BrandContext';
 import StageBadge from '../ui/StageBadge';
+import FileUploadButton, { getDriveThumbnail } from '../shared/FileUploadButton';
 import clsx from 'clsx';
 
 // ============================================================================
@@ -740,6 +741,160 @@ function CreativeWeeklyLink({ link, onUpdate, isEditor }) {
 }
 
 // ============================================================================
+// WeeklyFilesSection
+// ============================================================================
+
+function FileCard({ file, isEditor, onRemove, onPreview }) {
+  const isImage = file.mime_type?.startsWith('image/');
+  const thumb = isImage ? getDriveThumbnail(file.view_url, 160) : null;
+
+  return (
+    <div className="group relative rounded-xl border border-gray-200 bg-white overflow-hidden hover:shadow-md transition-shadow">
+      {/* Thumbnail / Icon */}
+      <div
+        className={clsx(
+          'h-28 flex items-center justify-center bg-gray-50',
+          isImage && 'cursor-pointer'
+        )}
+        onClick={() => isImage && onPreview(file)}
+      >
+        {thumb ? (
+          <img src={thumb} alt={file.name} className="w-full h-full object-cover" />
+        ) : (
+          <FileText size={32} className="text-gray-300" />
+        )}
+      </div>
+
+      {/* Info */}
+      <div className="px-3 py-2">
+        <p className="text-xs font-medium text-gray-700 truncate" title={file.name}>{file.name}</p>
+        <div className="flex items-center gap-2 mt-1">
+          {file.view_url && (
+            <a href={file.view_url} target="_blank" rel="noopener noreferrer"
+              className="text-blue-400 hover:text-blue-600 transition-colors" title="Open in Drive">
+              <ExternalLink size={12} />
+            </a>
+          )}
+          {file.download_url && (
+            <a href={file.download_url} target="_blank" rel="noopener noreferrer"
+              className="text-gray-400 hover:text-gray-600 transition-colors" title="Download">
+              <Download size={12} />
+            </a>
+          )}
+        </div>
+      </div>
+
+      {/* Delete */}
+      {isEditor && (
+        <button
+          onClick={() => onRemove(file.id)}
+          className="absolute top-1.5 right-1.5 p-1 rounded-full bg-white/80 backdrop-blur-sm border border-gray-200 text-gray-300 hover:text-red-500 hover:border-red-200 sm:opacity-0 opacity-60 sm:group-hover:opacity-100 transition-all"
+          title="Remove"
+        >
+          <Trash2 size={11} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function WeeklyFilesSection({ files = [], onUpdate, isEditor, subfolder }) {
+  const [lightbox, setLightbox] = useState(null);
+  const { user } = useAuth();
+
+  function handleUploaded(data) {
+    const newFile = {
+      id: crypto.randomUUID(),
+      name: data.originalFileName || 'File',
+      drive_file_id: data.drive?.fileId || '',
+      view_url: data.drive?.viewLink || '',
+      download_url: data.drive?.downloadLink || '',
+      mime_type: data.originalMimeType || '',
+      uploaded_by: user?.name || '',
+      uploaded_at: new Date().toISOString(),
+    };
+    onUpdate([...files, newFile]);
+  }
+
+  function removeFile(id) {
+    onUpdate(files.filter(f => f.id !== id));
+  }
+
+  return (
+    <>
+      <div className="brand-card overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
+          <div className="flex items-center gap-2">
+            <Paperclip size={13} className="text-gray-400" />
+            <h3 className="text-sm font-bold text-gray-700">Weekly Files</h3>
+            {files.length > 0 && (
+              <span className="text-[10px] font-semibold text-gray-400 bg-gray-100 rounded-full px-2 py-0.5">
+                {files.length}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="px-5 py-3">
+          {files.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 mb-3">
+              {files.map(f => (
+                <FileCard
+                  key={f.id}
+                  file={f}
+                  isEditor={isEditor}
+                  onRemove={removeFile}
+                  onPreview={setLightbox}
+                />
+              ))}
+            </div>
+          )}
+
+          {files.length === 0 && !isEditor && (
+            <p className="text-xs text-gray-400 italic py-2">No files uploaded for this week.</p>
+          )}
+
+          {isEditor && (
+            <FileUploadButton
+              category="weekly-reports"
+              subfolder={subfolder}
+              accept="*/*"
+              label="Upload File"
+              size="sm"
+              onUploaded={handleUploaded}
+            />
+          )}
+        </div>
+      </div>
+
+      {/* Image Lightbox */}
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-[60] bg-black/85 flex items-center justify-center p-4"
+          onClick={() => setLightbox(null)}
+        >
+          <button
+            onClick={() => setLightbox(null)}
+            className="absolute top-4 right-4 p-2 rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors"
+          >
+            <X size={20} />
+          </button>
+          <img
+            src={getDriveThumbnail(lightbox.view_url, 1200)}
+            alt={lightbox.name}
+            className="max-w-full max-h-[90vh] rounded-lg shadow-2xl object-contain"
+            onClick={e => e.stopPropagation()}
+          />
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/70 text-xs bg-black/40 px-3 py-1 rounded-full">
+            {lightbox.name}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ============================================================================
 // PresentCard
 // ============================================================================
 
@@ -816,6 +971,8 @@ function CommentBodyPlaceholder({ cid }) {
 // ============================================================================
 
 function PresentationMode({ report, productions, commentsByProd, brand, onClose }) {
+  const [presentLightbox, setPresentLightbox] = useState(null);
+
   useEffect(() => {
     const lookup = {};
     Object.values(commentsByProd).forEach(arr =>
@@ -843,7 +1000,8 @@ function PresentationMode({ report, productions, commentsByProd, brand, onClose 
 
   const generalUpdates = report.general_updates || [];
   const creativeLink = report.creative_link;
-  const hasOverview = generalUpdates.length > 0 || creativeLink?.url;
+  const weeklyFiles = report.weekly_files || [];
+  const hasOverview = generalUpdates.length > 0 || creativeLink?.url || weeklyFiles.length > 0;
 
   return (
     <div className="fixed inset-0 z-50 bg-gradient-to-br from-gray-50 to-white overflow-y-auto">
@@ -941,6 +1099,45 @@ function PresentationMode({ report, productions, commentsByProd, brand, onClose 
                 </a>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Weekly Files */}
+        {weeklyFiles.length > 0 && (
+          <div className="bg-white rounded-2xl border border-gray-200 p-7 shadow-sm">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
+                <Paperclip size={15} className="text-gray-500" />
+              </div>
+              <h2 className="text-base font-black text-gray-800">Files</h2>
+              <span className="text-xs font-semibold text-gray-400 bg-gray-100 rounded-full px-2.5 py-0.5">{weeklyFiles.length}</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+              {weeklyFiles.map(f => {
+                const isImg = f.mime_type?.startsWith('image/');
+                const thumb = isImg ? getDriveThumbnail(f.view_url, 200) : null;
+                return (
+                  <div key={f.id} className="rounded-xl border border-gray-100 overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
+                    onClick={() => isImg ? setPresentLightbox(f) : window.open(f.view_url, '_blank')}>
+                    <div className="h-24 flex items-center justify-center bg-gray-50">
+                      {thumb ? <img src={thumb} alt={f.name} className="w-full h-full object-cover" /> : <FileText size={28} className="text-gray-300" />}
+                    </div>
+                    <div className="px-2 py-1.5">
+                      <p className="text-[11px] font-medium text-gray-600 truncate">{f.name}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Lightbox */}
+        {presentLightbox && (
+          <div className="fixed inset-0 z-[60] bg-black/85 flex items-center justify-center p-4" onClick={() => setPresentLightbox(null)}>
+            <button onClick={() => setPresentLightbox(null)} className="absolute top-4 right-4 p-2 rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors"><X size={20} /></button>
+            <img src={getDriveThumbnail(presentLightbox.view_url, 1200)} alt={presentLightbox.name} className="max-w-full max-h-[90vh] rounded-lg shadow-2xl object-contain" onClick={e => e.stopPropagation()} />
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/70 text-xs bg-black/40 px-3 py-1 rounded-full">{presentLightbox.name}</div>
           </div>
         )}
 
@@ -1498,6 +1695,12 @@ function WeeklyReportsTab({ productions, brandId, selectedYear }) {
               link={report.creative_link}
               onUpdate={val => patchReport({ creative_link: val })}
               isEditor={isEditor}
+            />
+            <WeeklyFilesSection
+              files={report.weekly_files || []}
+              onUpdate={val => patchReport({ weekly_files: val })}
+              isEditor={isEditor}
+              subfolder={`${new Date(weekStart).getFullYear()}/Week of ${fmtWeekLabel(weekStart)}`}
             />
           </>
         )}

@@ -52,7 +52,9 @@
       "Bash(zip -r ~/Desktop/cp-panel-deploy.zip dist/ backend/ db/ nginx.conf docker-compose.yml docker-compose.override.yml .env.example --exclude \"backend/node_modules/*\")",
       "Read(//Users/alan/Desktop/**)",
       "Bash(zip -r cp-panel-full.zip ParticleProductionsIO/ --exclude \"ParticleProductionsIO/node_modules/*\" --exclude \"ParticleProductionsIO/.env\" --exclude \"ParticleProductionsIO/.git/*\")",
-      "Bash(node -e \":*)"
+      "Bash(node -e \":*)",
+      "Bash(GIT_ASKPASS=\"\" git push origin main)",
+      "Bash(find /Users/alan/Particle Dropbox/Tomer Wilf Lezmy/ParticleIO/ParticleProductionsIO/src -type f -name *.jsx -o -name *.js)"
     ]
   }
 }

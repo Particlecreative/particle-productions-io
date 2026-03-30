@@ -107,17 +107,18 @@ router.post('/:id/share', async (req, res) => {
 
 // PUT /api/weekly-reports  — upsert by brand_id + week_start
 router.put('/', async (req, res) => {
-  const { id, brand_id, week_start, entries, general_updates, title, creative_link } = req.body;
+  const { id, brand_id, week_start, entries, general_updates, title, creative_link, weekly_files } = req.body;
   if (!brand_id || !week_start) {
     return res.status(400).json({ error: 'brand_id and week_start are required' });
   }
   try {
     const { rows } = await db.query(
-      `INSERT INTO weekly_reports (id, brand_id, week_start, entries, general_updates, title, creative_link, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+      `INSERT INTO weekly_reports (id, brand_id, week_start, entries, general_updates, title, creative_link, weekly_files, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
        ON CONFLICT (brand_id, week_start)
        DO UPDATE SET entries = EXCLUDED.entries, general_updates = EXCLUDED.general_updates,
-                     title = EXCLUDED.title, creative_link = EXCLUDED.creative_link, updated_at = NOW()
+                     title = EXCLUDED.title, creative_link = EXCLUDED.creative_link,
+                     weekly_files = EXCLUDED.weekly_files, updated_at = NOW()
        RETURNING *`,
       [
         id || crypto.randomUUID(),
@@ -127,6 +128,7 @@ router.put('/', async (req, res) => {
         JSON.stringify(general_updates || []),
         title || '',
         JSON.stringify(creative_link || null),
+        JSON.stringify(weekly_files || []),
       ]
     );
     res.json(rows[0]);

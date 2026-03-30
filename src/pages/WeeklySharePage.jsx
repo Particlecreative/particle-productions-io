@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { ExternalLink, FileText, Link2 } from 'lucide-react';
+import { ExternalLink, FileText, Link2, Paperclip, X, Download } from 'lucide-react';
+import { getDriveThumbnail } from '../components/shared/FileUploadButton';
 import StageBadge from '../components/ui/StageBadge';
 
 const API = import.meta.env.VITE_API_URL || '';
@@ -67,7 +68,9 @@ export default function WeeklySharePage() {
 
   const generalUpdates = report.general_updates || [];
   const creativeLink = report.creative_link;
-  const hasOverview = generalUpdates.length > 0 || creativeLink?.url;
+  const weeklyFiles = report.weekly_files || [];
+  const hasOverview = generalUpdates.length > 0 || creativeLink?.url || weeklyFiles.length > 0;
+  const [lightbox, setLightbox] = useState(null);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-white">
@@ -145,6 +148,36 @@ export default function WeeklySharePage() {
           </div>
         )}
 
+        {/* Weekly Files */}
+        {weeklyFiles.length > 0 && (
+          <div className="bg-white rounded-2xl border border-gray-200 p-7 shadow-sm">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
+                <Paperclip size={15} className="text-gray-500" />
+              </div>
+              <h2 className="text-base font-black text-gray-800">Files</h2>
+              <span className="text-xs font-semibold text-gray-400 bg-gray-100 rounded-full px-2.5 py-0.5">{weeklyFiles.length}</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+              {weeklyFiles.map(f => {
+                const isImg = f.mime_type?.startsWith('image/');
+                const thumb = isImg ? getDriveThumbnail(f.view_url, 200) : null;
+                return (
+                  <div key={f.id} className="rounded-xl border border-gray-100 overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
+                    onClick={() => isImg ? setLightbox(f) : window.open(f.view_url, '_blank')}>
+                    <div className="h-24 flex items-center justify-center bg-gray-50">
+                      {thumb ? <img src={thumb} alt={f.name} className="w-full h-full object-cover" /> : <FileText size={28} className="text-gray-300" />}
+                    </div>
+                    <div className="px-2 py-1.5">
+                      <p className="text-[11px] font-medium text-gray-600 truncate">{f.name}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Divider */}
         {hasOverview && sorted.length > 0 && (
           <div className="flex items-center gap-4">
@@ -211,6 +244,15 @@ export default function WeeklySharePage() {
           <div className="text-center py-20 text-gray-400">No content in this report</div>
         )}
       </div>
+
+      {/* Image Lightbox */}
+      {lightbox && (
+        <div className="fixed inset-0 z-[60] bg-black/85 flex items-center justify-center p-4" onClick={() => setLightbox(null)}>
+          <button onClick={() => setLightbox(null)} className="absolute top-4 right-4 p-2 rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors"><X size={20} /></button>
+          <img src={getDriveThumbnail(lightbox.view_url, 1200)} alt={lightbox.name} className="max-w-full max-h-[90vh] rounded-lg shadow-2xl object-contain" onClick={e => e.stopPropagation()} />
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/70 text-xs bg-black/40 px-3 py-1 rounded-full">{lightbox.name}</div>
+        </div>
+      )}
     </div>
   );
 }
