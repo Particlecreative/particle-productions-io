@@ -684,6 +684,70 @@ function GeneralUpdatesSection({ updates = [], onUpdate, isEditor, prevWeekUpdat
 }
 
 // ============================================================================
+// CreativeWeeklyLink
+// ============================================================================
+
+function CreativeWeeklyLink({ link, onUpdate, isEditor }) {
+  const val = link || { label: '', url: '' };
+
+  return (
+    <div className="brand-card overflow-hidden">
+      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
+        <div className="flex items-center gap-2">
+          <div className="w-1.5 h-1.5 rounded-full bg-purple-400" />
+          <h3 className="text-sm font-bold text-gray-700">Creative Weekly Link</h3>
+        </div>
+      </div>
+
+      <div className="px-5 py-3">
+        {isEditor ? (
+          <div className="space-y-2">
+            <input
+              className="w-full text-sm text-gray-700 bg-transparent border-none outline-none placeholder:text-gray-300"
+              placeholder="Link title (e.g. Weekly Moodboard)"
+              value={val.label}
+              onChange={e => onUpdate({ ...val, label: e.target.value })}
+            />
+            <div className="flex items-center gap-2">
+              <Link2 size={13} className="text-gray-300 flex-shrink-0" />
+              <input
+                className="flex-1 text-xs text-gray-500 bg-transparent border-none outline-none placeholder:text-gray-300"
+                placeholder="https://..."
+                value={val.url}
+                onChange={e => onUpdate({ ...val, url: e.target.value })}
+              />
+              {val.url && (
+                <a
+                  href={val.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-1 rounded hover:bg-blue-50 text-blue-400 hover:text-blue-600 transition-colors flex-shrink-0"
+                >
+                  <ExternalLink size={13} />
+                </a>
+              )}
+            </div>
+          </div>
+        ) : val.url ? (
+          <a
+            href={val.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 text-sm hover:underline py-1"
+            style={{ color: 'var(--brand-accent)' }}
+          >
+            <ExternalLink size={14} />
+            {val.label || val.url}
+          </a>
+        ) : (
+          <p className="text-xs text-gray-400 italic py-1">No creative link set for this week.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
 // PresentCard
 // ============================================================================
 
@@ -835,6 +899,25 @@ function PresentationMode({ report, productions, commentsByProd, brand, onClose 
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Creative Weekly Link slide */}
+        {report.creative_link?.url && (
+          <div className="bg-gradient-to-br from-purple-50 to-white rounded-2xl border border-purple-100 p-8 shadow-sm">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-2.5 h-2.5 rounded-full bg-purple-400" />
+              <h2 className="text-lg font-black text-gray-800">Creative Weekly Link</h2>
+            </div>
+            <a
+              href={report.creative_link.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 text-base font-medium text-purple-600 hover:underline"
+            >
+              <ExternalLink size={15} />
+              {report.creative_link.label || report.creative_link.url}
+            </a>
           </div>
         )}
 
@@ -1346,18 +1429,25 @@ function WeeklyReportsTab({ productions, brandId, selectedYear }) {
           <WeekStrip weekStart={weekStart} showUS={showUSHolidays} showIL={showILHolidays} />
         </div>
 
-        {/* General Updates */}
+        {/* General Updates + Creative Link */}
         {report && (
-          <GeneralUpdatesSection
-            updates={report.general_updates || []}
-            onUpdate={val => patchReport({ general_updates: val })}
-            isEditor={isEditor}
-            prevWeekUpdates={(() => {
-              const prev = toDateStr(addDays(weekStart, -7));
-              const prevReport = history.find(r => r.week_start === prev);
-              return prevReport?.general_updates || [];
-            })()}
-          />
+          <>
+            <GeneralUpdatesSection
+              updates={report.general_updates || []}
+              onUpdate={val => patchReport({ general_updates: val })}
+              isEditor={isEditor}
+              prevWeekUpdates={(() => {
+                const prev = toDateStr(addDays(weekStart, -7));
+                const prevReport = history.find(r => r.week_start === prev);
+                return prevReport?.general_updates || [];
+              })()}
+            />
+            <CreativeWeeklyLink
+              link={report.creative_link}
+              onUpdate={val => patchReport({ creative_link: val })}
+              isEditor={isEditor}
+            />
+          </>
         )}
 
         {/* Empty state */}
