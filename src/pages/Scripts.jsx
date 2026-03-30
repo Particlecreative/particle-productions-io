@@ -68,7 +68,12 @@ export default function Scripts() {
   }
 
   function handleScriptUpdated(updated) {
-    setScripts(prev => prev.map(s => s.id === updated.id ? { ...s, ...updated } : s));
+    // If the script is new (from duplication), prepend it and select it
+    setScripts(prev => {
+      const exists = prev.some(s => s.id === updated.id);
+      if (!exists) { setSelectedId(updated.id); return [updated, ...prev]; }
+      return prev.map(s => s.id === updated.id ? { ...s, ...updated } : s);
+    });
   }
 
   // Group scripts by production

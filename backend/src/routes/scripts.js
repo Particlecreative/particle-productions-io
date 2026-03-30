@@ -94,21 +94,52 @@ async function callClaude(prompt, systemPrompt, images = []) {
   return data.content[0].text;
 }
 
+// Gemini 2.5 Flash — text/file import
 async function callGemini(prompt, fileBase64, mimeType) {
   if (!process.env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY not configured in .env');
   const parts = [{ text: prompt }];
   if (fileBase64) parts.push({ inline_data: { mime_type: mimeType, data: fileBase64 } });
   const resp = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${process.env.GEMINI_API_KEY}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ contents: [{ parts }] }),
     }
   );
-  if (!resp.ok) throw new Error(`Gemini API error: ${resp.statusText}`);
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`Gemini API error: ${resp.statusText} — ${errText.slice(0, 200)}`);
+  }
   const data = await resp.json();
   return data.candidates[0].content.parts[0].text;
+}
+
+// Gemini 3.1 Flash Image (Nano Banana 2) — storyboard image generation
+async function generateGeminiImage(prompt) {
+  if (!process.env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY not configured in .env');
+  const resp = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key=${process.env.GEMINI_API_KEY}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { responseModalities: ['IMAGE', 'TEXT'] },
+      }),
+    }
+  );
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`Gemini Image API error: ${resp.statusText} — ${errText.slice(0, 200)}`);
+  }
+  const data = await resp.json();
+  const imagePart = data.candidates[0].content.parts.find(p => p.inlineData);
+  if (!imagePart) throw new Error('Gemini did not return an image');
+  return {
+    base64: imagePart.inlineData.data,
+    mimeType: imagePart.inlineData.mimeType || 'image/jpeg',
+  };
 }
 
 const SCENE_SYSTEM_PROMPT = `You are a professional script writer and storyboard creator.
@@ -467,54 +498,104 @@ router.post('/:id/ai-generate', async (req, res) => {
   }
 });
 
-// POST /api/scripts/:id/ai-image — NanoBanano image generation
+// POST /api/scripts/:id/ai-image — Gemini image generation (Nano Banana 2)
+// Auto-generates prompt using Claude based on scene context + surrounding scenes for consistency
 router.post('/:id/ai-image', async (req, res) => {
   try {
-    const { scene_id, prompt } = req.body;
-    if (!process.env.NANOBANANO_API_KEY) {
-      return res.status(501).json({ error: 'NANOBANANO_API_KEY not configured. Add it to your .env file.' });
-    }
-    // NanoBanano API call — update endpoint URL when API details are available
-    const nbRes = await fetch('https://api.nanobanano.com/v1/generate', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.NANOBANANO_API_KEY}`,
-      },
-      body: JSON.stringify({ prompt, width: 1024, height: 576 }),
-    });
-    if (!nbRes.ok) throw new Error(`NanoBanano API error: ${nbRes.statusText}`);
-    const nbData = await nbRes.json();
-    const imageUrl = nbData.url || nbData.image_url || nbData.data?.url;
-    if (!imageUrl) throw new Error('NanoBanano did not return an image URL');
+    const { scene_id } = req.body;
+    if (!scene_id) return res.status(400).json({ error: 'scene_id is required' });
 
-    // Upload to Drive to persist the image
-    let finalUrl = imageUrl;
+    if (!process.env.GEMINI_API_KEY) {
+      return res.status(501).json({ error: 'GEMINI_API_KEY not configured in .env' });
+    }
+
+    // Load full script to get context
+    const { rows } = await db.query('SELECT scenes, title FROM scripts WHERE id = $1', [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Script not found' });
+    const scenes = rows[0].scenes || [];
+    const sceneIndex = scenes.findIndex(s => s.id === scene_id);
+    if (sceneIndex === -1) return res.status(404).json({ error: 'Scene not found' });
+
+    const targetScene = scenes[sceneIndex];
+    const prevScene = sceneIndex > 0 ? scenes[sceneIndex - 1] : null;
+    const nextScene = sceneIndex < scenes.length - 1 ? scenes[sceneIndex + 1] : null;
+
+    // All images already in storyboard for visual consistency context
+    const existingImagePrompts = scenes
+      .filter(s => s.id !== scene_id)
+      .flatMap(s => (s.images || []).filter(img => img.prompt).map(img => img.prompt))
+      .slice(0, 5);
+
+    // Ask Claude to craft a detailed image generation prompt
+    const contextPrompt = `You are writing an image generation prompt for a professional storyboard frame.
+
+Script title: "${rows[0].title}"
+
+${prevScene ? `PREVIOUS SCENE (Scene ${sceneIndex}):
+- Location: ${prevScene.location || ''}
+- What We See: ${prevScene.what_we_see || ''}
+- What We Hear: ${prevScene.what_we_hear || ''}
+` : ''}
+CURRENT SCENE (Scene ${sceneIndex + 1}) — generate image for this:
+- Location: ${targetScene.location || ''}
+- What We See: ${targetScene.what_we_see || ''}
+- What We Hear: ${targetScene.what_we_hear || ''}
+- Duration: ${targetScene.duration || ''}
+
+${nextScene ? `NEXT SCENE (Scene ${sceneIndex + 2}):
+- Location: ${nextScene.location || ''}
+- What We See: ${nextScene.what_we_see || ''}
+- What We Hear: ${nextScene.what_we_hear || ''}
+` : ''}
+${existingImagePrompts.length > 0 ? `VISUAL CONSISTENCY — other frames in this storyboard use these styles:
+${existingImagePrompts.map((p, i) => `- ${p}`).join('\n')}
+` : ''}
+
+Write a single, detailed image generation prompt (2-4 sentences) for the CURRENT SCENE only.
+- Cinematic storyboard frame style
+- Include camera angle, lighting, composition, mood
+- Keep visual consistency with the other frames if style info is provided
+- Do NOT include text overlays, titles, or watermarks
+- Return ONLY the prompt text, nothing else`;
+
+    let imagePrompt;
     try {
-      const imgRes = await fetch(imageUrl);
-      const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
+      imagePrompt = await callClaude(contextPrompt, 'You are a professional storyboard artist and cinematographer. Write concise, vivid image generation prompts.');
+      imagePrompt = imagePrompt.trim().replace(/^["']|["']$/g, '');
+    } catch (claudeErr) {
+      console.warn('Claude prompt generation failed, using fallback:', claudeErr.message);
+      imagePrompt = `Cinematic storyboard frame: ${targetScene.location || ''}. ${targetScene.what_we_see || ''}. Professional film production style, dramatic lighting.`;
+    }
+
+    // Generate image via Gemini (Nano Banana 2)
+    const { base64, mimeType } = await generateGeminiImage(imagePrompt);
+    const imgBuffer = Buffer.from(base64, 'base64');
+    const ext = mimeType.includes('png') ? 'png' : 'jpg';
+
+    // Upload to Google Drive for persistence
+    let finalUrl = null;
+    try {
       const { drive } = await getGoogleDrive();
       finalUrl = await driveUploadBuffer({
         drive,
-        fileName: `ai-image-${Date.now()}.jpg`,
+        fileName: `ai-image-scene${sceneIndex + 1}-${Date.now()}.${ext}`,
         buffer: imgBuffer,
-        mimeType: 'image/jpeg',
+        mimeType,
         subfolder: 'Scripts/AI Images',
       });
     } catch (driveErr) {
-      console.warn('Could not upload AI image to Drive:', driveErr.message);
+      console.warn('Could not upload AI image to Drive, using base64 data URL:', driveErr.message);
+      finalUrl = `data:${mimeType};base64,${base64}`;
     }
 
-    // Add image to scene
-    const { rows } = await db.query('SELECT scenes FROM scripts WHERE id = $1', [req.params.id]);
-    if (!rows[0]) return res.status(404).json({ error: 'Script not found' });
-    const scenes = rows[0].scenes || [];
+    // Append image to scene
     const updated = scenes.map(s => {
       if (s.id !== scene_id) return s;
-      return { ...s, images: [...(s.images || []), { id: crypto.randomUUID(), url: finalUrl, prompt, source: 'ai' }] };
+      return { ...s, images: [...(s.images || []), { id: crypto.randomUUID(), url: finalUrl, prompt: imagePrompt, source: 'ai' }] };
     });
     await db.query('UPDATE scripts SET scenes = $1, updated_at = NOW() WHERE id = $2', [JSON.stringify(updated), req.params.id]);
-    res.json({ url: finalUrl });
+
+    res.json({ url: finalUrl, prompt: imagePrompt });
   } catch (err) {
     console.error('POST /scripts/:id/ai-image error:', err);
     res.status(500).json({ error: err.message || 'Image generation failed' });
@@ -647,12 +728,12 @@ router.post('/:id/approve', async (req, res) => {
   }
 });
 
-// POST /api/scripts/:id/comments — add comment
+// POST /api/scripts/:id/comments — add comment (author_name accepted from body for public/anonymous users)
 router.post('/:id/comments', async (req, res) => {
   try {
-    const { scene_id, cell, selected_text, text } = req.body;
+    const { scene_id, cell, selected_text, text, author_name } = req.body;
     if (!text) return res.status(400).json({ error: 'text is required' });
-    const authorName = req.user?.name || req.user?.email || 'Unknown';
+    const authorName = req.user?.name || req.user?.email || author_name || 'Anonymous';
     const { rows } = await db.query(
       'INSERT INTO script_comments (id, script_id, scene_id, cell, selected_text, text, author_name) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
       [crypto.randomUUID(), req.params.id, scene_id || null, cell || null, selected_text || null, text, authorName]

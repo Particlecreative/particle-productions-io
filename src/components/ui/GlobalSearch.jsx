@@ -8,12 +8,15 @@ import {
 import clsx from 'clsx';
 
 const ALL_YEARS = [2024, 2025, 2026, 2027, 2028];
+const API = import.meta.env.VITE_API_URL || '';
+function jwt() { return localStorage.getItem('cp_auth_token'); }
 
 const CATEGORIES = {
   production: { icon: '📋', label: 'Productions' },
   lineitem:   { icon: '💰', label: 'Budget Items' },
   cast:       { icon: '🎭', label: 'Cast Members' },
   supplier:   { icon: '🏢', label: 'Suppliers' },
+  script:     { icon: '📝', label: 'Scripts' },
 };
 
 function Highlight({ text = '', query }) {
@@ -37,10 +40,11 @@ export default function GlobalSearch({ open, onClose }) {
   const inputRef = useRef(null);
 
   // Cache async data so useMemo can search synchronously
-  const [cachedProds, setCachedProds]       = useState([]);
+  const [cachedProds, setCachedProds]         = useState([]);
   const [cachedLineItems, setCachedLineItems] = useState([]);
   const [cachedCast, setCachedCast]           = useState([]);
   const [cachedSuppliers, setCachedSuppliers] = useState([]);
+  const [cachedScripts, setCachedScripts]     = useState([]);
 
   useEffect(() => {
     if (open) { setQuery(''); setActiveIdx(0); setTimeout(() => inputRef.current?.focus(), 50); }
@@ -59,14 +63,16 @@ export default function GlobalSearch({ open, onClose }) {
         });
         setCachedProds([...prodMap.values()]);
 
-        const [lineItems, casting, suppliers] = await Promise.all([
+        const [lineItems, casting, suppliers, scriptsRes] = await Promise.all([
           Promise.resolve(getAllLineItems()),
           Promise.resolve(getAllCasting()),
           Promise.resolve(getSuppliers(brandId)),
+          jwt() ? fetch(`${API}/api/scripts`, { headers: { Authorization: `Bearer ${jwt()}` } }).then(r => r.ok ? r.json() : []) : Promise.resolve([]),
         ]);
         setCachedLineItems(Array.isArray(lineItems) ? lineItems : []);
         setCachedCast(Array.isArray(casting) ? casting : []);
         setCachedSuppliers(Array.isArray(suppliers) ? suppliers : []);
+        setCachedScripts(Array.isArray(scriptsRes) ? scriptsRes : []);
       } catch (e) { console.warn('GlobalSearch fetch error:', e); }
     }
     fetchData();
@@ -107,6 +113,17 @@ export default function GlobalSearch({ open, onClose }) {
           items.push({ type: 'supplier', id: s.id, label: s.name || 'Supplier', sub: s.category || '—', url: '/suppliers' });
         }
       });
+
+      // Scripts
+      cachedScripts.slice(0, 200).forEach(s => {
+        if ([s.title, s.project_name, s.status].some(f => String(f || '').toLowerCase().includes(q))) {
+          const sub = [s.project_name, s.status, `${s.scene_count ?? 0} scenes`].filter(Boolean).join(' · ');
+          const url = s.production_id
+            ? `/production/${s.production_id}?tab=Scripts&script_id=${s.id}`
+            : `/scripts?script_id=${s.id}`;
+          items.push({ type: 'script', id: s.id, label: s.title || 'Untitled Script', sub, url });
+        }
+      });
     } catch (e) { console.warn('GlobalSearch error:', e); }
 
     // Group by category (max 5 each)
@@ -122,7 +139,7 @@ export default function GlobalSearch({ open, onClose }) {
       }
     });
     return flat;
-  }, [query, cachedProds, cachedLineItems, cachedCast, cachedSuppliers]);
+  }, [query, cachedProds, cachedLineItems, cachedCast, cachedSuppliers, cachedScripts]);
 
   const navigableItems = results.filter(r => r.type !== 'header');
 
@@ -156,7 +173,7 @@ export default function GlobalSearch({ open, onClose }) {
           <input
             ref={inputRef}
             type="text"
-            placeholder="Search productions, cast, budget items, suppliers…"
+            placeholder="Search productions, scripts, cast, budget items, suppliers…"
             value={query}
             onChange={e => setQuery(e.target.value)}
             className="flex-1 text-base outline-none bg-transparent text-gray-800 placeholder-gray-400"
@@ -170,9 +187,9 @@ export default function GlobalSearch({ open, onClose }) {
           {query.length < 2 ? (
             <div className="py-10 text-center text-gray-400">
               <Search size={22} className="mx-auto mb-2 opacity-40" />
-              <p className="text-sm">Type to search across all productions, cast, budget items, suppliers…</p>
+              <p className="text-sm">Type to search across productions, scripts, cast, budget items, suppliers…</p>
               <div className="mt-3 flex flex-wrap gap-2 justify-center">
-                {['production name', 'cast member name', 'budget item', 'supplier'].map(h => (
+                {['production name', 'script title', 'cast member', 'budget item', 'supplier'].map(h => (
                   <span key={h} className="text-xs px-2.5 py-1 rounded-full bg-gray-100 text-gray-500">{h}</span>
                 ))}
               </div>

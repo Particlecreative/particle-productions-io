@@ -34,8 +34,6 @@ function SortableSceneRow({ scene, index, visibleCols, onUpdate, onDelete, onDup
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
 
   const [collapsed, setCollapsed] = useState(scene.collapsed || false);
-  const [showImgPrompt, setShowImgPrompt] = useState(false);
-  const [imgPrompt, setImgPrompt] = useState('');
   const [generatingImg, setGeneratingImg] = useState(false);
   const fileRef = useRef();
 
@@ -50,12 +48,9 @@ function SortableSceneRow({ scene, index, visibleCols, onUpdate, onDelete, onDup
   };
 
   const handleGenerate = async () => {
-    if (!imgPrompt.trim()) return;
     setGeneratingImg(true);
-    await onImageGenerate(scene.id, imgPrompt);
+    await onImageGenerate(scene.id);
     setGeneratingImg(false);
-    setShowImgPrompt(false);
-    setImgPrompt('');
   };
 
   return (
@@ -154,6 +149,19 @@ function SortableSceneRow({ scene, index, visibleCols, onUpdate, onDelete, onDup
         </td>
       )}
 
+      {/* Duration */}
+      {visibleCols.duration && (
+        <td className="w-20 px-2 py-2 align-top">
+          <input
+            value={scene.duration || ''}
+            onChange={e => onUpdate(scene.id, 'duration', e.target.value)}
+            placeholder="5s"
+            readOnly={readOnly}
+            className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-300 text-gray-600"
+          />
+        </td>
+      )}
+
       {/* Visuals */}
       {visibleCols.visuals && (
         <td className="w-56 px-2 py-2 align-top">
@@ -186,32 +194,17 @@ function SortableSceneRow({ scene, index, visibleCols, onUpdate, onDelete, onDup
                   Upload
                 </button>
                 <button
-                  onClick={() => setShowImgPrompt(p => !p)}
-                  className="flex items-center gap-1 text-[10px] text-purple-500 hover:text-purple-700 px-1"
+                  onClick={handleGenerate}
+                  disabled={generatingImg}
+                  className="flex items-center gap-1 text-[10px] text-purple-500 hover:text-purple-700 px-1 disabled:opacity-50"
+                  title="Auto-generate storyboard image using AI (reads scene context)"
                 >
-                  <Sparkles size={10} /> AI Image
+                  {generatingImg ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
+                  {generatingImg ? 'Generating...' : 'AI Image'}
                 </button>
               </div>
             )}
           </div>
-          {showImgPrompt && !readOnly && (
-            <div className="mt-2 flex gap-1">
-              <input
-                value={imgPrompt}
-                onChange={e => setImgPrompt(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleGenerate()}
-                placeholder="Describe image..."
-                className="flex-1 text-xs border rounded-lg px-2 py-1 outline-none"
-              />
-              <button
-                onClick={handleGenerate}
-                disabled={generatingImg}
-                className="px-2 py-1 bg-purple-600 text-white text-xs rounded-lg disabled:opacity-50"
-              >
-                {generatingImg ? <Loader2 size={10} className="animate-spin" /> : 'Gen'}
-              </button>
-            </div>
-          )}
           <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e => { if (e.target.files[0]) onImageUpload(scene.id, e.target.files[0]); e.target.value = ''; }} />
         </td>
       )}
@@ -237,7 +230,7 @@ function SortableSceneRow({ scene, index, visibleCols, onUpdate, onDelete, onDup
 }
 
 // ── Main StoryboardEditor ─────────────────────────────────────────────────────
-export default function StoryboardEditor({ scriptId, readOnly = false, onBack, defaultProductionId, defaultBrandId }) {
+export default function StoryboardEditor({ scriptId, readOnly = false, onBack, onDeleted, onUpdated, defaultProductionId, defaultBrandId }) {
   const { user } = useAuth();
   const { brand } = useBrand();
 
@@ -245,8 +238,12 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, d
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(true);
-  const [activeView, setActiveView] = useState('table');
-  const [visibleCols, setVisibleCols] = useState({ location: true, what_we_see: true, what_we_hear: true, visuals: true });
+  const [activeView, setActiveView] = useState(() => localStorage.getItem(`script_view_${scriptId}`) || 'table');
+  const DEFAULT_COLS = { location: true, what_we_see: true, what_we_hear: true, visuals: true, duration: false };
+  const [visibleCols, setVisibleCols] = useState(() => {
+    try { return { ...DEFAULT_COLS, ...JSON.parse(localStorage.getItem(`script_cols_${scriptId}`) || '{}') }; }
+    catch { return DEFAULT_COLS; }
+  });
   const [showColMenu, setShowColMenu] = useState(false);
   const [presentMode, setPresentMode] = useState(false);
   const [presentIdx, setPresentIdx] = useState(0);
@@ -259,6 +256,8 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, d
   const [lightbox, setLightbox] = useState(null);
   const [pendingComment, setPendingComment] = useState(null);
   const [newCommentText, setNewCommentText] = useState('');
+  const [commenterName, setCommenterName] = useState(() => localStorage.getItem('cp_commenter_name') || '');
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiMode, setAiMode] = useState('generate');
   const [aiPrompt, setAiPrompt] = useState('');
@@ -272,6 +271,8 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, d
   const [versionLabel, setVersionLabel] = useState('');
   const [approvingLoading, setApprovingLoading] = useState(false);
   const saveTimer = useRef(null);
+  const autoVersionTimer = useRef(null);
+  const lastChangeRef = useRef(null);
   const importFileRef = useRef();
 
   const sensors = useSensors(
@@ -310,6 +311,18 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, d
   const debounceSave = useCallback((updatedScript) => {
     setSaved(false);
     clearTimeout(saveTimer.current);
+    lastChangeRef.current = Date.now();
+    // Schedule auto-version snapshot 5 minutes after last change (if no activity)
+    clearTimeout(autoVersionTimer.current);
+    autoVersionTimer.current = setTimeout(async () => {
+      try {
+        await fetch(`${API}/api/scripts/${scriptId}/save-version`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
+          body: JSON.stringify({ change_summary: 'Auto-saved' }),
+        });
+      } catch (e) { /* silent fail */ }
+    }, 5 * 60 * 1000); // 5 minutes
     saveTimer.current = setTimeout(async () => {
       setSaving(true);
       await fetch(`${API}/api/scripts/${scriptId}`, {
@@ -396,11 +409,11 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, d
     });
   };
 
-  const handleImageGenerate = async (sceneId, prompt) => {
+  const handleImageGenerate = async (sceneId) => {
     const res = await fetch(`${API}/api/scripts/${scriptId}/ai-image`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
-      body: JSON.stringify({ scene_id: sceneId, prompt }),
+      body: JSON.stringify({ scene_id: sceneId }),
     });
     const data = await res.json();
     if (data.url) {
@@ -418,10 +431,17 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, d
 
   const submitComment = async () => {
     if (!newCommentText.trim()) return;
+    // If no auth token and no name entered, prompt for name
+    const token = jwt();
+    if (!token && !commenterName.trim()) {
+      alert('Please enter your name before commenting.');
+      return;
+    }
+    if (commenterName.trim()) localStorage.setItem('cp_commenter_name', commenterName.trim());
     await fetch(`${API}/api/scripts/${scriptId}/comments`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
-      body: JSON.stringify({ ...pendingComment, text: newCommentText }),
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ ...pendingComment, text: newCommentText, author_name: commenterName.trim() || undefined }),
     });
     setNewCommentText('');
     setPendingComment(null);
@@ -545,6 +565,32 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, d
     if (data.id) { setScript(data); setShowVersions(false); }
   };
 
+  const handleDeleteScript = async () => {
+    if (!confirm(`Delete "${script?.title}"? This cannot be undone.`)) return;
+    await fetch(`${API}/api/scripts/${scriptId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${jwt()}` },
+    });
+    onDeleted?.(scriptId);
+  };
+
+  const handleDuplicateScript = async () => {
+    const res = await fetch(`${API}/api/scripts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
+      body: JSON.stringify({
+        title: `${script?.title || 'Untitled'} (Copy)`,
+        production_id: script?.production_id || null,
+        brand_id: script?.brand_id || null,
+        scenes: script?.scenes || [],
+        status: 'draft',
+      }),
+    });
+    const newScript = await res.json();
+    if (newScript.id) onUpdated?.(newScript);
+    setShowMoreMenu(false);
+  };
+
   const getCommentCount = (sceneId) => comments.filter(c => c.scene_id === sceneId && c.status === 'open').length;
   const openCommentCount = comments.filter(c => c.status === 'open').length;
   const scenes = script?.scenes || [];
@@ -606,7 +652,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, d
           {/* View toggle */}
           <div className="flex items-center gap-0.5 bg-gray-100 rounded-lg p-0.5">
             {[{ id: 'table', icon: Table2, label: 'Table' }, { id: 'vo', icon: Volume2, label: 'VO' }, { id: 'storyboard', icon: Layout, label: 'Visual' }].map(v => (
-              <button key={v.id} onClick={() => setActiveView(v.id)}
+              <button key={v.id} onClick={() => { setActiveView(v.id); localStorage.setItem(`script_view_${scriptId}`, v.id); }}
                 className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-colors ${activeView === v.id ? 'bg-white shadow-sm text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}>
                 <v.icon size={12} /> {v.label}
               </button>
@@ -621,10 +667,15 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, d
                 <Columns3 size={12} /> Columns
               </button>
               {showColMenu && (
-                <div className="absolute top-full mt-1 left-0 bg-white border border-gray-200 rounded-xl shadow-lg p-3 z-20 min-w-[160px]">
+                <div className="absolute top-full mt-1 left-0 bg-white border border-gray-200 rounded-xl shadow-lg p-3 z-20 min-w-[180px]">
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Show / Hide Columns</p>
                   {Object.keys(visibleCols).map(col => (
                     <label key={col} className="flex items-center gap-2 py-1 text-xs text-gray-700 cursor-pointer hover:text-gray-900">
-                      <input type="checkbox" checked={visibleCols[col]} onChange={e => setVisibleCols(p => ({ ...p, [col]: e.target.checked }))} className="accent-indigo-600" />
+                      <input type="checkbox" checked={visibleCols[col]} onChange={e => {
+                        const next = { ...visibleCols, [col]: e.target.checked };
+                        setVisibleCols(next);
+                        localStorage.setItem(`script_cols_${scriptId}`, JSON.stringify(next));
+                      }} className="accent-indigo-600" />
                       {col.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
                     </label>
                   ))}
@@ -676,6 +727,28 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, d
             className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors scripts-no-print">
             <Download size={12} />
           </button>
+          {/* ⋯ More menu */}
+          {!readOnly && (
+            <div className="relative scripts-no-print">
+              <button onClick={() => setShowMoreMenu(p => !p)}
+                className="flex items-center px-2 py-1.5 rounded-lg text-xs border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors">
+                ⋯
+              </button>
+              {showMoreMenu && (
+                <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg py-1 z-30 min-w-[160px]">
+                  <button onClick={handleDuplicateScript}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50">
+                    <Copy size={12} /> Duplicate Script
+                  </button>
+                  <div className="border-t border-gray-100 my-1" />
+                  <button onClick={() => { setShowMoreMenu(false); handleDeleteScript(); }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-600 hover:bg-red-50">
+                    <Trash2 size={12} /> Delete Script
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -693,6 +766,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, d
                   {visibleCols.location && <th className="w-40 px-2 py-2 text-left">Location</th>}
                   {visibleCols.what_we_see && <th className="px-2 py-2 text-left">What We See</th>}
                   {visibleCols.what_we_hear && <th className="px-2 py-2 text-left">What We Hear</th>}
+                  {visibleCols.duration && <th className="w-20 px-2 py-2 text-left">Duration</th>}
                   {visibleCols.visuals && <th className="w-56 px-2 py-2 text-left">Visuals</th>}
                   <th className="w-16" />
                 </tr>
@@ -941,6 +1015,14 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, d
             {pendingComment && (
               <div className="border border-amber-200 rounded-xl p-3 bg-amber-50">
                 {pendingComment.selected_text && <p className="text-xs text-amber-700 italic mb-2">"{pendingComment.selected_text}"</p>}
+                {!jwt() && (
+                  <input
+                    value={commenterName}
+                    onChange={e => setCommenterName(e.target.value)}
+                    placeholder="Your name *"
+                    className="w-full text-sm border border-amber-200 rounded-lg px-2 py-1.5 outline-none mb-2 bg-white"
+                  />
+                )}
                 <textarea value={newCommentText} onChange={e => setNewCommentText(e.target.value)} placeholder="Add comment..." className="w-full text-sm border border-amber-200 rounded-lg p-2 outline-none resize-none h-20" />
                 <div className="flex gap-2 mt-2">
                   <button onClick={submitComment} className="flex-1 py-1.5 bg-amber-500 text-white rounded-lg text-xs font-bold">Submit</button>
