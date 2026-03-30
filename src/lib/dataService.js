@@ -47,11 +47,10 @@ function write(key, data) {
 
 export const DEFAULT_LINK_CATEGORIES = [
   { id: 'Concepts',     label: '💡 Concepts',     order: 0 },
-  { id: 'Scripts',      label: '📄 Scripts',      order: 1 },
-  { id: 'Shooting',     label: '🎬 Shooting',     order: 2 },
-  { id: 'References',   label: '📌 References',   order: 3 },
-  { id: 'Deliverables', label: '📦 Deliverables', order: 4 },
-  { id: 'Other',        label: '🔗 Other',        order: 5 },
+  { id: 'Shooting',     label: '🎬 Shooting',     order: 1 },
+  { id: 'References',   label: '📌 References',   order: 2 },
+  { id: 'Deliverables', label: '📦 Deliverables', order: 3 },
+  { id: 'Other',        label: '🔗 Other',        order: 4 },
 ];
 
 // ── Initialize from seed data (dev only) ────────────────────────────────────

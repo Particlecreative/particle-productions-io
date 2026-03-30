@@ -284,9 +284,14 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
 
   // Regeneration modal
   const [regenModal, setRegenModal] = useState(null); // {sceneId, imageId, prompt}
-  const [regenMode, setRegenMode] = useState('same'); // 'same' | 'edit'
+  const [regenMode, setRegenMode] = useState('same'); // 'same' | 'edit' | 'reference'
   const [regenPrompt, setRegenPrompt] = useState('');
   const [regenLoading, setRegenLoading] = useState(false);
+  const [regenRefBase64, setRegenRefBase64] = useState('');
+  const [regenRefMime, setRegenRefMime] = useState('');
+  const [regenRefUrl, setRegenRefUrl] = useState('');
+  const [regenRefPreview, setRegenRefPreview] = useState(''); // for display only
+  const regenRefFileRef = useRef();
 
   // Character profiles stored per script in localStorage
   const charProfilesKey = `script_chars_${scriptId}`;
@@ -710,6 +715,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
     setRegenModal({ sceneId, imageId: img.id, prompt: img.prompt || '' });
     setRegenMode('same');
     setRegenPrompt(img.prompt || '');
+    setRegenRefBase64(''); setRegenRefMime(''); setRegenRefUrl(''); setRegenRefPreview('');
   };
 
   const handleRegenConfirm = async () => {
@@ -717,20 +723,30 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
     setRegenLoading(true);
     const charProfiles = getCharProfiles();
     const styleNotes = localStorage.getItem(`script_style_${scriptId}`) || '';
+    const body = {
+      scene_id: regenModal.sceneId,
+      replace_image_id: regenModal.imageId,
+      prompt: regenMode === 'edit' ? regenPrompt : undefined,
+      character_profiles: charProfiles.length > 0 ? charProfiles : undefined,
+      style_notes: styleNotes || undefined,
+    };
+    // Attach reference image if provided
+    if (regenMode === 'reference') {
+      if (regenRefBase64) {
+        body.reference_image = { base64: regenRefBase64, mimeType: regenRefMime || 'image/jpeg' };
+      } else if (regenRefUrl.trim()) {
+        body.reference_image_url = regenRefUrl.trim();
+      }
+    }
     const res = await fetch(`${API}/api/scripts/${scriptId}/ai-image`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
-      body: JSON.stringify({
-        scene_id: regenModal.sceneId,
-        replace_image_id: regenModal.imageId,
-        prompt: regenMode === 'edit' ? regenPrompt : undefined, // undefined = let Claude auto-generate
-        character_profiles: charProfiles.length > 0 ? charProfiles : undefined,
-        style_notes: styleNotes || undefined,
-      }),
+      body: JSON.stringify(body),
     });
     const data = await res.json();
     setRegenLoading(false);
     setRegenModal(null);
+    setRegenRefBase64(''); setRegenRefMime(''); setRegenRefUrl(''); setRegenRefPreview('');
     if (data.url) await loadScript();
     else alert(data.error || 'Regeneration failed');
   };
@@ -1318,10 +1334,60 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                   placeholder="Edit the image description..."
                 />
               )}
+              <label className="flex items-start gap-3 p-3 border-2 rounded-xl cursor-pointer transition-colors hover:border-purple-300" style={{ borderColor: regenMode === 'reference' ? '#a855f7' : undefined }}>
+                <input type="radio" name="regenMode" value="reference" checked={regenMode === 'reference'} onChange={() => setRegenMode('reference')} className="mt-0.5 accent-purple-500" />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-gray-800">With reference image</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Upload or link a reference image for visual guidance — consistency is preserved</p>
+                </div>
+              </label>
+              {regenMode === 'reference' && (
+                <div className="space-y-2 mt-1">
+                  {regenRefPreview && (
+                    <img src={regenRefPreview} alt="Reference" className="w-full h-28 object-cover rounded-xl border border-gray-200" />
+                  )}
+                  <button
+                    onClick={() => regenRefFileRef.current?.click()}
+                    className="w-full py-2 border-2 border-dashed border-gray-300 rounded-xl text-xs text-gray-500 hover:border-purple-400 hover:text-purple-600 flex items-center justify-center gap-1.5 transition-colors"
+                  >
+                    <Upload size={12} /> {regenRefPreview ? 'Change image' : 'Upload reference image'}
+                  </button>
+                  <input
+                    ref={regenRefFileRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={e => {
+                      const file = e.target.files?.[0]; if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = ev => {
+                        const b64 = ev.target.result.split(',')[1];
+                        setRegenRefBase64(b64);
+                        setRegenRefMime(file.type);
+                        setRegenRefPreview(ev.target.result);
+                        setRegenRefUrl('');
+                      };
+                      reader.readAsDataURL(file);
+                      e.target.value = '';
+                    }}
+                  />
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-px bg-gray-200" />
+                    <span className="text-[11px] text-gray-400">or paste URL</span>
+                    <div className="flex-1 h-px bg-gray-200" />
+                  </div>
+                  <input
+                    value={regenRefUrl}
+                    onChange={e => { setRegenRefUrl(e.target.value); setRegenRefPreview(e.target.value); setRegenRefBase64(''); setRegenRefMime(''); }}
+                    placeholder="https://example.com/reference.jpg"
+                    className="w-full border border-gray-200 rounded-xl px-3 py-1.5 text-xs outline-none focus:border-purple-400"
+                  />
+                </div>
+              )}
             </div>
             <div className="flex gap-2">
               <button onClick={() => setRegenModal(null)} className="flex-1 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">Cancel</button>
-              <button onClick={handleRegenConfirm} disabled={regenLoading || (regenMode === 'edit' && !regenPrompt.trim())}
+              <button onClick={handleRegenConfirm} disabled={regenLoading || (regenMode === 'edit' && !regenPrompt.trim()) || (regenMode === 'reference' && !regenRefBase64 && !regenRefUrl)}
                 className="flex-1 py-2 bg-purple-600 text-white rounded-xl text-sm font-semibold hover:bg-purple-700 disabled:opacity-50 flex items-center justify-center gap-2">
                 {regenLoading ? <><Loader2 size={14} className="animate-spin" /> Generating...</> : <><RefreshCw size={14} /> Regenerate</>}
               </button>

@@ -116,15 +116,22 @@ async function callGemini(prompt, fileBase64, mimeType) {
 }
 
 // Gemini 3.1 Flash Image (Nano Banana 2) — storyboard image generation
-async function generateGeminiImage(prompt) {
+// referenceImages: optional array of { base64, mimeType } — sent to Gemini as visual guidance
+async function generateGeminiImage(prompt, referenceImages = []) {
   if (!process.env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY not configured in .env');
+  const parts = [];
+  // Reference images first so Gemini uses them as visual context
+  for (const ref of referenceImages) {
+    parts.push({ inline_data: { mime_type: ref.mimeType || 'image/jpeg', data: ref.base64 } });
+  }
+  parts.push({ text: prompt });
   const resp = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key=${process.env.GEMINI_API_KEY}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
+        contents: [{ parts }],
         generationConfig: { responseModalities: ['IMAGE', 'TEXT'] },
       }),
     }
@@ -576,7 +583,7 @@ router.post('/:id/ai-generate', async (req, res) => {
 // Accepts optional: prompt (override), replace_image_id (replace vs append), character_profiles, style_notes
 router.post('/:id/ai-image', async (req, res) => {
   try {
-    const { scene_id, prompt: promptOverride, replace_image_id, character_profiles, style_notes } = req.body;
+    const { scene_id, prompt: promptOverride, replace_image_id, character_profiles, style_notes, reference_image, reference_image_url } = req.body;
     if (!scene_id) return res.status(400).json({ error: 'scene_id is required' });
 
     if (!process.env.GEMINI_API_KEY) {
@@ -655,8 +662,30 @@ Write a single, detailed image generation prompt (2-4 sentences) for the CURRENT
       }
     }
 
-    // Generate image via Gemini (Nano Banana 2)
-    const { base64, mimeType } = await generateGeminiImage(imagePrompt);
+    // Resolve reference image (upload or URL)
+    const refImages = [];
+    if (reference_image?.base64) {
+      refImages.push({ base64: reference_image.base64, mimeType: reference_image.mimeType || 'image/jpeg' });
+    } else if (reference_image_url) {
+      try {
+        const refRes = await fetch(reference_image_url);
+        if (refRes.ok) {
+          const refBuf = Buffer.from(await refRes.arrayBuffer());
+          const refMime = refRes.headers.get('content-type') || 'image/jpeg';
+          refImages.push({ base64: refBuf.toString('base64'), mimeType: refMime });
+        }
+      } catch (refErr) {
+        console.warn('Could not fetch reference image URL:', refErr.message);
+      }
+    }
+
+    // If reference image is provided, tell Claude to incorporate it
+    if (refImages.length > 0 && !promptOverride) {
+      imagePrompt += ' Use the provided reference image as visual inspiration for composition, style, or subject — adapt it to fit the scene context while maintaining storyboard consistency.';
+    }
+
+    // Generate image via Gemini (Nano Banana 2), optionally with reference images
+    const { base64, mimeType } = await generateGeminiImage(imagePrompt, refImages);
     const imgBuffer = Buffer.from(base64, 'base64');
     const ext = mimeType.includes('png') ? 'png' : 'jpg';
 
