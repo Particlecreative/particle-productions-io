@@ -1310,18 +1310,26 @@ function WeeklyReportsTab({ productions, brandId, selectedYear }) {
     if (!report) return;
     setShareLoading(true);
     try {
+      // Save first to ensure report exists in DB
+      await Promise.resolve(saveWeeklyReport(report));
       const API = import.meta.env.VITE_API_URL || '';
-      const token = localStorage.getItem('cp_auth_token');
+      const jwt = localStorage.getItem('cp_auth_token');
       const res = await fetch(`${API}/api/weekly-reports/${report.id}/share`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${jwt}` },
       });
-      const { share_token } = await res.json();
-      const url = `${window.location.origin}/weekly/${share_token}`;
+      const data = await res.json();
+      if (!data.share_token) {
+        alert('Failed to generate share link. Please try again.');
+        setShareLoading(false);
+        return;
+      }
+      const url = `${window.location.origin}/weekly/${data.share_token}`;
       await navigator.clipboard.writeText(url);
       alert('Share link copied to clipboard!');
     } catch (err) {
       console.error('Share error:', err);
+      alert('Error generating share link.');
     }
     setShareLoading(false);
   }
