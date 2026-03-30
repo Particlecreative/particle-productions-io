@@ -446,6 +446,40 @@ router.get('/', async (req, res) => {
   }
 });
 
+// GET /api/scripts/voices — must be BEFORE /:id to avoid route collision
+router.get('/voices', async (req, res) => {
+  try {
+    const apiKey = process.env.ELEVENLABS_API_KEY;
+    if (!apiKey) return res.status(501).json({ error: 'ELEVENLABS_API_KEY not configured' });
+    const r = await fetch('https://api.elevenlabs.io/v1/voices', {
+      headers: { 'xi-api-key': apiKey },
+    });
+    if (!r.ok) return res.status(r.status).json({ error: `ElevenLabs error: ${r.status}` });
+    const data = await r.json();
+    const voices = (data.voices || [])
+      .map(v => ({
+        voice_id: v.voice_id,
+        name: v.name,
+        category: v.category || 'premade',
+        preview_url: v.preview_url || null,
+        labels: v.labels || {},
+        gender: v.labels?.gender || '',
+        description: [v.labels?.accent, v.labels?.description, v.labels?.use_case].filter(Boolean).join(' · ') || '',
+      }))
+      .sort((a, b) => {
+        const catOrder = { 'cloned': 0, 'generated': 1, 'premade': 2 };
+        const ca = catOrder[a.category] ?? 3;
+        const cb = catOrder[b.category] ?? 3;
+        if (ca !== cb) return ca - cb;
+        return a.name.localeCompare(b.name);
+      });
+    res.json({ voices });
+  } catch (err) {
+    console.error('GET /scripts/voices error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/scripts/:id
 router.get('/:id', async (req, res) => {
   try {
@@ -1460,40 +1494,6 @@ router.post('/:id/tts', async (req, res) => {
   }
 });
 
-// GET /api/scripts/voices — fetch voices from ElevenLabs account
-router.get('/voices', async (req, res) => {
-  try {
-    const apiKey = process.env.ELEVENLABS_API_KEY;
-    if (!apiKey) return res.status(501).json({ error: 'ELEVENLABS_API_KEY not configured' });
-    const r = await fetch('https://api.elevenlabs.io/v1/voices', {
-      headers: { 'xi-api-key': apiKey },
-    });
-    if (!r.ok) return res.status(r.status).json({ error: `ElevenLabs error: ${r.status}` });
-    const data = await r.json();
-    // Sort: cloned/custom first, then premade; alphabetical within each group
-    const voices = (data.voices || [])
-      .map(v => ({
-        voice_id: v.voice_id,
-        name: v.name,
-        category: v.category || 'premade',
-        preview_url: v.preview_url || null,
-        labels: v.labels || {},
-        gender: v.labels?.gender || '',
-        description: [v.labels?.accent, v.labels?.description, v.labels?.use_case].filter(Boolean).join(' · ') || '',
-      }))
-      .sort((a, b) => {
-        const catOrder = { 'cloned': 0, 'generated': 1, 'premade': 2 };
-        const ca = catOrder[a.category] ?? 3;
-        const cb = catOrder[b.category] ?? 3;
-        if (ca !== cb) return ca - cb;
-        return a.name.localeCompare(b.name);
-      });
-    res.json({ voices });
-  } catch (err) {
-    console.error('GET /scripts/voices error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // POST /api/scripts/:id/tts-full — generate full script VO as downloadable MP3
 router.post('/:id/tts-full', async (req, res) => {
