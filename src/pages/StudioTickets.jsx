@@ -68,9 +68,12 @@ async function mondayQuery(gql, token, variables) {
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
     body: JSON.stringify({ query: gql, variables }),
   });
-  if (!res.ok) throw new Error(`Monday API ${res.status}`);
-  const data = await res.json();
-  if (data.errors) throw new Error(data.errors[0]?.message || 'Monday query failed');
+  const text = await res.text();
+  if (!res.ok) throw new Error(`Monday API ${res.status}: ${text.slice(0, 200)}`);
+  let data;
+  try { data = JSON.parse(text); } catch { throw new Error(`Monday API bad JSON: ${text.slice(0, 200)}`); }
+  if (data.errors?.length) throw new Error(data.errors[0]?.message || 'Monday query failed');
+  if (data.data === undefined || data.data === null) throw new Error(`Monday API null data. Raw: ${text.slice(0, 300)}`);
   return data.data;
 }
 
