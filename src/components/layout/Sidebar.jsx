@@ -26,7 +26,7 @@ const DEFAULT_NAV_ITEMS = [
   { to: '/links',          icon: Link,             label: 'Links',       accountingHide: true },
   { to: '/contracts',      icon: FileSignature,    label: 'Contracts',   accountingHide: true },
   { to: '/suppliers',      icon: Users2,           label: 'Suppliers',   accountingHide: true },
-  { to: '/studio-tickets', icon: Clapperboard,     label: 'Studio',      accountingHide: true },
+  { to: '/studio-tickets', icon: Clapperboard,     label: 'Studio',      accountingHide: true, particleOnly: true },
   { to: '/gantts',         icon: GanttChartSquare, label: 'Gantts',      accountingHide: true },
   { to: '/call-sheets',    icon: FileText,         label: 'Call Sheets', accountingHide: true },
   { to: '/financial',      icon: DollarSign,       label: 'Financial' },
@@ -105,9 +105,10 @@ export default function Sidebar({ open, onToggle }) {
     return () => window.removeEventListener('focus', checkCasting);
   }, [brand.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const visibleItems = isAccounting
+  const visibleItems = (isAccounting
     ? navItems.filter(i => !i.accountingHide)
-    : navItems;
+    : navItems
+  ).filter(i => !i.particleOnly || brand.id === 'particle');
 
   const sensors = useSensors(
     useSensor(PointerSensor),

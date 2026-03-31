@@ -84,9 +84,10 @@ export default function ProductionBoard() {
 
   // Build tab list based on production type
   const isShootType = production && SHOOT_TYPES.includes(production.production_type);
+  const studioTab = brandId === 'particle' ? ['Studio'] : [];
   const defaultTabs = isShootType
-    ? ['Budget Table', 'People on Set', 'Credit Card', 'Cast', 'Accounting', 'Financial', 'Links', 'Scripts', 'Studio', 'Updates', 'History', 'Gantt', 'Call Sheet']
-    : ['Budget Table', 'Credit Card', 'Accounting', 'Financial', 'Links', 'Scripts', 'Studio', 'Updates', 'History', 'Gantt'];
+    ? ['Budget Table', 'People on Set', 'Credit Card', 'Cast', 'Accounting', 'Financial', 'Links', 'Scripts', ...studioTab, 'Updates', 'History', 'Gantt', 'Call Sheet']
+    : ['Budget Table', 'Credit Card', 'Accounting', 'Financial', 'Links', 'Scripts', ...studioTab, 'Updates', 'History', 'Gantt'];
 
   const [tabConfig, setTabConfig] = useState(() =>
     getTabOrder(user?.id || 'anon', production?.id, defaultTabs)
