@@ -99,33 +99,29 @@ router.get('/boards/:boardId/items', async (req, res) => {
   }
 });
 
-// POST /api/briefs/generate — fetch Monday item + call Claude to generate brief
+// POST /api/briefs/generate — fetch Monday item (optional) + call Claude to generate brief
 router.post('/generate', async (req, res) => {
   const { board_id, item_id, extra_context } = req.body;
-  if (!item_id) return res.status(400).json({ error: 'item_id is required' });
 
   try {
-    // 1. Fetch full Monday item
-    const data = await mondayQuery(`
-      query GetItem($ids: [ID!]!) {
-        items(ids: $ids) {
-          id
-          name
-          state
-          board { id name }
-          group { id title }
-          column_values {
-            id title text value type
-          }
-          updates(limit: 5) {
-            id body created_at creator { name }
+    let mondayContext = '';
+
+    if (item_id) {
+      // 1. Fetch full Monday item
+      const data = await mondayQuery(`
+        query GetItem($ids: [ID!]!) {
+          items(ids: $ids) {
+            id name state
+            board { id name }
+            group { id title }
+            column_values { id title text value type }
+            updates(limit: 5) { id body created_at creator { name } }
           }
         }
-      }
-    `, { ids: [item_id] });
+      `, { ids: [item_id] });
 
-    const item = data.items?.[0];
-    if (!item) return res.status(404).json({ error: 'Item not found' });
+      const item = data.items?.[0];
+      if (!item) return res.status(404).json({ error: 'Item not found' });
 
     // 2. Build readable context from Monday item
     const columnLines = (item.column_values || [])
@@ -133,26 +129,31 @@ router.post('/generate', async (req, res) => {
       .map(cv => `- **${cv.title}**: ${cv.text}`)
       .join('\n');
 
-    const updateLines = (item.updates || [])
-      .map(u => {
-        const clean = u.body.replace(/<[^>]+>/g, '').trim();
-        return clean ? `[${u.creator?.name || 'Unknown'} on ${u.created_at?.slice(0,10)}]: ${clean}` : null;
-      })
-      .filter(Boolean)
-      .join('\n\n');
+      const updateLines = (item.updates || [])
+        .map(u => {
+          const clean = u.body.replace(/<[^>]+>/g, '').trim();
+          return clean ? `[${u.creator?.name || 'Unknown'} on ${u.created_at?.slice(0,10)}]: ${clean}` : null;
+        })
+        .filter(Boolean)
+        .join('\n\n');
 
-    const mondayContext = [
-      `Item: ${item.name}`,
-      `Board: ${item.board?.name || ''}`,
-      `Group: ${item.group?.title || ''}`,
-      columnLines ? `\nFields:\n${columnLines}` : '',
-      updateLines ? `\nComments/Updates:\n${updateLines}` : '',
-      extra_context ? `\nAdditional context from requester:\n${extra_context}` : '',
-    ].filter(Boolean).join('\n');
+      mondayContext = [
+        `Item: ${item.name}`,
+        `Board: ${item.board?.name || ''}`,
+        `Group: ${item.group?.title || ''}`,
+        columnLines ? `\nFields:\n${columnLines}` : '',
+        updateLines ? `\nComments/Updates:\n${updateLines}` : '',
+        extra_context ? `\nAdditional context from requester:\n${extra_context}` : '',
+      ].filter(Boolean).join('\n');
+    } else {
+      // No Monday item — use extra_context directly
+      if (!extra_context) return res.status(400).json({ error: 'Either item_id or extra_context is required' });
+      mondayContext = extra_context;
+    }
 
-    // 3. Call Claude to generate the brief
+    // 2. Call Claude to generate the brief
     const systemPrompt = `You are a creative production brief writer for a video and design production company.
-Given Monday.com project data, generate a structured, professional creative brief in JSON format.
+Generate a structured, professional creative brief in JSON format.
 Return ONLY valid JSON matching this exact schema:
 {
   "title": "Brief title (concise, action-oriented)",
@@ -172,23 +173,14 @@ Return ONLY valid JSON matching this exact schema:
   "notes": "Any other relevant info, constraints, or open questions."
 }`;
 
-    const userPrompt = `Generate a creative production brief from this Monday.com request:\n\n${mondayContext}`;
+    const userPrompt = `Generate a creative production brief from this request:\n\n${mondayContext}`;
 
     const raw = await callClaude(systemPrompt, userPrompt);
-    // Extract JSON from response
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error('Claude did not return valid JSON');
     const brief = JSON.parse(jsonMatch[0]);
 
-    res.json({
-      brief,
-      source: {
-        item_id: item.id,
-        item_name: item.name,
-        board_id: item.board?.id,
-        board_name: item.board?.name,
-      },
-    });
+    res.json({ brief, source: item_id ? { item_id } : null });
   } catch (err) {
     console.error('[briefs/generate] error:', err);
     res.status(500).json({ error: err.message });

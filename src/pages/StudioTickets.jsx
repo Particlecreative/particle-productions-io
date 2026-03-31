@@ -66,12 +66,21 @@ async function mondayQuery(gql, token, variables) {
 }
 
 function getItemType(item, boardId) {
-  const deptCol = item.column_values?.find(cv =>
-    ['department', 'type', 'channel', 'category'].some(k => cv.title?.toLowerCase().includes(k))
-  );
-  if (deptCol?.text?.toLowerCase().includes('tv')) return 'TV';
-  const g = item.group?.title?.toLowerCase() || '';
-  if (g.includes('tv') || item.name?.toLowerCase().startsWith('tv ')) return 'TV';
+  // Check ALL column values for any TV signal
+  for (const cv of item.column_values || []) {
+    const t = (cv.text || '').trim().toLowerCase();
+    if (!t) continue;
+    if (t === 'tv' || t === 'television' ||
+        t.startsWith('tv ') || t.startsWith('television ') ||
+        t.endsWith(' tv') || t.endsWith(' television') ||
+        t.includes(' tv ') || t.includes(' television ') ||
+        t.includes('(tv)') || t.includes('[tv]')) {
+      return 'TV';
+    }
+  }
+  // Check group title and item name
+  const g = (item.group?.title || '').toLowerCase();
+  if (g.includes('tv') || /\btv\b/i.test(item.name)) return 'TV';
   if (boardId === DESIGN_BOARD) return 'Design';
   return 'Video';
 }
@@ -172,7 +181,7 @@ export default function StudioTickets() {
   const [items, setItems]                   = useState([]);
   const [loading, setLoading]               = useState(false);
   const [error, setError]                   = useState(null);
-  const [typeFilter, setTypeFilter]         = useState('All');
+  const [typeFilter, setTypeFilter]         = useState('TV');
   const [requesterFilter, setRequesterFilter] = useState('All');
   const [productionFilter, setProductionFilter] = useState('');
   const [search, setSearch]                 = useState('');
@@ -193,24 +202,30 @@ export default function StudioTickets() {
     if (!token) return;
     setLoading(true); setError(null);
     try {
-      const data = await mondayQuery(`{
-        boards(ids: [${VIDEO_BOARD}, ${DESIGN_BOARD}]) {
-          id name
-          items_page(limit: 150) {
-            items {
-              id name state
-              group { id title }
-              column_values { id title text type }
-              updates(limit: 2) { id body created_at creator { name } }
-            }
-          }
-        }
-      }`, token);
+      // Fetch up to 500 items from each board; use cursor for second page if needed
+      const ITEM_QUERY = (boardIds, cursor) => cursor
+        ? `{ next_items_page(limit: 500, cursor: ${JSON.stringify(cursor)}) { cursor items { id name state group { id title } column_values { id title text type value } updates(limit: 2) { id body created_at creator { name } } } } }`
+        : `{ boards(ids: [${boardIds}]) { id name items_page(limit: 500) { cursor items { id name state group { id title } column_values { id title text type value } updates(limit: 2) { id body created_at creator { name } } } } } }`;
+
+      const data = await mondayQuery(ITEM_QUERY(`${VIDEO_BOARD}, ${DESIGN_BOARD}`, null), token);
       const all = [];
+      const boardMap = {};
       for (const board of data.boards || []) {
+        boardMap[board.id] = board.name;
         for (const item of board.items_page?.items || []) {
           if (item.state === 'deleted') continue;
           all.push({ ...item, _boardId: board.id, _boardName: board.name, _type: getItemType(item, board.id) });
+        }
+        // Fetch second page if there's a cursor
+        const cursor = board.items_page?.cursor;
+        if (cursor) {
+          try {
+            const more = await mondayQuery(ITEM_QUERY(null, cursor), token);
+            for (const item of more.next_items_page?.items || []) {
+              if (item.state === 'deleted') continue;
+              all.push({ ...item, _boardId: board.id, _boardName: board.name, _type: getItemType(item, board.id) });
+            }
+          } catch { /* ignore pagination errors */ }
         }
       }
       all.sort((a, b) => (b.updates?.[0]?.created_at || '').localeCompare(a.updates?.[0]?.created_at || ''));
@@ -221,13 +236,22 @@ export default function StudioTickets() {
 
   // Load system productions for filter
   const loadProductions = useCallback(async () => {
-    if (!token || !brandId) return;
+    if (!token) return;
     try {
-      const res = await fetch(`${API}/api/productions?brand_id=${encodeURIComponent(brandId)}`, {
+      const url = brandId
+        ? `${API}/api/productions?brand_id=${encodeURIComponent(brandId)}`
+        : `${API}/api/productions`;
+      const res = await fetch(url, {
         headers: { 'Authorization': `Bearer ${token}` },
       });
-      if (res.ok) setProductions(await res.json());
-    } catch { /* ignore */ }
+      if (res.ok) {
+        const data = await res.json();
+        // Handle both array and {productions:[...]} response shapes
+        setProductions(Array.isArray(data) ? data : (data.productions || data.data || []));
+      } else {
+        console.warn('[StudioTickets] productions load failed:', res.status);
+      }
+    } catch (err) { console.warn('[StudioTickets] productions error:', err); }
   }, [token, brandId]);
 
   useEffect(() => { loadItems(); loadProductions(); }, [loadItems, loadProductions]);
@@ -316,10 +340,16 @@ export default function StudioTickets() {
       if (!r.includes(requesterFilter.toLowerCase())) return false;
     }
     if (productionFilter) {
-      const prodName = productions.find(p => p.id === productionFilter)?.project_name?.toLowerCase() || productionFilter.toLowerCase();
-      const match = item.name.toLowerCase().includes(prodName) ||
-        item.column_values?.some(cv => cv.text?.toLowerCase().includes(prodName));
-      if (!match) return false;
+      const prod = productions.find(p => p.id === productionFilter);
+      const prodName = prod?.project_name?.toLowerCase() || '';
+      const prodId   = (prod?.id || productionFilter).toLowerCase();
+      // Match by: production ID code (e.g. "PRD26-01"), project name keywords, or any column value
+      const itemText = item.name.toLowerCase();
+      const colTexts = (item.column_values || []).map(cv => (cv.text || '').toLowerCase()).join(' ');
+      const nameWords = prodName.split(/[\s\-_]+/).filter(w => w.length > 3);
+      const matchById   = prodId && (itemText.includes(prodId) || colTexts.includes(prodId));
+      const matchByName = prodName && nameWords.length > 0 && nameWords.some(w => itemText.includes(w) || colTexts.includes(w));
+      if (!matchById && !matchByName) return false;
     }
     if (search && !item.name.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
