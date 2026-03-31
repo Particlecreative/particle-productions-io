@@ -397,6 +397,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(true);
+  const [savedAt, setSavedAt] = useState(null);
   const [activeView, setActiveView] = useState(() => localStorage.getItem(`script_view_${scriptId}`) || 'table');
   const DEFAULT_COLS = { location: true, what_we_see: true, what_we_hear: true, visuals: true, duration: false };
   const [visibleCols, setVisibleCols] = useState(() => {
@@ -551,6 +552,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
       });
       setSaving(false);
       setSaved(true);
+      setSavedAt(new Date());
     }, 1500);
   }, [scriptId]);
 
@@ -1244,8 +1246,13 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
               <option value="archived">Archived</option>
             </select>
             {/* Save indicator */}
-            <span className="text-xs text-gray-400 min-w-[44px] text-right">
-              {saving ? <Loader2 size={12} className="animate-spin inline" /> : saved ? <span className="text-green-500 flex items-center gap-0.5"><Check size={12} />Saved</span> : '...'}
+            <span className="text-xs text-gray-400 min-w-[60px] text-right flex items-center gap-1 justify-end">
+              {saving
+                ? <><Loader2 size={12} className="animate-spin" /><span>Saving…</span></>
+                : saved
+                  ? <><Check size={12} className="text-green-500" /><span className="text-green-600">Saved{savedAt ? ` ${savedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}</span></>
+                  : <span className="text-amber-500">Unsaved</span>
+              }
             </span>
           </div>
         </div>

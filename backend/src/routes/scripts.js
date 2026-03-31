@@ -364,7 +364,7 @@ router.post('/temp/ai-generate', async (req, res) => {
     if (reference_url?.trim()) {
       try {
         const parsedUrl = new URL(reference_url.trim());
-        const isInternal = /^(localhost|127\.|0\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|169\.254\.)/.test(parsedUrl.hostname);
+        const isInternal = /^(localhost|127\.|0\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|169\.254\.|::1$|::ffff:127\.|fd|fc)/.test(parsedUrl.hostname);
         if (!isInternal) {
           let refContent = '';
           // Google Docs/Slides — export as plain text via Drive API
@@ -900,9 +900,27 @@ router.post('/:id/ai-generate', async (req, res) => {
   }
 });
 
+// Simple in-memory rate limiter for expensive AI image calls
+// Max 15 image generations per script per 5 minutes
+const aiImageRateMap = new Map();
+function checkAiImageRate(scriptId) {
+  const now = Date.now();
+  const window = 5 * 60 * 1000;
+  const max = 15;
+  if (!aiImageRateMap.has(scriptId)) aiImageRateMap.set(scriptId, []);
+  const ts = aiImageRateMap.get(scriptId).filter(t => now - t < window);
+  if (ts.length >= max) return false;
+  ts.push(now);
+  aiImageRateMap.set(scriptId, ts);
+  return true;
+}
+
 // POST /api/scripts/:id/ai-image — Gemini image generation (Nano Banana 2)
 // Accepts optional: prompt (override), replace_image_id (replace vs append), character_profiles, style_notes, product_info
 router.post('/:id/ai-image', async (req, res) => {
+  if (!checkAiImageRate(req.params.id)) {
+    return res.status(429).json({ error: 'Too many image generations — please wait a moment before generating more.' });
+  }
   try {
     const { scene_id, prompt: promptOverride, replace_image_id, character_profiles, style_notes, reference_image, reference_image_url, product_info, character_photos } = req.body;
     if (!scene_id) return res.status(400).json({ error: 'scene_id is required' });
@@ -1015,7 +1033,7 @@ Write a single, detailed image generation prompt (2-4 sentences) for the CURRENT
       // SSRF guard — block internal/private IPs
       try {
         const parsedRefUrl = new URL(reference_image_url);
-        const isInternal = /^(localhost|127\.|0\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|169\.254\.)/.test(parsedRefUrl.hostname);
+        const isInternal = /^(localhost|127\.|0\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|169\.254\.|::1$|::ffff:127\.|fd|fc)/.test(parsedRefUrl.hostname);
         if (isInternal) return res.status(400).json({ error: 'Internal URLs not allowed as reference images' });
         const refRes = await fetch(reference_image_url, { signal: AbortSignal.timeout(8000) });
         if (refRes.ok) {
@@ -1032,6 +1050,7 @@ Write a single, detailed image generation prompt (2-4 sentences) for the CURRENT
     const productPhotosAdded = Array.isArray(product_info?.photos) && product_info.photos.length > 0;
     if (productPhotosAdded && !promptOverride) {
       imagePrompt += ' The provided product reference images show the exact product that must appear in this scene — replicate it precisely.';
+    }
     const charPhotosAdded = Array.isArray(character_photos) && character_photos.length > 0;
     if (charPhotosAdded && !promptOverride) {
       imagePrompt += ` IDENTITY LOCK: The reference photo(s) that follow this text show the EXACT actor(s)/character(s) who must appear in this scene. Reproduce their face, hair color and style, skin tone, and build with absolute precision. Do NOT change, idealize, or invent their appearance.`;
