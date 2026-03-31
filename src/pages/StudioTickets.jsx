@@ -46,11 +46,17 @@ const COL_DEFS = [
   { key: 'figma',      titles: ['figma'],                   width: 70,  label: 'Figma',       render: 'link'     },
 ];
 
+// TYPE_CFG: TV = dept-flagged items from either board; Video = non-TV from either board
 const TYPE_CFG = {
   Video:  { gradient: 'from-violet-600 to-purple-700', color: '#7c3aed', badge: 'bg-violet-50 text-violet-700 border-violet-200', icon: '🎬', board: VIDEO_BOARD,  form: VIDEO_FORM  },
   Design: { gradient: 'from-pink-500 to-rose-600',     color: '#e11d48', badge: 'bg-pink-50 text-pink-700 border-pink-200',       icon: '🎨', board: DESIGN_BOARD, form: DESIGN_FORM },
   TV:     { gradient: 'from-blue-600 to-indigo-700',   color: '#1d4ed8', badge: 'bg-blue-50 text-blue-700 border-blue-200',       icon: '📺', board: VIDEO_BOARD,  form: VIDEO_FORM  },
 };
+// Group collapse helpers
+function isGroupCollapsedByDefault(name) {
+  const n = (name || '').toLowerCase();
+  return n.includes('complet') || n.includes('done') || n.includes('archived') || n.includes('cancel');
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 async function mondayQuery(gql, token, variables) {
@@ -181,7 +187,7 @@ export default function StudioTickets() {
   const [items, setItems]                   = useState([]);
   const [loading, setLoading]               = useState(false);
   const [error, setError]                   = useState(null);
-  const [typeFilter, setTypeFilter]         = useState('TV');
+  const [typeFilter, setTypeFilter]         = useState('All');
   const [requesterFilter, setRequesterFilter] = useState('All');
   const [productionFilter, setProductionFilter] = useState('');
   const [search, setSearch]                 = useState('');
@@ -196,6 +202,17 @@ export default function StudioTickets() {
   const [showBriefModal, setShowBriefModal] = useState(false);
   const [syncingGantt, setSyncingGantt]     = useState(false);
   const [ganttSynced, setGanttSynced]       = useState(null);
+  const [collapsedGroups, setCollapsedGroups] = useState({});
+
+  function toggleGroup(name) {
+    setCollapsedGroups(prev => ({
+      ...prev,
+      [name]: !(prev[name] ?? isGroupCollapsedByDefault(name)),
+    }));
+  }
+  function isGroupCollapsed(name) {
+    return collapsedGroups[name] ?? isGroupCollapsedByDefault(name);
+  }
 
   // Load Monday items
   const loadItems = useCallback(async () => {
@@ -334,7 +351,8 @@ export default function StudioTickets() {
   const allRequesters = [...new Set(items.map(i => findCol(i, { titles: ['requested', 'requester', 'contact', 'name'] })?.text || '').filter(Boolean))].sort();
 
   const filtered = items.filter(item => {
-    if (typeFilter !== 'All' && item._type !== typeFilter) return false;
+    if (typeFilter === 'Video' && item._boardId !== VIDEO_BOARD) return false;
+    if (typeFilter === 'Design' && item._boardId !== DESIGN_BOARD) return false;
     if (requesterFilter && requesterFilter !== 'All') {
       const r = (findCol(item, { titles: ['requested', 'requester', 'contact', 'name'] })?.text || '').toLowerCase();
       if (!r.includes(requesterFilter.toLowerCase())) return false;
@@ -355,8 +373,11 @@ export default function StudioTickets() {
     return true;
   });
 
-  const counts = { All: items.length, Video: 0, Design: 0, TV: 0 };
-  items.forEach(i => { counts[i._type] = (counts[i._type] || 0) + 1; });
+  const counts = { All: items.length, Video: 0, Design: 0 };
+  items.forEach(i => {
+    if (i._boardId === VIDEO_BOARD) counts.Video++;
+    else counts.Design++;
+  });
 
   return (
     <div className="flex flex-col min-h-0" style={{ height: 'calc(100vh - 120px)' }}>
@@ -411,7 +432,7 @@ export default function StudioTickets() {
       <div className="flex items-center gap-2 mb-3 flex-shrink-0 flex-wrap">
         {/* Type */}
         <div className="flex gap-0.5 bg-gray-100 rounded-xl p-0.5">
-          {['All', 'Video', 'Design', 'TV'].map(t => (
+          {['All', 'Video', 'Design'].map(t => (
             <button key={t} onClick={() => setTypeFilter(t)}
               className={clsx('px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all',
                 typeFilter === t ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700')}>
@@ -490,16 +511,51 @@ export default function StudioTickets() {
                       <div className="text-sm">{search || typeFilter !== 'All' || productionFilter ? 'No matching tickets' : 'No tickets yet'}</div>
                     </td>
                   </tr>
-                ) : (
-                  filtered.map(item => (
-                    <TableRow
-                      key={item.id}
-                      item={item}
-                      isSelected={selectedItem?.id === item.id}
-                      onClick={() => selectedItem?.id === item.id ? setSelectedItem(null) : openItem(item)}
-                    />
-                  ))
-                )}
+                ) : (() => {
+                  // Build ordered group list preserving Monday group order
+                  const groupOrder = [];
+                  const groupMap = {};
+                  for (const item of filtered) {
+                    const grp = item.group?.title || 'Other';
+                    if (!groupMap[grp]) { groupMap[grp] = []; groupOrder.push(grp); }
+                    groupMap[grp].push(item);
+                  }
+                  return groupOrder.map(grpName => {
+                    const grpItems = groupMap[grpName];
+                    const collapsed = isGroupCollapsed(grpName);
+                    const isDone = isGroupCollapsedByDefault(grpName);
+                    return (
+                      <>
+                        {/* Group header row */}
+                        <tr key={`g-${grpName}`}
+                          onClick={() => toggleGroup(grpName)}
+                          className="cursor-pointer select-none hover:bg-gray-50/80 border-b border-gray-100 group/gh">
+                          <td colSpan={COL_DEFS.length + 3} className="px-3 py-2">
+                            <div className="flex items-center gap-2">
+                              <ChevronDown size={13}
+                                className={clsx('text-gray-400 transition-transform flex-shrink-0', collapsed ? '-rotate-90' : '')} />
+                              <span className={clsx('text-[11px] font-bold', isDone ? 'text-gray-400' : 'text-gray-700')}>
+                                {grpName}
+                              </span>
+                              <span className="text-[10px] text-gray-400 bg-gray-100 rounded-full px-1.5 py-0.5 font-semibold">
+                                {grpItems.length}
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+                        {/* Group items */}
+                        {!collapsed && grpItems.map(item => (
+                          <TableRow
+                            key={item.id}
+                            item={item}
+                            isSelected={selectedItem?.id === item.id}
+                            onClick={() => selectedItem?.id === item.id ? setSelectedItem(null) : openItem(item)}
+                          />
+                        ))}
+                      </>
+                    );
+                  });
+                })()}
               </tbody>
             </table>
           )}
