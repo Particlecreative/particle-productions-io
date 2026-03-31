@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useBrand } from '../context/BrandContext';
+import { toast } from '../lib/toast';
 import clsx from 'clsx';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -187,8 +188,26 @@ function renderCell(item, def) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function StudioTickets() {
-  const { token } = useAuth();
+  const { } = useAuth(); // keep context subscription for future use
   const { brandId } = useBrand();
+  const token = localStorage.getItem('cp_auth_token');
+
+  // Monday board config — loaded from API, falls back to hardcoded defaults
+  const [mondayConfig, setMondayConfig] = useState({
+    video_board_id:  VIDEO_BOARD,
+    design_board_id: DESIGN_BOARD,
+    video_dept_col:  VIDEO_DEPT_COL,
+    design_dept_col: DESIGN_DEPT_COL,
+  });
+
+  useEffect(() => {
+    fetch(`${API}/api/settings/monday-config`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem('cp_auth_token')}` },
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setMondayConfig(c => ({ ...c, ...d })); })
+      .catch(() => {});
+  }, []);
 
   const [items, setItems]                   = useState([]);
   const [loading, setLoading]               = useState(false);
@@ -225,31 +244,30 @@ export default function StudioTickets() {
     if (!token) return;
     setLoading(true); setError(null);
     try {
-      // Use items_page_by_column_values to fetch ONLY TV items from each board
-      // (boards have 2000+ items; TV items are ~20-50 — must filter server-side)
+      const { video_board_id, design_board_id, video_dept_col, design_dept_col } = mondayConfig;
       const ITEM_FIELDS = `id name state group { id title } column_values { id text type column { title } } updates(limit: 2) { id body created_at creator { name } }`;
       const data = await mondayQuery(`{
-        video: items_page_by_column_values(limit: 500, board_id: ${VIDEO_BOARD}, columns: [{ column_id: "${VIDEO_DEPT_COL}", column_values: ["TV"] }]) {
+        video: items_page_by_column_values(limit: 500, board_id: ${video_board_id}, columns: [{ column_id: "${video_dept_col}", column_values: ["TV"] }]) {
           items { ${ITEM_FIELDS} }
         }
-        design: items_page_by_column_values(limit: 500, board_id: ${DESIGN_BOARD}, columns: [{ column_id: "${DESIGN_DEPT_COL}", column_values: ["TV"] }]) {
+        design: items_page_by_column_values(limit: 500, board_id: ${design_board_id}, columns: [{ column_id: "${design_dept_col}", column_values: ["TV"] }]) {
           items { ${ITEM_FIELDS} }
         }
       }`, token);
       const all = [];
       for (const item of data.video?.items || []) {
         if (item.state === 'deleted') continue;
-        all.push({ ...item, _boardId: VIDEO_BOARD, _boardName: 'Video Projects', _type: 'TV' });
+        all.push({ ...item, _boardId: video_board_id, _boardName: 'Video Projects', _type: 'TV' });
       }
       for (const item of data.design?.items || []) {
         if (item.state === 'deleted') continue;
-        all.push({ ...item, _boardId: DESIGN_BOARD, _boardName: 'Design Projects - 2.0', _type: 'TV' });
+        all.push({ ...item, _boardId: design_board_id, _boardName: 'Design Projects - 2.0', _type: 'TV' });
       }
       all.sort((a, b) => (b.updates?.[0]?.created_at || '').localeCompare(a.updates?.[0]?.created_at || ''));
       setItems(all);
     } catch (err) { setError(err.message); }
     finally { setLoading(false); }
-  }, [token]);
+  }, [token, mondayConfig]);
 
   // Load system productions for filter
   const loadProductions = useCallback(async () => {
@@ -266,9 +284,8 @@ export default function StudioTickets() {
         // Handle both array and {productions:[...]} response shapes
         setProductions(Array.isArray(data) ? data : (data.productions || data.data || []));
       } else {
-        console.warn('[StudioTickets] productions load failed:', res.status);
       }
-    } catch (err) { console.warn('[StudioTickets] productions error:', err); }
+    } catch {}
   }, [token, brandId]);
 
   useEffect(() => { loadItems(); loadProductions(); }, [loadItems, loadProductions]);
@@ -305,7 +322,7 @@ export default function StudioTickets() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Brief generation failed');
       setBrief(json.brief);
-    } catch (err) { alert('Brief generation failed: ' + err.message); }
+    } catch { toast.error('Brief generation failed'); }
     finally { setGeneratingBrief(false); }
   }
 
@@ -314,9 +331,9 @@ export default function StudioTickets() {
     const text = timelineCol?.text || '';
     // Parse date range like "Jan 1 - Jan 15" or "2026-01-01 - 2026-01-15"
     const parts = text.split(/[-–—]/).map(s => s.trim()).filter(Boolean);
-    if (parts.length < 2) { alert('No timeline dates found on this ticket'); return; }
+    if (parts.length < 2) { return; }
     const start = new Date(parts[0]); const end = new Date(parts[1]);
-    if (isNaN(start) || isNaN(end)) { alert('Could not parse timeline dates: ' + text); return; }
+    if (isNaN(start) || isNaN(end)) { return; }
     setSyncingGantt(true);
     try {
       const res = await fetch(`${API}/api/gantt/events`, {
@@ -332,7 +349,7 @@ export default function StudioTickets() {
       });
       if (!res.ok) throw new Error(await res.text());
       setGanttSynced(productionId);
-    } catch (err) { alert('Gantt sync failed: ' + err.message); }
+    } catch { toast.error('Gantt sync failed'); }
     finally { setSyncingGantt(false); }
   }
 
@@ -660,7 +677,7 @@ function DetailPanel({ item, updates, loadingUpdates, brief, generatingBrief, on
       `, token);
       setNewComment('');
       // Optimistically add to updates
-    } catch (err) { alert('Could not post comment: ' + err.message); }
+    } catch { toast.error('Failed to post comment'); }
     finally { setPostingComment(false); }
   }
 
@@ -884,7 +901,7 @@ function BriefModal({ token, productions, brandId, onClose, onCreated }) {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
       setBrief(json.brief);
-    } catch (err) { alert('Generation failed: ' + err.message); }
+    } catch { toast.error('Brief generation failed'); }
     finally { setGenerating(false); }
   }
 
@@ -901,7 +918,7 @@ function BriefModal({ token, productions, brandId, onClose, onCreated }) {
         mutation { create_item(board_id: "${boardId}", item_name: ${JSON.stringify(itemName)}) { id } }
       `, token);
       onCreated();
-    } catch (err) { alert('Could not create in Monday: ' + err.message); setCreating(false); }
+    } catch { toast.error('Failed to create Monday item'); setCreating(false); }
   }
 
   return (

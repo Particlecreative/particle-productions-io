@@ -5,6 +5,7 @@ import {
   User, Zap, ArrowRight,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { toast } from '../../lib/toast';
 import clsx from 'clsx';
 
 const VIDEO_BOARD  = '5433027071';
@@ -188,7 +189,7 @@ export default function StudioTab({ productionId, production }) {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Brief generation failed');
       setBrief(json.brief);
-    } catch (err) { alert('Brief generation failed: ' + err.message); }
+    } catch { toast.error('Brief generation failed'); }
     finally { setGeneratingBrief(false); }
   }
 

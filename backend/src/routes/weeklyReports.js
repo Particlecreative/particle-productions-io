@@ -12,6 +12,10 @@ router.get('/share/:token', async (req, res) => {
     );
     if (!rows[0]) return res.status(404).json({ error: 'Report not found or link expired' });
 
+    if (rows[0].share_expires_at && new Date(rows[0].share_expires_at) < new Date()) {
+      return res.status(410).json({ error: 'This share link has expired' });
+    }
+
     const report = rows[0];
 
     // Also fetch productions referenced in entries
@@ -82,11 +86,11 @@ router.post('/:id/share', async (req, res) => {
     let token = rows[0].share_token;
     if (!token) {
       token = crypto.randomBytes(32).toString('hex');
-      await db.query(
-        'UPDATE weekly_reports SET share_token = $1 WHERE id = $2',
-        [token, req.params.id]
-      );
     }
+    await db.query(
+      "UPDATE weekly_reports SET share_token = $1, share_expires_at = NOW() + INTERVAL '90 days' WHERE id = $2",
+      [token, req.params.id]
+    );
     res.json({ share_token: token });
   } catch (err) {
     console.error('POST /weekly-reports/:id/share error:', err);

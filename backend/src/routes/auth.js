@@ -62,13 +62,15 @@ router.get('/me', verifyJWT, async (req, res) => {
       return res.status(401).json({ error: 'User not found or inactive' });
     }
 
-    const accessRow = await db.query(
-      'SELECT brand_ids FROM user_brand_access WHERE user_id = $1',
-      [req.user.id]
-    );
+    const [accessRow, groupsRow] = await Promise.all([
+      db.query('SELECT brand_ids FROM user_brand_access WHERE user_id = $1', [req.user.id]),
+      db.query('SELECT page_access FROM user_groups WHERE $1 = ANY(members)', [req.user.id]),
+    ]);
     const brandIds = accessRow.rows[0]?.brand_ids ?? ['particle'];
+    const allPages = groupsRow.rows.flatMap(r => r.page_access || []);
+    const page_access = allPages.length > 0 ? [...new Set(allPages)] : null;
 
-    res.json({ ...rows[0], brand_ids: brandIds });
+    res.json({ ...rows[0], brand_ids: brandIds, page_access });
   } catch (err) {
     console.error('GET /me error:', err);
     res.status(500).json({ error: 'Server error' });

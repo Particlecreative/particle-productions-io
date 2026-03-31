@@ -842,8 +842,8 @@ export default function ContractModal({ production, lineItem, onClose }) {
 
   // ── Generate E-Sign Links ──
   async function handleGenerate() {
-    if (!providerName.trim()) return alert('Enter provider name first');
-    if (!providerEmail.trim()) return alert('Enter provider email first');
+    if (!providerName.trim()) return;
+    if (!providerEmail.trim()) return;
 
     setGenerating(true);
     setGenerateError('');
@@ -954,7 +954,6 @@ export default function ContractModal({ production, lineItem, onClose }) {
         throw new Error(errData.error || 'Failed to send email');
       }
     } catch (err) {
-      console.error('Gmail send failed:', err);
       // Fallback: still mark as sent but warn user
       setSendSuccess(`Warning: Email may not have sent (${err.message}). Contract marked as sent.`);
     }

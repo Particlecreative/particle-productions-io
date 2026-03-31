@@ -1,6 +1,9 @@
 const router = require('express').Router();
 const db     = require('../db');
+const rateLimit = require('express-rate-limit');
 const { verifyJWT } = require('../middleware/auth');
+
+const submitLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, message: { error: 'Too many submissions, please try again later' } });
 
 router.use(verifyJWT);
 
@@ -92,7 +95,7 @@ router.post('/', async (req, res) => {
 });
 
 // POST /api/suppliers/submit  (public supplier form submission)
-router.post('/submit', async (req, res) => {
+router.post('/submit', submitLimiter, async (req, res) => {
   const data = req.body;
   try {
     // Log submission

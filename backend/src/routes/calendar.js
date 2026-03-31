@@ -51,7 +51,10 @@ function vevent({ uid, dtstart, dtend, summary, description }) {
 router.get('/:brandId.ics', async (req, res) => {
   try {
     // Simple token check so the URL isn't fully public
-    const expectedToken = process.env.CALENDAR_TOKEN || 'cp-cal-2026';
+    const expectedToken = process.env.CALENDAR_TOKEN;
+    if (!expectedToken) {
+      return res.status(403).send('Calendar not configured');
+    }
     if (req.query.token !== expectedToken) {
       return res.status(403).send('Forbidden');
     }

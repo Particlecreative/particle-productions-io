@@ -16,12 +16,12 @@ router.get('/', async (req, res) => {
 
 // POST /api/groups  (Admin)
 router.post('/', requireAdmin, async (req, res) => {
-  const { name, description, role, members } = req.body;
+  const { name, description, role, members, page_access } = req.body;
   if (!name) return res.status(400).json({ error: 'name required' });
   try {
     const { rows } = await db.query(
-      'INSERT INTO user_groups (name, description, role, members) VALUES ($1,$2,$3,$4) RETURNING *',
-      [name, description || '', role || 'Viewer', members || []]
+      'INSERT INTO user_groups (name, description, role, members, page_access) VALUES ($1,$2,$3,$4,$5) RETURNING *',
+      [name, description || '', role || 'Viewer', members || [], page_access || []]
     );
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -31,7 +31,7 @@ router.post('/', requireAdmin, async (req, res) => {
 
 // PATCH /api/groups/:id  (Admin)
 router.patch('/:id', requireAdmin, async (req, res) => {
-  const allowed = ['name', 'description', 'role', 'members'];
+  const allowed = ['name', 'description', 'role', 'members', 'page_access'];
   const updates = Object.entries(req.body).filter(([k]) => allowed.includes(k));
   if (!updates.length) return res.status(400).json({ error: 'No valid fields' });
 

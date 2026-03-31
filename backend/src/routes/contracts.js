@@ -47,7 +47,7 @@ async function notifySlack(message, link) {
 }
 
 // Send DM to Tomer via Slack Bot API
-const TOMER_SLACK_ID = 'U07466D6Y9E';
+const TOMER_SLACK_ID = process.env.CONTRACTS_APPROVER_SLACK_ID || 'U07466D6Y9E';
 async function slackDM(text) {
   const token = process.env.SLACK_BOT_TOKEN;
   if (!token) { console.warn('Slack DM skipped: SLACK_BOT_TOKEN missing'); return; }
@@ -1055,7 +1055,7 @@ router.post('/:production_id/generate', async (req, res) => {
     await db.query(
       `INSERT INTO contract_signatures (contract_id, signer_role, signer_name, signer_email, token)
        VALUES ($1, 'hocp', $2, $3, $4)`,
-      [contract.id, hocp_name || 'Tomer Wilf Lezmy', hocp_email || 'tomer@particleformen.com', hocpToken]
+      [contract.id, hocp_name || process.env.CONTRACTS_APPROVER_NAME || 'Tomer Wilf Lezmy', hocp_email || process.env.CONTRACTS_APPROVER_EMAIL || 'tomer@particleformen.com', hocpToken]
     );
 
     // Build signing URLs
@@ -1108,7 +1108,7 @@ router.post('/:production_id/generate', async (req, res) => {
 
       // Email to Tomer with HOCP signing link
       sendEmail({
-        to: 'tomer@particleformen.com',
+        to: process.env.CONTRACTS_APPROVER_EMAIL || 'tomer@particleformen.com',
         skipDefaultCc: true,
         subject: `Sign Contract: ${provider_name} - ${projectName}`,
         htmlBody: `
@@ -1170,7 +1170,7 @@ router.post('/:production_id/generate', async (req, res) => {
       contract,
       signing_links: {
         provider: { url: providerSignUrl, name: provider_name, email: provider_email },
-        hocp:     { url: hocpSignUrl,     name: hocp_name || 'Tomer Wilf Lezmy', email: hocp_email || 'tomer@particleformen.com' },
+        hocp:     { url: hocpSignUrl,     name: hocp_name || process.env.CONTRACTS_APPROVER_NAME || 'Tomer Wilf Lezmy', email: hocp_email || process.env.CONTRACTS_APPROVER_EMAIL || 'tomer@particleformen.com' },
       },
       require_hocp_signature: hocpRequired,
       emailSent: !hocpRequired, // supplier email only sent if auto-sign mode

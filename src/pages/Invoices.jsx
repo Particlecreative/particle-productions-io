@@ -639,6 +639,12 @@ function InvoiceRow({ item, productionName, fmt, isEditor, showProduction, recei
   const invUrl    = item.invoice_url;
   const dlUrl     = getDownloadUrl(invUrl);
 
+  const isPaymentOverdue = useMemo(() => {
+    if (!item.payment_due) return false;
+    if (item.payment_status === 'Paid') return false;
+    return new Date(item.payment_due) < new Date(new Date().toDateString());
+  }, [item.payment_due, item.payment_status]);
+
   // State-driven invoice cell content
   function InvoiceCell() {
     if (editingUrl) {
@@ -733,10 +739,11 @@ function InvoiceRow({ item, productionName, fmt, isEditor, showProduction, recei
     );
   }
 
-  // Row background: cheshbon_iska + paid takes priority
+  // Row background: cheshbon_iska + paid takes priority, then overdue, then received
   const trClass = clsx(
     item.invoice_type === 'cheshbon_iska' && item.payment_status === 'Paid'
       ? receipt?.receipt_url ? 'bg-green-50' : 'bg-orange-50'
+      : isPaymentOverdue ? 'bg-red-50'
       : invStatus === 'Received' ? 'opacity-60' : ''
   );
 
@@ -789,8 +796,10 @@ function InvoiceRow({ item, productionName, fmt, isEditor, showProduction, recei
       </td>
 
       {/* Payment Due */}
-      <td className="text-xs text-gray-500 whitespace-nowrap">
-        {item.payment_due ? formatDateIST(item.payment_due) : '—'}
+      <td className={clsx('text-xs whitespace-nowrap', isPaymentOverdue ? 'text-red-600 font-semibold' : 'text-gray-500')}>
+        {item.payment_due
+          ? <>{isPaymentOverdue && '⚠️ '}{formatDateIST(item.payment_due)}</>
+          : '—'}
       </td>
     </tr>
   );

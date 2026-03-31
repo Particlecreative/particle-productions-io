@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useBrand } from '../../context/BrandContext';
+import { toast } from '../../lib/toast';
 import clsx from 'clsx';
 
 const API = import.meta.env.VITE_API_URL || '';
@@ -651,7 +652,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
       // Notify parent so list badges (scene count etc.) stay in sync
       onUpdated?.({ id: scriptId });
     } else {
-      alert(data.error || 'Image generation failed');
+      toast.error(data.error || 'Image generation failed');
     }
   };
 
@@ -690,8 +691,8 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
         });
         await loadScript(); // refresh after each shot
       }
-    } catch (e) {
-      alert('Smart split failed: ' + e.message);
+    } catch {
+      toast.error('Smart split failed');
     }
     setSuggestingShots(null);
   };
@@ -707,7 +708,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
     // If no auth token and no name entered, prompt for name
     const token = jwt();
     if (!token && !commenterName.trim()) {
-      alert('Please enter your name before commenting.');
+      toast.warning('Please enter your name before commenting');
       return;
     }
     if (commenterName.trim()) localStorage.setItem('cp_commenter_name', commenterName.trim());
@@ -741,7 +742,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
     const data = await res.json();
     setAiLoading(false);
     if (data.scenes) { setAiPreview(data.scenes); }
-    else { alert(data.error || 'AI generation failed'); }
+    else { toast.error(data.error || 'AI script generation failed'); }
   };
 
   const acceptAIPreview = () => {
@@ -779,7 +780,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
     const data = await res.json();
     setImportLoading(false);
     if (data.scenes) { setAiPreview(data.scenes); setAiMode('import'); }
-    else { alert(data.error || 'Import failed'); }
+    else { toast.error(data.error || 'Script import failed'); }
   };
 
   const handleShare = async (mode) => {
@@ -804,8 +805,8 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
     });
     const data = await res.json();
     setApprovingLoading(false);
-    if (data.id) { setScript(data); alert('Script approved! Saved to Drive.'); }
-    else { alert(data.error || 'Approval failed'); }
+    if (data.id) { setScript(data); }
+    else { toast.error(data.error || 'Approval failed'); }
   };
 
   const handlePlayTTS = async (sceneId) => {
@@ -819,7 +820,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
         body: JSON.stringify({ scene_id: sceneId, voice_id: voiceId, speed: voiceSpeed, stability: voiceStability }),
       });
       const data = await res.json();
-      if (!data.audio_base64) { alert(data.error || 'TTS failed'); setPlayingSceneId(null); return; }
+      if (!data.audio_base64) { setPlayingSceneId(null); toast.error(data.error || 'Voice playback failed'); return; }
       if (data.duration_seconds) {
         setSceneDurations(prev => {
           const next = { ...prev, [sceneId]: data.duration_seconds };
@@ -833,7 +834,6 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
       audio.onerror = () => { setPlayingSceneId(null); audioRef.current = null; };
       audio.play();
     } catch (e) {
-      console.error('TTS error:', e);
       setPlayingSceneId(null);
     }
   };
@@ -902,7 +902,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        alert(err.error || `Download failed (${res.status})`);
+        toast.error(err.error || 'Voice-over download failed');
         return;
       }
       const blob = await res.blob();
@@ -913,7 +913,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
       const a = document.createElement('a');
       a.href = url; a.download = filename; a.click();
       URL.revokeObjectURL(url);
-    } catch (e) { alert('Download error: ' + e.message); }
+    } catch { toast.error('Voice-over download failed'); }
     setDownloadingFullVO(false);
   };
 
@@ -1000,7 +1000,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
       });
       const data = await res.json();
       setWizardCharacters((data.characters || []).map(c => ({ ...c, description: c.description || '', photoBase64: null, photoMime: null })));
-    } catch (e) { console.warn('Character extraction failed:', e); }
+    } catch {}
     setExtractingChars(false);
   };
 
@@ -1026,7 +1026,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
         if (data.description) {
           setWizardCharacters(prev => prev.map((c, i) => i === charIndex ? { ...c, description: data.description } : c));
         }
-      } catch (e) { console.warn('Actor description failed:', e); }
+      } catch {}
       setDescribingActor(null);
     };
     reader.readAsDataURL(file);
@@ -1093,7 +1093,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
 
     const scenesWithoutImages = scenes.filter(s => !s.images || s.images.length === 0);
     if (scenesWithoutImages.length === 0) {
-      alert('All scenes already have images.');
+      toast.info('All scenes already have images');
       return;
     }
 
@@ -1106,9 +1106,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
       setGenerateAllProgress({ current: i + 1, total: scenesWithoutImages.length });
       try {
         await handleImageGenerate(scenesWithoutImages[i].id);
-      } catch (e) {
-        console.warn(`Failed to generate image for scene ${i + 1}:`, e);
-      }
+      } catch {}
       if (i < scenesWithoutImages.length - 1) await new Promise(r => setTimeout(r, 1500));
     }
 
@@ -1154,7 +1152,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
     setRegenModal(null);
     setRegenRefBase64(''); setRegenRefMime(''); setRegenRefUrl(''); setRegenRefPreview('');
     if (data.url) await loadScript();
-    else alert(data.error || 'Regeneration failed');
+    else { toast.error(data.error || 'Image regeneration failed'); }
   };
 
   const getCommentCount = (sceneId) => comments.filter(c => c.scene_id === sceneId && c.status === 'open').length;
@@ -1404,7 +1402,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                     localStorage.removeItem(`script_style_${scriptId}`);
                     localStorage.removeItem(`script_product_name_${scriptId}`);
                     localStorage.removeItem(`script_product_photos_${scriptId}`);
-                    alert('AI image setup reset. Next time you generate an image, the wizard will run again.');
+                    toast.success('AI image setup reset');
                   }} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50">
                     <Sparkles size={12} /> Reset AI Image Setup
                   </button>

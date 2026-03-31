@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import {
-  FileText, Plus, Search, CheckCircle, Eye, Archive, ChevronDown, ChevronRight,
+  FileText, Plus, Search, CheckCircle, Eye, Archive, ChevronDown, ChevronRight, ChevronLeft,
 } from 'lucide-react';
 import StoryboardEditor from '../components/scripts/StoryboardEditor';
 import NewScriptModal from '../components/scripts/NewScriptModal';
@@ -52,7 +52,7 @@ export default function Scripts() {
       const [scriptsData, prodsData] = await Promise.all([scriptsRes.json(), prodsRes.json()]);
       setScripts(Array.isArray(scriptsData) ? scriptsData : []);
       setProductions(Array.isArray(prodsData) ? prodsData : []);
-    } catch (e) { console.error(e); }
+    } catch {}
     setLoading(false);
   }
 
@@ -132,9 +132,14 @@ export default function Scripts() {
   }
 
   return (
-    <div className="flex h-full">
+    <div className="flex flex-col md:flex-row h-full">
       {/* ── Left panel ─────────────────────────────── */}
-      <div className="w-60 shrink-0 border-r border-gray-200 bg-gray-50/60 flex flex-col h-full">
+      <div className={clsx(
+        'shrink-0 border-r border-gray-200 bg-gray-50/60 flex flex-col',
+        'w-full md:w-60',
+        selectedId ? 'hidden md:flex' : 'flex',
+        'h-auto md:h-full'
+      )}>
         {/* Top toolbar */}
         <div className="p-3 border-b border-gray-200 space-y-2">
           <button
@@ -213,16 +218,26 @@ export default function Scripts() {
       </div>
 
       {/* ── Right panel ────────────────────────────── */}
-      <div className="flex-1 min-w-0 h-full overflow-auto">
+      <div className={clsx('flex-1 min-w-0 overflow-auto', selectedId ? 'flex flex-col h-full' : 'hidden md:flex flex-col h-full')}>
         {selectedId ? (
-          <StoryboardEditor
-            key={selectedId}
-            scriptId={selectedId}
-            onDeleted={handleScriptDeleted}
-            onUpdated={handleScriptUpdated}
-          />
+          <>
+            <button
+              onClick={() => setSelectedId(null)}
+              className="md:hidden flex items-center gap-1.5 px-3 py-2 text-xs text-indigo-600 font-medium border-b border-gray-200 bg-white shrink-0"
+            >
+              <ChevronLeft size={14} /> All Scripts
+            </button>
+            <div className="flex-1 min-h-0 overflow-auto">
+              <StoryboardEditor
+                key={selectedId}
+                scriptId={selectedId}
+                onDeleted={handleScriptDeleted}
+                onUpdated={handleScriptUpdated}
+              />
+            </div>
+          </>
         ) : (
-          <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-gray-400 gap-4">
+          <div className="flex flex-col items-center justify-center h-full min-h-[400px] md:min-h-0 text-gray-400 gap-4">
             <div className="w-20 h-20 rounded-2xl bg-gray-100 flex items-center justify-center">
               <FileText size={36} className="text-gray-300" />
             </div>

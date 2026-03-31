@@ -536,44 +536,67 @@ function UsersTab() {
 
 // ─── GROUPS TAB ──────────────────────────────────────────────────────────────
 
-const EMPTY_GROUP = { name: '', description: '', role: 'Editor', members: [] };
+const EMPTY_GROUP = { name: '', description: '', role: 'Editor', members: [], page_access: [] };
+
+const ALL_PAGES = [
+  { to: '/',               label: 'Productions' },
+  { to: '/links',          label: 'Links' },
+  { to: '/contracts',      label: 'Contracts' },
+  { to: '/suppliers',      label: 'Suppliers' },
+  { to: '/studio-tickets', label: 'Studio' },
+  { to: '/gantts',         label: 'Gantts' },
+  { to: '/call-sheets',    label: 'Call Sheets' },
+  { to: '/financial',      label: 'Financial' },
+  { to: '/accounting',     label: 'Accounting' },
+  { to: '/invoices',       label: 'Invoices' },
+  { to: '/history',        label: 'History' },
+  { to: '/casting-rights', label: 'Casting' },
+  { to: '/scripts',        label: 'Scripts' },
+  { to: '/manual',         label: 'Manual' },
+];
 
 function GroupsTab() {
   const [groups, setGroups] = useState([]);
   const [expandedId, setExpandedId] = useState(null);
-  const [editId, setEditId] = useState(null);      // group being edited
+  const [editId, setEditId] = useState(null);
   const [editData, setEditData] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [newData, setNewData] = useState(EMPTY_GROUP);
+  const [allUsers, setAllUsers] = useState([]);
 
-  const allUsers = SAMPLE_USERS;
-
-  useEffect(() => { refresh(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    refresh();
+    if (!IS_DEV) apiGet('/users').then(u => setAllUsers(Array.isArray(u) ? u : [])).catch(() => {});
+    else setAllUsers(SAMPLE_USERS);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function refresh() {
-    const g = await Promise.resolve(getGroups());
+    const g = IS_DEV ? await Promise.resolve(getGroups()) : await apiGet('/groups').catch(() => []);
     setGroups(Array.isArray(g) ? g : []);
   }
 
-  function handleCreate(e) {
+  async function handleCreate(e) {
     e.preventDefault();
     if (!newData.name.trim()) return;
-    createGroup(newData);
-    refresh();
+    if (IS_DEV) createGroup(newData);
+    else await apiPost('/groups', newData).catch(() => {});
+    await refresh();
     setShowNew(false);
     setNewData(EMPTY_GROUP);
   }
 
-  function handleEdit(e) {
+  async function handleEdit(e) {
     e.preventDefault();
-    updateGroup(editId, editData);
-    refresh();
+    if (IS_DEV) updateGroup(editId, editData);
+    else await apiPatch(`/groups/${editId}`, editData).catch(() => {});
+    await refresh();
     setEditId(null);
   }
 
-  function handleDelete(id) {
-    deleteGroup(id);
-    refresh();
+  async function handleDelete(id) {
+    if (IS_DEV) deleteGroup(id);
+    else await apiDelete(`/groups/${id}`).catch(() => {});
+    await refresh();
     if (expandedId === id) setExpandedId(null);
   }
 
@@ -588,7 +611,7 @@ function GroupsTab() {
 
   function startEdit(group) {
     setEditId(group.id);
-    setEditData({ name: group.name, description: group.description ?? '', role: group.role, members: [...group.members] });
+    setEditData({ name: group.name, description: group.description ?? '', role: group.role, members: [...(group.members || [])], page_access: [...(group.page_access || [])] });
     setExpandedId(null);
   }
 
@@ -813,6 +836,39 @@ function GroupForm({ data, setData, allUsers, onSubmit, onCancel, submitLabel, t
                 </span>
                 {u.name}
                 {selected && <X size={10} />}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+          Page Access
+          <span className="ml-1 text-gray-400 normal-case font-normal">(leave all unchecked = full access)</span>
+        </label>
+        <div className="flex flex-wrap gap-2">
+          {ALL_PAGES.map(p => {
+            const checked = (data.page_access || []).includes(p.to);
+            return (
+              <button
+                key={p.to}
+                type="button"
+                onClick={() => setData(d => ({
+                  ...d,
+                  page_access: checked
+                    ? (d.page_access || []).filter(x => x !== p.to)
+                    : [...(d.page_access || []), p.to],
+                }))}
+                className={clsx(
+                  'px-2.5 py-1 rounded-full text-xs font-medium border transition-all',
+                  checked
+                    ? 'bg-indigo-100 border-indigo-300 text-indigo-800'
+                    : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300',
+                )}
+              >
+                {p.label}
+                {checked && <Check size={9} className="inline ml-1" />}
               </button>
             );
           })}

@@ -58,8 +58,7 @@ export default function ScriptsTab({ productionId, production }) {
       setScripts(Array.isArray(data) ? data : []);
       // Auto-select first script if none selected
       if (!selectedId && data.length > 0) setSelectedId(data[0].id);
-    } catch (e) {
-      console.error(e);
+    } catch {
     } finally {
       setLoading(false);
     }

@@ -26,7 +26,7 @@ export async function api(path, options = {}) {
     const publicPaths = ['/login', '/sign/', '/supplier-form/', '/cc-payment/'];
     const isPublicPage = publicPaths.some(p => window.location.pathname.startsWith(p));
     if (!isPublicPage) {
-      window.location.href = '/login';
+      window.location.href = '/login?redirect=' + encodeURIComponent(window.location.pathname + window.location.search);
     }
     return;
   }

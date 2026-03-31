@@ -84,8 +84,7 @@ export default function NewScriptModal({ defaultProductionId, defaultBrandId, on
         }
         onCreated(script);
       }
-    } catch (e) {
-      console.error(e);
+    } catch {
       setCreating(false);
     }
   }

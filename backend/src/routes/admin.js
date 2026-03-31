@@ -18,8 +18,8 @@ const upload = multer({
   },
 });
 
-// GET /api/admin/version  (public — no auth required)
-router.get('/version', async (req, res) => {
+// GET /api/admin/version  (auth required)
+router.get('/version', verifyJWT, async (req, res) => {
   try {
     const { rows } = await db.query("SELECT value FROM app_config WHERE key = 'version'");
     res.json({ version: rows[0]?.value ?? '1.0' });

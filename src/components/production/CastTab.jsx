@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Plus, Pencil, Trash2, ExternalLink, User, X, Search, Upload, RefreshCw } from 'lucide-react';
+import { Plus, Pencil, Trash2, ExternalLink, User, X, Search, Upload, RefreshCw, Download } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { getCasting, createCastMember, updateCastMember, deleteCastMember, createGanttEvent, generateId, getLineItems, createLineItem } from '../../lib/dataService';
 import ContractModal from './ContractModal';
@@ -47,6 +47,28 @@ const BLANK = {
   start_date: '', end_date: '', warning_date: '', contract_status: 'Running',
   usage: [], signed_contract_url: '', contract_manager_name: '', notes: '',
 };
+
+function exportCastCSV(members) {
+  const rows = [
+    ['Name', 'Role', 'Usage', 'Period', 'Start', 'End', 'Contract Status', 'Fee', 'Notes'],
+    ...members.map(m => [
+      m.name || '',
+      m.role || '',
+      (m.usage || []).join('; '),
+      m.period || '',
+      m.start_date || '',
+      m.end_date || '',
+      m.contract_status || '',
+      m.fee || '',
+      m.notes || '',
+    ])
+  ];
+  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'cast.csv'; a.click();
+  URL.revokeObjectURL(url);
+}
 
 export default function CastTab({ productionId, production }) {
   const { isEditor, isAdmin } = useAuth();
@@ -140,14 +162,23 @@ export default function CastTab({ productionId, production }) {
           </div>
           <span className="text-xs text-gray-400">{cast.length} cast member{cast.length !== 1 ? 's' : ''}</span>
         </div>
-        {(isEditor || isAdmin) && (
+        <div className="flex items-center gap-2">
           <button
-            onClick={openNew}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-700 transition-colors"
+            onClick={() => exportCastCSV(filtered)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-gray-600 text-sm font-semibold hover:bg-gray-50 transition-colors"
+            title="Export visible cast members to CSV"
           >
-            <Plus size={14} /> Add Cast Member
+            <Download size={14} /> Export CSV
           </button>
-        )}
+          {(isEditor || isAdmin) && (
+            <button
+              onClick={openNew}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gray-900 text-white text-sm font-semibold hover:bg-gray-700 transition-colors"
+            >
+              <Plus size={14} /> Add Cast Member
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Table */}

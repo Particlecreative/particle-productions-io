@@ -35,6 +35,42 @@ router.patch('/:brand_id', requireAdmin, async (req, res) => {
   }
 });
 
+// GET /api/settings/monday-config  (Admin only)
+router.get('/monday-config', requireAdmin, async (req, res) => {
+  const brand_id = req.user.brand_id || 'particle';
+  try {
+    const { rows } = await db.query(
+      'SELECT monday_config FROM settings WHERE brand_id = $1',
+      [brand_id]
+    );
+    res.json(rows[0]?.monday_config ?? null);
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// POST /api/settings/monday-config  (Admin)
+// Migration note: requires `monday_config JSONB` column on settings table:
+//   ALTER TABLE settings ADD COLUMN IF NOT EXISTS monday_config JSONB;
+router.post('/monday-config', requireAdmin, async (req, res) => {
+  const brand_id = req.user.brand_id || 'particle';
+  const monday_config = req.body;
+  try {
+    const { rows } = await db.query(
+      `INSERT INTO settings (brand_id, monday_config)
+       VALUES ($1, $2)
+       ON CONFLICT (brand_id) DO UPDATE SET
+         monday_config = EXCLUDED.monday_config,
+         updated_at    = NOW()
+       RETURNING monday_config`,
+      [brand_id, JSON.stringify(monday_config)]
+    );
+    res.json(rows[0].monday_config);
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // GET /api/settings/view-order/:view_key
 router.get('/view-order/:view_key', async (req, res) => {
   try {

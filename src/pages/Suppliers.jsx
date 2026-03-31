@@ -240,16 +240,14 @@ export default function Suppliers() {
             <div className="relative">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
-                className="brand-input pl-10"
-                style={{ width: 220 }}
+                className="brand-input pl-10 w-full sm:w-56"
                 placeholder="Search name / email / role…"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
               />
             </div>
             <select
-              className="brand-input"
-              style={{ width: 160 }}
+              className="brand-input w-full sm:w-40"
               value={filterType}
               onChange={e => setFilterType(e.target.value)}
             >
@@ -258,8 +256,7 @@ export default function Suppliers() {
               <option value="post_production">Post-Production</option>
             </select>
             <select
-              className="brand-input"
-              style={{ width: 200 }}
+              className="brand-input w-full sm:w-48"
               value={filterProd}
               onChange={e => setFilterProd(e.target.value)}
             >

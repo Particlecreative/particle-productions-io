@@ -105,10 +105,15 @@ export default function Sidebar({ open, onToggle }) {
     return () => window.removeEventListener('focus', checkCasting);
   }, [brand.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // page_access: if non-null array from user's group, restrict to those paths only
+  const pageAccess = user?.page_access ?? null;
+
   const visibleItems = (isAccounting
     ? navItems.filter(i => !i.accountingHide)
     : navItems
-  ).filter(i => !i.particleOnly || brand.id === 'particle');
+  )
+    .filter(i => !i.particleOnly || brand.id === 'particle')
+    .filter(i => !pageAccess || isAdmin || pageAccess.includes(i.to));
 
   const sensors = useSensors(
     useSensor(PointerSensor),

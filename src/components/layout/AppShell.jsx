@@ -1,16 +1,14 @@
 import { useState } from 'react';
 import Sidebar from './Sidebar';
 import Header from './Header';
+import ToastContainer from '../ui/ToastContainer';
 
 export default function AppShell({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: 'var(--brand-bg)' }}>
-      {/* Sidebar */}
       <Sidebar open={sidebarOpen} onToggle={() => setSidebarOpen(o => !o)} />
-
-      {/* Main area */}
       <div
         className="flex flex-col flex-1 overflow-hidden main-content"
         style={{ marginLeft: 0 }}
@@ -20,6 +18,7 @@ export default function AppShell({ children }) {
           {children}
         </main>
       </div>
+      <ToastContainer />
     </div>
   );
 }

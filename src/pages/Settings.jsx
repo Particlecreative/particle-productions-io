@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Save, Upload, Palette, Type, Globe, List, Plus, X, Check, ChevronUp, ChevronDown, RotateCcw, Clock, Wrench, Trash2, Building2, Pencil, ServerCog, Mail, Link2, CheckCircle, AlertCircle } from 'lucide-react';
+import { Save, Upload, Palette, Type, Globe, List, Plus, X, Check, ChevronUp, ChevronDown, RotateCcw, Clock, Wrench, Trash2, Building2, Pencil, ServerCog, Mail, Link2, CheckCircle, AlertCircle, Grid3x3 } from 'lucide-react';
 import { useBrand } from '../context/BrandContext';
 import { useLists } from '../context/ListsContext';
 import { useAuth } from '../context/AuthContext';
@@ -548,6 +548,85 @@ function DataBackupSection({ dropboxConnected, dropboxLoading, setDropboxLoading
   );
 }
 
+// ── Monday.com Board Config ───────────────────────────────────────────────────
+const DEFAULT_MONDAY_CONFIG = {
+  video_board_id:  '5433027071',
+  design_board_id: '8036329818',
+  video_dept_col:  'label',
+  design_dept_col: 'status_1__1',
+};
+
+function MondayConfigSection() {
+  const [config, setConfig] = useState(DEFAULT_MONDAY_CONFIG);
+  const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    fetch('/api/settings/monday-config', { headers: { Authorization: `Bearer ${localStorage.getItem('cp_auth_token')}` } })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setConfig({ ...DEFAULT_MONDAY_CONFIG, ...d }); })
+      .catch(() => {});
+  }, []);
+
+  async function save() {
+    setSaving(true); setError(null);
+    try {
+      const res = await fetch('/api/settings/monday-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('cp_auth_token')}` },
+        body: JSON.stringify(config),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) { setError(e.message); }
+    finally { setSaving(false); }
+  }
+
+  const Field = ({ label, field, placeholder, hint }) => (
+    <div>
+      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{label}</label>
+      {hint && <p className="text-xs text-gray-400 mb-1">{hint}</p>}
+      <input
+        className="brand-input text-sm font-mono"
+        value={config[field] || ''}
+        onChange={e => setConfig(c => ({ ...c, [field]: e.target.value }))}
+        placeholder={placeholder}
+      />
+    </div>
+  );
+
+  return (
+    <div className="max-w-lg space-y-5">
+      <section className="brand-card space-y-4">
+        <div className="flex items-center gap-2 mb-2">
+          <Grid3x3 size={14} style={{ color: 'var(--brand-primary)' }} />
+          <h2 className="font-bold text-sm" style={{ color: 'var(--brand-primary)' }}>Monday.com Board Configuration</h2>
+        </div>
+        <p className="text-xs text-gray-500">Configure which Monday.com boards and columns power the Studio page. Find Board IDs in Monday.com board URL. Column IDs via the API or board Settings → Columns.</p>
+
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Video Board ID" field="video_board_id" placeholder="5433027071" />
+          <Field label="Design Board ID" field="design_board_id" placeholder="8036329818" />
+          <Field label="Video Dept Column ID" field="video_dept_col" placeholder="label"
+            hint="Column that holds 'TV' value on Video board" />
+          <Field label="Design Dept Column ID" field="design_dept_col" placeholder="status_1__1"
+            hint="Column that holds 'TV' value on Design board" />
+        </div>
+
+        {error && <p className="text-xs text-red-500">{error}</p>}
+
+        <button onClick={save} disabled={saving}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold text-white disabled:opacity-50"
+          style={{ background: 'var(--brand-primary)' }}>
+          {saved ? <><Check size={13} /> Saved</> : <><Save size={13} /> {saving ? 'Saving…' : 'Save Config'}</>}
+        </button>
+      </section>
+    </div>
+  );
+}
+
 export default function Settings() {
   const { brandId, brand, refreshBrands } = useBrand();
   const { lists, updateList, resetListKey } = useLists();
@@ -749,6 +828,7 @@ export default function Settings() {
           { key: 'brands',        label: 'Brands',         icon: <Building2 size={13} />,   show: isSuperAdmin },
           { key: 'improvements',  label: 'Improvements',   icon: <Wrench size={13} />,      show: true },
           { key: 'data-import',   label: 'Data Import',    icon: <Upload size={13} />,      show: isAdmin || isSuperAdmin },
+          { key: 'monday',        label: 'Monday.com',     icon: <Grid3x3 size={13} />,     show: isAdmin || isSuperAdmin },
           { key: 'integrations',  label: 'Integrations',   icon: <Link2 size={13} />,       show: isSuperAdmin },
           { key: 'changelog',     label: 'Changelog',      icon: <Clock size={13} />,       show: true },
           { key: 'system',        label: 'System Update',  icon: <ServerCog size={13} />,   show: isSuperAdmin },
@@ -1153,6 +1233,11 @@ export default function Settings() {
       {/* ── Brands tab ───────────────────────────────────────────────────────── */}
       {tab === 'brands' && isSuperAdmin && (
         <BrandsTab refreshBrands={refreshBrands} />
+      )}
+
+      {/* ── Monday.com tab ──────────────────────────────────────────────────── */}
+      {tab === 'monday' && (isAdmin || isSuperAdmin) && (
+        <MondayConfigSection />
       )}
 
       {/* ── Integrations tab ──────────────────────────────────────────────────── */}

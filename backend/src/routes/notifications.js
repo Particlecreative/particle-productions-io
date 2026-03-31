@@ -19,11 +19,11 @@ router.get('/', async (req, res) => {
 
 // POST /api/notifications
 router.post('/', async (req, res) => {
-  const { user_id, type, message, production_id } = req.body;
+  const { type, message, production_id } = req.body;
   try {
     const { rows } = await db.query(
       'INSERT INTO notifications (user_id, type, message, production_id) VALUES ($1,$2,$3,$4) RETURNING *',
-      [user_id || req.user.id, type, message, production_id || null]
+      [req.user.id, type, message, production_id || null]
     );
     res.status(201).json(rows[0]);
   } catch (err) {

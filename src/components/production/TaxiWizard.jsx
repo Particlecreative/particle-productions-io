@@ -36,9 +36,7 @@ async function geocodeAddress(address) {
     if (data.results && data.results[0]) {
       return data.results[0].geometry.location; // { lat, lng }
     }
-  } catch (err) {
-    console.warn('Geocode failed for:', address, err);
-  }
+  } catch {}
   return null;
 }
 
