@@ -1476,6 +1476,11 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
         {/* Table View */}
         {activeView === 'table' && (
           <div className="overflow-x-auto scripts-printable" style={{ WebkitOverflowScrolling: 'touch' }}>
+            {/* Mobile scroll hint */}
+            <div className="sm:hidden flex items-center gap-1 text-[10px] text-gray-400 mb-2 px-1">
+              <span>← scroll →</span>
+              <span className="ml-auto opacity-60">tip: use landscape for best view</span>
+            </div>
             <table className="w-full border-collapse min-w-[700px] scripts-table">
               <thead className="sticky top-0 z-10 bg-gray-50">
                 <tr className="text-xs font-semibold text-gray-400 uppercase tracking-wider border-b border-gray-200">

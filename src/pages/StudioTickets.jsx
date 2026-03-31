@@ -47,9 +47,21 @@ async function mondayQuery(gql, token) {
 function getItemType(item, boardId) {
   const g = item.group?.title?.toLowerCase() || '';
   const n = item.name?.toLowerCase() || '';
+  // Check Department / Type / Channel columns for "TV"
+  const deptCol = item.column_values?.find(cv =>
+    ['department', 'type', 'channel', 'category'].some(k => cv.title?.toLowerCase().includes(k))
+  );
+  if (deptCol?.text?.toLowerCase().includes('tv')) return 'TV';
   if (g.includes('tv') || n.startsWith('tv ') || n.includes(' tv ') || n.includes('television')) return 'TV';
   if (boardId === DESIGN_BOARD) return 'Design';
   return 'Video';
+}
+
+function getRequester(item) {
+  const col = item.column_values?.find(cv =>
+    ['requester', 'submitted', 'requested by', 'contact', 'name'].some(k => cv.title?.toLowerCase().includes(k))
+  );
+  return col?.text || '';
 }
 
 function getStatus(item) {
@@ -97,6 +109,7 @@ export default function StudioTickets() {
   const [loading, setLoading]             = useState(false);
   const [error, setError]                 = useState(null);
   const [typeFilter, setTypeFilter]       = useState('All');
+  const [requesterFilter, setRequesterFilter] = useState('Omer Barak');
   const [search, setSearch]               = useState('');
   const [selectedItem, setSelectedItem]   = useState(null);
   const [updates, setUpdates]             = useState([]);
@@ -202,8 +215,15 @@ export default function StudioTickets() {
   const counts = { All: items.length, Video: 0, Design: 0, TV: 0 };
   items.forEach(i => { counts[i._type] = (counts[i._type] || 0) + 1; });
 
+  // Collect unique requesters for dropdown
+  const allRequesters = [...new Set(items.map(i => getRequester(i)).filter(Boolean))].sort();
+
   const filtered = items.filter(item => {
     if (typeFilter !== 'All' && item._type !== typeFilter) return false;
+    if (requesterFilter && requesterFilter !== 'All') {
+      const r = getRequester(item).toLowerCase();
+      if (!r.includes(requesterFilter.toLowerCase())) return false;
+    }
     if (search && !item.name.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
@@ -258,6 +278,7 @@ export default function StudioTickets() {
 
       {/* ── Filter bar ── */}
       <div className="flex items-center gap-3 mb-4 flex-shrink-0 flex-wrap">
+        {/* Type filter */}
         <div className="flex gap-0.5 bg-gray-100 rounded-xl p-1">
           {['All', 'Video', 'Design', 'TV'].map(t => (
             <button key={t} onClick={() => setTypeFilter(t)}
@@ -269,6 +290,24 @@ export default function StudioTickets() {
             </button>
           ))}
         </div>
+
+        {/* Requester filter */}
+        <div className="relative">
+          <User size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          <select
+            value={requesterFilter}
+            onChange={e => setRequesterFilter(e.target.value)}
+            className="pl-7 pr-6 py-2 rounded-xl border border-gray-200 bg-white text-xs font-medium text-gray-700 focus:outline-none focus:border-indigo-300 appearance-none cursor-pointer hover:border-gray-300 transition-all"
+          >
+            <option value="All">All requesters</option>
+            <option value="Omer Barak">Omer Barak</option>
+            {allRequesters.filter(r => !r.toLowerCase().includes('omer')).map(r => (
+              <option key={r} value={r}>{r}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Search */}
         <div className="relative flex-1 max-w-xs">
           <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search tickets…"

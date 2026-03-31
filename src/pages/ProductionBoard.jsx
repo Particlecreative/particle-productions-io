@@ -29,6 +29,7 @@ import CastTab from '../components/production/CastTab';
 import CallSheetTab from '../components/production/CallSheetTab';
 import TaxiWizard from '../components/production/TaxiWizard';
 import ScriptsTab from '../components/production/ScriptsTab';
+import StudioTab from '../components/production/StudioTab';
 import clsx from 'clsx';
 
 const SHOOT_TYPES = ['Shoot', 'Remote Shoot'];
@@ -84,8 +85,8 @@ export default function ProductionBoard() {
   // Build tab list based on production type
   const isShootType = production && SHOOT_TYPES.includes(production.production_type);
   const defaultTabs = isShootType
-    ? ['Budget Table', 'People on Set', 'Credit Card', 'Cast', 'Accounting', 'Financial', 'Links', 'Scripts', 'Updates', 'History', 'Gantt', 'Call Sheet']
-    : ['Budget Table', 'Credit Card', 'Accounting', 'Financial', 'Links', 'Scripts', 'Updates', 'History', 'Gantt'];
+    ? ['Budget Table', 'People on Set', 'Credit Card', 'Cast', 'Accounting', 'Financial', 'Links', 'Scripts', 'Studio', 'Updates', 'History', 'Gantt', 'Call Sheet']
+    : ['Budget Table', 'Credit Card', 'Accounting', 'Financial', 'Links', 'Scripts', 'Studio', 'Updates', 'History', 'Gantt'];
 
   const [tabConfig, setTabConfig] = useState(() =>
     getTabOrder(user?.id || 'anon', production?.id, defaultTabs)
@@ -426,6 +427,9 @@ export default function ProductionBoard() {
       )}
       {activeTab === 'Scripts' && (
         <ScriptsTab productionId={id} production={production} />
+      )}
+      {activeTab === 'Studio' && (
+        <StudioTab productionId={id} production={production} />
       )}
 
       {/* Import Modal */}
