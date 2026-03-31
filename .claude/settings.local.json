@@ -54,7 +54,8 @@
       "Bash(zip -r cp-panel-full.zip ParticleProductionsIO/ --exclude \"ParticleProductionsIO/node_modules/*\" --exclude \"ParticleProductionsIO/.env\" --exclude \"ParticleProductionsIO/.git/*\")",
       "Bash(node -e \":*)",
       "Bash(GIT_ASKPASS=\"\" git push origin main)",
-      "Bash(find /Users/alan/Particle Dropbox/Tomer Wilf Lezmy/ParticleIO/ParticleProductionsIO/src -type f -name *.jsx -o -name *.js)"
+      "Bash(find /Users/alan/Particle Dropbox/Tomer Wilf Lezmy/ParticleIO/ParticleProductionsIO/src -type f -name *.jsx -o -name *.js)",
+      "Bash(/Users/alan/.nvm/versions/node/v20.20.1/bin/npm run:*)"
     ]
   }
 }

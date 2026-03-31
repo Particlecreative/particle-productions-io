@@ -1,42 +1,63 @@
-import { useState, useEffect, useCallback, forwardRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   RefreshCw, ExternalLink, X, Search, Loader2, AlertCircle,
-  MessageSquare, Sparkles, Copy, Check, ChevronRight, Calendar,
-  User, FileText, Zap, ArrowRight,
+  Sparkles, Copy, Check, Calendar, User, Zap, ArrowRight,
+  Plus, ChevronDown, Send, Link2, BarChart2, Film,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useBrand } from '../context/BrandContext';
 import clsx from 'clsx';
 
-// ─── Constants ───────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 const VIDEO_BOARD  = '5433027071';
 const DESIGN_BOARD = '8036329818';
 const VIDEO_FORM   = 'https://wkf.ms/3PVukOV';
 const DESIGN_FORM  = 'https://wkf.ms/4sKgeP9';
+const API = import.meta.env.VITE_API_URL || '';
 
-const STATUS_STYLES = {
-  'Done':            { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500' },
-  'Approved':        { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500' },
-  'Working on it':   { bg: 'bg-amber-50',   text: 'text-amber-700',   border: 'border-amber-200',   dot: 'bg-amber-400'  },
-  'In Progress':     { bg: 'bg-blue-50',    text: 'text-blue-700',    border: 'border-blue-200',    dot: 'bg-blue-500'   },
-  'Stuck':           { bg: 'bg-red-50',     text: 'text-red-700',     border: 'border-red-200',     dot: 'bg-red-500'    },
-  'Waiting':         { bg: 'bg-purple-50',  text: 'text-purple-700',  border: 'border-purple-200',  dot: 'bg-purple-500' },
-  'Review':          { bg: 'bg-cyan-50',    text: 'text-cyan-700',    border: 'border-cyan-200',    dot: 'bg-cyan-500'   },
-  'Cancelled':       { bg: 'bg-gray-100',   text: 'text-gray-500',    border: 'border-gray-200',    dot: 'bg-gray-400'   },
-  '__default':       { bg: 'bg-gray-100',   text: 'text-gray-500',    border: 'border-gray-200',    dot: 'bg-gray-400'   },
+// Monday-style status color map (approximate by label text)
+const STATUS_PALETTE = {
+  'done':           '#00c875', 'approved':       '#00c875',
+  'working on it':  '#fdab3d', 'in progress':    '#579bfc',
+  'stuck':          '#e2445c', 'waiting':        '#a25ddc',
+  'review':         '#0086c0', 'cancelled':      '#c4c4c4',
+  'ready for':      '#e2445c', 'new request':    '#007eb5',
 };
+function statusColor(label) {
+  const k = (label || '').toLowerCase();
+  for (const [key, color] of Object.entries(STATUS_PALETTE)) {
+    if (k.includes(key)) return color;
+  }
+  return '#c4c4c4';
+}
+
+// Column display config — maps title patterns to how we render them
+const COL_DEFS = [
+  { key: 'status',     titles: ['status'],                  width: 130, label: 'Status',      render: 'status'   },
+  { key: 'product',    titles: ['product', 'bundle'],       width: 130, label: 'Product',     render: 'status'   },
+  { key: 'dept',       titles: ['department', 'depart'],    width: 100, label: 'Dept',        render: 'status'   },
+  { key: 'priority',   titles: ['priority'],                width: 90,  label: 'Priority',    render: 'status'   },
+  { key: 'deadline',   titles: ['deadline', 'due date'],    width: 100, label: 'Deadline',    render: 'date'     },
+  { key: 'timeline',   titles: ['timeline'],                width: 130, label: 'Timeline',    render: 'timeline' },
+  { key: 'requester',  titles: ['requested', 'requester', 'contact', 'name'], width: 110, label: 'Requested by', render: 'person' },
+  { key: 'designer',   titles: ['design', 'assigned'],      width: 100, label: 'Designer',    render: 'person'   },
+  { key: 'created',    titles: ['created'],                 width: 100, label: 'Created',     render: 'date'     },
+  { key: 'dropbox',    titles: ['dropbox'],                 width: 90,  label: 'Dropbox',     render: 'link'     },
+  { key: 'figma',      titles: ['figma'],                   width: 70,  label: 'Figma',       render: 'link'     },
+];
 
 const TYPE_CFG = {
-  Video:  { gradient: 'from-violet-600 to-purple-700', badge: 'bg-violet-50 text-violet-700 border-violet-200',  icon: '🎬' },
-  Design: { gradient: 'from-pink-500 to-rose-600',     badge: 'bg-pink-50 text-pink-700 border-pink-200',        icon: '🎨' },
-  TV:     { gradient: 'from-blue-600 to-indigo-700',   badge: 'bg-blue-50 text-blue-700 border-blue-200',        icon: '📺' },
+  Video:  { gradient: 'from-violet-600 to-purple-700', color: '#7c3aed', badge: 'bg-violet-50 text-violet-700 border-violet-200', icon: '🎬', board: VIDEO_BOARD,  form: VIDEO_FORM  },
+  Design: { gradient: 'from-pink-500 to-rose-600',     color: '#e11d48', badge: 'bg-pink-50 text-pink-700 border-pink-200',       icon: '🎨', board: DESIGN_BOARD, form: DESIGN_FORM },
+  TV:     { gradient: 'from-blue-600 to-indigo-700',   color: '#1d4ed8', badge: 'bg-blue-50 text-blue-700 border-blue-200',       icon: '📺', board: VIDEO_BOARD,  form: VIDEO_FORM  },
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-async function mondayQuery(gql, token) {
+async function mondayQuery(gql, token, variables) {
   const res = await fetch('/api/monday/query', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-    body: JSON.stringify({ query: gql }),
+    body: JSON.stringify({ query: gql, variables }),
   });
   if (!res.ok) throw new Error(`Monday API ${res.status}`);
   const data = await res.json();
@@ -45,39 +66,20 @@ async function mondayQuery(gql, token) {
 }
 
 function getItemType(item, boardId) {
-  const g = item.group?.title?.toLowerCase() || '';
-  const n = item.name?.toLowerCase() || '';
-  // Check Department / Type / Channel columns for "TV"
   const deptCol = item.column_values?.find(cv =>
     ['department', 'type', 'channel', 'category'].some(k => cv.title?.toLowerCase().includes(k))
   );
   if (deptCol?.text?.toLowerCase().includes('tv')) return 'TV';
-  if (g.includes('tv') || n.startsWith('tv ') || n.includes(' tv ') || n.includes('television')) return 'TV';
+  const g = item.group?.title?.toLowerCase() || '';
+  if (g.includes('tv') || item.name?.toLowerCase().startsWith('tv ')) return 'TV';
   if (boardId === DESIGN_BOARD) return 'Design';
   return 'Video';
 }
 
-function getRequester(item) {
-  const col = item.column_values?.find(cv =>
-    ['requester', 'submitted', 'requested by', 'contact', 'name'].some(k => cv.title?.toLowerCase().includes(k))
+function findCol(item, def) {
+  return item.column_values?.find(cv =>
+    def.titles.some(t => cv.title?.toLowerCase().includes(t))
   );
-  return col?.text || '';
-}
-
-function getStatus(item) {
-  const col = item.column_values?.find(
-    cv => cv.type === 'color' || cv.id === 'status' || cv.title?.toLowerCase() === 'status'
-  );
-  const label = col?.text || '';
-  return { label, ...(STATUS_STYLES[label] || STATUS_STYLES.__default) };
-}
-
-function getColValue(item, ...titles) {
-  for (const t of titles) {
-    const col = item.column_values?.find(cv => cv.title?.toLowerCase().includes(t.toLowerCase()));
-    if (col?.text) return col.text;
-  }
-  return '';
 }
 
 function stripHtml(h) { return h?.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim() || ''; }
@@ -89,36 +91,104 @@ function timeAgo(str) {
   if (m < 60) return `${m}m ago`;
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
+  const d = Math.floor(h / 24);
+  return d < 30 ? `${d}d ago` : new Date(str).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 }
 
-function initials(name) {
-  return (name || '?').split(' ').slice(0, 2).map(p => p[0]).join('').toUpperCase();
+function initials(name) { return (name || '?').split(' ').slice(0, 2).map(p => p[0]).join('').toUpperCase(); }
+function avatarBg(name) {
+  const c = ['#6366f1','#ec4899','#14b8a6','#f59e0b','#3b82f6','#10b981','#8b5cf6'];
+  let h = 0; for (const ch of name || '') h = (h * 31 + ch.charCodeAt(0)) % c.length;
+  return c[h];
 }
 
-function avatarColor(name) {
-  const colors = ['#6366f1','#ec4899','#14b8a6','#f59e0b','#3b82f6','#10b981','#8b5cf6','#f43f5e'];
-  let h = 0; for (const c of name || '') h = (h * 31 + c.charCodeAt(0)) % colors.length;
-  return colors[h];
+// ─── Cell renderers ───────────────────────────────────────────────────────────
+function StatusCell({ text }) {
+  if (!text) return <span className="text-gray-300 text-xs">—</span>;
+  const color = statusColor(text);
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold text-white truncate max-w-[120px]"
+      style={{ background: color }}>
+      {text}
+    </span>
+  );
+}
+function DateCell({ text }) {
+  if (!text) return <span className="text-gray-300 text-xs">—</span>;
+  return <span className="text-xs text-gray-600 whitespace-nowrap">{text}</span>;
+}
+function TimelineCell({ text }) {
+  if (!text) return <span className="text-gray-300 text-xs">—</span>;
+  return <span className="text-[11px] text-gray-500 whitespace-nowrap">{text}</span>;
+}
+function PersonCell({ text }) {
+  if (!text) return <span className="text-gray-300 text-xs">—</span>;
+  const names = text.split(',').map(s => s.trim()).filter(Boolean);
+  return (
+    <div className="flex -space-x-1">
+      {names.slice(0, 3).map((n, i) => (
+        <div key={i} className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-black text-white ring-1 ring-white"
+          style={{ background: avatarBg(n) }} title={n}>
+          {initials(n)}
+        </div>
+      ))}
+      {names.length > 3 && (
+        <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-[9px] font-bold text-gray-600 ring-1 ring-white">
+          +{names.length - 3}
+        </div>
+      )}
+    </div>
+  );
+}
+function LinkCell({ text }) {
+  if (!text) return <span className="text-gray-300 text-xs">—</span>;
+  const url = text.startsWith('http') ? text : `https://${text}`;
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+      className="inline-flex items-center gap-0.5 text-[11px] text-blue-500 hover:text-blue-700 hover:underline">
+      <Link2 size={10} /> Link
+    </a>
+  );
+}
+
+function renderCell(item, def) {
+  const col = findCol(item, def);
+  const text = col?.text || '';
+  switch (def.render) {
+    case 'status':   return <StatusCell text={text} />;
+    case 'date':     return <DateCell text={text} />;
+    case 'timeline': return <TimelineCell text={text} />;
+    case 'person':   return <PersonCell text={text} />;
+    case 'link':     return <LinkCell text={text} />;
+    default:         return <span className="text-xs text-gray-600 truncate">{text || '—'}</span>;
+  }
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function StudioTickets() {
   const { token } = useAuth();
-  const [items, setItems]                 = useState([]);
-  const [loading, setLoading]             = useState(false);
-  const [error, setError]                 = useState(null);
-  const [typeFilter, setTypeFilter]       = useState('All');
-  const [requesterFilter, setRequesterFilter] = useState('Omer Barak');
-  const [search, setSearch]               = useState('');
-  const [selectedItem, setSelectedItem]   = useState(null);
-  const [updates, setUpdates]             = useState([]);
-  const [loadingUpdates, setLoadingUpdates] = useState(false);
-  const [brief, setBrief]                 = useState(null);
-  const [briefItemId, setBriefItemId]     = useState(null);
-  const [generatingBrief, setGeneratingBrief] = useState(false);
-  const [copied, setCopied]               = useState(false);
+  const { brandId } = useBrand();
 
+  const [items, setItems]                   = useState([]);
+  const [loading, setLoading]               = useState(false);
+  const [error, setError]                   = useState(null);
+  const [typeFilter, setTypeFilter]         = useState('All');
+  const [requesterFilter, setRequesterFilter] = useState('All');
+  const [productionFilter, setProductionFilter] = useState('');
+  const [search, setSearch]                 = useState('');
+  const [productions, setProductions]       = useState([]);
+  const [selectedItem, setSelectedItem]     = useState(null);
+  const [updates, setUpdates]               = useState([]);
+  const [loadingUpdates, setLoadingUpdates] = useState(false);
+  const [brief, setBrief]                   = useState(null);
+  const [briefItemId, setBriefItemId]       = useState(null);
+  const [generatingBrief, setGeneratingBrief] = useState(false);
+  const [copied, setCopied]                 = useState(false);
+  const [showBriefModal, setShowBriefModal] = useState(false);
+  const [syncingGantt, setSyncingGantt]     = useState(false);
+  const [ganttSynced, setGanttSynced]       = useState(null);
+
+  // Load Monday items
   const loadItems = useCallback(async () => {
     if (!token) return;
     setLoading(true); setError(null);
@@ -126,7 +196,7 @@ export default function StudioTickets() {
       const data = await mondayQuery(`{
         boards(ids: [${VIDEO_BOARD}, ${DESIGN_BOARD}]) {
           id name
-          items_page(limit: 100) {
+          items_page(limit: 150) {
             items {
               id name state
               group { id title }
@@ -143,18 +213,28 @@ export default function StudioTickets() {
           all.push({ ...item, _boardId: board.id, _boardName: board.name, _type: getItemType(item, board.id) });
         }
       }
-      // Sort by most recent update
       all.sort((a, b) => (b.updates?.[0]?.created_at || '').localeCompare(a.updates?.[0]?.created_at || ''));
       setItems(all);
     } catch (err) { setError(err.message); }
     finally { setLoading(false); }
   }, [token]);
 
-  useEffect(() => { loadItems(); }, [loadItems]);
+  // Load system productions for filter
+  const loadProductions = useCallback(async () => {
+    if (!token || !brandId) return;
+    try {
+      const res = await fetch(`${API}/api/productions?brand_id=${encodeURIComponent(brandId)}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (res.ok) setProductions(await res.json());
+    } catch { /* ignore */ }
+  }, [token, brandId]);
+
+  useEffect(() => { loadItems(); loadProductions(); }, [loadItems, loadProductions]);
 
   async function openItem(item) {
     setSelectedItem(item);
-    setBrief(null);
+    setBrief(null); setGanttSynced(null);
     setUpdates(item.updates || []);
     setLoadingUpdates(true);
     try {
@@ -173,12 +253,10 @@ export default function StudioTickets() {
   }
 
   async function handleGenerateBrief(item) {
-    setGeneratingBrief(true);
-    setBriefItemId(item.id);
-    setBrief(null);
+    setGeneratingBrief(true); setBriefItemId(item.id); setBrief(null);
     if (selectedItem?.id !== item.id) await openItem(item);
     try {
-      const res = await fetch('/api/briefs/generate', {
+      const res = await fetch(`${API}/api/briefs/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ item_id: item.id }),
@@ -186,124 +264,151 @@ export default function StudioTickets() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Brief generation failed');
       setBrief(json.brief);
-    } catch (err) {
-      alert('Brief generation failed: ' + err.message);
-    } finally { setGeneratingBrief(false); }
+    } catch (err) { alert('Brief generation failed: ' + err.message); }
+    finally { setGeneratingBrief(false); }
+  }
+
+  async function syncToGantt(item, productionId) {
+    const timelineCol = findCol(item, { titles: ['timeline'] });
+    const text = timelineCol?.text || '';
+    // Parse date range like "Jan 1 - Jan 15" or "2026-01-01 - 2026-01-15"
+    const parts = text.split(/[-–—]/).map(s => s.trim()).filter(Boolean);
+    if (parts.length < 2) { alert('No timeline dates found on this ticket'); return; }
+    const start = new Date(parts[0]); const end = new Date(parts[1]);
+    if (isNaN(start) || isNaN(end)) { alert('Could not parse timeline dates: ' + text); return; }
+    setSyncingGantt(true);
+    try {
+      const res = await fetch(`${API}/api/gantt/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({
+          production_id: productionId,
+          title: `[Studio] ${item.name}`,
+          start_date: start.toISOString().slice(0, 10),
+          end_date: end.toISOString().slice(0, 10),
+          color: '#6366f1',
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setGanttSynced(productionId);
+    } catch (err) { alert('Gantt sync failed: ' + err.message); }
+    finally { setSyncingGantt(false); }
   }
 
   function copyBrief() {
     if (!brief) return;
-    const lines = [
-      `# ${brief.title}`, '',
-      `**Objective:** ${brief.objective}`, '',
-      `**Target Audience:** ${brief.target_audience}`, '',
-      `**Tone:** ${brief.tone}`, '',
-      `**Key Messages:**`,
-      ...(brief.key_messages || []).map(m => `• ${m}`), '',
-      `**Deliverables:**`,
-      ...(brief.deliverables || []).map(d => `• ${d.quantity || 1}× ${d.type} (${d.format}) — ${d.platform}`), '',
+    const t = [`# ${brief.title}`, '', `**Objective:** ${brief.objective}`, '',
+      `**Audience:** ${brief.target_audience}`, `**Tone:** ${brief.tone}`, '',
+      `**Key Messages:**`, ...(brief.key_messages || []).map(m => `• ${m}`), '',
       `**Creative Direction:** ${brief.creative_direction}`, '',
-      `**Timeline:** ${brief.timeline?.deadline || 'TBD'}`,
-      ...(brief.timeline?.milestones?.length ? brief.timeline.milestones.map(m => `  • ${m}`) : []), '',
-      `**Notes:** ${brief.notes}`,
-    ].join('\n');
-    navigator.clipboard.writeText(lines);
+      `**Timeline:** ${brief.timeline?.deadline || 'TBD'}`, `**Notes:** ${brief.notes}`].join('\n');
+    navigator.clipboard.writeText(t);
     setCopied(true); setTimeout(() => setCopied(false), 2000);
   }
 
-  // Derived
-  const counts = { All: items.length, Video: 0, Design: 0, TV: 0 };
-  items.forEach(i => { counts[i._type] = (counts[i._type] || 0) + 1; });
-
-  // Collect unique requesters for dropdown
-  const allRequesters = [...new Set(items.map(i => getRequester(i)).filter(Boolean))].sort();
+  // Derived filters
+  const allRequesters = [...new Set(items.map(i => findCol(i, { titles: ['requested', 'requester', 'contact', 'name'] })?.text || '').filter(Boolean))].sort();
 
   const filtered = items.filter(item => {
     if (typeFilter !== 'All' && item._type !== typeFilter) return false;
     if (requesterFilter && requesterFilter !== 'All') {
-      const r = getRequester(item).toLowerCase();
+      const r = (findCol(item, { titles: ['requested', 'requester', 'contact', 'name'] })?.text || '').toLowerCase();
       if (!r.includes(requesterFilter.toLowerCase())) return false;
+    }
+    if (productionFilter) {
+      const prodName = productions.find(p => p.id === productionFilter)?.project_name?.toLowerCase() || productionFilter.toLowerCase();
+      const match = item.name.toLowerCase().includes(prodName) ||
+        item.column_values?.some(cv => cv.text?.toLowerCase().includes(prodName));
+      if (!match) return false;
     }
     if (search && !item.name.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
+  const counts = { All: items.length, Video: 0, Design: 0, TV: 0 };
+  items.forEach(i => { counts[i._type] = (counts[i._type] || 0) + 1; });
+
   return (
     <div className="flex flex-col min-h-0" style={{ height: 'calc(100vh - 120px)' }}>
 
       {/* ── Hero Header ── */}
-      <div className="relative mb-5 rounded-2xl overflow-hidden flex-shrink-0"
+      <div className="relative mb-4 rounded-2xl overflow-hidden flex-shrink-0"
         style={{ background: 'linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%)' }}>
-        {/* glow blobs */}
         <div className="absolute inset-0 pointer-events-none"
-          style={{ backgroundImage: 'radial-gradient(ellipse at 15% 60%, rgba(129,140,248,0.35) 0%, transparent 55%), radial-gradient(ellipse at 75% 20%, rgba(192,132,252,0.25) 0%, transparent 50%)' }} />
-        <div className="relative px-6 py-5">
-          <div className="flex items-start justify-between gap-4 mb-4">
-            <div>
-              <h1 className="text-[22px] font-black text-white tracking-tight leading-none">Studio</h1>
-              <p className="text-indigo-300/80 text-[13px] mt-1">Video · Design · TV — live from Monday.com</p>
+          style={{ backgroundImage: 'radial-gradient(ellipse at 15% 60%, rgba(129,140,248,.35) 0%, transparent 55%), radial-gradient(ellipse at 75% 20%, rgba(192,132,252,.22) 0%, transparent 50%)' }} />
+        <div className="relative px-6 py-4 flex items-center justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-black text-white tracking-tight leading-none">Studio</h1>
+            <p className="text-indigo-300/70 text-[12px] mt-0.5">Video · Design · TV — synced live from Monday.com</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setShowBriefModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-400 text-white text-xs font-bold shadow-lg shadow-indigo-900/40 transition-all">
+              <Sparkles size={12} /> New Brief
+            </button>
+            <a href={VIDEO_FORM} target="_blank" rel="noopener noreferrer"
+              className="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-semibold border border-white/15 transition-all">🎬</a>
+            <a href={DESIGN_FORM} target="_blank" rel="noopener noreferrer"
+              className="px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-semibold border border-white/15 transition-all">🎨</a>
+            <button onClick={loadItems} disabled={loading}
+              className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white border border-white/15 transition-all">
+              <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+            </button>
+          </div>
+        </div>
+        {/* Stats */}
+        <div className="relative border-t border-white/10 px-6 py-2 flex gap-5">
+          {Object.entries(counts).map(([t, n]) => (
+            <div key={t} className="flex items-center gap-1.5">
+              <span className="text-white font-black text-sm">{n}</span>
+              <span className="text-white/40 text-[11px]">{TYPE_CFG[t]?.icon || ''} {t}</span>
             </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <a href={VIDEO_FORM} target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-semibold border border-white/15 transition-all">
-                🎬 Video Request
-              </a>
-              <a href={DESIGN_FORM} target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-semibold border border-white/15 transition-all">
-                🎨 Design Request
-              </a>
-              <button onClick={loadItems} disabled={loading}
-                className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white border border-white/15 transition-all">
-                <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+          ))}
+          {productionFilter && (
+            <div className="ml-auto flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-indigo-500/30 border border-indigo-400/30">
+              <span className="text-[10px] text-indigo-200 font-semibold">
+                {productions.find(p => p.id === productionFilter)?.project_name || productionFilter}
+              </span>
+              <button onClick={() => setProductionFilter('')} className="text-indigo-300 hover:text-white">
+                <X size={10} />
               </button>
             </div>
-          </div>
-
-          {/* Stats chips */}
-          <div className="flex items-center gap-3 flex-wrap">
-            {[
-              { label: 'Total', val: counts.All, color: 'text-white' },
-              { label: '🎬 Video', val: counts.Video, color: 'text-violet-300' },
-              { label: '🎨 Design', val: counts.Design, color: 'text-pink-300' },
-              { label: '📺 TV', val: counts.TV, color: 'text-blue-300' },
-            ].map(({ label, val, color }) => (
-              <div key={label} className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 border border-white/10">
-                <span className={clsx('text-[11px] font-black', color)}>{val}</span>
-                <span className="text-white/40 text-[11px]">{label}</span>
-              </div>
-            ))}
-          </div>
+          )}
         </div>
       </div>
 
       {/* ── Filter bar ── */}
-      <div className="flex items-center gap-3 mb-4 flex-shrink-0 flex-wrap">
-        {/* Type filter */}
-        <div className="flex gap-0.5 bg-gray-100 rounded-xl p-1">
+      <div className="flex items-center gap-2 mb-3 flex-shrink-0 flex-wrap">
+        {/* Type */}
+        <div className="flex gap-0.5 bg-gray-100 rounded-xl p-0.5">
           {['All', 'Video', 'Design', 'TV'].map(t => (
             <button key={t} onClick={() => setTypeFilter(t)}
-              className={clsx(
-                'px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap',
-                typeFilter === t ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'
-              )}>
+              className={clsx('px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all',
+                typeFilter === t ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700')}>
               {TYPE_CFG[t]?.icon || ''} {t}
             </button>
           ))}
         </div>
 
-        {/* Requester filter */}
+        {/* Production filter */}
+        <div className="relative">
+          <Film size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          <select value={productionFilter} onChange={e => setProductionFilter(e.target.value)}
+            className="pl-7 pr-6 py-2 rounded-xl border border-gray-200 bg-white text-xs font-medium text-gray-700 focus:outline-none focus:border-indigo-300 appearance-none cursor-pointer hover:border-gray-300 transition-all min-w-[140px]">
+            <option value="">All productions</option>
+            {productions.map(p => (
+              <option key={p.id} value={p.id}>{p.project_name || p.id}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Requester */}
         <div className="relative">
           <User size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-          <select
-            value={requesterFilter}
-            onChange={e => setRequesterFilter(e.target.value)}
-            className="pl-7 pr-6 py-2 rounded-xl border border-gray-200 bg-white text-xs font-medium text-gray-700 focus:outline-none focus:border-indigo-300 appearance-none cursor-pointer hover:border-gray-300 transition-all"
-          >
+          <select value={requesterFilter} onChange={e => setRequesterFilter(e.target.value)}
+            className="pl-7 pr-6 py-2 rounded-xl border border-gray-200 bg-white text-xs font-medium text-gray-700 focus:outline-none focus:border-indigo-300 appearance-none cursor-pointer hover:border-gray-300 transition-all">
             <option value="All">All requesters</option>
-            <option value="Omer Barak">Omer Barak</option>
-            {allRequesters.filter(r => !r.toLowerCase().includes('omer')).map(r => (
-              <option key={r} value={r}>{r}</option>
-            ))}
+            {allRequesters.map(r => <option key={r} value={r}>{r}</option>)}
           </select>
         </div>
 
@@ -311,55 +416,68 @@ export default function StudioTickets() {
         <div className="relative flex-1 max-w-xs">
           <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search tickets…"
-            className="w-full pl-8 pr-8 py-2 rounded-xl border border-gray-200 bg-white text-xs focus:outline-none focus:border-indigo-300 focus:ring-1 focus:ring-indigo-100 transition-all" />
-          {search && (
-            <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-              <X size={11} />
-            </button>
-          )}
+            className="w-full pl-8 pr-7 py-2 rounded-xl border border-gray-200 bg-white text-xs focus:outline-none focus:border-indigo-300 focus:ring-1 focus:ring-indigo-100 transition-all" />
+          {search && <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={11} /></button>}
         </div>
+
         <div className="text-[11px] text-gray-400 ml-auto">{filtered.length} ticket{filtered.length !== 1 ? 's' : ''}</div>
       </div>
 
-      {/* ── Content ── */}
+      {/* ── Content area ── */}
       <div className="flex gap-4 flex-1 min-h-0 overflow-hidden">
 
-        {/* Ticket list */}
-        <div className={clsx('overflow-y-auto flex-shrink-0', selectedItem ? 'w-[380px]' : 'flex-1')}>
+        {/* Table */}
+        <div className="flex-1 min-w-0 overflow-auto rounded-xl border border-gray-200 bg-white">
           {error && (
-            <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-100 rounded-xl text-xs text-red-600 mb-4">
-              <AlertCircle size={14} /> {error}
-              <button onClick={loadItems} className="ml-auto underline hover:text-red-800">Retry</button>
+            <div className="flex items-center gap-2 p-3 text-xs text-red-600 bg-red-50 border-b border-red-100">
+              <AlertCircle size={13} /> {error}
+              <button onClick={loadItems} className="ml-auto underline">Retry</button>
             </div>
           )}
 
           {loading && items.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+            <div className="flex flex-col items-center justify-center py-24 text-gray-400">
               <Loader2 size={24} className="animate-spin mb-3 opacity-50" />
-              <div className="text-sm">Loading Monday.com tickets…</div>
+              <span className="text-sm">Loading Monday.com tickets…</span>
             </div>
-          ) : filtered.length === 0 ? (
-            <EmptyState search={search} typeFilter={typeFilter} />
           ) : (
-            <div className="space-y-2 pb-4">
-              {filtered.map(item => (
-                <TicketCard
-                  key={item.id}
-                  item={item}
-                  isSelected={selectedItem?.id === item.id}
-                  compact={!!selectedItem}
-                  onOpen={() => selectedItem?.id === item.id ? setSelectedItem(null) : openItem(item)}
-                  onGenerateBrief={() => handleGenerateBrief(item)}
-                  generatingBrief={generatingBrief && briefItemId === item.id}
-                />
-              ))}
-            </div>
+            <table className="w-full border-collapse text-xs" style={{ minWidth: 900 }}>
+              <thead className="sticky top-0 z-10">
+                <tr className="bg-gray-50 border-b border-gray-200 text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                  <th className="w-8 px-3 py-2.5" />
+                  <th className="px-3 py-2.5 text-left sticky left-0 bg-gray-50 min-w-[260px]">Project</th>
+                  {COL_DEFS.map(d => (
+                    <th key={d.key} className="px-3 py-2.5 text-left whitespace-nowrap" style={{ width: d.width }}>{d.label}</th>
+                  ))}
+                  <th className="px-3 py-2.5 text-right whitespace-nowrap">Updated</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={COL_DEFS.length + 3} className="text-center py-16 text-gray-400">
+                      <div className="text-3xl mb-2">🎬</div>
+                      <div className="text-sm">{search || typeFilter !== 'All' || productionFilter ? 'No matching tickets' : 'No tickets yet'}</div>
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map(item => (
+                    <TableRow
+                      key={item.id}
+                      item={item}
+                      isSelected={selectedItem?.id === item.id}
+                      onClick={() => selectedItem?.id === item.id ? setSelectedItem(null) : openItem(item)}
+                    />
+                  ))
+                )}
+              </tbody>
+            </table>
           )}
         </div>
 
-        {/* Detail panel */}
+        {/* Detail / Updates panel */}
         {selectedItem && (
-          <ItemDetailPanel
+          <DetailPanel
             item={selectedItem}
             updates={updates}
             loadingUpdates={loadingUpdates}
@@ -368,288 +486,237 @@ export default function StudioTickets() {
             onGenerateBrief={() => handleGenerateBrief(selectedItem)}
             onCopyBrief={copyBrief}
             copied={copied}
+            productions={productions}
+            onSyncGantt={(prodId) => syncToGantt(selectedItem, prodId)}
+            syncingGantt={syncingGantt}
+            ganttSynced={ganttSynced}
             onClose={() => setSelectedItem(null)}
+            token={token}
           />
         )}
       </div>
+
+      {/* Brief creation modal */}
+      {showBriefModal && (
+        <BriefModal
+          token={token}
+          productions={productions}
+          brandId={brandId}
+          onClose={() => setShowBriefModal(false)}
+          onCreated={() => { setShowBriefModal(false); loadItems(); }}
+        />
+      )}
     </div>
   );
 }
 
-// ─── Ticket Card ─────────────────────────────────────────────────────────────
-function TicketCard({ item, isSelected, compact, onOpen, onGenerateBrief, generatingBrief }) {
-  const status  = getStatus(item);
-  const type    = TYPE_CFG[item._type] || TYPE_CFG.Video;
-  const assignee = getColValue(item, 'person', 'assignee', 'owner');
-  const deadline = getColValue(item, 'deadline', 'due', 'date');
-  const lastUpdate = item.updates?.[0];
-  const updateCount = typeof item.updates?.length === 'number' ? item.updates.length : 0;
+// ─── Table Row ────────────────────────────────────────────────────────────────
+function TableRow({ item, isSelected, onClick }) {
+  const type = TYPE_CFG[item._type] || TYPE_CFG.Video;
+  const lastUpdate = item.updates?.[0]?.created_at;
 
   return (
-    <div
-      onClick={onOpen}
+    <tr
+      onClick={onClick}
       className={clsx(
-        'group relative rounded-xl border bg-white transition-all cursor-pointer',
-        isSelected
-          ? 'border-indigo-300 shadow-md shadow-indigo-100/60 ring-1 ring-indigo-200'
-          : 'border-gray-200 hover:border-gray-300 hover:shadow-sm'
+        'border-b border-gray-100 cursor-pointer transition-colors group',
+        isSelected ? 'bg-indigo-50' : 'hover:bg-gray-50/70'
       )}
     >
-      {/* Left type stripe */}
-      <div className={clsx('absolute left-0 top-0 bottom-0 w-1 rounded-l-xl bg-gradient-to-b', type.gradient)} />
-
-      <div className="pl-4 pr-4 py-3">
-        <div className="flex items-start gap-3">
-          {/* Type icon */}
-          <div className="text-xl flex-shrink-0 mt-0.5">{type.icon}</div>
-
-          <div className="flex-1 min-w-0">
-            {/* Title row */}
-            <div className="flex items-start justify-between gap-2">
-              <h3 className="font-semibold text-sm text-gray-900 leading-snug line-clamp-2 flex-1">{item.name}</h3>
-              <ChevronRight size={14} className={clsx('flex-shrink-0 mt-0.5 transition-transform', isSelected && 'rotate-90 text-indigo-500')} />
-            </div>
-
-            {/* Badges row */}
-            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-              <span className={clsx('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border', type.badge)}>
-                {item._type}
-              </span>
-              {status.label && (
-                <span className={clsx('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border', status.bg, status.text, status.border)}>
-                  <span className={clsx('w-1.5 h-1.5 rounded-full flex-shrink-0', status.dot)} />
-                  {status.label}
-                </span>
-              )}
-              {item.group?.title && item.group.title !== 'Topics' && (
-                <span className="text-[10px] text-gray-400 font-medium truncate">{item.group.title}</span>
-              )}
-            </div>
-
-            {/* Meta row */}
-            {!compact && (
-              <div className="flex items-center gap-3 mt-2 text-[11px] text-gray-400">
-                {assignee && (
-                  <span className="flex items-center gap-1">
-                    <User size={10} /> {assignee}
-                  </span>
-                )}
-                {deadline && (
-                  <span className="flex items-center gap-1">
-                    <Calendar size={10} /> {deadline}
-                  </span>
-                )}
-                {updateCount > 0 && (
-                  <span className="flex items-center gap-1">
-                    <MessageSquare size={10} /> {updateCount} update{updateCount !== 1 ? 's' : ''}
-                  </span>
-                )}
-                {lastUpdate && (
-                  <span className="ml-auto flex items-center gap-1 text-gray-300">
-                    {timeAgo(lastUpdate.created_at)}
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
+      {/* Type stripe */}
+      <td className="px-3 py-2">
+        <div className="flex items-center gap-1">
+          <div className="w-1 h-6 rounded-full flex-shrink-0" style={{ background: type.color }} />
+          <span className="text-base leading-none">{type.icon}</span>
         </div>
+      </td>
 
-        {/* Action bar (hover reveal) */}
-        {!compact && (
-          <div className="flex items-center gap-2 mt-2 pt-2 border-t border-gray-50 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button
-              onClick={e => { e.stopPropagation(); onGenerateBrief(); }}
-              disabled={generatingBrief}
-              className="flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 transition-colors"
-            >
-              {generatingBrief
-                ? <Loader2 size={11} className="animate-spin" />
-                : <Sparkles size={11} />
-              }
-              Generate Brief
-            </button>
-            <a
-              href={`https://monday.com/boards/${item._boardId}/pulses/${item.id}`}
-              target="_blank" rel="noopener noreferrer"
-              onClick={e => e.stopPropagation()}
-              className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-600 ml-auto transition-colors"
-            >
-              Open in Monday <ExternalLink size={10} />
-            </a>
-          </div>
+      {/* Name (sticky) */}
+      <td className={clsx('px-3 py-2 sticky left-0 transition-colors', isSelected ? 'bg-indigo-50' : 'bg-white group-hover:bg-gray-50/70')}>
+        <div className="font-semibold text-gray-800 text-xs leading-snug line-clamp-2 max-w-[280px]">{item.name}</div>
+        {item.group?.title && (
+          <div className="text-[10px] text-gray-400 mt-0.5">{item.group.title}</div>
         )}
-      </div>
-    </div>
+      </td>
+
+      {/* Dynamic columns */}
+      {COL_DEFS.map(def => (
+        <td key={def.key} className="px-3 py-2" style={{ width: def.width }}>
+          {renderCell(item, def)}
+        </td>
+      ))}
+
+      {/* Last updated */}
+      <td className="px-3 py-2 text-right">
+        <span className="text-[10px] text-gray-400 whitespace-nowrap">{timeAgo(lastUpdate)}</span>
+      </td>
+    </tr>
   );
 }
 
-// ─── Empty State ─────────────────────────────────────────────────────────────
-function EmptyState({ search, typeFilter }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-20 text-center px-4">
-      <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center text-2xl mb-4 shadow-sm">
-        {search || typeFilter !== 'All' ? '🔍' : '🎬'}
-      </div>
-      <div className="text-sm font-semibold text-gray-700 mb-1">
-        {search ? `No tickets matching "${search}"` : typeFilter !== 'All' ? `No ${typeFilter} tickets yet` : 'No tickets yet'}
-      </div>
-      <p className="text-xs text-gray-400 max-w-xs">
-        {search || typeFilter !== 'All'
-          ? 'Try changing your filters or search term.'
-          : 'Submit a Video or Design request using the buttons above. They\'ll appear here automatically.'}
-      </p>
-    </div>
-  );
-}
+// ─── Detail Panel ─────────────────────────────────────────────────────────────
+function DetailPanel({ item, updates, loadingUpdates, brief, generatingBrief, onGenerateBrief, onCopyBrief, copied, productions, onSyncGantt, syncingGantt, ganttSynced, onClose, token }) {
+  const type    = TYPE_CFG[item._type] || TYPE_CFG.Video;
+  const cols    = (item.column_values || []).filter(cv => cv.text?.trim() && cv.type !== 'color');
+  const timeline = findCol(item, { titles: ['timeline'] });
+  const [syncProd, setSyncProd] = useState('');
+  const [newComment, setNewComment] = useState('');
+  const [postingComment, setPostingComment] = useState(false);
 
-// ─── Item Detail Panel ────────────────────────────────────────────────────────
-const ItemDetailPanel = forwardRef(function ItemDetailPanel(
-  { item, updates, loadingUpdates, brief, generatingBrief, onGenerateBrief, onCopyBrief, copied, onClose },
-  _ref
-) {
-  const status   = getStatus(item);
-  const type     = TYPE_CFG[item._type] || TYPE_CFG.Video;
-  const assignee = getColValue(item, 'person', 'assignee', 'owner');
-  const deadline = getColValue(item, 'deadline', 'due', 'date');
-  const cols     = (item.column_values || []).filter(cv => cv.text && cv.text.trim() && cv.type !== 'color');
+  async function postComment() {
+    if (!newComment.trim()) return;
+    setPostingComment(true);
+    try {
+      await mondayQuery(`
+        mutation { create_update(item_id: ${item.id}, body: ${JSON.stringify(newComment.trim())}) { id } }
+      `, token);
+      setNewComment('');
+      // Optimistically add to updates
+    } catch (err) { alert('Could not post comment: ' + err.message); }
+    finally { setPostingComment(false); }
+  }
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-white rounded-2xl border border-gray-200 shadow-lg overflow-hidden">
-      {/* Panel header */}
-      <div className={clsx('flex-shrink-0 px-5 py-4 bg-gradient-to-r text-white', type.gradient)}>
-        <div className="flex items-start justify-between gap-3">
+    <div className="w-[340px] flex-shrink-0 flex flex-col rounded-2xl border border-gray-200 shadow-xl bg-white overflow-hidden">
+      {/* Header */}
+      <div className={clsx('flex-shrink-0 px-4 py-3.5 bg-gradient-to-r text-white', type.gradient)}>
+        <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-lg">{type.icon}</span>
-              <span className="text-[11px] font-bold uppercase tracking-widest text-white/70">{item._type} · {item._boardName}</span>
-            </div>
-            <h2 className="font-black text-base leading-snug">{item.name}</h2>
-            <div className="flex items-center gap-2 mt-2">
-              {status.label && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/20 text-[10px] font-bold">
-                  <span className="w-1.5 h-1.5 rounded-full bg-white/80" /> {status.label}
-                </span>
-              )}
-              {item.group?.title && (
-                <span className="text-[11px] text-white/60">{item.group.title}</span>
-              )}
-            </div>
+            <div className="text-[10px] font-bold text-white/60 mb-0.5">{type.icon} {item._type} · {item._boardName}</div>
+            <h3 className="text-[13px] font-black leading-snug">{item.name}</h3>
+            {item.group?.title && <div className="text-[10px] text-white/60 mt-0.5">{item.group.title}</div>}
           </div>
-          <button onClick={onClose}
-            className="flex-shrink-0 p-1.5 rounded-lg bg-white/10 hover:bg-white/25 transition-colors">
-            <X size={14} />
+          <button onClick={onClose} className="p-1 rounded-lg bg-white/10 hover:bg-white/25 transition-colors flex-shrink-0">
+            <X size={13} />
           </button>
         </div>
+        <a href={`https://monday.com/boards/${item._boardId}/pulses/${item.id}`} target="_blank" rel="noopener noreferrer"
+          className="mt-2 flex items-center gap-1 text-[10px] text-white/60 hover:text-white transition-colors">
+          <ExternalLink size={9} /> Open in Monday
+        </a>
       </div>
 
-      {/* Scrollable body */}
       <div className="flex-1 overflow-y-auto">
 
-        {/* Quick meta */}
-        <div className="px-5 pt-4 pb-3 grid grid-cols-2 gap-3">
-          {assignee && (
-            <MetaChip icon={<User size={11} />} label="Assignee" value={assignee} />
-          )}
-          {deadline && (
-            <MetaChip icon={<Calendar size={11} />} label="Deadline" value={deadline} />
-          )}
+        {/* Field grid */}
+        <div className="px-4 pt-3 pb-2 grid grid-cols-2 gap-x-3 gap-y-2">
+          {COL_DEFS.filter(d => findCol(item, d)?.text).slice(0, 8).map(def => {
+            const col = findCol(item, def);
+            return (
+              <div key={def.key}>
+                <div className="text-[9px] font-bold uppercase tracking-wider text-gray-400 mb-0.5">{def.label}</div>
+                <div>{renderCell(item, def)}</div>
+              </div>
+            );
+          })}
         </div>
 
-        {/* All column values */}
-        {cols.length > 0 && (
-          <div className="px-5 pb-4">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Details</div>
-            <div className="space-y-1.5">
-              {cols.map(cv => (
-                <div key={cv.id} className="flex items-start gap-2 text-xs">
-                  <span className="text-gray-400 font-medium flex-shrink-0 w-28 truncate">{cv.title}</span>
-                  <span className="text-gray-700 flex-1">{cv.text}</span>
-                </div>
-              ))}
+        {/* Gantt sync */}
+        {timeline?.text && (
+          <div className="px-4 pb-3">
+            <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+              <div className="flex items-center gap-1.5 mb-2">
+                <BarChart2 size={12} className="text-indigo-500" />
+                <span className="text-[11px] font-bold text-gray-700">Sync to Production Timeline</span>
+              </div>
+              <div className="text-[10px] text-gray-500 mb-2">Timeline: <span className="font-semibold">{timeline.text}</span></div>
+              <div className="flex gap-2">
+                <select value={syncProd} onChange={e => setSyncProd(e.target.value)}
+                  className="flex-1 text-[11px] border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:border-indigo-300">
+                  <option value="">Select production…</option>
+                  {productions.map(p => <option key={p.id} value={p.id}>{p.project_name || p.id}</option>)}
+                </select>
+                <button
+                  onClick={() => syncProd && onSyncGantt(syncProd)}
+                  disabled={!syncProd || syncingGantt}
+                  className={clsx('flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all',
+                    !syncProd || syncingGantt ? 'bg-gray-100 text-gray-400' : 'bg-indigo-600 text-white hover:bg-indigo-700')}>
+                  {syncingGantt ? <Loader2 size={10} className="animate-spin" /> : <ArrowRight size={10} />}
+                  {ganttSynced ? 'Synced!' : 'Sync'}
+                </button>
+              </div>
             </div>
           </div>
         )}
 
-        {/* Open in Monday */}
-        <div className="px-5 pb-4">
-          <a
-            href={`https://monday.com/boards/${item._boardId}/pulses/${item.id}`}
-            target="_blank" rel="noopener noreferrer"
-            className="flex items-center justify-center gap-2 w-full py-2 rounded-xl border border-gray-200 text-xs font-semibold text-gray-600 hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50 transition-all"
-          >
-            Open in Monday <ExternalLink size={11} />
-          </a>
-        </div>
-
-        {/* Generate Brief */}
-        <div className="px-5 pb-4">
+        {/* AI Brief */}
+        <div className="px-4 pb-3">
           <div className="rounded-xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-purple-50 overflow-hidden">
-            <div className="px-4 py-3 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Sparkles size={14} className="text-indigo-600" />
-                <span className="text-sm font-bold text-indigo-900">AI Brief Generator</span>
-              </div>
-              <button
-                onClick={onGenerateBrief}
-                disabled={generatingBrief}
-                className={clsx(
-                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all',
-                  generatingBrief
-                    ? 'bg-indigo-100 text-indigo-400 cursor-not-allowed'
-                    : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm shadow-indigo-200'
-                )}
-              >
-                {generatingBrief ? <Loader2 size={11} className="animate-spin" /> : <Zap size={11} />}
-                {generatingBrief ? 'Generating…' : brief ? 'Regenerate' : 'Generate'}
+            <div className="px-3 py-2.5 flex items-center justify-between">
+              <span className="text-[11px] font-bold text-indigo-900 flex items-center gap-1.5">
+                <Sparkles size={11} className="text-indigo-500" /> AI Brief
+              </span>
+              <button onClick={onGenerateBrief} disabled={generatingBrief}
+                className={clsx('flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all',
+                  generatingBrief ? 'bg-indigo-100 text-indigo-400' : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm')}>
+                {generatingBrief ? <Loader2 size={9} className="animate-spin" /> : <Zap size={9} />}
+                {brief ? 'Regen' : 'Generate'}
               </button>
             </div>
-
             {brief && (
-              <div className="border-t border-indigo-100 px-4 py-4 bg-white/60">
-                <BriefView brief={brief} onCopy={onCopyBrief} copied={copied} />
-              </div>
-            )}
-
-            {!brief && !generatingBrief && (
-              <div className="border-t border-indigo-100 px-4 py-3 text-[11px] text-indigo-500">
-                Claude reads this Monday ticket and generates a full creative brief — objective, audience, deliverables, tone, and timeline.
+              <div className="border-t border-indigo-100 px-3 py-3 bg-white/60 space-y-2">
+                <div className="flex items-start justify-between gap-1">
+                  <p className="text-[11px] font-black text-gray-900 flex-1 leading-snug">{brief.title}</p>
+                  <button onClick={onCopyBrief}
+                    className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-gray-100 hover:bg-indigo-100 text-[10px] text-gray-500 hover:text-indigo-700 flex-shrink-0">
+                    {copied ? <Check size={9} /> : <Copy size={9} />} {copied ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
+                {brief.objective && <p className="text-[10px] text-gray-600 leading-relaxed">{brief.objective}</p>}
+                {brief.tone && <div className="text-[10px] text-indigo-600 font-semibold">Tone: {brief.tone}</div>}
+                {brief.deliverables?.length > 0 && (
+                  <div className="space-y-0.5">
+                    {brief.deliverables.map((d, i) => (
+                      <div key={i} className="text-[10px] bg-indigo-50 rounded px-1.5 py-0.5 text-indigo-700 font-medium">
+                        {d.quantity || 1}× {d.type} · {d.platform}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {brief.timeline?.deadline && (
+                  <div className="text-[10px] text-gray-500 flex items-center gap-1">
+                    <Calendar size={9} /> {brief.timeline.deadline}
+                  </div>
+                )}
               </div>
             )}
           </div>
         </div>
 
-        {/* Updates / Comments */}
-        <div className="px-5 pb-6">
-          <div className="flex items-center justify-between mb-3">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
-              Updates &amp; Comments
-            </div>
-            {loadingUpdates && <Loader2 size={11} className="animate-spin text-gray-400" />}
+        {/* Updates */}
+        <div className="px-4 pb-2">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Updates</span>
+            {loadingUpdates && <Loader2 size={10} className="animate-spin text-gray-400" />}
+            <span className="ml-auto text-[10px] text-gray-300">{updates.length}</span>
           </div>
-
           {updates.length === 0 && !loadingUpdates ? (
-            <div className="text-center py-6 text-gray-300 text-xs">No updates yet</div>
+            <p className="text-[11px] text-gray-300 text-center py-6">No updates yet</p>
           ) : (
             <div className="space-y-3">
-              {updates.map(update => (
-                <UpdateBubble key={update.id} update={update} />
-              ))}
+              {updates.map(u => <UpdateBubble key={u.id} update={u} />)}
             </div>
           )}
         </div>
-      </div>
-    </div>
-  );
-});
 
-// ─── Meta Chip ────────────────────────────────────────────────────────────────
-function MetaChip({ icon, label, value }) {
-  return (
-    <div className="flex items-start gap-2 p-2.5 bg-gray-50 rounded-xl">
-      <span className="text-gray-400 mt-0.5">{icon}</span>
-      <div className="min-w-0">
-        <div className="text-[10px] text-gray-400 font-semibold">{label}</div>
-        <div className="text-xs text-gray-800 font-medium truncate">{value}</div>
+        {/* Add comment */}
+        <div className="px-4 pb-4 mt-2">
+          <div className="flex gap-2 items-end">
+            <textarea
+              value={newComment}
+              onChange={e => setNewComment(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); postComment(); } }}
+              placeholder="Add update to Monday…"
+              rows={2}
+              className="flex-1 text-xs border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-indigo-300 resize-none transition-all"
+            />
+            <button onClick={postComment} disabled={!newComment.trim() || postingComment}
+              className={clsx('p-2 rounded-xl transition-all flex-shrink-0',
+                newComment.trim() ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-gray-100 text-gray-400')}>
+              {postingComment ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -657,52 +724,38 @@ function MetaChip({ icon, label, value }) {
 
 // ─── Update Bubble ────────────────────────────────────────────────────────────
 function UpdateBubble({ update }) {
-  const [expanded, setExpanded] = useState(false);
-  const body     = stripHtml(update.body);
-  const isLong   = body.length > 180;
-  const display  = !expanded && isLong ? body.slice(0, 180) + '…' : body;
-  const name     = update.creator?.name || 'Unknown';
-
+  const [exp, setExp] = useState(false);
+  const body  = stripHtml(update.body);
+  const name  = update.creator?.name || 'Unknown';
+  const long  = body.length > 200;
+  const text  = !exp && long ? body.slice(0, 200) + '…' : body;
+  if (!body) return null;
   return (
-    <div className="flex gap-2.5">
-      {/* Avatar */}
-      <div
-        className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-[10px] font-black text-white"
-        style={{ background: avatarColor(name) }}
-      >
+    <div className="flex gap-2">
+      <div className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-[10px] font-black text-white ring-1 ring-white"
+        style={{ background: avatarBg(name) }}>
         {initials(name)}
       </div>
-
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-1">
+        <div className="flex items-center gap-1.5 mb-0.5">
           <span className="text-[11px] font-bold text-gray-800">{name}</span>
           <span className="text-[10px] text-gray-400">{timeAgo(update.created_at)}</span>
         </div>
-
         <div className="bg-gray-50 rounded-xl px-3 py-2">
-          <p className="text-[11px] text-gray-700 leading-relaxed whitespace-pre-wrap">{display}</p>
-          {isLong && (
-            <button onClick={() => setExpanded(v => !v)}
-              className="text-[10px] text-indigo-500 hover:text-indigo-700 font-semibold mt-1">
-              {expanded ? 'Show less' : 'Show more'}
-            </button>
-          )}
+          <p className="text-[11px] text-gray-700 leading-relaxed whitespace-pre-wrap">{text}</p>
+          {long && <button onClick={() => setExp(v => !v)} className="text-[10px] text-indigo-500 font-semibold mt-1">{exp ? 'Less' : 'More'}</button>}
         </div>
-
-        {/* Replies */}
         {update.replies?.length > 0 && (
-          <div className="ml-3 mt-2 space-y-2 border-l-2 border-gray-100 pl-3">
+          <div className="ml-3 mt-1.5 pl-3 border-l-2 border-gray-100 space-y-1.5">
             {update.replies.map(r => (
-              <div key={r.id} className="flex gap-2">
-                <div
-                  className="w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-[8px] font-black text-white"
-                  style={{ background: avatarColor(r.creator?.name || '') }}
-                >
-                  {initials(r.creator?.name || '')}
+              <div key={r.id} className="flex gap-1.5">
+                <div className="w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-[8px] font-black text-white"
+                  style={{ background: avatarBg(r.creator?.name || '') }}>
+                  {initials(r.creator?.name)}
                 </div>
-                <div className="flex-1">
-                  <div className="text-[10px] font-bold text-gray-700">{r.creator?.name} <span className="font-normal text-gray-400">{timeAgo(r.created_at)}</span></div>
-                  <p className="text-[11px] text-gray-600 leading-relaxed">{stripHtml(r.body)}</p>
+                <div>
+                  <span className="text-[10px] font-bold text-gray-700">{r.creator?.name} </span>
+                  <span className="text-[10px] text-gray-600">{stripHtml(r.body)}</span>
                 </div>
               </div>
             ))}
@@ -713,86 +766,161 @@ function UpdateBubble({ update }) {
   );
 }
 
-// ─── Brief View ───────────────────────────────────────────────────────────────
-function BriefView({ brief, onCopy, copied }) {
+// ─── Brief Creation Modal ─────────────────────────────────────────────────────
+function BriefModal({ token, productions, brandId, onClose, onCreated }) {
+  const [type, setType]           = useState('Video');
+  const [prodId, setProdId]       = useState('');
+  const [prompt, setPrompt]       = useState('');
+  const [brief, setBrief]         = useState(null);
+  const [generating, setGenerating] = useState(false);
+  const [creating, setCreating]   = useState(false);
+  const textRef = useRef(null);
+
+  useEffect(() => { textRef.current?.focus(); }, []);
+
+  async function generate() {
+    if (!prompt.trim()) return;
+    setGenerating(true); setBrief(null);
+    const prod = productions.find(p => p.id === prodId);
+    const ctx = [
+      prod ? `Production: ${prod.project_name} (ID: ${prod.id}, type: ${prod.production_type || ''})` : '',
+      `Request type: ${type}`,
+      `Brief request: ${prompt}`,
+    ].filter(Boolean).join('\n');
+    try {
+      const res = await fetch(`${API}/api/briefs/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ item_id: null, extra_context: ctx }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error);
+      setBrief(json.brief);
+    } catch (err) { alert('Generation failed: ' + err.message); }
+    finally { setGenerating(false); }
+  }
+
+  async function createInMonday() {
+    if (!brief) return;
+    setCreating(true);
+    const boardId = TYPE_CFG[type]?.board || VIDEO_BOARD;
+    try {
+      await mondayQuery(`
+        mutation { create_item(board_id: "${boardId}", item_name: ${JSON.stringify(brief.title)}) { id } }
+      `, token);
+      onCreated();
+    } catch (err) { alert('Could not create in Monday: ' + err.message); setCreating(false); }
+  }
+
   return (
-    <div className="space-y-3">
-      {/* Title */}
-      <div className="flex items-start justify-between gap-2">
-        <h3 className="font-black text-sm text-gray-900">{brief.title}</h3>
-        <button
-          onClick={onCopy}
-          className="flex-shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg bg-gray-100 hover:bg-indigo-100 text-gray-500 hover:text-indigo-700 text-[10px] font-semibold transition-all"
-        >
-          {copied ? <Check size={10} /> : <Copy size={10} />}
-          {copied ? 'Copied!' : 'Copy'}
-        </button>
-      </div>
-
-      {/* Sections */}
-      <BriefSection label="Objective" text={brief.objective} />
-      <BriefSection label="Target Audience" text={brief.target_audience} />
-      <BriefSection label="Tone" text={brief.tone} />
-
-      {brief.key_messages?.length > 0 && (
-        <div>
-          <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Key Messages</div>
-          <ul className="space-y-0.5">
-            {brief.key_messages.map((m, i) => (
-              <li key={i} className="flex items-start gap-1.5 text-xs text-gray-700">
-                <span className="text-indigo-400 font-bold flex-shrink-0 mt-0.5">·</span> {m}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {brief.deliverables?.length > 0 && (
-        <div>
-          <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Deliverables</div>
-          <div className="space-y-1">
-            {brief.deliverables.map((d, i) => (
-              <div key={i} className="flex items-center gap-2 text-[11px] bg-indigo-50 rounded-lg px-2 py-1.5">
-                <span className="font-bold text-indigo-700">{d.quantity || 1}×</span>
-                <span className="text-gray-700 font-medium">{d.type}</span>
-                {d.format && <span className="text-gray-400">{d.format}</span>}
-                {d.platform && <span className="ml-auto text-indigo-500 font-semibold">{d.platform}</span>}
-              </div>
-            ))}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden">
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between"
+          style={{ background: 'linear-gradient(135deg, #0f0c29, #302b63)' }}>
+          <div className="flex items-center gap-2">
+            <Sparkles size={16} className="text-indigo-300" />
+            <h2 className="text-base font-black text-white">New Studio Brief</h2>
           </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg bg-white/10 hover:bg-white/25 text-white transition-colors">
+            <X size={14} />
+          </button>
         </div>
-      )}
 
-      <BriefSection label="Creative Direction" text={brief.creative_direction} />
-
-      {brief.timeline?.deadline && (
-        <div>
-          <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Timeline</div>
-          <div className="flex items-center gap-2 text-xs text-gray-700">
-            <Calendar size={11} className="text-gray-400" />
-            <span className="font-semibold">{brief.timeline.deadline}</span>
-          </div>
-          {brief.timeline.milestones?.map((m, i) => (
-            <div key={i} className="flex items-center gap-1.5 text-[11px] text-gray-500 mt-1 ml-4">
-              <ArrowRight size={9} className="text-gray-300" /> {m}
+        <div className="px-6 py-5 space-y-4">
+          {/* Type */}
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Type</div>
+            <div className="flex gap-2">
+              {['Video', 'Design', 'TV'].map(t => (
+                <button key={t} onClick={() => setType(t)}
+                  className={clsx('flex-1 py-2.5 rounded-xl text-sm font-bold border-2 transition-all',
+                    type === t
+                      ? `border-transparent text-white bg-gradient-to-r ${TYPE_CFG[t].gradient}`
+                      : 'border-gray-200 text-gray-500 hover:border-gray-300')}>
+                  {TYPE_CFG[t].icon} {t}
+                </button>
+              ))}
             </div>
-          ))}
+          </div>
+
+          {/* Production */}
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Production</div>
+            <div className="relative">
+              <Film size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              <select value={prodId} onChange={e => setProdId(e.target.value)}
+                className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-700 focus:outline-none focus:border-indigo-300 appearance-none">
+                <option value="">Select production (optional)</option>
+                {productions.map(p => <option key={p.id} value={p.id}>{p.project_name || p.id}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* Prompt */}
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">What do you need?</div>
+            <textarea
+              ref={textRef}
+              value={prompt}
+              onChange={e => setPrompt(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && e.metaKey) generate(); }}
+              placeholder="e.g. 30s video for the Gillette launch, Instagram + YouTube, energetic tone, show the product in use, deadline end of April…"
+              rows={4}
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:border-indigo-300 focus:ring-1 focus:ring-indigo-100 resize-none transition-all leading-relaxed"
+            />
+            <div className="text-[10px] text-gray-400 mt-1">Press ⌘↵ to generate</div>
+          </div>
+
+          {/* Generate */}
+          {!brief && (
+            <button onClick={generate} disabled={!prompt.trim() || generating}
+              className={clsx('w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all',
+                prompt.trim() && !generating
+                  ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-200'
+                  : 'bg-gray-100 text-gray-400 cursor-not-allowed')}>
+              {generating ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+              {generating ? 'Claude is generating your brief…' : 'Generate Brief'}
+            </button>
+          )}
+
+          {/* Brief preview */}
+          {brief && (
+            <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-4 space-y-3">
+              <div className="flex items-start justify-between gap-2">
+                <h3 className="text-sm font-black text-gray-900">{brief.title}</h3>
+                <button onClick={() => setBrief(null)} className="text-[10px] text-gray-400 hover:text-gray-600 underline flex-shrink-0">Edit</button>
+              </div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                {brief.objective && <div className="col-span-2"><span className="text-gray-400 font-semibold">Objective: </span><span className="text-gray-700">{brief.objective}</span></div>}
+                {brief.target_audience && <div><span className="text-gray-400 font-semibold">Audience: </span><span className="text-gray-700">{brief.target_audience}</span></div>}
+                {brief.tone && <div><span className="text-gray-400 font-semibold">Tone: </span><span className="text-gray-700">{brief.tone}</span></div>}
+                {brief.timeline?.deadline && <div><span className="text-gray-400 font-semibold">Deadline: </span><span className="text-gray-700">{brief.timeline.deadline}</span></div>}
+              </div>
+              {brief.deliverables?.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {brief.deliverables.map((d, i) => (
+                    <span key={i} className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded text-[11px] font-semibold">
+                      {d.quantity || 1}× {d.type} · {d.platform}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="flex gap-2 pt-1">
+                <button onClick={generate} disabled={generating}
+                  className="flex-1 py-2 rounded-xl border border-indigo-200 text-xs font-semibold text-indigo-600 hover:bg-indigo-100 transition-all">
+                  {generating ? <Loader2 size={12} className="animate-spin inline mr-1" /> : null} Regenerate
+                </button>
+                <button onClick={createInMonday} disabled={creating}
+                  className="flex-1 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 shadow-sm flex items-center justify-center gap-1.5 transition-all">
+                  {creating ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
+                  Create in Monday
+                </button>
+              </div>
+            </div>
+          )}
         </div>
-      )}
-
-      {brief.notes && brief.notes !== 'Not specified' && (
-        <BriefSection label="Notes" text={brief.notes} />
-      )}
-    </div>
-  );
-}
-
-function BriefSection({ label, text }) {
-  if (!text) return null;
-  return (
-    <div>
-      <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-0.5">{label}</div>
-      <p className="text-xs text-gray-700 leading-relaxed">{text}</p>
+      </div>
     </div>
   );
 }
