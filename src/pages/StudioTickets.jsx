@@ -219,30 +219,27 @@ export default function StudioTickets() {
     if (!token) return;
     setLoading(true); setError(null);
     try {
-      // Fetch up to 500 items from each board; use cursor for second page if needed
-      const ITEM_QUERY = (boardIds, cursor) => cursor
-        ? `{ next_items_page(limit: 500, cursor: ${JSON.stringify(cursor)}) { cursor items { id name state group { id title } column_values { id title text type value } updates(limit: 2) { id body created_at creator { name } } } } }`
-        : `{ boards(ids: [${boardIds}]) { id name items_page(limit: 500) { cursor items { id name state group { id title } column_values { id title text type value } updates(limit: 2) { id body created_at creator { name } } } } } }`;
-
-      const data = await mondayQuery(ITEM_QUERY(`${VIDEO_BOARD}, ${DESIGN_BOARD}`, null), token);
+      const data = await mondayQuery(`{
+        boards(ids: [${VIDEO_BOARD}, ${DESIGN_BOARD}]) {
+          id name
+          items_page(limit: 200) {
+            items {
+              id name state
+              group { id title }
+              column_values { id title text type }
+              updates(limit: 2) { id body created_at creator { name } }
+            }
+          }
+        }
+      }`, token);
       const all = [];
-      const boardMap = {};
       for (const board of data.boards || []) {
-        boardMap[board.id] = board.name;
         for (const item of board.items_page?.items || []) {
           if (item.state === 'deleted') continue;
-          all.push({ ...item, _boardId: board.id, _boardName: board.name, _type: getItemType(item, board.id) });
-        }
-        // Fetch second page if there's a cursor
-        const cursor = board.items_page?.cursor;
-        if (cursor) {
-          try {
-            const more = await mondayQuery(ITEM_QUERY(null, cursor), token);
-            for (const item of more.next_items_page?.items || []) {
-              if (item.state === 'deleted') continue;
-              all.push({ ...item, _boardId: board.id, _boardName: board.name, _type: getItemType(item, board.id) });
-            }
-          } catch { /* ignore pagination errors */ }
+          const type = getItemType(item, board.id);
+          // Only include items where Department/Type = TV
+          if (type !== 'TV') continue;
+          all.push({ ...item, _boardId: board.id, _boardName: board.name, _type: type });
         }
       }
       all.sort((a, b) => (b.updates?.[0]?.created_at || '').localeCompare(a.updates?.[0]?.created_at || ''));
@@ -390,7 +387,7 @@ export default function StudioTickets() {
         <div className="relative px-6 py-4 flex items-center justify-between gap-4">
           <div>
             <h1 className="text-xl font-black text-white tracking-tight leading-none">Studio</h1>
-            <p className="text-indigo-300/70 text-[12px] mt-0.5">Video · Design · TV — synced live from Monday.com</p>
+            <p className="text-indigo-300/70 text-[12px] mt-0.5">TV tasks from Video &amp; Design boards — synced live from Monday.com</p>
           </div>
           <div className="flex items-center gap-2">
             <button onClick={() => setShowBriefModal(true)}
@@ -446,7 +443,7 @@ export default function StudioTickets() {
           <Film size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           <select value={productionFilter} onChange={e => setProductionFilter(e.target.value)}
             className="pl-7 pr-6 py-2 rounded-xl border border-gray-200 bg-white text-xs font-medium text-gray-700 focus:outline-none focus:border-indigo-300 appearance-none cursor-pointer hover:border-gray-300 transition-all min-w-[140px]">
-            <option value="">All productions</option>
+            <option value="">Unspecified</option>
             {productions.map(p => (
               <option key={p.id} value={p.id}>{p.project_name || p.id}</option>
             ))}
