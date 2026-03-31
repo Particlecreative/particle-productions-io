@@ -11,6 +11,9 @@ import clsx from 'clsx';
 // ─── Constants ────────────────────────────────────────────────────────────────
 const VIDEO_BOARD  = '5433027071';
 const DESIGN_BOARD = '8036329818';
+// Column IDs for Department = TV on each board (found via API inspection)
+const VIDEO_DEPT_COL  = 'label';          // "Department" column on Video board
+const DESIGN_DEPT_COL = 'status_1__1';    // "Department" column on Design board
 const VIDEO_FORM   = 'https://wkf.ms/3PVukOV';
 const DESIGN_FORM  = 'https://wkf.ms/4sKgeP9';
 const API = import.meta.env.VITE_API_URL || '';
@@ -219,28 +222,25 @@ export default function StudioTickets() {
     if (!token) return;
     setLoading(true); setError(null);
     try {
+      // Use items_page_by_column_values to fetch ONLY TV items from each board
+      // (boards have 2000+ items; TV items are ~20-50 — must filter server-side)
+      const ITEM_FIELDS = `id name state group { id title } column_values { id text type column { title } } updates(limit: 2) { id body created_at creator { name } }`;
       const data = await mondayQuery(`{
-        boards(ids: [${VIDEO_BOARD}, ${DESIGN_BOARD}]) {
-          id name
-          items_page(limit: 200) {
-            items {
-              id name state
-              group { id title }
-              column_values { id text type column { title } }
-              updates(limit: 2) { id body created_at creator { name } }
-            }
-          }
+        video: items_page_by_column_values(limit: 500, board_id: ${VIDEO_BOARD}, columns: [{ column_id: "${VIDEO_DEPT_COL}", column_values: ["TV"] }]) {
+          items { ${ITEM_FIELDS} }
+        }
+        design: items_page_by_column_values(limit: 500, board_id: ${DESIGN_BOARD}, columns: [{ column_id: "${DESIGN_DEPT_COL}", column_values: ["TV"] }]) {
+          items { ${ITEM_FIELDS} }
         }
       }`, token);
       const all = [];
-      for (const board of data.boards || []) {
-        for (const item of board.items_page?.items || []) {
-          if (item.state === 'deleted') continue;
-          const type = getItemType(item, board.id);
-          // Only include items where Department/Type = TV
-          if (type !== 'TV') continue;
-          all.push({ ...item, _boardId: board.id, _boardName: board.name, _type: type });
-        }
+      for (const item of data.video?.items || []) {
+        if (item.state === 'deleted') continue;
+        all.push({ ...item, _boardId: VIDEO_BOARD, _boardName: 'Video Projects', _type: 'TV' });
+      }
+      for (const item of data.design?.items || []) {
+        if (item.state === 'deleted') continue;
+        all.push({ ...item, _boardId: DESIGN_BOARD, _boardName: 'Design Projects - 2.0', _type: 'TV' });
       }
       all.sort((a, b) => (b.updates?.[0]?.created_at || '').localeCompare(a.updates?.[0]?.created_at || ''));
       setItems(all);
@@ -362,9 +362,11 @@ export default function StudioTickets() {
       const itemText = item.name.toLowerCase();
       const colTexts = (item.column_values || []).map(cv => (cv.text || '').toLowerCase()).join(' ');
       const nameWords = prodName.split(/[\s\-_]+/).filter(w => w.length > 3);
+      // Check for [Production Name | ID] prefix pattern (from brief creation)
+      const matchByPrefix = itemText.startsWith(`[${prodName}`) || itemText.includes(`| ${prodId}]`);
       const matchById   = prodId && (itemText.includes(prodId) || colTexts.includes(prodId));
       const matchByName = prodName && nameWords.length > 0 && nameWords.some(w => itemText.includes(w) || colTexts.includes(w));
-      if (!matchById && !matchByName) return false;
+      if (!matchByPrefix && !matchById && !matchByName) return false;
     }
     if (search && !item.name.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
@@ -887,9 +889,13 @@ function BriefModal({ token, productions, brandId, onClose, onCreated }) {
     if (!brief) return;
     setCreating(true);
     const boardId = TYPE_CFG[type]?.board || VIDEO_BOARD;
+    // Prefix with production name + ID so the platform can auto-link the ticket back
+    const prod = productions.find(p => p.id === prodId);
+    const prefix = prod ? `[${prod.project_name} | ${prod.id}] ` : '';
+    const itemName = prefix + brief.title;
     try {
       await mondayQuery(`
-        mutation { create_item(board_id: "${boardId}", item_name: ${JSON.stringify(brief.title)}) { id } }
+        mutation { create_item(board_id: "${boardId}", item_name: ${JSON.stringify(itemName)}) { id } }
       `, token);
       onCreated();
     } catch (err) { alert('Could not create in Monday: ' + err.message); setCreating(false); }
