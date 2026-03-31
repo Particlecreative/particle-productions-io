@@ -294,6 +294,15 @@ function SortableSceneRow({ scene, index, visibleCols, onUpdate, onDelete, onDup
           <div className="flex flex-wrap gap-1.5">
             {(scene.images || []).map(img => (
               <div key={img.id} className="relative group/img">
+                {/* Hover preview — large popup */}
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 pointer-events-none opacity-0 group-hover/img:opacity-100 transition-opacity duration-150 delay-300">
+                  <div className="bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden" style={{width: 320}}>
+                    <img src={img.url} alt={img.prompt || 'Visual'} className="w-full object-cover" style={{maxHeight: 240}} />
+                    {img.prompt && <p className="text-[10px] text-gray-500 px-2 py-1.5 leading-snug line-clamp-2">{img.prompt}</p>}
+                  </div>
+                  {/* Arrow */}
+                  <div className="w-3 h-3 bg-white border-b border-r border-gray-200 rotate-45 mx-auto -mt-1.5 shadow-sm" />
+                </div>
                 <img
                   src={img.url}
                   alt={img.prompt || 'Visual'}
