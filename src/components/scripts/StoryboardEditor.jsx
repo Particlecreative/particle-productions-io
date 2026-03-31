@@ -23,13 +23,22 @@ function jwt() { return localStorage.getItem('cp_auth_token'); }
 
 // ── VO duration estimate (word count at 130 WPM) ─────────────────────────────
 const VO_WPM = 130;
+function stripStageDirections(text) {
+  return (text || '').replace(/\[[^\]]*\]/g, '').replace(/\([^)]*\)/g, '').replace(/\s+/g, ' ').trim();
+}
 function estimateSeconds(text) {
-  if (!text?.trim()) return 0;
-  return Math.round((text.trim().split(/\s+/).length / VO_WPM) * 60);
+  const clean = stripStageDirections(text?.replace ? text.replace(/<[^>]*>/g, ' ') : '');
+  if (!clean.trim()) return 0;
+  return Math.round((clean.trim().split(/\s+/).length / VO_WPM) * 60);
 }
 function fmtSeconds(s) {
   if (s < 60) return `${s}s`;
   return `${Math.floor(s / 60)}m ${s % 60}s`;
+}
+function fmtTimecode(s) {
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
 }
 
 const STATUS_COLORS = {
@@ -328,8 +337,11 @@ function SortableSceneRow({ scene, index, visibleCols, onUpdate, onDelete, onDup
                   title="Auto-generate storyboard image using AI"
                 >
                   {generatingImg ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
-                  {generatingImg ? 'Generating...' : 'AI Image'}
+                  {generatingImg ? 'Generating...' : (scene.images || []).length > 0 ? '+ Shot' : '✨ AI'}
                 </button>
+                {(scene.images || []).length > 1 && (
+                  <span className="text-[9px] font-mono text-gray-400 px-1">{(scene.images || []).length} shots</span>
+                )}
               </div>
             )}
           </div>
@@ -421,6 +433,9 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
   const [accountVoices, setAccountVoices] = useState([]);
   const [loadingVoices, setLoadingVoices] = useState(false);
   const [downloadingFullVO, setDownloadingFullVO] = useState(false);
+  const [sceneDurations, setSceneDurations] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(`script_durations_${scriptId}`) || '{}'); } catch { return {}; }
+  });
   const previewAudioRef = useRef(null);
 
   // ── Format toolbar ──
@@ -591,12 +606,15 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
     const productName = localStorage.getItem(`script_product_name_${scriptId}`) || '';
     let productPhotos = [];
     try { productPhotos = JSON.parse(localStorage.getItem(`script_product_photos_${scriptId}`) || '[]'); } catch {}
+    let charPhotos = [];
+    try { charPhotos = JSON.parse(localStorage.getItem(`script_char_photos_${scriptId}`) || '[]'); } catch {}
 
     const body = {
       scene_id: sceneId,
       character_profiles: charProfiles.length > 0 ? charProfiles : undefined,
       style_notes: styleNotes || undefined,
       product_info: productName ? { name: productName, photos: productPhotos } : undefined,
+      character_photos: charPhotos.length > 0 ? charPhotos : undefined,
     };
 
     const res = await fetch(`${API}/api/scripts/${scriptId}/ai-image`, {
@@ -738,6 +756,13 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
       });
       const data = await res.json();
       if (!data.audio_base64) { alert(data.error || 'TTS failed'); setPlayingSceneId(null); return; }
+      if (data.duration_seconds) {
+        setSceneDurations(prev => {
+          const next = { ...prev, [sceneId]: data.duration_seconds };
+          localStorage.setItem(`script_durations_${scriptId}`, JSON.stringify(next));
+          return next;
+        });
+      }
       const audio = new Audio(`data:${data.mime_type};base64,${data.audio_base64}`);
       audioRef.current = audio;
       audio.onended = () => { setPlayingSceneId(null); audioRef.current = null; };
@@ -953,6 +978,9 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
     // Save character profiles
     const profiles = wizardCharacters.filter(c => c.description).map(c => ({ name: c.name, description: c.description }));
     saveCharProfiles(profiles);
+    // Save character photos separately for image generation
+    const charPhotos = wizardCharacters.filter(c => c.photoBase64).map(c => ({ name: c.name, base64: c.photoBase64, mimeType: c.photoMime || 'image/jpeg' }));
+    if (charPhotos.length > 0) localStorage.setItem(`script_char_photos_${scriptId}`, JSON.stringify(charPhotos));
     if (wizardStyleNotes.trim()) localStorage.setItem(`script_style_${scriptId}`, wizardStyleNotes.trim());
     if (wizardProductName.trim()) localStorage.setItem(`script_product_name_${scriptId}`, wizardProductName.trim());
     const productPhotosToSave = wizardProductPhotos.slice(0, 3).map(p => ({ base64: p.base64, mimeType: p.mimeType }));
@@ -1091,6 +1119,18 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
   // ── Commercial timing (speed-adjusted) ──
   const rawVoSeconds = scenes.reduce((sum, s) => sum + estimateSeconds(stripHtml(s.what_we_hear)), 0);
   const totalVoSeconds = Math.round(rawVoSeconds / voiceSpeed);
+
+  // Build cumulative timecode map for each scene
+  const sceneTimecodes = {};
+  let cumulative = 0;
+  for (const s of scenes) {
+    const dur = sceneDurations[s.id]
+      ? Math.round(sceneDurations[s.id] / voiceSpeed)
+      : Math.round(estimateSeconds(stripHtml(s.what_we_hear)) / voiceSpeed);
+    sceneTimecodes[s.id] = { start: cumulative, end: cumulative + dur, isActual: !!sceneDurations[s.id] };
+    cumulative += dur;
+  }
+
   const targetSeconds = parseInt(commercialTarget) || 30;
   const timingRatio = totalVoSeconds / targetSeconds;
   const timingColor = timingRatio <= 0.9 ? 'text-gray-500' : timingRatio <= 1.05 ? 'text-green-600' : timingRatio <= 1.2 ? 'text-amber-600' : 'text-red-600';
@@ -1447,14 +1487,17 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
               </div>
             </div>
             {scenes.map((scene, idx) => {
-              const secs = estimateSeconds(scene.what_we_hear);
               return (
                 <div key={scene.id} className="mb-6 pb-6 border-b border-gray-100 last:border-0">
                   <div className="flex items-baseline gap-3 mb-2">
                     <span className="text-xs font-bold text-gray-400 w-5">{idx + 1}</span>
                     {scene.location && <span className="text-xs font-mono text-gray-400">{scene.location}</span>}
                     <div className="ml-auto flex items-center gap-2">
-                      {secs > 0 && <span className="text-[10px] font-mono text-indigo-400">~{fmtSeconds(secs)}</span>}
+                      {sceneTimecodes[scene.id] && (
+                        <span className={`text-[10px] font-mono ${sceneTimecodes[scene.id]?.isActual ? 'text-indigo-500' : 'text-gray-400'}`} title={sceneTimecodes[scene.id]?.isActual ? 'Actual ElevenLabs duration' : 'Estimated'}>
+                          {fmtTimecode(sceneTimecodes[scene.id]?.start ?? 0)}–{fmtTimecode(sceneTimecodes[scene.id]?.end ?? 0)}
+                        </span>
+                      )}
                       {scene.what_we_hear?.trim() && (
                         <button
                           onClick={() => handlePlayTTS(scene.id)}
@@ -1467,7 +1510,13 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                     </div>
                   </div>
                   <p className="text-base text-indigo-800 leading-relaxed italic pl-8">
-                    {scene.what_we_hear || <span className="text-gray-300">No audio for this scene</span>}
+                    {scene.what_we_hear
+                      ? (scene.what_we_hear || '').replace(/<[^>]*>/g, '').split(/(\[[^\]]*\]|\([^)]*\))/g).map((part, i) =>
+                          /^[\[(]/.test(part)
+                            ? <span key={i} className="text-gray-400 italic text-xs">{part}</span>
+                            : part
+                        )
+                      : <span className="text-gray-300">No audio for this scene</span>}
                   </p>
                 </div>
               );

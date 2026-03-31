@@ -126,7 +126,7 @@ async function generateGeminiImage(prompt, referenceImages = []) {
   for (const ref of referenceImages) {
     parts.push({ inline_data: { mime_type: ref.mimeType || 'image/jpeg', data: ref.base64 } });
   }
-  parts.push({ text: prompt });
+  parts.push({ text: `IMPORTANT: Generate as a 16:9 widescreen landscape format image (cinematic wide aspect ratio). ${prompt}` });
   const resp = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key=${process.env.GEMINI_API_KEY}`,
     {
@@ -857,7 +857,7 @@ router.post('/:id/ai-generate', async (req, res) => {
 // Accepts optional: prompt (override), replace_image_id (replace vs append), character_profiles, style_notes, product_info
 router.post('/:id/ai-image', async (req, res) => {
   try {
-    const { scene_id, prompt: promptOverride, replace_image_id, character_profiles, style_notes, reference_image, reference_image_url, product_info } = req.body;
+    const { scene_id, prompt: promptOverride, replace_image_id, character_profiles, style_notes, reference_image, reference_image_url, product_info, character_photos } = req.body;
     if (!scene_id) return res.status(400).json({ error: 'scene_id is required' });
 
     if (!process.env.GEMINI_API_KEY) {
@@ -886,7 +886,7 @@ router.post('/:id/ai-image', async (req, res) => {
     if (!imagePrompt) {
       // Build character profiles context
       const charContext = Array.isArray(character_profiles) && character_profiles.length > 0
-        ? `\nCHARACTERS IN THIS PRODUCTION (maintain exact visual consistency for each):\n${character_profiles.map(c => `- ${c.name}: ${c.description}`).join('\n')}\n`
+        ? `\nCHARACTERS — IDENTITY LOCK (non-negotiable):\n${character_profiles.map(c => `- ${c.name}: ${c.description}`).join('\n')}\nYou MUST reproduce each character's exact appearance as described. Same face structure, hair, skin tone, build. Do NOT idealize, beautify, or alter them.\n`
         : '';
 
       // Build product context
@@ -953,6 +953,15 @@ Write a single, detailed image generation prompt (2-4 sentences) for the CURRENT
       }
     }
 
+    // Add character reference photos — placed after product photos, with identity lock instruction
+    if (Array.isArray(character_photos)) {
+      for (const cp of character_photos.slice(0, 3)) {
+        if (cp?.base64) {
+          refImages.push({ base64: cp.base64, mimeType: cp.mimeType || 'image/jpeg' });
+        }
+      }
+    }
+
     if (reference_image?.base64) {
       refImages.push({ base64: reference_image.base64, mimeType: reference_image.mimeType || 'image/jpeg' });
     } else if (reference_image_url) {
@@ -976,8 +985,10 @@ Write a single, detailed image generation prompt (2-4 sentences) for the CURRENT
     const productPhotosAdded = Array.isArray(product_info?.photos) && product_info.photos.length > 0;
     if (productPhotosAdded && !promptOverride) {
       imagePrompt += ' The provided product reference images show the exact product that must appear in this scene — replicate it precisely.';
+    const charPhotosAdded = Array.isArray(character_photos) && character_photos.length > 0;
+    if (charPhotosAdded && !promptOverride) {
+      imagePrompt += ` IDENTITY LOCK: The reference photo(s) that follow this text show the EXACT actor(s)/character(s) who must appear in this scene. Reproduce their face, hair color and style, skin tone, and build with absolute precision. Do NOT change, idealize, or invent their appearance.`;
     } else if (refImages.length > 0 && !promptOverride && !productPhotosAdded) {
-      // Non-product reference image — use for inspiration
       imagePrompt += ' Use the provided reference image as visual inspiration for composition, style, or subject — adapt it to fit the scene context while maintaining storyboard consistency.';
     }
 
@@ -1419,6 +1430,8 @@ async function elevenLabsTTS(text, voiceIdOverride, options = {}) {
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
+    .replace(/\[[^\]]*\]/g, ' ')   // strip [stage directions]
+    .replace(/\([^)]*\)/g, ' ')    // strip (parenthetical notes)
     .replace(/\s+/g, ' ')
     .trim()
     .substring(0, 2500);
