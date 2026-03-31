@@ -146,7 +146,7 @@ function FormatToolbar({ style, onDismiss }) {
 }
 
 // ── SortableSceneRow ──────────────────────────────────────────────────────────
-function SortableSceneRow({ scene, index, visibleCols, onUpdate, onDelete, onDuplicate, onAddScene, commentCount, onCommentClick, onImageUpload, onImageDelete, onImageGenerate, onRegenImage, onRequestAIImage, onLightbox, readOnly, isLastRow, onPlayTTS, isPlaying }) {
+function SortableSceneRow({ scene, index, visibleCols, onUpdate, onDelete, onDuplicate, onAddScene, commentCount, onCommentClick, onImageUpload, onImageDelete, onImageGenerate, onRegenImage, onRequestAIImage, onLightbox, readOnly, isLastRow, onPlayTTS, isPlaying, onSmartSplit, suggestingShots }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: scene.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
 
@@ -339,15 +339,25 @@ function SortableSceneRow({ scene, index, visibleCols, onUpdate, onDelete, onDup
                   <Upload size={14} />
                   Upload
                 </button>
-                <button
-                  onClick={() => onRequestAIImage(scene.id)}
-                  disabled={generatingImg}
-                  className="flex items-center gap-1 text-[10px] text-purple-500 hover:text-purple-700 px-1 disabled:opacity-50"
-                  title="Auto-generate storyboard image using AI"
-                >
-                  {generatingImg ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
-                  {generatingImg ? 'Generating...' : (scene.images || []).length > 0 ? '+ Shot' : '✨ AI'}
-                </button>
+                <div className="relative flex items-center gap-0.5">
+                  <button
+                    onClick={() => onRequestAIImage(scene.id)}
+                    disabled={generatingImg || suggestingShots === scene.id}
+                    className="flex items-center gap-1 text-[10px] text-purple-500 hover:text-purple-700 px-1 disabled:opacity-50"
+                    title="Generate one AI storyboard image"
+                  >
+                    {(generatingImg || suggestingShots === scene.id) ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
+                    {suggestingShots === scene.id ? 'Splitting...' : generatingImg ? 'Generating...' : (scene.images || []).length > 0 ? '+ Shot' : '✨ AI'}
+                  </button>
+                  <button
+                    onClick={() => onSmartSplit(scene.id)}
+                    disabled={generatingImg || !!suggestingShots}
+                    className="flex items-center gap-0.5 text-[9px] text-purple-400 hover:text-purple-600 px-1 disabled:opacity-50 border-l border-purple-100"
+                    title="Smart split: AI breaks scene into multiple shots automatically"
+                  >
+                    <Film size={9} /> Split
+                  </button>
+                </div>
                 {(scene.images || []).length > 1 && (
                   <span className="text-[9px] font-mono text-gray-400 px-1">{(scene.images || []).length} shots</span>
                 )}
@@ -426,6 +436,8 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
   const [detectingProduct, setDetectingProduct] = useState(false);
   const [generatingAll, setGeneratingAll] = useState(false);
   const [generateAllProgress, setGenerateAllProgress] = useState({ current: 0, total: 0 });
+  const [smartSplitScene, setSmartSplitScene] = useState(null); // sceneId currently showing smart split popup
+  const [suggestingShots, setSuggestingShots] = useState(null); // sceneId currently fetching shot suggestions
   const productPhotoRef = useRef();
   const [extractingChars, setExtractingChars] = useState(false);
   const [describingActor, setDescribingActor] = useState(null); // index being described
@@ -639,6 +651,47 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
     } else {
       alert(data.error || 'Image generation failed');
     }
+  };
+
+  const handleSmartSplit = async (sceneId) => {
+    setSuggestingShots(sceneId);
+    setSmartSplitScene(null);
+    try {
+      const res = await fetch(`${API}/api/scripts/${scriptId}/suggest-shots`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
+        body: JSON.stringify({ scene_id: sceneId }),
+      });
+      const data = await res.json();
+      const shots = data.shots || [];
+      // Generate one image per shot, sequentially
+      for (const shot of shots) {
+        const charProfiles = getCharProfiles();
+        const styleNotes = localStorage.getItem(`script_style_${scriptId}`) || '';
+        const productName = localStorage.getItem(`script_product_name_${scriptId}`) || '';
+        let productPhotos = [];
+        try { productPhotos = JSON.parse(localStorage.getItem(`script_product_photos_${scriptId}`) || '[]'); } catch {}
+        let charPhotos = [];
+        try { charPhotos = JSON.parse(localStorage.getItem(`script_char_photos_${scriptId}`) || '[]'); } catch {}
+
+        await fetch(`${API}/api/scripts/${scriptId}/ai-image`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
+          body: JSON.stringify({
+            scene_id: sceneId,
+            prompt: shot.description,
+            character_profiles: charProfiles.length > 0 ? charProfiles : undefined,
+            character_photos: charPhotos.length > 0 ? charPhotos : undefined,
+            style_notes: styleNotes || undefined,
+            product_info: productName ? { name: productName, photos: productPhotos } : undefined,
+          }),
+        });
+        await loadScript(); // refresh after each shot
+      }
+    } catch (e) {
+      alert('Smart split failed: ' + e.message);
+    }
+    setSuggestingShots(null);
   };
 
   const handleCommentClick = (info) => {
@@ -1454,6 +1507,8 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                         readOnly={readOnly}
                         onPlayTTS={handlePlayTTS}
                         isPlaying={playingSceneId === scene.id}
+                        onSmartSplit={handleSmartSplit}
+                        suggestingShots={suggestingShots}
                       />
                     ))}
                   </tbody>

@@ -446,6 +446,53 @@ router.get('/', async (req, res) => {
   }
 });
 
+// POST /api/scripts/:id/suggest-shots — Claude analyzes a scene and suggests shot breakdown
+router.post('/:id/suggest-shots', async (req, res) => {
+  try {
+    const { scene_id } = req.body;
+    if (!scene_id) return res.status(400).json({ error: 'scene_id required' });
+    const { rows } = await db.query('SELECT scenes, title FROM scripts WHERE id = $1', [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Script not found' });
+    const scene = (rows[0].scenes || []).find(s => s.id === scene_id);
+    if (!scene) return res.status(404).json({ error: 'Scene not found' });
+
+    const stripHtml = (s) => (s || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    const whatWeSee = stripHtml(scene.what_we_see);
+    const whatWeHear = stripHtml(scene.what_we_hear);
+
+    const prompt = `You are a film director analyzing a storyboard scene to decide how many shots it needs.
+
+Scene location: ${scene.location || ''}
+What We See: ${whatWeSee}
+What We Hear: ${whatWeHear}
+
+Analyze this scene and break it into individual shots (each shot = one camera angle / moment / visual beat).
+Rules:
+- 1 shot if the scene is a single static moment or a simple action
+- 2-3 shots if there are multiple visual moments, camera moves, or action beats
+- Maximum 4 shots
+- Each shot description should be 1 concise sentence describing exactly what the camera captures
+- Keep shot descriptions specific and visual
+
+Return ONLY valid JSON:
+{"shots": [
+  {"shot_number": 1, "description": "..."},
+  {"shot_number": 2, "description": "..."}
+]}`;
+
+    const result = await callClaude(prompt, 'You are a film director. Return only JSON.');
+    let parsed = { shots: [{ shot_number: 1, description: whatWeSee || 'Scene visual' }] };
+    try {
+      const match = result.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim().match(/\{[\s\S]*\}/);
+      if (match) parsed = JSON.parse(match[0]);
+    } catch (e) { /* silent */ }
+    res.json(parsed);
+  } catch (err) {
+    console.error('POST /scripts/:id/suggest-shots error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/scripts/voices — must be BEFORE /:id to avoid route collision
 router.get('/voices', async (req, res) => {
   try {

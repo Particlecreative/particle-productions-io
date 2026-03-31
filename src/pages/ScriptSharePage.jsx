@@ -353,6 +353,19 @@ export default function ScriptSharePage() {
         {/* Content */}
         <div className="max-w-7xl mx-auto p-6">
 
+          {canComment && (
+            <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-3 text-sm scripts-no-print">
+              <MessageSquare size={16} className="text-amber-500 shrink-0" />
+              <span className="text-amber-800 text-xs">
+                <strong>You can leave feedback.</strong> Select any text to comment on it, or click the <strong>💬</strong> button next to any scene row.
+              </span>
+              <button onClick={() => { setShowComments(true); setPendingComment(null); }}
+                className="ml-auto shrink-0 text-xs font-bold text-amber-700 hover:text-amber-900 underline">
+                View all ({comments.filter(c => c.status !== 'resolved').length})
+              </button>
+            </div>
+          )}
+
           {/* ── TABLE VIEW ──────────────────────────────────── */}
           {view === 'table' && (
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -413,11 +426,13 @@ export default function ScriptSharePage() {
                         <td className="px-2 py-3">
                           <button
                             onClick={() => openCommentPanel({ scene_id: scene.id, cell: null, selected_text: null })}
-                            className={clsx('flex items-center gap-1 text-[11px] rounded-lg px-1.5 py-1 transition-colors',
-                              sceneComments > 0 ? 'text-amber-600 bg-amber-50' : 'text-gray-300 hover:text-amber-500 opacity-0 group-hover:opacity-100')}
+                            className={clsx('flex items-center gap-1.5 text-[11px] rounded-lg px-2 py-1.5 transition-colors border',
+                              sceneComments > 0
+                                ? 'text-amber-700 bg-amber-50 border-amber-200 font-bold'
+                                : 'text-amber-400 border-amber-100 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200')}
                           >
-                            <MessageSquare size={12} />
-                            {sceneComments > 0 && <span className="font-bold">{sceneComments}</span>}
+                            <MessageSquare size={11} />
+                            <span>{sceneComments > 0 ? sceneComments : ''}</span>
                           </button>
                         </td>
                       )}
@@ -469,9 +484,11 @@ export default function ScriptSharePage() {
                       {canComment && (
                         <td className="px-2 py-4">
                           <button onClick={() => openCommentPanel({ scene_id: scene.id, cell: 'what_we_hear', selected_text: null })}
-                            className={clsx('flex items-center gap-1 text-[11px] rounded-lg px-1.5 py-1 transition-colors',
-                              sceneComments > 0 ? 'text-amber-600 bg-amber-50' : 'text-gray-300 hover:text-amber-500 opacity-0 group-hover:opacity-100')}>
-                            <MessageSquare size={12} />{sceneComments > 0 && <span className="font-bold">{sceneComments}</span>}
+                            className={clsx('flex items-center gap-1.5 text-[11px] rounded-lg px-2 py-1.5 transition-colors border',
+                              sceneComments > 0
+                                ? 'text-amber-700 bg-amber-50 border-amber-200 font-bold'
+                                : 'text-amber-400 border-amber-100 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200')}>
+                            <MessageSquare size={11} /><span>{sceneComments > 0 ? sceneComments : ''}</span>
                           </button>
                         </td>
                       )}
@@ -508,9 +525,11 @@ export default function ScriptSharePage() {
                       </div>
                       {canComment && (
                         <button onClick={() => openCommentPanel({ scene_id: scene.id, cell: null, selected_text: null })}
-                          className={clsx('flex items-center gap-1 text-[11px] rounded-lg px-1.5 py-1 transition-colors shrink-0',
-                            sceneComments > 0 ? 'text-amber-600 bg-amber-50' : 'text-gray-300 hover:text-amber-500')}>
-                          <MessageSquare size={11} />{sceneComments > 0 && <span className="font-bold">{sceneComments}</span>}
+                          className={clsx('flex items-center gap-1.5 text-[11px] rounded-lg px-2 py-1.5 transition-colors border shrink-0',
+                            sceneComments > 0
+                              ? 'text-amber-700 bg-amber-50 border-amber-200 font-bold'
+                              : 'text-amber-400 border-amber-100 hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200')}>
+                          <MessageSquare size={11} /><span>{sceneComments > 0 ? sceneComments : ''}</span>
                         </button>
                       )}
                     </div>
@@ -558,33 +577,33 @@ export default function ScriptSharePage() {
         >
           <button
             onMouseDown={e => { e.preventDefault(); openCommentPanel(selectionBtn); setSelectionBtn(null); }}
-            className="flex items-center gap-1.5 bg-gray-900 text-white text-xs font-semibold px-3 py-1.5 rounded-full shadow-xl hover:bg-gray-700 transition-colors"
+            className="flex items-center gap-1.5 bg-amber-500 text-white text-sm font-bold px-4 py-2 rounded-full shadow-2xl hover:bg-amber-600 transition-colors"
           >
-            <MessageSquare size={11} /> Comment
+            <MessageSquare size={13} /> Leave feedback on this
           </button>
         </div>
       )}
 
       {/* ── Comments Sidebar ── */}
       {showComments && canComment && (
-        <div className="fixed inset-y-0 right-0 z-40 w-80 bg-white border-l border-gray-200 shadow-2xl flex flex-col scripts-no-print">
+        <div className="fixed inset-y-0 right-0 z-40 w-96 bg-white border-l border-gray-100 shadow-2xl flex flex-col scripts-no-print">
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-            <h3 className="font-bold text-gray-900 text-sm flex items-center gap-2">
-              <MessageSquare size={14} className="text-amber-500" /> Comments
-              {comments.filter(c => c.status !== 'resolved').length > 0 && (
-                <span className="bg-amber-100 text-amber-700 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                  {comments.filter(c => c.status !== 'resolved').length}
-                </span>
-              )}
-            </h3>
-            <button onClick={() => setShowComments(false)} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 bg-gray-50">
+            <div>
+              <h3 className="font-black text-gray-900 text-base flex items-center gap-2">
+                <MessageSquare size={16} className="text-amber-500" /> Feedback
+              </h3>
+              <p className="text-[11px] text-gray-400 mt-0.5">
+                {comments.filter(c => c.status !== 'resolved').length} open · {comments.filter(c => c.status === 'resolved').length} resolved
+              </p>
+            </div>
+            <button onClick={() => setShowComments(false)} className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-200 hover:text-gray-600 transition-colors"><X size={16} /></button>
           </div>
 
-          {/* Name prompt */}
-          {showNamePrompt && (
-            <div className="px-4 py-3 bg-amber-50 border-b border-amber-100">
-              <p className="text-xs font-semibold text-amber-800 mb-2">What's your name?</p>
+          {/* Name setup — inline, not blocking */}
+          {!commenterName.trim() && (
+            <div className="px-5 py-3 bg-amber-50 border-b border-amber-100">
+              <p className="text-xs font-semibold text-amber-800 mb-2">👋 What's your name? (shown with your comments)</p>
               <div className="flex gap-2">
                 <input
                   autoFocus
@@ -592,88 +611,113 @@ export default function ScriptSharePage() {
                   onChange={e => setCommenterName(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter' && commenterName.trim()) { localStorage.setItem('cp_commenter_name', commenterName.trim()); setShowNamePrompt(false); commentInputRef.current?.focus(); } }}
                   placeholder="Your name"
-                  className="flex-1 border border-amber-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-amber-400 bg-white"
+                  className="flex-1 border border-amber-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-amber-400 bg-white"
                 />
                 <button
-                  onClick={() => { if (commenterName.trim()) { localStorage.setItem('cp_commenter_name', commenterName.trim()); setShowNamePrompt(false); commentInputRef.current?.focus(); } }}
-                  className="bg-amber-500 text-white text-xs px-3 py-1.5 rounded-lg font-semibold hover:bg-amber-600 transition-colors"
-                >OK</button>
+                  onClick={() => { if (commenterName.trim()) { localStorage.setItem('cp_commenter_name', commenterName.trim()); setShowNamePrompt(false); } }}
+                  className="bg-amber-500 text-white text-sm px-4 py-2 rounded-lg font-semibold hover:bg-amber-600 transition-colors"
+                >Save</button>
               </div>
             </div>
           )}
 
-          {/* Comment context */}
-          {pendingComment?.selected_text && (
-            <div className="px-4 py-2 bg-indigo-50 border-b border-indigo-100">
-              <p className="text-[10px] text-indigo-400 font-semibold uppercase tracking-wide mb-1">Commenting on:</p>
-              <p className="text-xs text-indigo-700 italic line-clamp-2">"{pendingComment.selected_text}"</p>
-            </div>
-          )}
-          {pendingComment?.scene_id && !pendingComment?.selected_text && (
-            <div className="px-4 py-2 bg-gray-50 border-b border-gray-100">
-              <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide">
-                Scene {(scenes.findIndex(s => s.id === pendingComment.scene_id) + 1)} —{' '}
-                {scenes.find(s => s.id === pendingComment.scene_id)?.location || 'No location'}
-              </p>
+          {/* Pending comment context — what you're commenting on */}
+          {pendingComment && (
+            <div className="px-5 py-3 bg-indigo-50 border-b border-indigo-100">
+              <div className="flex items-start gap-2">
+                <div className="flex-1">
+                  <p className="text-[11px] font-bold text-indigo-500 uppercase tracking-wider mb-1">
+                    {pendingComment.selected_text ? '💬 Commenting on selected text' : `💬 Commenting on Scene ${(scenes.findIndex(s => s.id === pendingComment.scene_id) + 1)} · ${scenes.find(s => s.id === pendingComment.scene_id)?.location || ''}`}
+                  </p>
+                  {pendingComment.selected_text && (
+                    <p className="text-xs text-indigo-800 italic bg-white/60 rounded-lg px-2 py-1 border border-indigo-100 line-clamp-3">"{pendingComment.selected_text}"</p>
+                  )}
+                </div>
+                <button onClick={() => setPendingComment(null)} className="text-indigo-300 hover:text-indigo-500 shrink-0"><X size={14} /></button>
+              </div>
             </div>
           )}
 
           {/* Comment input */}
-          <div className="px-4 py-3 border-b border-gray-100 bg-white">
+          <div className="px-5 py-4 border-b border-gray-100">
+            {!pendingComment && (
+              <p className="text-xs text-gray-400 mb-2">Select text in the script or click 💬 on a row to target your comment, or leave general feedback below.</p>
+            )}
             <textarea
               ref={commentInputRef}
               value={newCommentText}
               onChange={e => setNewCommentText(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && e.metaKey) submitComment(); }}
-              placeholder="Write a comment... (⌘↵ to send)"
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none resize-none h-20 focus:border-amber-400 focus:ring-1 focus:ring-amber-200"
+              placeholder={pendingComment ? "Write your feedback..." : "General feedback on this script..."}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none resize-none h-24 focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all"
             />
-            <div className="flex items-center justify-between mt-2">
-              <span className="text-[11px] text-gray-400">{commenterName || 'Anonymous'}</span>
-              <div className="flex gap-2">
-                {pendingComment && <button onClick={() => { setPendingComment(null); setNewCommentText(''); }} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>}
-                <button
-                  onClick={submitComment}
-                  disabled={submittingComment || !newCommentText.trim() || showNamePrompt}
-                  className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-40 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
-                >
-                  {commentSubmitted ? <><Check size={12} /> Sent!</> : submittingComment ? <Loader2 size={12} className="animate-spin" /> : <><Send size={12} /> Send</>}
-                </button>
-              </div>
+            <div className="flex items-center justify-between mt-2.5">
+              <span className="text-xs text-gray-400 flex items-center gap-1">
+                {commenterName ? <><span className="w-5 h-5 rounded-full bg-amber-100 text-amber-600 text-[9px] font-bold inline-flex items-center justify-center">{commenterName.charAt(0).toUpperCase()}</span> {commenterName}</> : 'Anonymous'}
+              </span>
+              <button
+                onClick={submitComment}
+                disabled={submittingComment || !newCommentText.trim() || !commenterName.trim()}
+                className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-40 text-white text-sm font-bold px-4 py-2 rounded-xl transition-colors"
+              >
+                {commentSubmitted ? <><Check size={13} /> Sent!</> : submittingComment ? <Loader2 size={13} className="animate-spin" /> : <><Send size={13} /> Send</>}
+              </button>
             </div>
           </div>
 
           {/* Comments list */}
-          <div className="flex-1 overflow-y-auto py-2">
-            {comments.length === 0 ? (
-              <div className="px-4 py-8 text-center text-xs text-gray-400">
-                <MessageSquare size={24} className="mx-auto mb-2 opacity-30" />
-                No comments yet. Be the first!
+          <div className="flex-1 overflow-y-auto">
+            {comments.filter(c => c.status !== 'resolved').length === 0 && comments.filter(c => c.status === 'resolved').length === 0 ? (
+              <div className="px-5 py-12 text-center">
+                <MessageSquare size={28} className="mx-auto mb-3 text-gray-200" />
+                <p className="text-sm font-semibold text-gray-400">No feedback yet</p>
+                <p className="text-xs text-gray-300 mt-1">Be the first to leave a comment</p>
               </div>
             ) : (
-              comments.map(c => {
-                const scene = scenes.find(s => s.id === c.scene_id);
-                const cellLabel = { what_we_see: 'What We See', what_we_hear: 'What We Hear', location: 'Location' }[c.cell] || '';
-                return (
-                  <div key={c.id} className={clsx('px-4 py-3 border-b border-gray-50 hover:bg-gray-50/50', c.status === 'resolved' && 'opacity-40')}>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-bold text-gray-800">{c.author_name}</span>
-                      <span className="text-[10px] text-gray-400">{new Date(c.created_at).toLocaleDateString()}</span>
-                    </div>
-                    {(scene || cellLabel) && (
-                      <div className="flex items-center gap-1 mb-1.5">
-                        {scene && <span className="text-[10px] bg-gray-100 text-gray-500 rounded px-1.5 py-0.5">Scene {scenes.indexOf(scene) + 1}{scene.location ? ` · ${scene.location}` : ''}</span>}
-                        {cellLabel && <span className="text-[10px] bg-indigo-50 text-indigo-500 rounded px-1.5 py-0.5">{cellLabel}</span>}
+              <div className="divide-y divide-gray-50">
+                {comments.filter(c => c.status !== 'resolved').map(c => {
+                  const commentScene = scenes.find(s => s.id === c.scene_id);
+                  const cellLabel = { what_we_see: 'What We See', what_we_hear: 'What We Hear', location: 'Location' }[c.cell] || '';
+                  return (
+                    <div key={c.id} className="px-5 py-4 hover:bg-gray-50/50 transition-colors">
+                      <div className="flex items-start gap-3">
+                        <div className="w-7 h-7 rounded-full bg-amber-100 text-amber-600 text-xs font-black flex items-center justify-center shrink-0 mt-0.5">
+                          {(c.author_name || 'A').charAt(0).toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2 mb-1">
+                            <span className="text-sm font-bold text-gray-900">{c.author_name || 'Anonymous'}</span>
+                            <span className="text-[10px] text-gray-400 shrink-0">{new Date(c.created_at).toLocaleDateString()}</span>
+                          </div>
+                          {(commentScene || cellLabel) && (
+                            <div className="flex items-center gap-1 mb-1.5 flex-wrap">
+                              {commentScene && <span className="text-[10px] bg-gray-100 text-gray-500 rounded-md px-1.5 py-0.5 font-medium">Scene {scenes.indexOf(commentScene) + 1}{commentScene.location ? ` · ${commentScene.location}` : ''}</span>}
+                              {cellLabel && <span className="text-[10px] bg-indigo-50 text-indigo-500 rounded-md px-1.5 py-0.5 font-medium">{cellLabel}</span>}
+                            </div>
+                          )}
+                          {c.selected_text && (
+                            <p className="text-[11px] text-gray-400 italic bg-gray-50 rounded-lg px-2 py-1 mb-1.5 border-l-2 border-gray-200 line-clamp-2">"{c.selected_text}"</p>
+                          )}
+                          <p className="text-sm text-gray-700 leading-relaxed">{c.text}</p>
+                        </div>
                       </div>
-                    )}
-                    {c.selected_text && (
-                      <p className="text-[11px] text-gray-400 italic border-l-2 border-gray-200 pl-2 mb-1.5 line-clamp-2">"{c.selected_text}"</p>
-                    )}
-                    <p className="text-sm text-gray-700 leading-relaxed">{c.text}</p>
-                    {c.status === 'resolved' && <span className="text-[10px] text-green-600 font-semibold mt-1 inline-block">✓ Resolved</span>}
+                    </div>
+                  );
+                })}
+                {comments.filter(c => c.status === 'resolved').length > 0 && (
+                  <div className="px-5 py-3 bg-gray-50">
+                    <p className="text-[11px] text-gray-400 font-semibold uppercase tracking-wide">{comments.filter(c => c.status === 'resolved').length} Resolved</p>
                   </div>
-                );
-              })
+                )}
+                {comments.filter(c => c.status === 'resolved').map(c => (
+                  <div key={c.id} className="px-5 py-3 opacity-50 hover:opacity-70 transition-opacity">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-gray-500">{c.author_name}</span>
+                      <span className="text-[10px] text-gray-400">{c.text}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </div>
