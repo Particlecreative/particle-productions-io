@@ -93,7 +93,7 @@ function getItemType(item, boardId) {
 
 function findCol(item, def) {
   return item.column_values?.find(cv =>
-    def.titles.some(t => cv.title?.toLowerCase().includes(t))
+    def.titles.some(t => cv.column?.title?.toLowerCase().includes(t))
   );
 }
 
@@ -226,7 +226,7 @@ export default function StudioTickets() {
             items {
               id name state
               group { id title }
-              column_values { id title text type }
+              column_values { id text type column { title } }
               updates(limit: 2) { id body created_at creator { name } }
             }
           }

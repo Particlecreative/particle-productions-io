@@ -114,7 +114,7 @@ router.post('/generate', async (req, res) => {
             id name state
             board { id name }
             group { id title }
-            column_values { id title text value type }
+            column_values { id text value type column { title } }
             updates(limit: 5) { id body created_at creator { name } }
           }
         }
@@ -126,7 +126,7 @@ router.post('/generate', async (req, res) => {
     // 2. Build readable context from Monday item
     const columnLines = (item.column_values || [])
       .filter(cv => cv.text && cv.text.trim() && cv.text !== '{}')
-      .map(cv => `- **${cv.title}**: ${cv.text}`)
+      .map(cv => `- **${cv.column?.title || cv.id}**: ${cv.text}`)
       .join('\n');
 
       const updateLines = (item.updates || [])

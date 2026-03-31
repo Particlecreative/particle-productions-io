@@ -44,7 +44,7 @@ async function mondayQuery(gql, token) {
 
 function getItemType(item, boardId) {
   const deptCol = item.column_values?.find(cv =>
-    ['department', 'type', 'channel', 'category'].some(k => cv.title?.toLowerCase().includes(k))
+    ['department', 'type', 'channel', 'category'].some(k => cv.column?.title?.toLowerCase().includes(k))
   );
   if (deptCol?.text?.toLowerCase().includes('tv')) return 'TV';
   const g = item.group?.title?.toLowerCase() || '';
@@ -56,7 +56,7 @@ function getItemType(item, boardId) {
 
 function getStatus(item) {
   const col = item.column_values?.find(
-    cv => cv.type === 'color' || cv.id === 'status' || cv.title?.toLowerCase() === 'status'
+    cv => cv.type === 'color' || cv.id === 'status' || cv.column?.title?.toLowerCase() === 'status'
   );
   const label = col?.text || '';
   return { label, ...(STATUS_STYLES[label] || STATUS_STYLES.__default) };
@@ -64,7 +64,7 @@ function getStatus(item) {
 
 function getColValue(item, ...titles) {
   for (const t of titles) {
-    const col = item.column_values?.find(cv => cv.title?.toLowerCase().includes(t.toLowerCase()));
+    const col = item.column_values?.find(cv => cv.column?.title?.toLowerCase().includes(t.toLowerCase()));
     if (col?.text) return col.text;
   }
   return '';
@@ -133,7 +133,7 @@ export default function StudioTab({ productionId, production }) {
             items {
               id name state
               group { id title }
-              column_values { id title text type }
+              column_values { id text type column { title } }
               updates(limit: 2) { id body created_at creator { name } }
             }
           }
@@ -411,7 +411,7 @@ function MiniDetailPanel({ item, updates, loadingUpdates, brief, generatingBrief
             <div className="space-y-1">
               {cols.slice(0, 6).map(cv => (
                 <div key={cv.id} className="flex items-start gap-2 text-[11px]">
-                  <span className="text-gray-400 w-24 flex-shrink-0 truncate">{cv.title}</span>
+                  <span className="text-gray-400 w-24 flex-shrink-0 truncate">{cv.column?.title}</span>
                   <span className="text-gray-700 flex-1 leading-snug">{cv.text}</span>
                 </div>
               ))}
