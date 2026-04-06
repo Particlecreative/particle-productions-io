@@ -109,7 +109,7 @@ export default function Login() {
 
   async function handleForceChange(e) {
     e.preventDefault();
-    if (newPw.length < 6) { setError('Password must be at least 6 characters.'); return; }
+    if (newPw.length < 8) { setError('Password must be at least 8 characters.'); return; }
     if (newPw !== confirmPw) { setError('Passwords do not match.'); return; }
     setChangingPw(true);
     setError('');
@@ -153,7 +153,7 @@ export default function Login() {
   async function handleSetPassword(e) {
     e.preventDefault();
     if (!fpEmail.trim()) { setError('Please enter your email.'); return; }
-    if (fpNewPassword.length < 6) { setError('Password must be at least 6 characters.'); return; }
+    if (fpNewPassword.length < 8) { setError('Password must be at least 8 characters.'); return; }
     if (fpNewPassword !== fpConfirm) { setError('Passwords do not match.'); return; }
     setError('');
     try {

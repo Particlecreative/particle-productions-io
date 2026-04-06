@@ -25,6 +25,7 @@ import clsx from 'clsx';
 import { getTablePrefs, toggleColumnVisibility, getColOrder, saveColOrder } from '../lib/tablePrefs';
 import WeeklyView from '../components/dashboard/WeeklyView';
 import AnalysisView from '../components/dashboard/AnalysisView';
+import SkeletonLoader from '../components/shared/SkeletonLoader';
 
 const FIELD_LABELS = {
   project_name: 'Project Name',
@@ -695,17 +696,7 @@ export default function Dashboard() {
 
       {/* Table */}
       {activeTab === 'productions' && loading && (
-        <div className="brand-card p-6 space-y-4">
-          {[...Array(6)].map((_, i) => (
-            <div key={i} className="flex items-center gap-4">
-              <div className="skeleton h-4 w-16 rounded" />
-              <div className="skeleton h-4 flex-1 rounded" />
-              <div className="skeleton h-4 w-24 rounded" />
-              <div className="skeleton h-4 w-20 rounded" />
-              <div className="skeleton h-4 w-16 rounded" />
-            </div>
-          ))}
-        </div>
+        <SkeletonLoader rows={8} type={prodView === 'cards' ? 'cards' : 'table'} />
       )}
       {/* Cards View */}
       {activeTab === 'productions' && !loading && prodView === 'cards' && (

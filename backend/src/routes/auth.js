@@ -49,8 +49,12 @@ router.post('/login', async (req, res) => {
     };
 
     const token = jwt.sign(payload, process.env.JWT_SECRET, {
-      expiresIn: process.env.JWT_EXPIRES_IN || '7d',
+      expiresIn: process.env.JWT_EXPIRES_IN || '24h',
     });
+
+    // Audit log
+    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || 'unknown';
+    console.log(`[AUTH] Login: ${user.email} (${user.role}) from ${ip}`);
 
     res.json({ token, user: payload });
   } catch (err) {
@@ -88,8 +92,8 @@ router.get('/me', verifyJWT, async (req, res) => {
 // POST /api/auth/change-password
 router.post('/change-password', verifyJWT, async (req, res) => {
   const { current_password, new_password } = req.body || {};
-  if (!new_password || new_password.length < 6) {
-    return res.status(400).json({ error: 'New password must be at least 6 characters' });
+  if (!new_password || new_password.length < 8) {
+    return res.status(400).json({ error: 'New password must be at least 8 characters' });
   }
 
   try {
@@ -107,6 +111,9 @@ router.post('/change-password', verifyJWT, async (req, res) => {
       [hash, req.user.id]
     );
 
+    // Audit log
+    console.log(`[AUTH] Password changed: ${req.user.email || req.user.id}`);
+
     res.json({ success: true });
   } catch (err) {
     console.error('Change password error:', err);
@@ -120,8 +127,8 @@ router.post('/forgot-password', resetLimiter, async (req, res) => {
   if (!email || !master_key || !new_password) {
     return res.status(400).json({ error: 'Email, master key, and new password required' });
   }
-  if (new_password.length < 6) {
-    return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  if (new_password.length < 8) {
+    return res.status(400).json({ error: 'Password must be at least 8 characters' });
   }
 
   // Validate master key from env

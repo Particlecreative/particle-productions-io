@@ -225,6 +225,10 @@ router.post('/sign/:id/:token', signLimiter, async (req, res) => {
     if (!signature_data) {
       return res.status(400).json({ error: 'Signature data is required' });
     }
+    // Limit signature size to 500KB (typical is ~20KB)
+    if (signature_data.length > 500000) {
+      return res.status(400).json({ error: 'Signature data too large (max 500KB)' });
+    }
 
     // Capture IP + User Agent for legal audit trail
     const signerIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || 'unknown';

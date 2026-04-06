@@ -81,12 +81,28 @@ export default function CCPaymentForm() {
     [lineItems, form.parent_line_item_id]
   );
 
+  const [errors, setErrors] = useState({});
+  const [submitting, setSubmitting] = useState(false);
+
+  function validate() {
+    const errs = {};
+    if (!form.store_name.trim()) errs.store_name = 'Store name is required';
+    if (!form.total_amount || parseFloat(form.total_amount) <= 0) errs.total_amount = 'Total amount is required';
+    if (!form.purchaser_name.trim()) errs.purchaser_name = 'Purchaser name is required';
+    if (!form.purchase_date) errs.purchase_date = 'Purchase date is required';
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
+    if (!validate()) return;
+    setSubmitting(true);
     const amountWithoutVat = parseFloat(form.amount_without_vat) || 0;
     const totalAmount      = parseFloat(form.total_amount)       || 0;
     const ccId = generateId('cc');
 
+    try {
     // 1. Save CC purchase record via public API
     await publicPost('/cc-purchase', {
       store_name:           form.store_name,
@@ -103,6 +119,10 @@ export default function CCPaymentForm() {
     });
 
     setSubmitted(true);
+    } catch (err) {
+      setErrors({ submit: err.message || 'Submission failed. Please try again.' });
+    }
+    setSubmitting(false);
   }
 
   const bgStyle = { minHeight: '100vh', background: '#f3f4f6' };
@@ -172,11 +192,12 @@ export default function CCPaymentForm() {
               <label className="block text-xs font-semibold text-gray-600 mb-1">Store Name *</label>
               <input
                 required
-                className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-400"
+                className={`w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-400 ${errors.store_name ? 'border-red-400' : ''}`}
                 placeholder="e.g. Zara, Super Pharm…"
                 value={form.store_name}
-                onChange={e => set('store_name', e.target.value)}
+                onChange={e => { set('store_name', e.target.value); setErrors(prev => ({ ...prev, store_name: undefined })); }}
               />
+              {errors.store_name && <p className="text-[10px] text-red-500 mt-0.5">{errors.store_name}</p>}
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-600 mb-1">Purchase Date & Time *</label>
@@ -329,12 +350,17 @@ export default function CCPaymentForm() {
             />
           </div>
 
+          {errors.submit && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600">{errors.submit}</div>
+          )}
+
           <button
             type="submit"
-            className="w-full bg-gray-900 text-white font-bold py-3 rounded-xl hover:bg-gray-800 transition-colors text-sm flex items-center justify-center gap-2"
+            disabled={submitting}
+            className="w-full bg-gray-900 text-white font-bold py-3 rounded-xl hover:bg-gray-800 disabled:opacity-50 transition-colors text-sm flex items-center justify-center gap-2"
           >
             <CreditCard size={16} />
-            Submit Purchase for Approval
+            {submitting ? 'Submitting...' : 'Submit Purchase for Approval'}
           </button>
         </form>
       </div>

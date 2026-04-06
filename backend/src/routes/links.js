@@ -24,6 +24,10 @@ router.post('/', requireEditor, async (req, res) => {
   if (!production_id || !category || !title || !url) {
     return res.status(400).json({ error: 'production_id, category, title, url required' });
   }
+  // Validate URL scheme (block javascript:, data:, etc.)
+  if (url && !/^https?:\/\//i.test(url.trim()) && !url.trim().startsWith('/')) {
+    return res.status(400).json({ error: 'URL must start with http:// or https://' });
+  }
   try {
     // auto-assign order within category
     const orderRes = await db.query(

@@ -18,6 +18,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useBrand } from '../../context/BrandContext';
 import { toast } from '../../lib/toast';
 import clsx from 'clsx';
+import DOMPurify from 'dompurify';
 import SplitModal from './SplitModal';
 import UniversalBlocks from './UniversalBlocks';
 
@@ -68,23 +69,32 @@ const ELEVEN_VOICES = [
   { id: 'MF3mGyEYCl7XYWbV9V6O', name: 'Elli', desc: 'Friendly · Upbeat', gender: 'F' },
 ];
 
+// ── Sanitizer config — allows formatting + muted spans, blocks scripts ───────
+const PURIFY_CONFIG = {
+  ALLOWED_TAGS: ['b', 'i', 'u', 'strong', 'em', 'span', 'br', 'font', 'div', 'p'],
+  ALLOWED_ATTR: ['style', 'class', 'data-muted', 'color'],
+};
+function sanitizeHtml(html) {
+  return DOMPurify.sanitize(html || '', PURIFY_CONFIG);
+}
+
 // ── Rich text cell (contentEditable with formatting) ─────────────────────────
 function RichTextCell({ value, onChange, placeholder, readOnly, className, onMouseUp }) {
   const ref = useRef(null);
   const isFocused = useRef(false);
   const lastHtml = useRef(value || '');
 
-  // Mount: set initial HTML
+  // Mount: set initial HTML (sanitized)
   useEffect(() => {
     if (ref.current) {
-      ref.current.innerHTML = value || '';
+      ref.current.innerHTML = sanitizeHtml(value);
     }
   }, []); // mount only
 
   // Sync from parent when NOT focused (e.g. scene reloaded from server)
   useEffect(() => {
     if (ref.current && !isFocused.current && value !== lastHtml.current) {
-      ref.current.innerHTML = value || '';
+      ref.current.innerHTML = sanitizeHtml(value);
       lastHtml.current = value || '';
     }
   });
@@ -335,7 +345,7 @@ const SortableSceneRow = memo(function SortableSceneRow({ scene, index, visibleC
                 {/* Hover preview — large popup */}
                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 pointer-events-none opacity-0 group-hover/img:opacity-100 transition-opacity duration-150 delay-300">
                   <div className="bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden" style={{width: 320}}>
-                    <img src={img.url} alt={img.prompt || 'Visual'} className="w-full object-cover" style={{maxHeight: 240}} />
+                    <img src={img.url} alt={img.prompt || 'Visual'} loading="lazy" className="w-full object-cover" style={{maxHeight: 240}} />
                     {img.prompt && <p className="text-[10px] text-gray-500 px-2 py-1.5 leading-snug line-clamp-2">{img.prompt}</p>}
                   </div>
                   {/* Arrow */}
