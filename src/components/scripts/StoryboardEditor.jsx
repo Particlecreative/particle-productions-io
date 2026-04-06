@@ -1073,10 +1073,11 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
     setShowImageWizard(true);
 
     if (existingChars.length > 0) {
-      // Merge char photos back into wizard characters
+      // Merge all char photos back into wizard characters (multiple per character)
       setWizardCharacters(existingChars.map(c => {
-        const photo = existingCharPhotos.find(p => p.name === c.name);
-        return { name: c.name, description: c.description, photoBase64: photo?.base64 || null, photoMime: photo?.mimeType || null };
+        const charAllPhotos = existingCharPhotos.filter(p => p.name === c.name);
+        const photos = charAllPhotos.map(p => ({ base64: p.base64, mimeType: p.mimeType, previewUrl: `data:${p.mimeType};base64,${p.base64}` }));
+        return { name: c.name, description: c.description, photos, photoBase64: photos[0]?.base64 || null, photoMime: photos[0]?.mimeType || null };
       }));
     } else {
       handleWizardExtractChars();
@@ -1097,31 +1098,42 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
   };
 
   const handleActorPhotoUpload = async (e, charIndex) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (ev) => {
-      const dataUrl = ev.target.result;
-      const base64 = dataUrl.split(',')[1];
-      const mimeType = file.type || 'image/jpeg';
-      // Update state with photo
-      setWizardCharacters(prev => prev.map((c, i) => i === charIndex ? { ...c, photoBase64: base64, photoMime: mimeType } : c));
-      // Ask Claude to describe the actor
-      setDescribingActor(charIndex);
-      try {
-        const res = await fetch(`${API}/api/scripts/${scriptId}/describe-actor`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
-          body: JSON.stringify({ imageBase64: base64, mimeType, name: wizardCharacters[charIndex]?.name }),
-        });
-        const data = await res.json();
-        if (data.description) {
-          setWizardCharacters(prev => prev.map((c, i) => i === charIndex ? { ...c, description: data.description } : c));
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    for (const file of files.slice(0, 3)) {
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        const dataUrl = ev.target.result;
+        const base64 = dataUrl.split(',')[1];
+        const mimeType = file.type || 'image/jpeg';
+        // Add photo to character's photos array (up to 3)
+        setWizardCharacters(prev => prev.map((c, i) => {
+          if (i !== charIndex) return c;
+          const photos = [...(c.photos || [])];
+          if (photos.length < 3) photos.push({ base64, mimeType, previewUrl: dataUrl });
+          // Keep first photo as legacy photoBase64 for backward compat
+          return { ...c, photos, photoBase64: photos[0]?.base64 || null, photoMime: photos[0]?.mimeType || null };
+        }));
+        // Describe actor from first photo only
+        if (files.indexOf(file) === 0) {
+          setDescribingActor(charIndex);
+          try {
+            const res = await fetch(`${API}/api/scripts/${scriptId}/describe-actor`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
+              body: JSON.stringify({ imageBase64: base64, mimeType, name: wizardCharacters[charIndex]?.name }),
+            });
+            const data = await res.json();
+            if (data.description) {
+              setWizardCharacters(prev => prev.map((c, i) => i === charIndex ? { ...c, description: data.description } : c));
+            }
+          } catch {}
+          setDescribingActor(null);
         }
-      } catch {}
-      setDescribingActor(null);
-    };
-    reader.readAsDataURL(file);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleWizardComplete = (proceedWithAI) => {
@@ -1134,9 +1146,14 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
     // Save character profiles
     const profiles = wizardCharacters.filter(c => c.description).map(c => ({ name: c.name, description: c.description }));
     saveCharProfiles(profiles);
-    // Save character photos separately for image generation
-    const charPhotos = wizardCharacters.filter(c => c.photoBase64).map(c => ({ name: c.name, base64: c.photoBase64, mimeType: c.photoMime || 'image/jpeg' }));
+    // Save ALL character photos (multiple per character) for image generation
+    const charPhotos = [];
+    wizardCharacters.forEach(c => {
+      const photos = c.photos || (c.photoBase64 ? [{ base64: c.photoBase64, mimeType: c.photoMime || 'image/jpeg' }] : []);
+      photos.forEach(p => { if (p.base64) charPhotos.push({ name: c.name, base64: p.base64, mimeType: p.mimeType || 'image/jpeg' }); });
+    });
     if (charPhotos.length > 0) localStorage.setItem(`script_char_photos_${scriptId}`, JSON.stringify(charPhotos));
+    else localStorage.removeItem(`script_char_photos_${scriptId}`);
     if (wizardStyleNotes.trim()) localStorage.setItem(`script_style_${scriptId}`, wizardStyleNotes.trim());
     if (wizardProductName.trim()) localStorage.setItem(`script_product_name_${scriptId}`, wizardProductName.trim());
     const productPhotosToSave = wizardProductPhotos.slice(0, 3).map(p => ({ base64: p.base64, mimeType: p.mimeType }));
@@ -1192,24 +1209,28 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
       return;
     }
 
-    const scenesWithoutImages = scenes.filter(s => !s.images || s.images.length === 0);
-    if (scenesWithoutImages.length === 0) {
-      toast.info('All scenes already have images');
-      return;
+    // Generate for scenes without images, or ALL scenes if all already have images (regenerate)
+    let scenesToGen = scenes.filter(s => !s.images || s.images.length === 0);
+    if (scenesToGen.length === 0) {
+      // All scenes have images — ask if they want to regenerate all
+      if (!confirm(`All ${scenes.length} scenes already have images. Regenerate all of them?`)) return;
+      scenesToGen = [...scenes];
+    } else {
+      if (!confirm(`Generate AI images for ${scenesToGen.length} scene${scenesToGen.length !== 1 ? 's' : ''}? This may take a minute.`)) return;
     }
-
-    if (!confirm(`Generate AI images for ${scenesWithoutImages.length} scene${scenesWithoutImages.length !== 1 ? 's' : ''}? This may take a minute.`)) return;
 
     setGeneratingAll(true);
-    setGenerateAllProgress({ current: 0, total: scenesWithoutImages.length });
+    setGenerateAllProgress({ current: 0, total: scenesToGen.length });
+    toast.success(`Generating ${scenesToGen.length} images...`);
 
-    for (let i = 0; i < scenesWithoutImages.length; i++) {
-      setGenerateAllProgress({ current: i + 1, total: scenesWithoutImages.length });
+    for (let i = 0; i < scenesToGen.length; i++) {
+      setGenerateAllProgress({ current: i + 1, total: scenesToGen.length });
       try {
-        await handleImageGenerate(scenesWithoutImages[i].id);
+        await handleImageGenerate(scenesToGen[i].id);
       } catch {}
-      if (i < scenesWithoutImages.length - 1) await new Promise(r => setTimeout(r, 1500));
+      if (i < scenesToGen.length - 1) await new Promise(r => setTimeout(r, 1500));
     }
+    toast.success(`Done! Generated ${scenesToGen.length} images.`);
 
     setGeneratingAll(false);
     setGenerateAllProgress({ current: 0, total: 0 });
@@ -2388,31 +2409,50 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                 ) : (
                   <div className="space-y-3 max-h-64 overflow-y-auto mb-4">
                     {wizardCharacters.length === 0 && <p className="text-sm text-gray-400 text-center py-4">No specific characters detected. AI will generate based on script context.</p>}
-                    {wizardCharacters.map((char, i) => (
-                      <div key={i} className="flex items-start gap-3 p-3 border border-gray-200 rounded-xl">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-gray-800">{char.name}</p>
-                          {describingActor === i ? (
-                            <p className="text-xs text-purple-500 mt-1 flex items-center gap-1"><Loader2 size={10} className="animate-spin" /> Analyzing photo...</p>
-                          ) : (
-                            <p className="text-xs text-gray-500 mt-1 line-clamp-2">{char.description || 'No description yet'}</p>
-                          )}
+                    {wizardCharacters.map((char, i) => {
+                      const photos = char.photos || (char.photoBase64 ? [{ base64: char.photoBase64, mimeType: char.photoMime, previewUrl: `data:${char.photoMime};base64,${char.photoBase64}` }] : []);
+                      return (
+                        <div key={i} className="p-3 border border-gray-200 rounded-xl">
+                          <div className="flex items-start gap-3">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-gray-800">{char.name}</p>
+                              {describingActor === i ? (
+                                <p className="text-xs text-purple-500 mt-1 flex items-center gap-1"><Loader2 size={10} className="animate-spin" /> Analyzing photo...</p>
+                              ) : (
+                                <p className="text-xs text-gray-500 mt-1 line-clamp-2">{char.description || 'No description yet'}</p>
+                              )}
+                            </div>
+                          </div>
+                          {/* Multiple photos grid */}
+                          <div className="flex gap-1.5 mt-2 flex-wrap">
+                            {photos.map((p, pi) => (
+                              <div key={pi} className="relative">
+                                <img src={p.previewUrl || `data:${p.mimeType};base64,${p.base64}`} alt="" className="w-12 h-12 rounded-lg object-cover border border-gray-200" />
+                                <button onClick={() => {
+                                  setWizardCharacters(prev => prev.map((c, ci) => {
+                                    if (ci !== i) return c;
+                                    const newPhotos = (c.photos || []).filter((_, ppi) => ppi !== pi);
+                                    return { ...c, photos: newPhotos, photoBase64: newPhotos[0]?.base64 || null, photoMime: newPhotos[0]?.mimeType || null };
+                                  }));
+                                }} className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center text-[8px]">×</button>
+                              </div>
+                            ))}
+                            {photos.length < 3 && (
+                              <button
+                                onClick={() => { setActorPhotoTarget(i); actorPhotoRef.current?.click(); }}
+                                className="w-12 h-12 rounded-lg border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-400 hover:border-purple-300 hover:text-purple-400 transition-colors"
+                              >
+                                <Upload size={12} />
+                              </button>
+                            )}
+                          </div>
+                          {photos.length > 0 && <p className="text-[9px] text-purple-500 mt-1">Photos sent as 1:1 visual reference to AI</p>}
                         </div>
-                        {char.photoBase64 ? (
-                          <img src={`data:${char.photoMime};base64,${char.photoBase64}`} alt={char.name} className="w-12 h-12 rounded-lg object-cover border border-gray-200" />
-                        ) : (
-                          <button
-                            onClick={() => { setActorPhotoTarget(i); actorPhotoRef.current?.click(); }}
-                            className="flex-shrink-0 w-12 h-12 rounded-lg border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-400 hover:border-purple-300 hover:text-purple-400 transition-colors"
-                          >
-                            <Upload size={14} />
-                          </button>
-                        )}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
-                <input ref={actorPhotoRef} type="file" accept="image/*" className="hidden" onChange={e => { if (actorPhotoTarget !== null) handleActorPhotoUpload(e, actorPhotoTarget); e.target.value = ''; setActorPhotoTarget(null); }} />
+                <input ref={actorPhotoRef} type="file" accept="image/*" multiple className="hidden" onChange={e => { if (actorPhotoTarget !== null) handleActorPhotoUpload(e, actorPhotoTarget); e.target.value = ''; setActorPhotoTarget(null); }} />
                 <div className="flex gap-2 mt-2">
                   <button onClick={() => setWizardStep(1)} className="px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">Back</button>
                   <button onClick={() => setWizardStep(3)} className="flex-1 py-2 bg-purple-600 text-white rounded-xl text-sm font-bold hover:bg-purple-700">
@@ -2600,8 +2640,12 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                 <div className="flex gap-2">
                   <button onClick={() => setWizardStep(3)} className="px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">Back</button>
                   <button onClick={() => handleWizardComplete(true)}
-                    className="flex-1 py-2.5 bg-purple-600 text-white rounded-xl text-sm font-bold hover:bg-purple-700 flex items-center justify-center gap-2">
-                    <Sparkles size={14} /> {wizardTargetSceneId ? 'Generate Image' : 'Save Settings'}
+                    disabled={generatingAll}
+                    className="flex-1 py-2.5 bg-purple-600 text-white rounded-xl text-sm font-bold hover:bg-purple-700 disabled:opacity-50 flex items-center justify-center gap-2 transition-colors">
+                    <Sparkles size={14} />
+                    {wizardTargetSceneId === '__all__'
+                      ? `Generate All (${scenes.filter(s => !s.images || s.images.length === 0).length || scenes.length} scenes)`
+                      : wizardTargetSceneId ? 'Generate Image' : 'Save Settings'}
                   </button>
                 </div>
               </div>
