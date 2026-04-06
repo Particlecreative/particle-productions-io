@@ -637,9 +637,8 @@ router.post('/import', async (req, res) => {
       if (!match) return res.status(400).json({ error: 'Could not extract file ID from URL' });
       const fileId = match[1];
 
-      const { drive, oauth2 } = await getGoogleDrive();
-
       if (isSlidesUrl) {
+        const { drive, oauth2 } = await getGoogleDrive();
         const slides = google.slides({ version: 'v1', auth: oauth2 });
         const pres = await slides.presentations.get({ presentationId: fileId });
         const slideList = pres.data.slides || [];
@@ -711,10 +710,30 @@ router.post('/import', async (req, res) => {
           };
         }));
       } else {
-        // Google Docs — primary: Docs API (richest structure), fallback: HTML export → PDF export
-        const accessToken = (await oauth2.getAccessToken()).token;
+        // Google Docs — try public no-auth export first (works for "Anyone with link"),
+        // then fall back to OAuth chain (Docs API → HTML → PDF)
         let docContent = '';
         let contentLabel = '';
+
+        // ── Attempt 0: public plain-text export (no OAuth needed) ──
+        try {
+          const pubRes = await fetch(
+            `https://docs.google.com/document/d/${fileId}/export?format=txt`,
+            { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(10000) }
+          );
+          if (pubRes.ok && pubRes.headers.get('content-type')?.includes('text/plain')) {
+            const txt = await pubRes.text();
+            if (txt.trim().length > 50) {
+              docContent = txt.substring(0, 60000);
+              contentLabel = 'Google Doc plain text';
+            }
+          }
+        } catch (_) { /* not publicly accessible, continue to OAuth */ }
+
+        if (!docContent) {
+        // ── OAuth chain ─────────────────────────────────────────────
+        const { oauth2 } = await getGoogleDrive();
+        const accessToken = (await oauth2.getAccessToken()).token;
 
         // ── Primary: Google Docs API ──────────────────────────────
         try {
@@ -783,8 +802,10 @@ router.post('/import', async (req, res) => {
             docContent = null;
           }
         }
+        } // end if (!docContent) OAuth chain
 
         if (docContent !== null) {
+          // Handles both: public export text AND OAuth Docs API/HTML content
           const importPrompt = `Extract this ${contentLabel} into a structured JSON scenes array for a storyboard/script.
 
 For each scene/row/section:
@@ -833,7 +854,9 @@ Return ONLY this JSON object with NO markdown:
 
       let text;
       const isDocx = mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-        || mimeType === 'application/msword';
+        || mimeType === 'application/msword'
+        || fileName?.toLowerCase().endsWith('.docx')
+        || fileName?.toLowerCase().endsWith('.doc');
       if (isDocx) {
         // Gemini doesn't support DOCX — extract text with mammoth, send to Claude
         const buf = Buffer.from(fileBase64, 'base64');
