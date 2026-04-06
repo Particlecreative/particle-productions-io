@@ -178,13 +178,14 @@ export default function ProductionBoard() {
         <div className="relative z-10">
           {/* Top row: back */}
           <div className="flex items-center justify-between mb-4">
-            <button
-              onClick={() => navigate('/')}
-              className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-700 transition-colors px-3 py-1.5 rounded-full hover:bg-gray-50"
-            >
-              <ArrowLeft size={13} />
-              Back to Productions
-            </button>
+            {/* Breadcrumb navigation */}
+            <nav className="flex items-center gap-1 text-xs text-gray-400" aria-label="Breadcrumb">
+              <button onClick={() => navigate('/')} className="hover:text-gray-700 transition-colors flex items-center gap-1">
+                <ArrowLeft size={11} /> Productions
+              </button>
+              <span className="mx-1">/</span>
+              <span className="text-gray-600 font-semibold truncate max-w-[200px]">{production.project_name || production.id}</span>
+            </nav>
             {/* Stage */}
             {isEditor ? (
               <select

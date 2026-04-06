@@ -239,11 +239,23 @@ export default function Login() {
                     value={newPw}
                     onChange={e => setNewPw(e.target.value)}
                     className="brand-input"
-                    placeholder="At least 6 characters"
+                    placeholder="At least 8 characters"
                     required
                     autoFocus
-                    minLength={6}
+                    minLength={8}
                   />
+                  {/* Password strength meter */}
+                  {newPw && (() => {
+                    const s = newPw.length >= 12 && /[A-Z]/.test(newPw) && /\d/.test(newPw) ? 3 : newPw.length >= 8 && (/[A-Z]/.test(newPw) || /\d/.test(newPw)) ? 2 : newPw.length >= 8 ? 1 : 0;
+                    const colors = ['bg-red-400', 'bg-amber-400', 'bg-blue-400', 'bg-green-500'];
+                    const labels = ['Weak', 'Fair', 'Good', 'Strong'];
+                    return (
+                      <div className="flex items-center gap-2 mt-1.5">
+                        <div className="flex-1 flex gap-1">{[0,1,2,3].map(i => <div key={i} className={`h-1 flex-1 rounded-full ${i <= s ? colors[s] : 'bg-gray-200'}`} />)}</div>
+                        <span className="text-[10px] font-semibold text-gray-500">{labels[s]}</span>
+                      </div>
+                    );
+                  })()}
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Search, Eye, EyeOff, ChevronUp, ChevronDown, MessageSquare, GripVertical, Save, X, Check, Pencil, SlidersHorizontal, RefreshCw, HelpCircle, Upload } from 'lucide-react';
 import { useBrand } from '../context/BrandContext';
@@ -97,6 +97,12 @@ export default function Dashboard() {
   const [search, setSearch] = useState(() => {
     try { return JSON.parse(localStorage.getItem('cp_dash_filters') || '{}').search ?? ''; } catch { return ''; }
   });
+  // Debounced search for performance on large lists
+  const [debouncedSearch, setDebouncedSearch] = useState(search);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 250);
+    return () => clearTimeout(t);
+  }, [search]);
   const [stageFilter, setStageFilter] = useState(() => {
     try { return JSON.parse(localStorage.getItem('cp_dash_filters') || '{}').stageFilter ?? ''; } catch { return ''; }
   });
@@ -185,8 +191,8 @@ export default function Dashboard() {
     if (hideCompleted) list = list.filter(p => p.stage !== 'Completed');
     if (stageFilter) list = list.filter(p => p.stage === stageFilter);
     if (productTypeFilter) list = list.filter(p => (p.product_type || []).includes(productTypeFilter));
-    if (search) {
-      const q = search.toLowerCase();
+    if (debouncedSearch) {
+      const q = debouncedSearch.toLowerCase();
       list = list.filter(p =>
         p.id.toLowerCase().includes(q) ||
         p.project_name.toLowerCase().includes(q) ||
@@ -195,7 +201,7 @@ export default function Dashboard() {
       );
     }
 
-    if (customOrder && !search && !stageFilter && !productTypeFilter) {
+    if (customOrder && !debouncedSearch && !stageFilter && !productTypeFilter) {
       const orderMap = new Map(customOrder.map((id, idx) => [id, idx]));
       list.sort((a, b) => {
         const ai = orderMap.has(a.id) ? orderMap.get(a.id) : 9999;

@@ -1,5 +1,8 @@
--- Security & Performance Indexes
+-- Security & Performance Indexes + Schema additions
 -- Run: docker exec -i particleproductionsio-db-1 psql -U cpanel cpanel < db/migrations/security_indexes.sql
+
+-- Add share token expiry column
+ALTER TABLE scripts ADD COLUMN IF NOT EXISTS share_expires_at TIMESTAMPTZ;
 
 -- Share token lookups (public endpoints)
 CREATE INDEX IF NOT EXISTS idx_scripts_share_token ON scripts(share_token) WHERE share_token IS NOT NULL;

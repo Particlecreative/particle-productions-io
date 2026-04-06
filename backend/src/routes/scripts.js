@@ -261,6 +261,10 @@ router.get('/share/:token', async (req, res) => {
       [req.params.token]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Script not found or link expired' });
+    // Check expiry (if set)
+    if (rows[0].share_expires_at && new Date(rows[0].share_expires_at) < new Date()) {
+      return res.status(410).json({ error: 'This share link has expired. Ask the script owner for a new link.' });
+    }
     res.json(rows[0]);
   } catch (err) {
     console.error('GET /scripts/share/:token error:', err);
@@ -1394,8 +1398,10 @@ router.post('/:id/share', async (req, res) => {
     }
 
     if (!token) token = crypto.randomBytes(32).toString('hex');
-    await db.query('UPDATE scripts SET share_token = $1, share_mode = $2 WHERE id = $3', [token, mode, req.params.id]);
-    res.json({ share_token: token, share_mode: mode });
+    // Set expiry to 90 days from now
+    const expiresAt = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString();
+    await db.query('UPDATE scripts SET share_token = $1, share_mode = $2, share_expires_at = $3 WHERE id = $4', [token, mode, expiresAt, req.params.id]);
+    res.json({ share_token: token, share_mode: mode, share_expires_at: expiresAt });
   } catch (err) {
     console.error('POST /scripts/:id/share error:', err);
     res.status(500).json({ error: 'Server error' });

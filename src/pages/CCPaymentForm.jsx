@@ -357,7 +357,7 @@ export default function CCPaymentForm() {
           <button
             type="submit"
             disabled={submitting}
-            className="w-full bg-gray-900 text-white font-bold py-3 rounded-xl hover:bg-gray-800 disabled:opacity-50 transition-colors text-sm flex items-center justify-center gap-2"
+            className="w-full bg-[var(--brand-primary,#030b2e)] text-white font-bold py-3 rounded-xl hover:opacity-90 disabled:opacity-50 transition-colors text-sm flex items-center justify-center gap-2"
           >
             <CreditCard size={16} />
             {submitting ? 'Submitting...' : 'Submit Purchase for Approval'}

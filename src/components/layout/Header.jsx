@@ -80,14 +80,16 @@ export default function Header({ onMenuToggle }) {
         </button>
 
         {/* Currency Toggle */}
-        <div className="currency-toggle">
+        <div className="currency-toggle" title="Switch currency (USD / ILS)">
           <button
             className={clsx(currency === 'USD' && 'active')}
             onClick={() => currency !== 'USD' && toggleCurrency()}
+            aria-label="Switch to US Dollars"
           >$</button>
           <button
             className={clsx(currency === 'ILS' && 'active')}
             onClick={() => currency !== 'ILS' && toggleCurrency()}
+            aria-label="Switch to Israeli Shekels"
           >₪</button>
         </div>
 
