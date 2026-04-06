@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const db     = require('../db');
-const { verifyJWT, requireAdmin } = require('../middleware/auth');
+const { verifyJWT, requireEditor, requireAdmin } = require('../middleware/auth');
 
 // All production routes require authentication
 router.use(verifyJWT);
@@ -86,7 +86,7 @@ router.post('/', requireAdmin, async (req, res) => {
 });
 
 // PATCH /api/productions/:id
-router.patch('/:id', async (req, res) => {
+router.patch('/:id', requireEditor, async (req, res) => {
   const allowed = [
     'project_name','product_type','producer','planned_start','planned_end',
     'planned_budget_2026','estimated_budget','actual_spent','payment_date',

@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const db     = require('../db');
-const { verifyJWT } = require('../middleware/auth');
+const { verifyJWT, requireEditor } = require('../middleware/auth');
 
 router.use(verifyJWT);
 
@@ -24,7 +24,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/casting
-router.post('/', async (req, res) => {
+router.post('/', requireEditor, async (req, res) => {
   const {
     id, production_id, project_name, brand_id, name, photo_url,
     role, period, start_date, end_date, warning_date, contract_status,
@@ -57,7 +57,7 @@ router.post('/', async (req, res) => {
 });
 
 // PATCH /api/casting/:id
-router.patch('/:id', async (req, res) => {
+router.patch('/:id', requireEditor, async (req, res) => {
   const allowed = [
     'production_id', 'project_name', 'brand_id', 'name', 'photo_url',
     'role', 'period', 'start_date', 'end_date', 'warning_date',
@@ -83,7 +83,7 @@ router.patch('/:id', async (req, res) => {
 });
 
 // DELETE /api/casting/:id
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireEditor, async (req, res) => {
   try {
     await db.query('DELETE FROM casting WHERE id = $1', [req.params.id]);
     res.json({ success: true });

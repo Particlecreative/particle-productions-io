@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const db     = require('../db');
 const rateLimit = require('express-rate-limit');
-const { verifyJWT } = require('../middleware/auth');
+const { verifyJWT, requireEditor } = require('../middleware/auth');
 
 const submitLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, message: { error: 'Too many submissions, please try again later' } });
 
@@ -32,7 +32,7 @@ router.get('/submissions', async (req, res) => {
 });
 
 // POST /api/suppliers  (upsert by email / phone)
-router.post('/', async (req, res) => {
+router.post('/', requireEditor, async (req, res) => {
   const s = req.body;
   try {
     // Try to find by email or phone first
@@ -157,7 +157,7 @@ router.post('/submit', submitLimiter, async (req, res) => {
 });
 
 // PATCH /api/suppliers/:id
-router.patch('/:id', async (req, res) => {
+router.patch('/:id', requireEditor, async (req, res) => {
   const allowed = [
     'full_name','role','phone','email','id_number','bank_name','account_number',
     'branch','swift','business_type','company_name','tax_id','food_restrictions',
@@ -182,7 +182,7 @@ router.patch('/:id', async (req, res) => {
 });
 
 // DELETE /api/suppliers/:id
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireEditor, async (req, res) => {
   try {
     await db.query('DELETE FROM suppliers WHERE id = $1', [req.params.id]);
     res.json({ success: true });

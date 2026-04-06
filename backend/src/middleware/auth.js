@@ -19,6 +19,18 @@ function verifyJWT(req, res, next) {
 }
 
 /**
+ * Middleware: requires role Editor or Admin.
+ * Must be used after verifyJWT.
+ */
+function requireEditor(req, res, next) {
+  const RANK = { Viewer: 0, Accounting: 1, Editor: 2, Admin: 3 };
+  if ((RANK[req.user?.role] ?? -1) < RANK.Editor) {
+    return res.status(403).json({ error: 'Editor access required' });
+  }
+  next();
+}
+
+/**
  * Middleware: requires role Admin (or higher).
  * Must be used after verifyJWT.
  */
@@ -41,4 +53,4 @@ function requireSuperAdmin(req, res, next) {
   next();
 }
 
-module.exports = { verifyJWT, requireAdmin, requireSuperAdmin };
+module.exports = { verifyJWT, requireEditor, requireAdmin, requireSuperAdmin };

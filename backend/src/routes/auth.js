@@ -2,7 +2,15 @@ const router  = require('express').Router();
 const bcrypt  = require('bcrypt');
 const jwt     = require('jsonwebtoken');
 const db      = require('../db');
+const rateLimit = require('express-rate-limit');
 const { verifyJWT } = require('../middleware/auth');
+
+// Rate limit for master key password reset (3 attempts per 15 min)
+const resetLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 3,
+  message: { error: 'Too many reset attempts, please try again later' },
+});
 
 // POST /api/auth/login
 router.post('/login', async (req, res) => {
@@ -106,8 +114,8 @@ router.post('/change-password', verifyJWT, async (req, res) => {
   }
 });
 
-// POST /api/auth/forgot-password — reset with master key (no auth required)
-router.post('/forgot-password', async (req, res) => {
+// POST /api/auth/forgot-password — reset with master key (no auth required, rate-limited)
+router.post('/forgot-password', resetLimiter, async (req, res) => {
   const { email, master_key, new_password } = req.body || {};
   if (!email || !master_key || !new_password) {
     return res.status(400).json({ error: 'Email, master key, and new password required' });

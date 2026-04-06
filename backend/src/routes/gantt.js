@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const db     = require('../db');
-const { verifyJWT } = require('../middleware/auth');
+const { verifyJWT, requireEditor } = require('../middleware/auth');
 const { syncEventToGoogle, deleteEventFromGoogle } = require('./gcal');
 
 router.use(verifyJWT);
@@ -18,7 +18,7 @@ router.get('/phases', async (req, res) => {
 });
 
 // PUT /api/gantt/phases  (replace all global phases)
-router.put('/phases', async (req, res) => {
+router.put('/phases', requireEditor, async (req, res) => {
   const { phases } = req.body;
   if (!Array.isArray(phases)) return res.status(400).json({ error: 'phases array required' });
   try {
@@ -54,7 +54,7 @@ router.get('/events', async (req, res) => {
 });
 
 // POST /api/gantt/events
-router.post('/events', async (req, res) => {
+router.post('/events', requireEditor, async (req, res) => {
   const { production_id, phase_id, title, start_date, end_date, color } = req.body;
   if (!production_id || !title || !start_date || !end_date) {
     return res.status(400).json({ error: 'production_id, title, start_date, end_date required' });
@@ -74,7 +74,7 @@ router.post('/events', async (req, res) => {
 });
 
 // PATCH /api/gantt/events/:id
-router.patch('/events/:id', async (req, res) => {
+router.patch('/events/:id', requireEditor, async (req, res) => {
   const allowed = ['phase_id', 'title', 'start_date', 'end_date', 'color'];
   const updates = Object.entries(req.body).filter(([k]) => allowed.includes(k));
   if (!updates.length) return res.status(400).json({ error: 'No valid fields' });
@@ -97,7 +97,7 @@ router.patch('/events/:id', async (req, res) => {
 });
 
 // DELETE /api/gantt/events/:id
-router.delete('/events/:id', async (req, res) => {
+router.delete('/events/:id', requireEditor, async (req, res) => {
   try {
     // Get gcal_event_id before deleting
     const { rows: existing } = await db.query('SELECT gcal_event_id FROM gantt_events WHERE id = $1', [req.params.id]);

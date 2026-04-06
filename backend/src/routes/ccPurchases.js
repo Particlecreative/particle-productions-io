@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const db     = require('../db');
-const { verifyJWT } = require('../middleware/auth');
+const { verifyJWT, requireEditor } = require('../middleware/auth');
 
 router.use(verifyJWT);
 
@@ -24,7 +24,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/cc-purchases
-router.post('/', async (req, res) => {
+router.post('/', requireEditor, async (req, res) => {
   const {
     id, production_id, store_name, description,
     amount_without_vat, total_amount, purchase_date,
@@ -65,7 +65,7 @@ router.post('/', async (req, res) => {
 });
 
 // PATCH /api/cc-purchases/:id
-router.patch('/:id', async (req, res) => {
+router.patch('/:id', requireEditor, async (req, res) => {
   const allowed = [
     'production_id', 'store_name', 'description',
     'amount_without_vat', 'total_amount', 'purchase_date',
@@ -91,7 +91,7 @@ router.patch('/:id', async (req, res) => {
 });
 
 // DELETE /api/cc-purchases/:id
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireEditor, async (req, res) => {
   try {
     await db.query('DELETE FROM cc_purchases WHERE id = $1', [req.params.id]);
     res.json({ success: true });

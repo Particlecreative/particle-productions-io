@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const db     = require('../db');
-const { verifyJWT } = require('../middleware/auth');
+const { verifyJWT, requireEditor } = require('../middleware/auth');
 
 router.use(verifyJWT);
 
@@ -19,7 +19,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/links
-router.post('/', async (req, res) => {
+router.post('/', requireEditor, async (req, res) => {
   const { production_id, category, title, url } = req.body;
   if (!production_id || !category || !title || !url) {
     return res.status(400).json({ error: 'production_id, category, title, url required' });
@@ -42,7 +42,7 @@ router.post('/', async (req, res) => {
 });
 
 // PATCH /api/links/:id
-router.patch('/:id', async (req, res) => {
+router.patch('/:id', requireEditor, async (req, res) => {
   const allowed = ['category', 'title', 'url', 'order'];
   const updates = Object.entries(req.body).filter(([k]) => allowed.includes(k));
   if (!updates.length) return res.status(400).json({ error: 'No valid fields' });
@@ -63,7 +63,7 @@ router.patch('/:id', async (req, res) => {
 });
 
 // DELETE /api/links/:id
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireEditor, async (req, res) => {
   try {
     await db.query('DELETE FROM links WHERE id = $1', [req.params.id]);
     res.json({ success: true });

@@ -1252,10 +1252,10 @@ html.dark .skeleton {
 html.dark .border-gray-100 { border-color: rgba(255,255,255,0.06) !important; }
 html.dark .hover\:bg-gray-50:hover { background: rgba(255,255,255,0.04) !important; }
 
-/* Dark mode text colors */
-html.dark .text-gray-500 { color: #8b949e !important; }
-html.dark .text-gray-400 { color: #6e7681 !important; }
-html.dark .text-gray-300 { color: #484f58 !important; }
+/* Dark mode text colors — boosted for WCAG AA contrast */
+html.dark .text-gray-500 { color: #b0b8c1 !important; }
+html.dark .text-gray-400 { color: #8b949e !important; }
+html.dark .text-gray-300 { color: #6e7681 !important; }
 
 /* === MOBILE RESPONSIVE FIXES === */
 @media (max-width: 768px) {
@@ -1351,6 +1351,64 @@ html.dark .text-gray-300 { color: #484f58 !important; }
 }
 .animate-pulse {
   animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* === ACCESSIBILITY: Focus rings for keyboard navigation === */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[role="button"]:focus-visible {
+  outline: 2px solid var(--brand-accent, #0808f8);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* === MOBILE: Minimum touch targets === */
+@media (max-width: 768px) {
+  button, a[role="button"], .btn-cta, .btn-secondary {
+    min-height: 40px;
+  }
+  /* Fix inputs on mobile — never use fixed widths */
+  input[style*="width"], select[style*="width"] {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+  /* Ensure all tables scroll */
+  table { min-width: 600px; }
+  .brand-card table, .modal-panel table { min-width: 400px; }
+}
+
+/* === DESIGN: Smooth transitions globally === */
+.brand-card {
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.brand-card:hover {
+  box-shadow: var(--card-shadow-hover);
+}
+
+/* === SKELETON LOADER === */
+.skeleton-block {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 8px;
+}
+html.dark .skeleton-block {
+  background: linear-gradient(90deg, #2d2d2d 25%, #3d3d3d 50%, #2d2d2d 75%);
+  background-size: 200% 100%;
+}
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* === PRINT: Hide non-printable elements === */
+@media print {
+  .scripts-no-print, .mobile-nav, .sidebar, header, nav { display: none !important; }
+  .main-content { margin: 0 !important; padding: 0 !important; }
+  .brand-card { box-shadow: none; border: 1px solid #e5e7eb; }
 }
 
 /* === TYPOGRAPHY CONSISTENCY === */

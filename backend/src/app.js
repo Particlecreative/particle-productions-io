@@ -9,7 +9,17 @@ const app = express();
 app.set('trust proxy', 1);
 
 // ── Security & parsing ──────────────────────────────
-app.use(helmet({ crossOriginResourcePolicy: false }));
+app.use(helmet({
+  crossOriginResourcePolicy: false,
+  contentSecurityPolicy: false, // CSP breaks inline scripts in some cases; enable when ready
+  hsts: { maxAge: 31536000, includeSubDomains: true },
+}));
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
 
 // CORS — restrict to allowed origins (env var or allow all in dev)
 const allowedList = process.env.ALLOWED_ORIGINS
@@ -131,7 +141,16 @@ cron.schedule('0 8 * * *', async () => {
 // ── Global error handler ─────────────────────────────
 app.use((err, _req, res, _next) => {
   console.error('Unhandled error:', err);
-  res.status(500).json({ error: err.message || 'Internal server error' });
+  // Don't expose internal error details in production
+  res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error' : (err.message || 'Internal server error') });
+});
+
+// ── Process-level error handlers ─────────────────────
+process.on('unhandledRejection', (reason) => {
+  console.error('[FATAL] Unhandled Promise Rejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] Uncaught Exception:', err);
 });
 
 module.exports = app;

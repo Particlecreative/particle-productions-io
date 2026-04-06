@@ -80,7 +80,11 @@ router.patch('/:id', async (req, res) => {
     }
   }
 
+  // Guard: non-admins can NEVER set role, active, or super_admin — even on themselves
   const adminFields   = ['role', 'active', 'super_admin', 'must_change_password'];
+  if (!isAdmin && adminFields.some(f => f in req.body)) {
+    return res.status(403).json({ error: 'Cannot modify admin-level fields' });
+  }
   const allowedFields = isAdmin
     ? ['name', 'email', 'role', 'brand_id', 'active', 'super_admin', 'must_change_password', 'avatar_url']
     : ['name', 'avatar_url'];
