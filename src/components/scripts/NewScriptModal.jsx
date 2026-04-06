@@ -28,8 +28,10 @@ export default function NewScriptModal({ defaultProductionId, defaultBrandId, on
   // AI state
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiProduct, setAiProduct] = useState('');
-  const [aiReferenceUrl, setAiReferenceUrl] = useState('');
+  const [aiReferences, setAiReferences] = useState([]); // [{type:'url'|'file', value, name}]
+  const [aiRefInput, setAiRefInput] = useState('');
   const [aiReferenceFetching, setAiReferenceFetching] = useState(false);
+  const aiRefFileRef = useRef();
   const [tone, setTone] = useState('Cinematic');
   const [duration, setDuration] = useState('30s');
   const [sceneCount, setSceneCount] = useState('4');
@@ -106,7 +108,7 @@ export default function NewScriptModal({ defaultProductionId, defaultBrandId, on
           mode: 'generate',
           prompt: `${aiPrompt}\n\nTone: ${tone}. Duration: ${duration}. Number of scenes: ${sceneCount}.`,
           product: aiProduct.trim() || undefined,
-          reference_url: aiReferenceUrl.trim() || undefined,
+          references: aiReferences.length > 0 ? aiReferences : undefined,
         }),
       });
       clearInterval(interval);
@@ -417,22 +419,68 @@ export default function NewScriptModal({ defaultProductionId, defaultBrandId, on
                     </div>
                     <div>
                       <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 mb-1.5">
-                        <Link size={11} /> Reference link
-                        <span className="font-normal text-gray-300">optional</span>
+                        <Link size={11} /> References
+                        <span className="font-normal text-gray-300">up to 3 — URLs or files</span>
                       </label>
-                      <div className="relative">
-                        <input
-                          value={aiReferenceUrl}
-                          onChange={e => setAiReferenceUrl(e.target.value)}
-                          placeholder="Script guidelines, past scripts..."
-                          className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-300 placeholder-gray-300 pr-8"
-                        />
-                        {aiReferenceUrl.trim() && (
-                          <button onClick={() => setAiReferenceUrl('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500">
-                            <X size={12} />
+                      {/* Reference chips */}
+                      {aiReferences.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mb-2">
+                          {aiReferences.map((ref, i) => (
+                            <span key={i} className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-medium max-w-[200px]">
+                              {ref.type === 'url' ? <Link size={10} /> : <FileText size={10} />}
+                              <span className="truncate">{ref.name || ref.value}</span>
+                              <button onClick={() => setAiReferences(prev => prev.filter((_, pi) => pi !== i))} className="text-indigo-400 hover:text-red-500 shrink-0">
+                                <X size={10} />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {aiReferences.length < 3 && (
+                        <div className="flex gap-2">
+                          <input
+                            value={aiRefInput}
+                            onChange={e => setAiRefInput(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter' && aiRefInput.trim()) {
+                                e.preventDefault();
+                                setAiReferences(prev => [...prev, { type: 'url', value: aiRefInput.trim(), name: aiRefInput.trim().replace(/^https?:\/\//, '').slice(0, 40) }]);
+                                setAiRefInput('');
+                              }
+                            }}
+                            placeholder="Paste URL and press Enter..."
+                            className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-300 placeholder-gray-300"
+                          />
+                          <button
+                            onClick={() => aiRefFileRef.current?.click()}
+                            className="px-3 py-2 border border-gray-200 rounded-xl text-xs text-gray-500 hover:bg-gray-50 flex items-center gap-1"
+                          >
+                            <Upload size={11} /> File
                           </button>
-                        )}
-                      </div>
+                          <input
+                            ref={aiRefFileRef}
+                            type="file"
+                            accept=".pdf,.docx,.txt,.doc,image/*"
+                            className="hidden"
+                            onChange={e => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              const reader = new FileReader();
+                              reader.onload = ev => {
+                                const base64 = ev.target.result.split(',')[1];
+                                setAiReferences(prev => [...prev, {
+                                  type: 'file',
+                                  value: base64,
+                                  name: file.name,
+                                  mimeType: file.type,
+                                }]);
+                              };
+                              reader.readAsDataURL(file);
+                              e.target.value = '';
+                            }}
+                          />
+                        </div>
+                      )}
                     </div>
                   </div>
 

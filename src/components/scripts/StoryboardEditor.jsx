@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import {
   DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors,
 } from '@dnd-kit/core';
@@ -11,12 +11,15 @@ import {
   Upload, Sparkles, Share2, Play, Pause, X, Check, History, Download, Eye, EyeOff,
   Columns3, Table2, Layout, Volume2, ChevronLeft, ChevronRight as ChevronRightIcon,
   Loader2, RefreshCw, ExternalLink, Film, Maximize2, ArrowLeft, MoreHorizontal,
-  Image as ImageIcon, Wand2, CheckCircle, Clock,
+  Image as ImageIcon, Wand2, CheckCircle, Clock, Settings, VolumeX, Package,
+  Scissors,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useBrand } from '../../context/BrandContext';
 import { toast } from '../../lib/toast';
 import clsx from 'clsx';
+import SplitModal from './SplitModal';
+import UniversalBlocks from './UniversalBlocks';
 
 const API = import.meta.env.VITE_API_URL || '';
 
@@ -25,7 +28,9 @@ function jwt() { return localStorage.getItem('cp_auth_token'); }
 // ── VO duration estimate (word count at 130 WPM) ─────────────────────────────
 const VO_WPM = 130;
 function stripStageDirections(text) {
-  return (text || '').replace(/\[[^\]]*\]/g, '').replace(/\([^)]*\)/g, '').replace(/\s+/g, ' ').trim();
+  return (text || '')
+    .replace(/<span[^>]*data-muted[^>]*>.*?<\/span>/gi, '') // strip muted/non-spoken spans
+    .replace(/\[[^\]]*\]/g, '').replace(/\([^)]*\)/g, '').replace(/\s+/g, ' ').trim();
 }
 function estimateSeconds(text) {
   const clean = stripStageDirections(text?.replace ? text.replace(/<[^>]*>/g, ' ') : '');
@@ -142,12 +147,35 @@ function FormatToolbar({ style, onDismiss }) {
       ))}
       <div className="w-px h-4 bg-white/20 mx-0.5" />
       <button onClick={() => fmt('removeFormat')} className="w-7 h-7 flex items-center justify-center rounded-lg text-white/60 hover:bg-white/20 text-[10px] font-semibold transition-colors" title="Clear formatting">✕</button>
+      <div className="w-px h-4 bg-white/20 mx-0.5" />
+      <button
+        onClick={() => {
+          const sel = window.getSelection();
+          if (!sel || sel.rangeCount === 0) return;
+          const range = sel.getRangeAt(0);
+          // Check if already muted — if so, unwrap
+          const parent = range.startContainer.parentElement;
+          if (parent?.dataset?.muted) {
+            const text = document.createTextNode(parent.textContent);
+            parent.parentNode.replaceChild(text, parent);
+            return;
+          }
+          const span = document.createElement('span');
+          span.className = 'vo-muted';
+          span.dataset.muted = 'true';
+          try { range.surroundContents(span); } catch { /* partial selection */ }
+        }}
+        className="w-7 h-7 flex items-center justify-center rounded-lg text-orange-300 hover:bg-white/20 text-xs transition-colors"
+        title="Mute — exclude from voiceover"
+      >
+        <VolumeX size={13} />
+      </button>
     </div>
   );
 }
 
 // ── SortableSceneRow ──────────────────────────────────────────────────────────
-function SortableSceneRow({ scene, index, visibleCols, onUpdate, onDelete, onDuplicate, onAddScene, commentCount, onCommentClick, onImageUpload, onImageDelete, onImageGenerate, onRegenImage, onRequestAIImage, onLightbox, readOnly, isLastRow, onPlayTTS, isPlaying, onSmartSplit, suggestingShots }) {
+const SortableSceneRow = memo(function SortableSceneRow({ scene, index, visibleCols, onUpdate, onDelete, onDuplicate, onAddScene, commentCount, onCommentClick, onImageUpload, onImageDelete, onImageGenerate, onRegenImage, onRequestAIImage, onLightbox, readOnly, isLastRow, onPlayTTS, isPlaying, onSmartSplit, suggestingShots, generatingSceneId }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: scene.id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
 
@@ -343,12 +371,12 @@ function SortableSceneRow({ scene, index, visibleCols, onUpdate, onDelete, onDup
                 <div className="relative flex items-center gap-0.5">
                   <button
                     onClick={() => onRequestAIImage(scene.id)}
-                    disabled={generatingImg || suggestingShots === scene.id}
+                    disabled={generatingImg || suggestingShots === scene.id || generatingSceneId === scene.id}
                     className="flex items-center gap-1 text-[10px] text-purple-500 hover:text-purple-700 px-1 disabled:opacity-50"
                     title="Generate one AI storyboard image"
                   >
-                    {(generatingImg || suggestingShots === scene.id) ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
-                    {suggestingShots === scene.id ? 'Splitting...' : generatingImg ? 'Generating...' : (scene.images || []).length > 0 ? '+ Shot' : '✨ AI'}
+                    {(generatingImg || suggestingShots === scene.id || generatingSceneId === scene.id) ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
+                    {suggestingShots === scene.id ? 'Splitting...' : (generatingImg || generatingSceneId === scene.id) ? 'Generating...' : (scene.images || []).length > 0 ? '+ Shot' : '✨ AI'}
                   </button>
                   <button
                     onClick={() => onSmartSplit(scene.id)}
@@ -387,7 +415,7 @@ function SortableSceneRow({ scene, index, visibleCols, onUpdate, onDelete, onDup
       </td>
     </tr>
   );
-}
+});
 
 // ── Main StoryboardEditor ─────────────────────────────────────────────────────
 export default function StoryboardEditor({ scriptId, readOnly = false, onBack, onDeleted, onUpdated, defaultProductionId, defaultBrandId }) {
@@ -445,6 +473,11 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
   const [describingActor, setDescribingActor] = useState(null); // index being described
   const actorPhotoRef = useRef();
   const [actorPhotoTarget, setActorPhotoTarget] = useState(null); // index for which char photo is being uploaded
+  const [wizardRefImages, setWizardRefImages] = useState([]); // [{base64, mimeType, previewUrl}] general style references
+  const wizardRefImageRef = useRef();
+  const [generatingSceneId, setGeneratingSceneId] = useState(null); // track which scene is generating an image
+  const [splitScene, setSplitScene] = useState(null); // scene object for SplitModal
+  const [showBlocks, setShowBlocks] = useState(false);
 
   // ── Voice picker & settings ──
   const [voiceId, setVoiceId] = useState(() => localStorage.getItem('cp_voice_id') || '21m00Tcm4TlvDq8ikWAM');
@@ -625,76 +658,91 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
   };
 
   const handleImageGenerate = async (sceneId) => {
-    const charProfiles = getCharProfiles();
-    const styleNotes = localStorage.getItem(`script_style_${scriptId}`) || '';
-    const productName = localStorage.getItem(`script_product_name_${scriptId}`) || '';
-    let productPhotos = [];
-    try { productPhotos = JSON.parse(localStorage.getItem(`script_product_photos_${scriptId}`) || '[]'); } catch {}
-    let charPhotos = [];
-    try { charPhotos = JSON.parse(localStorage.getItem(`script_char_photos_${scriptId}`) || '[]'); } catch {}
-
-    const body = {
-      scene_id: sceneId,
-      character_profiles: charProfiles.length > 0 ? charProfiles : undefined,
-      style_notes: styleNotes || undefined,
-      product_info: productName ? { name: productName, photos: productPhotos } : undefined,
-      character_photos: charPhotos.length > 0 ? charPhotos : undefined,
-    };
-
-    const res = await fetch(`${API}/api/scripts/${scriptId}/ai-image`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json();
-    if (data.url) {
-      await loadScript();
-      // Notify parent so list badges (scene count etc.) stay in sync
-      onUpdated?.({ id: scriptId });
-    } else {
-      toast.error(data.error || 'Image generation failed');
-    }
-  };
-
-  const handleSmartSplit = async (sceneId) => {
-    setSuggestingShots(sceneId);
-    setSmartSplitScene(null);
+    setGeneratingSceneId(sceneId);
     try {
-      const res = await fetch(`${API}/api/scripts/${scriptId}/suggest-shots`, {
+      const charProfiles = getCharProfiles();
+      const styleNotes = localStorage.getItem(`script_style_${scriptId}`) || '';
+      const productName = localStorage.getItem(`script_product_name_${scriptId}`) || '';
+      let productPhotos = [];
+      try { productPhotos = JSON.parse(localStorage.getItem(`script_product_photos_${scriptId}`) || '[]'); } catch {}
+      let charPhotos = [];
+      try { charPhotos = JSON.parse(localStorage.getItem(`script_char_photos_${scriptId}`) || '[]'); } catch {}
+      let refImages = [];
+      try { refImages = JSON.parse(localStorage.getItem(`script_ref_images_${scriptId}`) || '[]'); } catch {}
+
+      const body = {
+        scene_id: sceneId,
+        character_profiles: charProfiles.length > 0 ? charProfiles : undefined,
+        style_notes: styleNotes || undefined,
+        product_info: productName ? { name: productName, photos: productPhotos } : undefined,
+        character_photos: charPhotos.length > 0 ? charPhotos : undefined,
+        reference_images: refImages.length > 0 ? refImages.map(r => ({ base64: r.base64, mimeType: r.mimeType })) : undefined,
+      };
+
+      const res = await fetch(`${API}/api/scripts/${scriptId}/ai-image`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
-        body: JSON.stringify({ scene_id: sceneId }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
-      const shots = data.shots || [];
-      // Generate one image per shot, sequentially
-      for (const shot of shots) {
-        const charProfiles = getCharProfiles();
-        const styleNotes = localStorage.getItem(`script_style_${scriptId}`) || '';
-        const productName = localStorage.getItem(`script_product_name_${scriptId}`) || '';
-        let productPhotos = [];
-        try { productPhotos = JSON.parse(localStorage.getItem(`script_product_photos_${scriptId}`) || '[]'); } catch {}
-        let charPhotos = [];
-        try { charPhotos = JSON.parse(localStorage.getItem(`script_char_photos_${scriptId}`) || '[]'); } catch {}
-
-        await fetch(`${API}/api/scripts/${scriptId}/ai-image`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
-          body: JSON.stringify({
-            scene_id: sceneId,
-            prompt: shot.description,
-            character_profiles: charProfiles.length > 0 ? charProfiles : undefined,
-            character_photos: charPhotos.length > 0 ? charPhotos : undefined,
-            style_notes: styleNotes || undefined,
-            product_info: productName ? { name: productName, photos: productPhotos } : undefined,
-          }),
-        });
-        await loadScript(); // refresh after each shot
+      if (data.url) {
+        await loadScript();
+        onUpdated?.({ id: scriptId });
+      } else {
+        toast.error(data.error || 'Image generation failed');
       }
-    } catch {
-      toast.error('Smart split failed');
+    } catch (err) {
+      toast.error('Image generation failed: ' + (err.message || 'Network error'));
     }
-    setSuggestingShots(null);
+    setGeneratingSceneId(null);
+  };
+
+  const handleSmartSplit = (sceneId) => {
+    const scene = scenes.find(s => s.id === sceneId);
+    if (scene) setSplitScene(scene);
+  };
+
+  const handleApplySplit = async (segments, generateImages) => {
+    if (!splitScene) return;
+    const sceneIndex = scenes.findIndex(s => s.id === splitScene.id);
+    if (sceneIndex === -1) return;
+
+    // Create new scene objects from segments
+    const newScenes = segments.map((seg, i) => ({
+      id: crypto.randomUUID(),
+      order: sceneIndex + i,
+      location: i === 0 ? splitScene.location : splitScene.location,
+      what_we_see: seg.whatWeSee,
+      what_we_hear: seg.whatWeHear,
+      duration: '',
+      images: i === 0 ? (splitScene.images || []) : [],
+      collapsed: false,
+    }));
+
+    // Replace original scene with new scenes
+    const updatedScenes = [...scenes];
+    updatedScenes.splice(sceneIndex, 1, ...newScenes);
+    // Re-order
+    updatedScenes.forEach((s, i) => s.order = i);
+
+    setScript(prev => {
+      const updated = { ...prev, scenes: updatedScenes };
+      debounceSave(updated);
+      return updated;
+    });
+    onUpdated?.({ id: scriptId });
+    setSplitScene(null);
+
+    // Optionally generate images for new scenes (skip first if it inherited images)
+    if (generateImages) {
+      const scenesToGenerate = newScenes.filter(s => !s.images || s.images.length === 0);
+      for (const s of scenesToGenerate) {
+        try {
+          await handleImageGenerate(s.id);
+        } catch {}
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    }
   };
 
   const handleCommentClick = (info) => {
@@ -979,7 +1027,11 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
     const existing = getCharProfiles();
     const wizardDone = localStorage.getItem(`script_wizard_${scriptId}`);
     if (wizardDone || existing.length > 0) {
-      // Already set up — go straight to generation
+      // Already set up — generate with feedback
+      const productName = localStorage.getItem(`script_product_name_${scriptId}`) || '';
+      const charNames = existing.map(c => c.name).filter(Boolean).join(', ');
+      const info = [charNames, productName].filter(Boolean).join(' · ') || 'default settings';
+      toast.success(`Generating with ${info}...`);
       handleImageGenerate(sceneId);
     } else {
       // Show setup wizard
@@ -987,7 +1039,38 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
       setWizardStep(1);
       setWizardProductName('');
       setWizardProductPhotos([]);
+      setWizardRefImages([]);
       setShowImageWizard(true);
+    }
+  };
+
+  const handleOpenImageSetup = () => {
+    // Re-open wizard to edit settings
+    const existingProduct = localStorage.getItem(`script_product_name_${scriptId}`) || '';
+    let existingPhotos = [];
+    try { existingPhotos = JSON.parse(localStorage.getItem(`script_product_photos_${scriptId}`) || '[]'); } catch {}
+    let existingRefImages = [];
+    try { existingRefImages = JSON.parse(localStorage.getItem(`script_ref_images_${scriptId}`) || '[]'); } catch {}
+    const existingChars = getCharProfiles();
+    let existingCharPhotos = [];
+    try { existingCharPhotos = JSON.parse(localStorage.getItem(`script_char_photos_${scriptId}`) || '[]'); } catch {}
+
+    setWizardTargetSceneId(null); // just editing settings, not generating
+    setWizardStep(2);
+    setWizardProductName(existingProduct);
+    setWizardProductPhotos(existingPhotos.map(p => ({ ...p, previewUrl: p.previewUrl || `data:${p.mimeType};base64,${p.base64}` })));
+    setWizardRefImages(existingRefImages);
+    setWizardStyleNotes(localStorage.getItem(`script_style_${scriptId}`) || '');
+    setShowImageWizard(true);
+
+    if (existingChars.length > 0) {
+      // Merge char photos back into wizard characters
+      setWizardCharacters(existingChars.map(c => {
+        const photo = existingCharPhotos.find(p => p.name === c.name);
+        return { name: c.name, description: c.description, photoBase64: photo?.base64 || null, photoMime: photo?.mimeType || null };
+      }));
+    } else {
+      handleWizardExtractChars();
     }
   };
 
@@ -1049,10 +1132,14 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
     if (wizardProductName.trim()) localStorage.setItem(`script_product_name_${scriptId}`, wizardProductName.trim());
     const productPhotosToSave = wizardProductPhotos.slice(0, 3).map(p => ({ base64: p.base64, mimeType: p.mimeType }));
     if (productPhotosToSave.length > 0) localStorage.setItem(`script_product_photos_${scriptId}`, JSON.stringify(productPhotosToSave));
+    // Save general reference images
+    const refImagesToSave = wizardRefImages.slice(0, 5).map(r => ({ base64: r.base64, mimeType: r.mimeType, previewUrl: r.previewUrl }));
+    if (refImagesToSave.length > 0) localStorage.setItem(`script_ref_images_${scriptId}`, JSON.stringify(refImagesToSave));
+    else localStorage.removeItem(`script_ref_images_${scriptId}`);
     localStorage.setItem(`script_wizard_${scriptId}`, 'done');
     setShowImageWizard(false);
 
-    // Generate for target scene(s)
+    // Generate for target scene(s) — skip if just editing settings
     if (wizardTargetSceneId === '__all__') {
       handleGenerateAll(true);
     } else if (wizardTargetSceneId) {
@@ -1070,10 +1157,15 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
       try { existingPhotos = JSON.parse(localStorage.getItem(`script_product_photos_${scriptId}`) || '[]'); } catch {}
       const existingChars = getCharProfiles();
 
+      let existingRefImages = [];
+      try { existingRefImages = JSON.parse(localStorage.getItem(`script_ref_images_${scriptId}`) || '[]'); } catch {}
+
       setWizardTargetSceneId('__all__');
       setWizardStep(2);
       setWizardProductName(existingProduct);
-      setWizardProductPhotos(existingPhotos);
+      setWizardProductPhotos(existingPhotos.map(p => ({ ...p, previewUrl: p.previewUrl || `data:${p.mimeType};base64,${p.base64}` })));
+      setWizardRefImages(existingRefImages);
+      setWizardStyleNotes(localStorage.getItem(`script_style_${scriptId}`) || '');
       setShowImageWizard(true);
 
       // Always re-extract characters (show current ones immediately if any)
@@ -1178,25 +1270,27 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
     return () => document.removeEventListener('mouseup', handleMouseUp);
   }, []);
 
-  // ── Commercial timing (speed-adjusted) ──
-  const rawVoSeconds = scenes.reduce((sum, s) => sum + estimateSeconds(stripHtml(s.what_we_hear)), 0);
+  // ── Commercial timing (speed-adjusted, memoized) ──
+  const rawVoSeconds = useMemo(() => scenes.reduce((sum, s) => sum + estimateSeconds(stripHtml(s.what_we_hear)), 0), [scenes]);
   const totalVoSeconds = Math.round(rawVoSeconds / voiceSpeed);
 
   // Build cumulative timecode map for each scene
-  const sceneTimecodes = {};
-  let cumulative = 0;
-  for (const s of scenes) {
-    const dur = sceneDurations[s.id]
-      ? Math.round(sceneDurations[s.id] / voiceSpeed)
-      : Math.round(estimateSeconds(stripHtml(s.what_we_hear)) / voiceSpeed);
-    sceneTimecodes[s.id] = { start: cumulative, end: cumulative + dur, isActual: !!sceneDurations[s.id] };
-    cumulative += dur;
-  }
+  const sceneTimecodes = useMemo(() => {
+    const map = {};
+    let cumulative = 0;
+    for (const s of scenes) {
+      const dur = sceneDurations[s.id]
+        ? Math.round(sceneDurations[s.id] / voiceSpeed)
+        : Math.round(estimateSeconds(stripHtml(s.what_we_hear)) / voiceSpeed);
+      map[s.id] = { start: cumulative, end: cumulative + dur, isActual: !!sceneDurations[s.id] };
+      cumulative += dur;
+    }
+    return map;
+  }, [scenes, sceneDurations, voiceSpeed]);
 
   const targetSeconds = parseInt(commercialTarget) || 30;
   const timingRatio = totalVoSeconds / targetSeconds;
   const timingColor = timingRatio <= 0.9 ? 'text-gray-500' : timingRatio <= 1.05 ? 'text-green-600' : timingRatio <= 1.2 ? 'text-amber-600' : 'text-red-600';
-  const barColor = timingRatio <= 0.9 ? 'bg-gray-300' : timingRatio <= 1.05 ? 'bg-green-500' : timingRatio <= 1.2 ? 'bg-amber-500' : 'bg-red-500';
 
   if (loading) return (
     <div className="flex-1 flex items-center justify-center">
@@ -1255,22 +1349,36 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
           </div>
         </div>
 
-        {/* ── Commercial timing bar ── */}
+        {/* ── Commercial timing bar (segmented per scene) ── */}
         {totalVoSeconds > 0 && (
           <div className="flex items-center gap-2 mb-2 scripts-no-print">
             <Clock size={11} className="text-gray-400 shrink-0" />
-            <div className="flex-1 bg-gray-100 rounded-full h-1.5 relative overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all ${barColor}`}
-                style={{ width: `${Math.min(timingRatio * 100, 100)}%` }}
-              />
-              {/* Target marker at 100% */}
-              <div className="absolute right-0 top-0 h-full w-px bg-gray-400 opacity-50" />
+            {/* Segmented progress bar */}
+            <div className="flex-1 bg-gray-100 rounded-full h-2 relative overflow-hidden flex" title={`${scenes.length} scenes, ${totalVoSeconds}s total`}>
+              {scenes.map((s, i) => {
+                const dur = sceneTimecodes[s.id]?.end - sceneTimecodes[s.id]?.start || 0;
+                const pct = targetSeconds > 0 ? (dur / targetSeconds) * 100 : 0;
+                const sceneColors = ['bg-indigo-400', 'bg-purple-400', 'bg-blue-400', 'bg-teal-400', 'bg-pink-400', 'bg-amber-400'];
+                return (
+                  <div
+                    key={s.id}
+                    className={`h-full ${sceneColors[i % sceneColors.length]} transition-all relative group`}
+                    style={{ width: `${Math.min(pct, 100 - (i > 0 ? 0.5 : 0))}%`, marginLeft: i > 0 ? '1px' : 0 }}
+                    title={`Scene ${i + 1}: ${fmtSeconds(dur)}`}
+                  >
+                    <div className="absolute -top-7 left-1/2 -translate-x-1/2 hidden group-hover:block bg-gray-900 text-white text-[9px] px-1.5 py-0.5 rounded whitespace-nowrap z-20">
+                      Sc {i + 1}: {fmtSeconds(dur)}
+                    </div>
+                  </div>
+                );
+              })}
+              {/* Overflow indicator */}
+              {timingRatio > 1 && <div className="absolute right-0 top-0 h-full w-1 bg-red-500" />}
             </div>
             <span className={`text-[11px] font-mono font-semibold shrink-0 ${timingColor}`}>
               {fmtSeconds(totalVoSeconds)}
             </span>
-            <span className="text-[11px] text-gray-400 shrink-0">/ target:</span>
+            <span className="text-[11px] text-gray-400 shrink-0">/</span>
             <button
               onClick={() => { setShowVoicePicker(true); setVoicePreviewError(null); loadAccountVoices(); }}
               className="shrink-0 flex items-center gap-1 text-[10px] px-2 py-1 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-600 hover:bg-indigo-100 transition-colors font-semibold"
@@ -1281,7 +1389,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
               {voiceSpeed !== 1.0 && <span className="text-[9px] opacity-70">{voiceSpeed}x</span>}
             </button>
             <div className="flex items-center gap-0.5 bg-gray-100 rounded-md p-0.5 shrink-0">
-              {['30', '60'].map(t => (
+              {['15', '30', '60'].map(t => (
                 <button
                   key={t}
                   onClick={() => { setCommercialTarget(t); localStorage.setItem(`script_target_${scriptId}`, t); }}
@@ -1290,6 +1398,14 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                   {t}s
                 </button>
               ))}
+              <input
+                type="number"
+                value={commercialTarget}
+                onChange={e => { setCommercialTarget(e.target.value); localStorage.setItem(`script_target_${scriptId}`, e.target.value); }}
+                className="w-10 text-[10px] text-center border border-gray-200 rounded px-1 py-0.5 outline-none focus:border-indigo-300"
+                min={5} max={600}
+                title="Custom target (seconds)"
+              />
             </div>
           </div>
         )}
@@ -1335,6 +1451,11 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
           {/* Action buttons */}
           {!readOnly && (
             <>
+              <button onClick={() => setShowBlocks(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-indigo-200 text-indigo-600 hover:bg-indigo-50 transition-colors"
+                title="Insert reusable scene blocks">
+                <Package size={12} /> Blocks
+              </button>
               <button onClick={() => { setShowAI(true); setAiMode('generate'); setAiPreview(null); }}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors">
                 <Sparkles size={12} /> AI
@@ -1346,6 +1467,13 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                     ? <><Loader2 size={12} className="animate-spin" /> {generateAllProgress.current}/{generateAllProgress.total}</>
                     : <><ImageIcon size={12} /> Generate All ({scenes.filter(s => !s.images || s.images.length === 0).length})</>
                   }
+                </button>
+              )}
+              {localStorage.getItem(`script_wizard_${scriptId}`) && (
+                <button onClick={handleOpenImageSetup}
+                  className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs border border-purple-200 text-purple-600 hover:bg-purple-50 transition-colors"
+                  title="Edit AI image settings (characters, product, style)">
+                  <Settings size={11} /> Image Setup
                 </button>
               )}
               <button onClick={() => { setShowComments(true); loadComments(); }}
@@ -1519,6 +1647,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                         isPlaying={playingSceneId === scene.id}
                         onSmartSplit={handleSmartSplit}
                         suggestingShots={suggestingShots}
+                        generatingSceneId={generatingSceneId}
                       />
                     ))}
                   </tbody>
@@ -1543,9 +1672,21 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
         {/* VO View */}
         {activeView === 'vo' && (
           <div className="max-w-2xl mx-auto py-8 px-6">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">Audio / Voiceover Script</h3>
-              <div className="flex items-center gap-3">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">Audio / Voiceover Script</h3>
+                <p className="text-[10px] text-gray-400 mt-1 font-mono">
+                  {scenes.length} scene{scenes.length !== 1 ? 's' : ''} · {scenes.reduce((sum, s) => sum + (stripStageDirections(stripHtml(s.what_we_hear))?.split(/\s+/).filter(Boolean).length || 0), 0)} words · {fmtSeconds(totalVoSeconds)}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => { setShowVoicePicker(true); setVoicePreviewError(null); loadAccountVoices(); }}
+                  className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-600 hover:bg-indigo-100 transition-colors font-semibold"
+                >
+                  <Volume2 size={10} />
+                  {accountVoices.find(v => v.voice_id === voiceId)?.name || 'Voice'}
+                </button>
                 {totalVoSeconds > 0 && (
                   <span className={`text-xs font-mono font-semibold ${timingColor}`}>
                     {fmtSeconds(totalVoSeconds)} / {targetSeconds}s
@@ -1561,11 +1702,18 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
               </div>
             </div>
             {scenes.map((scene, idx) => {
+              const sceneWords = stripStageDirections(stripHtml(scene.what_we_hear))?.split(/\s+/).filter(Boolean).length || 0;
+              const sceneSecs = estimateSeconds(stripHtml(scene.what_we_hear));
+              const sceneDurColor = targetSeconds > 0 && scenes.length > 0
+                ? (sceneSecs <= targetSeconds / scenes.length * 1.1 ? 'text-green-600' : sceneSecs <= targetSeconds / scenes.length * 1.5 ? 'text-amber-600' : 'text-red-600')
+                : 'text-gray-500';
               return (
                 <div key={scene.id} className="mb-6 pb-6 border-b border-gray-100 last:border-0">
                   <div className="flex items-baseline gap-3 mb-2">
                     <span className="text-xs font-bold text-gray-400 w-5">{idx + 1}</span>
                     {scene.location && <span className="text-xs font-mono text-gray-400">{scene.location}</span>}
+                    <span className="text-[10px] text-gray-300 font-mono">{sceneWords}w</span>
+                    <span className={`text-[10px] font-mono font-semibold ${sceneDurColor}`}>~{fmtSeconds(sceneSecs)}</span>
                     <div className="ml-auto flex items-center gap-2">
                       {sceneTimecodes[scene.id] && (
                         <span className={`text-[10px] font-mono ${sceneTimecodes[scene.id]?.isActual ? 'text-indigo-500' : 'text-gray-400'}`} title={sceneTimecodes[scene.id]?.isActual ? 'Actual ElevenLabs duration' : 'Estimated'}>
@@ -1585,11 +1733,25 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                   </div>
                   <p className="text-base text-indigo-800 leading-relaxed italic pl-8">
                     {scene.what_we_hear
-                      ? (scene.what_we_hear || '').replace(/<[^>]*>/g, '').split(/(\[[^\]]*\]|\([^)]*\))/g).map((part, i) =>
-                          /^[\[(]/.test(part)
-                            ? <span key={i} className="text-gray-400 italic text-xs">{part}</span>
-                            : part
-                        )
+                      ? (() => {
+                          // Parse muted spans, stage directions, and regular text
+                          const html = scene.what_we_hear || '';
+                          // Split on muted spans first, then stage directions
+                          const parts = html
+                            .replace(/<span[^>]*data-muted[^>]*>(.*?)<\/span>/gi, '‹MUTED›$1‹/MUTED›')
+                            .replace(/<[^>]*>/g, '')
+                            .split(/(‹MUTED›.*?‹\/MUTED›|\[[^\]]*\]|\([^)]*\))/g);
+                          return parts.map((part, i) => {
+                            if (/^‹MUTED›/.test(part)) {
+                              const text = part.replace(/‹\/?MUTED›/g, '');
+                              return <span key={i} className="text-gray-400 line-through text-sm opacity-60" title="Non-spoken (muted)">{text}</span>;
+                            }
+                            if (/^[\[(]/.test(part)) {
+                              return <span key={i} className="text-gray-400 italic text-xs">{part}</span>;
+                            }
+                            return part;
+                          });
+                        })()
                       : <span className="text-gray-300">No audio for this scene</span>}
                   </p>
                 </div>
@@ -2128,6 +2290,38 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
         </div>
       )}
 
+      {/* ── Split Modal ── */}
+      {splitScene && (
+        <SplitModal
+          scene={splitScene}
+          scriptId={scriptId}
+          onClose={() => setSplitScene(null)}
+          onApply={handleApplySplit}
+        />
+      )}
+
+      {/* ── Universal Blocks Panel ── */}
+      {showBlocks && (
+        <UniversalBlocks
+          brandId={script.brand_id || brand?.id}
+          onClose={() => setShowBlocks(false)}
+          selectedScenes={scenes.length > 0 ? scenes : []}
+          onInsert={(blockScenes) => {
+            // Insert block scenes at the end of the script
+            setScript(prev => {
+              const newScenes = [...prev.scenes, ...blockScenes.map((s, i) => ({
+                ...s,
+                order: prev.scenes.length + i,
+              }))];
+              const updated = { ...prev, scenes: newScenes };
+              debounceSave(updated);
+              return updated;
+            });
+            onUpdated?.({ id: scriptId });
+          }}
+        />
+      )}
+
       {/* ── AI Image Setup Wizard ── */}
       {showImageWizard && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
@@ -2330,7 +2524,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
               </div>
             )}
 
-            {/* Step 4 — Visual Style */}
+            {/* Step 4 — Visual Style + Reference Images */}
             {wizardStep === 4 && (
               <div className="p-6">
                 <p className="text-sm text-gray-600 mb-3">Describe the visual style for this storyboard (optional). This applies to all generated images.</p>
@@ -2340,11 +2534,65 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                   placeholder="e.g. Cinematic, high-contrast, warm golden hour lighting. Urban setting. Nike campaign aesthetic. Clean and powerful."
                   className="w-full border border-gray-200 rounded-xl p-3 text-sm outline-none resize-none h-24 focus:border-purple-400 mb-4"
                 />
+
+                {/* Reference Images */}
+                <div className="mb-4">
+                  <label className="block text-xs font-semibold text-gray-500 mb-2">
+                    Reference Images <span className="font-normal text-gray-400">(up to 5 — mood boards, stills, style refs)</span>
+                  </label>
+                  <div className="flex gap-2 flex-wrap">
+                    {wizardRefImages.map((img, i) => (
+                      <div key={i} className="relative">
+                        <img src={img.previewUrl} alt="Reference" className="w-16 h-16 object-cover rounded-xl border border-gray-200" />
+                        <button
+                          onClick={() => setWizardRefImages(prev => prev.filter((_, pi) => pi !== i))}
+                          className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-[10px]"
+                        >×</button>
+                      </div>
+                    ))}
+                    {wizardRefImages.length < 5 && (
+                      <button
+                        onClick={() => wizardRefImageRef.current?.click()}
+                        className="w-16 h-16 rounded-xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center text-gray-400 hover:border-purple-300 hover:text-purple-400 transition-colors gap-0.5"
+                      >
+                        <Upload size={14} />
+                        <span className="text-[9px]">Add</span>
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    ref={wizardRefImageRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={e => {
+                      const files = Array.from(e.target.files || []);
+                      files.slice(0, 5 - wizardRefImages.length).forEach(file => {
+                        const reader = new FileReader();
+                        reader.onload = ev => {
+                          const dataUrl = ev.target.result;
+                          setWizardRefImages(prev => prev.length < 5 ? [...prev, {
+                            base64: dataUrl.split(',')[1],
+                            mimeType: file.type || 'image/jpeg',
+                            previewUrl: dataUrl,
+                          }] : prev);
+                        };
+                        reader.readAsDataURL(file);
+                      });
+                      e.target.value = '';
+                    }}
+                  />
+                  <p className="text-[11px] text-gray-400 mt-1.5">
+                    These images guide the AI's visual composition and mood — they're used as style references, not identity-locked.
+                  </p>
+                </div>
+
                 <div className="flex gap-2">
                   <button onClick={() => setWizardStep(3)} className="px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">Back</button>
                   <button onClick={() => handleWizardComplete(true)}
                     className="flex-1 py-2.5 bg-purple-600 text-white rounded-xl text-sm font-bold hover:bg-purple-700 flex items-center justify-center gap-2">
-                    <Sparkles size={14} /> Generate Image
+                    <Sparkles size={14} /> {wizardTargetSceneId ? 'Generate Image' : 'Save Settings'}
                   </button>
                 </div>
               </div>

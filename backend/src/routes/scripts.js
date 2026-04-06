@@ -528,6 +528,84 @@ router.get('/voices', async (req, res) => {
   }
 });
 
+// ── Universal Blocks (must be before /:id to avoid route collision) ──────────
+
+// GET /api/scripts/blocks?brand_id=X
+router.get('/blocks', async (req, res) => {
+  try {
+    const { brand_id } = req.query;
+    if (!brand_id) return res.status(400).json({ error: 'brand_id required' });
+    const { rows } = await db.query(
+      'SELECT id, name, category, scenes, thumbnail_url, created_at, updated_at FROM script_blocks WHERE brand_id = $1 ORDER BY category, name',
+      [brand_id]
+    );
+    const categories = [...new Set(rows.map(r => r.category).filter(Boolean))].sort();
+    res.json({ blocks: rows, categories });
+  } catch (err) {
+    console.error('GET /scripts/blocks error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/scripts/blocks
+router.post('/blocks', async (req, res) => {
+  try {
+    const { brand_id, name, category, scenes } = req.body;
+    if (!brand_id || !name) return res.status(400).json({ error: 'brand_id and name required' });
+    const cleanScenes = (scenes || []).map(s => ({
+      id: require('crypto').randomUUID(),
+      location: s.location || '',
+      what_we_see: s.what_we_see || '',
+      what_we_hear: s.what_we_hear || '',
+      duration: s.duration || '',
+      images: s.images || [],
+    }));
+    const { rows } = await db.query(
+      'INSERT INTO script_blocks (brand_id, name, category, scenes, created_by) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [brand_id, name, category || 'general', JSON.stringify(cleanScenes), req.user?.id || null]
+    );
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('POST /scripts/blocks error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/scripts/blocks/:blockId
+router.put('/blocks/:blockId', async (req, res) => {
+  try {
+    const { name, category, scenes } = req.body;
+    const sets = [];
+    const vals = [];
+    let idx = 1;
+    if (name !== undefined) { sets.push(`name = $${idx++}`); vals.push(name); }
+    if (category !== undefined) { sets.push(`category = $${idx++}`); vals.push(category); }
+    if (scenes !== undefined) { sets.push(`scenes = $${idx++}`); vals.push(JSON.stringify(scenes)); }
+    sets.push(`updated_at = NOW()`);
+    vals.push(req.params.blockId);
+    const { rows } = await db.query(
+      `UPDATE script_blocks SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
+      vals
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Block not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('PUT /scripts/blocks/:id error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/scripts/blocks/:blockId
+router.delete('/blocks/:blockId', async (req, res) => {
+  try {
+    await db.query('DELETE FROM script_blocks WHERE id = $1', [req.params.blockId]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('DELETE /scripts/blocks/:id error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/scripts/:id
 router.get('/:id', async (req, res) => {
   try {
@@ -961,7 +1039,7 @@ router.post('/:id/ai-image', async (req, res) => {
     return res.status(429).json({ error: 'Too many image generations — please wait a moment before generating more.' });
   }
   try {
-    const { scene_id, prompt: promptOverride, replace_image_id, character_profiles, style_notes, reference_image, reference_image_url, product_info, character_photos } = req.body;
+    const { scene_id, prompt: promptOverride, replace_image_id, character_profiles, style_notes, reference_image, reference_image_url, product_info, character_photos, reference_images } = req.body;
     if (!scene_id) return res.status(400).json({ error: 'scene_id is required' });
 
     if (!process.env.GEMINI_API_KEY) {
@@ -1062,6 +1140,15 @@ Write a single, detailed image generation prompt (2-4 sentences) for the CURRENT
       for (const cp of character_photos.slice(0, 3)) {
         if (cp?.base64) {
           refImages.push({ base64: cp.base64, mimeType: cp.mimeType || 'image/jpeg' });
+        }
+      }
+    }
+
+    // Add general reference images (style/mood refs from wizard)
+    if (Array.isArray(reference_images)) {
+      for (const ri of reference_images.slice(0, 5)) {
+        if (ri?.base64) {
+          refImages.push({ base64: ri.base64, mimeType: ri.mimeType || 'image/jpeg' });
         }
       }
     }
@@ -1527,8 +1614,9 @@ async function elevenLabsTTS(text, voiceIdOverride, options = {}) {
   const apiKey = process.env.ELEVENLABS_API_KEY;
   if (!apiKey) throw new Error('ELEVENLABS_API_KEY not configured');
   const voiceId = voiceIdOverride || process.env.ELEVENLABS_VOICE_ID || '21m00Tcm4TlvDq8ikWAM';
-  // Strip any remaining HTML tags and decode HTML entities
+  // Strip muted/non-spoken spans, HTML tags, and decode entities
   const cleanText = text
+    .replace(/<span[^>]*data-muted[^>]*>.*?<\/span>/gi, '') // strip muted spans first (before HTML strip)
     .replace(/<[^>]*>/g, ' ')
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
