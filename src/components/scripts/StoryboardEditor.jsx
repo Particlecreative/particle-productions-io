@@ -487,6 +487,8 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
   const [generatingSceneId, setGeneratingSceneId] = useState(null); // track which scene is generating an image
   const [splitScene, setSplitScene] = useState(null); // scene object for SplitModal
   const [showBlocks, setShowBlocks] = useState(false);
+  const [showGenAllConfirm, setShowGenAllConfirm] = useState(false);
+  const [genAllIncludeExisting, setGenAllIncludeExisting] = useState(false);
 
   // ── Voice picker & settings ──
   const [voiceId, setVoiceId] = useState(() => localStorage.getItem('cp_voice_id') || '21m00Tcm4TlvDq8ikWAM');
@@ -1209,19 +1211,24 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
       return;
     }
 
-    // Generate for scenes without images, or ALL scenes if all already have images (regenerate)
-    let scenesToGen = scenes.filter(s => !s.images || s.images.length === 0);
+    // Show confirmation modal
+    setGenAllIncludeExisting(false);
+    setShowGenAllConfirm(true);
+  };
+
+  const executeGenerateAll = async () => {
+    setShowGenAllConfirm(false);
+    const withoutImages = scenes.filter(s => !s.images || s.images.length === 0);
+    const scenesToGen = genAllIncludeExisting ? [...scenes] : withoutImages;
+
     if (scenesToGen.length === 0) {
-      // All scenes have images — ask if they want to regenerate all
-      if (!confirm(`All ${scenes.length} scenes already have images. Regenerate all of them?`)) return;
-      scenesToGen = [...scenes];
-    } else {
-      if (!confirm(`Generate AI images for ${scenesToGen.length} scene${scenesToGen.length !== 1 ? 's' : ''}? This may take a minute.`)) return;
+      toast.info('No scenes to generate for');
+      return;
     }
 
     setGeneratingAll(true);
     setGenerateAllProgress({ current: 0, total: scenesToGen.length });
-    toast.success(`Generating ${scenesToGen.length} images...`);
+    toast.success(`Generating ${scenesToGen.length} image${scenesToGen.length !== 1 ? 's' : ''}...`);
 
     for (let i = 0; i < scenesToGen.length; i++) {
       setGenerateAllProgress({ current: i + 1, total: scenesToGen.length });
@@ -2319,6 +2326,53 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
           </div>
         </div>
       )}
+
+      {/* ── Generate All Confirmation ── */}
+      {showGenAllConfirm && (() => {
+        const withoutImages = scenes.filter(s => !s.images || s.images.length === 0);
+        const withImages = scenes.length - withoutImages.length;
+        return (
+          <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => setShowGenAllConfirm(false)}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+              <h3 className="font-black text-gray-900 text-base flex items-center gap-2 mb-3">
+                <Sparkles size={16} className="text-purple-500" /> Generate All Images
+              </h3>
+              <p className="text-sm text-gray-600 mb-4">
+                {withoutImages.length > 0
+                  ? <>Generate AI images for <span className="font-bold text-purple-700">{withoutImages.length} scene{withoutImages.length !== 1 ? 's' : ''}</span> without images.{withImages > 0 && <> <span className="text-gray-500">{withImages} scene{withImages !== 1 ? 's' : ''} already {withImages !== 1 ? 'have' : 'has'} images.</span></>}</>
+                  : <>All {scenes.length} scenes already have images.</>
+                }
+              </p>
+              {withImages > 0 && (
+                <label className="flex items-center gap-2.5 p-3 rounded-xl border border-gray-200 hover:border-purple-300 cursor-pointer mb-4 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={genAllIncludeExisting}
+                    onChange={e => setGenAllIncludeExisting(e.target.checked)}
+                    className="accent-purple-600 w-4 h-4"
+                  />
+                  <div>
+                    <p className="text-sm font-semibold text-gray-700">Also regenerate scenes with images</p>
+                    <p className="text-[11px] text-gray-400">Replaces existing images for {withImages} scene{withImages !== 1 ? 's' : ''}</p>
+                  </div>
+                </label>
+              )}
+              <div className="flex gap-2">
+                <button onClick={() => setShowGenAllConfirm(false)} className="px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 transition-colors">
+                  Cancel
+                </button>
+                <button
+                  onClick={executeGenerateAll}
+                  className="flex-1 py-2.5 bg-purple-600 text-white rounded-xl text-sm font-bold hover:bg-purple-700 flex items-center justify-center gap-2 transition-colors"
+                >
+                  <Sparkles size={13} />
+                  Generate {genAllIncludeExisting ? scenes.length : withoutImages.length || scenes.length} Image{(genAllIncludeExisting ? scenes.length : withoutImages.length || scenes.length) !== 1 ? 's' : ''}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Split Modal ── */}
       {splitScene && (
