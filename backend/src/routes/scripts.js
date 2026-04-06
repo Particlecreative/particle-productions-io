@@ -2,6 +2,7 @@ const router  = require('express').Router();
 const db      = require('../db');
 const crypto  = require('crypto');
 const { google } = require('googleapis');
+const mammoth = require('mammoth');
 const { verifyJWT } = require('../middleware/auth');
 
 const DRIVE_FOLDER_ID = process.env.DRIVE_FOLDER_ID;
@@ -742,6 +743,11 @@ router.post('/import', async (req, res) => {
           docContent = fullText.substring(0, 60000);
           contentLabel = 'Google Doc (structured text with table rows as | separated columns)';
         } catch (docsErr) {
+          // Surface 403/404 immediately — no point trying fallbacks
+          const docsStatus = docsErr?.response?.status || docsErr?.code;
+          if (docsStatus === 403 || docsStatus === 404 || String(docsErr.message).includes('403') || String(docsErr.message).includes('404')) {
+            throw new Error('This Google Doc is not accessible. Make sure it is shared with the Google account connected in Settings → Integrations (use "Share" → "Anyone with link" or share directly with that account).');
+          }
           console.warn('Google Docs API failed, falling back to HTML export:', docsErr.message);
 
           // ── Fallback 1: HTML export (preserves table structure) ──
@@ -765,7 +771,7 @@ router.post('/import', async (req, res) => {
               `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=application/pdf`,
               { headers: { Authorization: `Bearer ${accessToken}` } }
             );
-            if (!pdfRes.ok) throw new Error(`Could not export Google Doc. Make sure it is shared with the connected Google account.`);
+            if (!pdfRes.ok) throw new Error('Could not access this Google Doc. Make sure it is shared with the Google account connected in Settings → Integrations.');
             const pdfBuf = Buffer.from(await pdfRes.arrayBuffer());
             const pdfBase64 = pdfBuf.toString('base64');
             const pdfPrompt = `Extract this script/storyboard PDF into a JSON scenes array. For each scene: location, what_we_see, what_we_hear, duration, images_in_source (empty array if none). Return ONLY: {"scenes":[{"id":"<uuid>","order":0,"location":"","what_we_see":"","what_we_hear":"","duration":"","collapsed":false,"images_in_source":[],"images":[]}]}`;
@@ -826,7 +832,17 @@ Return ONLY this JSON object with NO markdown:
 }`;
 
       let text;
-      if (process.env.GEMINI_API_KEY) {
+      const isDocx = mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        || mimeType === 'application/msword';
+      if (isDocx) {
+        // Gemini doesn't support DOCX — extract text with mammoth, send to Claude
+        const buf = Buffer.from(fileBase64, 'base64');
+        const { value: docText } = await mammoth.extractRawText({ buffer: buf });
+        text = await callClaude(
+          `Document: "${fileName || 'script'}"\n\nContent:\n${docText.slice(0, 60000)}\n\n${importPrompt}`,
+          SCENE_SYSTEM_PROMPT
+        );
+      } else if (process.env.GEMINI_API_KEY) {
         text = await callGemini(importPrompt, fileBase64, mimeType || 'application/pdf');
       } else {
         const isImage = mimeType?.startsWith('image/');
