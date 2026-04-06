@@ -1696,8 +1696,10 @@ router.post('/:id/tts', async (req, res) => {
     const rawText = scene.what_we_hear || '';
     if (!rawText.trim()) return res.status(400).json({ error: 'Scene has no VO text' });
     const audioBase64 = await elevenLabsTTS(rawText, voice_id, { speed, stability, similarity_boost });
-    // Estimate duration from clean text
-    const cleanForEstimate = rawText.replace(/<[^>]*>/g, '').trim();
+    // Estimate duration from clean text (strip muted first, then HTML)
+    const cleanForEstimate = rawText
+      .replace(/<span[^>]*data-muted[^>]*>.*?<\/span>/gi, '')
+      .replace(/<[^>]*>/g, '').trim();
     const estimated = estimateDuration(cleanForEstimate);
     res.json({ audio_base64: audioBase64, mime_type: 'audio/mpeg', duration_seconds: estimated });
   } catch (err) {
@@ -1716,10 +1718,14 @@ router.post('/:id/tts-full', async (req, res) => {
     const scenes = rows[0].scenes || [];
     const scriptTitle = rows[0].title || 'script';
 
-    // Collect all VO text, stripping HTML, with scene number labels
+    // Collect all VO text — strip muted spans FIRST (while HTML intact), then strip remaining HTML
     const parts = scenes
       .map((s, i) => {
-        const raw = (s.what_we_hear || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+        const raw = (s.what_we_hear || '')
+          .replace(/<span[^>]*data-muted[^>]*>.*?<\/span>/gi, '') // muted spans first
+          .replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ')
+          .replace(/\[[^\]]*\]/g, ' ').replace(/\([^)]*\)/g, ' ')  // stage directions
+          .replace(/\s+/g, ' ').trim();
         return raw ? `Scene ${i + 1}. ${raw}` : null;
       })
       .filter(Boolean);

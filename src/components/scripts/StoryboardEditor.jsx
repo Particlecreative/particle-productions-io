@@ -33,9 +33,12 @@ function stripStageDirections(text) {
     .replace(/\[[^\]]*\]/g, '').replace(/\([^)]*\)/g, '').replace(/\s+/g, ' ').trim();
 }
 function estimateSeconds(text) {
-  const clean = stripStageDirections(text?.replace ? text.replace(/<[^>]*>/g, ' ') : '');
-  if (!clean.trim()) return 0;
-  return Math.round((clean.trim().split(/\s+/).length / VO_WPM) * 60);
+  // Strip muted spans FIRST (while HTML is intact), then strip remaining HTML, then stage directions
+  const withoutMuted = (text || '').replace(/<span[^>]*data-muted[^>]*>.*?<\/span>/gi, '');
+  const withoutHtml = withoutMuted.replace(/<[^>]*>/g, ' ');
+  const clean = withoutHtml.replace(/\[[^\]]*\]/g, '').replace(/\([^)]*\)/g, '').replace(/\s+/g, ' ').trim();
+  if (!clean) return 0;
+  return Math.round((clean.split(/\s+/).length / VO_WPM) * 60);
 }
 function fmtSeconds(s) {
   if (s < 60) return `${s}s`;
