@@ -1241,14 +1241,27 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
     if (refImagesToSave.length > 0) localStorage.setItem(`script_ref_images_${scriptId}`, JSON.stringify(refImagesToSave));
     else localStorage.removeItem(`script_ref_images_${scriptId}`);
     localStorage.setItem(`script_wizard_${scriptId}`, 'done');
-    setShowImageWizard(false);
 
-    // Generate for target scene(s) — delay briefly so wizard unmounts and progress bar is visible
-    if (wizardTargetSceneId === '__all__') {
+    // Close wizard and start generation
+    const target = wizardTargetSceneId;
+    setShowImageWizard(false);
+    setWizardTargetSceneId(null);
+
+    if (target === '__all__') {
       const withoutImages = scenes.filter(s => !s.images || s.images.length === 0);
-      setTimeout(() => executeGenerateAll(withoutImages.length === 0), 100);
-    } else if (wizardTargetSceneId) {
-      setTimeout(() => handleImageGenerate(wizardTargetSceneId), 100);
+      const includeAll = withoutImages.length === 0;
+      // Use requestAnimationFrame to ensure wizard is unmounted before starting
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          executeGenerateAll(includeAll);
+        });
+      });
+    } else if (target) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          handleImageGenerate(target);
+        });
+      });
     }
   };
 
@@ -1295,9 +1308,10 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
 
   const executeGenerateAll = async (includeExistingOverride) => {
     setShowGenAllConfirm(false);
+    setShowImageWizard(false); // ensure wizard is closed
     const withoutImages = scenes.filter(s => !s.images || s.images.length === 0);
     const includeExisting = includeExistingOverride !== undefined ? includeExistingOverride : genAllIncludeExisting;
-    const scenesToGen = includeExisting ? [...scenes] : withoutImages;
+    const scenesToGen = includeExisting ? [...scenes] : (withoutImages.length > 0 ? withoutImages : [...scenes]);
 
     if (scenesToGen.length === 0) {
       toast.info('No scenes to generate for');
