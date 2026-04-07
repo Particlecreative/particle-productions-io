@@ -48,6 +48,11 @@ export default function ScriptSharePage() {
   const [playingSceneId, setPlayingSceneId] = useState(null);
   const [downloadingVO, setDownloadingVO] = useState(false);
   const [lightbox, setLightbox] = useState(null); // { url, name }
+  const [fullVOUrl, setFullVOUrl] = useState(null);
+  const [fullVOPlaying, setFullVOPlaying] = useState(false);
+  const [fullVOProgress, setFullVOProgress] = useState(0);
+  const [fullVODuration, setFullVODuration] = useState(0);
+  const fullVORef = useRef(null);
   const audioRef = useRef(null);
   const saveTimer = useRef(null);
   const touchStartX = useRef(null);
@@ -141,7 +146,12 @@ export default function ScriptSharePage() {
     } catch { setPlayingSceneId(null); }
   }
 
-  async function handleDownloadFullVO() {
+  async function handlePlayFullVO() {
+    if (fullVORef.current && fullVOUrl) {
+      if (fullVOPlaying) { fullVORef.current.pause(); setFullVOPlaying(false); }
+      else { fullVORef.current.play(); setFullVOPlaying(true); }
+      return;
+    }
     if (downloadingVO) return;
     setDownloadingVO(true);
     try {
@@ -153,13 +163,29 @@ export default function ScriptSharePage() {
       if (!res.ok) { setDownloadingVO(false); return; }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${script.title || 'script'}_vo.mp3`;
-      a.click();
-      URL.revokeObjectURL(url);
+      setFullVOUrl(url);
+      const audio = new Audio(url);
+      fullVORef.current = audio;
+      audio.onloadedmetadata = () => setFullVODuration(audio.duration);
+      audio.ontimeupdate = () => setFullVOProgress(audio.currentTime);
+      audio.onended = () => { setFullVOPlaying(false); setFullVOProgress(0); };
+      audio.play();
+      setFullVOPlaying(true);
     } catch {}
     setDownloadingVO(false);
+  }
+
+  function handleStopFullVO() {
+    if (fullVORef.current) { fullVORef.current.pause(); fullVORef.current.currentTime = 0; fullVORef.current = null; }
+    setFullVOPlaying(false); setFullVOProgress(0); setFullVOUrl(null);
+  }
+
+  function handleSeekFullVO(e) {
+    if (fullVORef.current && fullVODuration > 0) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const pct = (e.clientX - rect.left) / rect.width;
+      fullVORef.current.currentTime = pct * fullVODuration;
+    }
   }
 
   function handleSetView(v) {
@@ -410,14 +436,28 @@ export default function ScriptSharePage() {
                   )}
                 </button>
               )}
-              <button
-                onClick={handleDownloadFullVO}
-                disabled={downloadingVO}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium transition-colors disabled:opacity-50"
-              >
-                {downloadingVO ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
-                {downloadingVO ? 'Generating...' : 'Full VO'}
-              </button>
+              {/* Full VO Player */}
+              {fullVOUrl ? (
+                <div className="flex items-center gap-1.5 bg-indigo-100 rounded-lg px-2.5 py-1.5">
+                  <button onClick={handlePlayFullVO} className="text-indigo-600 hover:text-indigo-800">
+                    {fullVOPlaying ? <Pause size={14} /> : <Play size={14} />}
+                  </button>
+                  <div className="w-24 h-1.5 bg-indigo-200 rounded-full cursor-pointer relative" onClick={handleSeekFullVO}>
+                    <div className="h-full bg-indigo-600 rounded-full transition-all" style={{ width: `${fullVODuration > 0 ? (fullVOProgress / fullVODuration) * 100 : 0}%` }} />
+                  </div>
+                  <span className="text-[10px] font-mono text-indigo-600">{Math.floor(fullVOProgress)}s/{Math.floor(fullVODuration)}s</span>
+                  <button onClick={handleStopFullVO} className="text-indigo-400 hover:text-red-500"><X size={12} /></button>
+                </div>
+              ) : (
+                <button
+                  onClick={handlePlayFullVO}
+                  disabled={downloadingVO}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium transition-colors disabled:opacity-50"
+                >
+                  {downloadingVO ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
+                  {downloadingVO ? 'Generating...' : 'Play Full VO'}
+                </button>
+              )}
               <button
                 onClick={() => { setPresentIndex(0); setPresentMode(true); }}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-gray-800 hover:bg-gray-900 text-white text-xs font-medium transition-colors"

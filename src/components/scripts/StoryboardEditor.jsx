@@ -111,6 +111,14 @@ function RichTextCell({ value, onChange, placeholder, readOnly, className, onMou
     }
   }, [onChange]);
 
+  // MutationObserver to catch DOM changes from external tools (format toolbar mute button)
+  useEffect(() => {
+    if (!ref.current) return;
+    const observer = new MutationObserver(() => handleInput());
+    observer.observe(ref.current, { childList: true, subtree: true, characterData: true, attributes: true });
+    return () => observer.disconnect();
+  }, [handleInput]);
+
   return (
     <div className="relative">
       <div
@@ -967,6 +975,57 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
     setLoadingVoices(false);
   };
 
+  // Full VO — play in browser with controls (not download)
+  const [fullVOUrl, setFullVOUrl] = useState(null);
+  const [fullVOPlaying, setFullVOPlaying] = useState(false);
+  const [fullVOProgress, setFullVOProgress] = useState(0);
+  const [fullVODuration, setFullVODuration] = useState(0);
+  const fullVORef = useRef(null);
+
+  const handlePlayFullVO = async () => {
+    // If already loaded, toggle play/pause
+    if (fullVORef.current && fullVOUrl) {
+      if (fullVOPlaying) { fullVORef.current.pause(); setFullVOPlaying(false); }
+      else { fullVORef.current.play(); setFullVOPlaying(true); }
+      return;
+    }
+    if (downloadingFullVO) return;
+    setDownloadingFullVO(true);
+    try {
+      const res = await fetch(`${API}/api/scripts/${scriptId}/tts-full`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
+        body: JSON.stringify({ voice_id: voiceId, speed: voiceSpeed, stability: voiceStability, similarity_boost: 0.75 }),
+      });
+      if (!res.ok) { toast.error('Voice generation failed'); setDownloadingFullVO(false); return; }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      setFullVOUrl(url);
+      const audio = new Audio(url);
+      fullVORef.current = audio;
+      audio.onloadedmetadata = () => setFullVODuration(audio.duration);
+      audio.ontimeupdate = () => setFullVOProgress(audio.currentTime);
+      audio.onended = () => { setFullVOPlaying(false); setFullVOProgress(0); };
+      audio.play();
+      setFullVOPlaying(true);
+    } catch { toast.error('Voice generation failed'); }
+    setDownloadingFullVO(false);
+  };
+
+  const handleStopFullVO = () => {
+    if (fullVORef.current) { fullVORef.current.pause(); fullVORef.current.currentTime = 0; fullVORef.current = null; }
+    setFullVOPlaying(false); setFullVOProgress(0); setFullVOUrl(null);
+  };
+
+  const handleSeekFullVO = (e) => {
+    if (fullVORef.current && fullVODuration > 0) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const pct = (e.clientX - rect.left) / rect.width;
+      fullVORef.current.currentTime = pct * fullVODuration;
+    }
+  };
+
+  // Legacy download (still available in More menu)
   const handleDownloadFullVO = async () => {
     if (downloadingFullVO) return;
     setDownloadingFullVO(true);
@@ -976,18 +1035,10 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
         body: JSON.stringify({ voice_id: voiceId, speed: voiceSpeed, stability: voiceStability, similarity_boost: 0.75 }),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        toast.error(err.error || 'Voice-over download failed');
-        return;
-      }
+      if (!res.ok) { toast.error('Voice-over download failed'); return; }
       const blob = await res.blob();
-      const disposition = res.headers.get('Content-Disposition') || '';
-      const match = disposition.match(/filename="([^"]+)"/);
-      const filename = match ? match[1] : `${(script.title || 'script').replace(/\s+/g, '_')}_vo.mp3`;
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = filename; a.click();
+      const a = document.createElement('a'); a.href = url; a.download = `${(script?.title || 'script').replace(/\s+/g, '_')}_vo.mp3`; a.click();
       URL.revokeObjectURL(url);
     } catch { toast.error('Voice-over download failed'); }
     setDownloadingFullVO(false);
@@ -1441,15 +1492,29 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
               {accountVoices.find(v => v.voice_id === voiceId)?.name || 'Voice'}
               {voiceSpeed !== 1.0 && <span className="text-[9px] opacity-70">{voiceSpeed}x</span>}
             </button>
-            <button
-              onClick={handleDownloadFullVO}
-              disabled={downloadingFullVO}
-              className="shrink-0 flex items-center gap-1 text-[10px] px-2 py-1 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors font-semibold"
-              title="Download full script voiceover as MP3"
-            >
-              {downloadingFullVO ? <Loader2 size={10} className="animate-spin" /> : <Play size={10} />}
-              {downloadingFullVO ? 'Generating...' : 'Full VO'}
-            </button>
+            {/* Full VO player */}
+            {fullVOUrl ? (
+              <div className="shrink-0 flex items-center gap-1.5 bg-indigo-100 rounded-lg px-2 py-1">
+                <button onClick={handlePlayFullVO} className="text-indigo-600 hover:text-indigo-800">
+                  {fullVOPlaying ? <Pause size={12} /> : <Play size={12} />}
+                </button>
+                <div className="w-20 h-1.5 bg-indigo-200 rounded-full cursor-pointer relative" onClick={handleSeekFullVO}>
+                  <div className="h-full bg-indigo-600 rounded-full transition-all" style={{ width: `${fullVODuration > 0 ? (fullVOProgress / fullVODuration) * 100 : 0}%` }} />
+                </div>
+                <span className="text-[9px] font-mono text-indigo-600">{Math.floor(fullVOProgress)}s/{Math.floor(fullVODuration)}s</span>
+                <button onClick={handleStopFullVO} className="text-indigo-400 hover:text-red-500"><X size={10} /></button>
+              </div>
+            ) : (
+              <button
+                onClick={handlePlayFullVO}
+                disabled={downloadingFullVO}
+                className="shrink-0 flex items-center gap-1 text-[10px] px-2 py-1 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors font-semibold"
+                title="Play full script voiceover"
+              >
+                {downloadingFullVO ? <Loader2 size={10} className="animate-spin" /> : <Play size={10} />}
+                {downloadingFullVO ? 'Generating...' : 'Full VO'}
+              </button>
+            )}
             <div className="flex items-center gap-0.5 bg-gray-100 rounded-md p-0.5 shrink-0">
               {['15', '30', '60'].map(t => (
                 <button
