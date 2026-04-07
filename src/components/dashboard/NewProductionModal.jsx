@@ -9,17 +9,28 @@ import clsx from 'clsx';
 const PROD_TYPES = ['Shoot', 'Remote Shoot', 'AI'];
 const YEARS = [2024, 2025, 2026, 2027, 2028];
 
-export default function NewProductionModal({ brandId, onClose, onCreate, existingCount, selectedYear = 2026 }) {
+export default function NewProductionModal({ brandId, onClose, onCreate, existingProductions = [], existingCount, selectedYear = 2026 }) {
   const { lists } = useLists();
   const { isEditor } = useAuth();
 
-  function buildId(year, count) {
-    const suffix = String(count + 1).padStart(2, '0');
-    return `PRD${String(year).slice(2)}-${suffix}`;
+  // Find the highest existing ID number for a given year prefix
+  function getNextId(year) {
+    const prefix = `PRD${String(year).slice(2)}-`;
+    let maxNum = 0;
+    (existingProductions || []).forEach(p => {
+      if (p.id?.startsWith(prefix)) {
+        const num = parseInt(p.id.replace(prefix, ''), 10);
+        if (!isNaN(num) && num > maxNum) maxNum = num;
+      }
+    });
+    // Fallback to existingCount if no IDs match the pattern
+    if (maxNum === 0 && existingCount) maxNum = existingCount;
+    const suffix = String(maxNum + 1).padStart(2, '0');
+    return `${prefix}${suffix}`;
   }
 
   const [form, setForm] = useState({
-    id: buildId(selectedYear, existingCount),
+    id: getNextId(selectedYear),
     project_name: '',
     product_type: [],
     production_type: 'Shoot',
@@ -53,7 +64,7 @@ export default function NewProductionModal({ brandId, onClose, onCreate, existin
     setForm(f => ({
       ...f,
       production_year: year,
-      id: buildId(year, existingCount),
+      id: getNextId(year),
     }));
   }
 

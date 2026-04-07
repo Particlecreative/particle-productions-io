@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Eye, EyeOff, ChevronUp, ChevronDown, MessageSquare, GripVertical, Save, X, Check, Pencil, SlidersHorizontal, RefreshCw, HelpCircle, Upload } from 'lucide-react';
+import { Plus, Search, Eye, EyeOff, ChevronUp, ChevronDown, MessageSquare, GripVertical, Save, X, Check, Pencil, SlidersHorizontal, RefreshCw, HelpCircle, Upload, Lock, Unlock } from 'lucide-react';
 import { useBrand } from '../context/BrandContext';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency } from '../context/CurrencyContext';
@@ -293,6 +293,22 @@ export default function Dashboard() {
     }
     setEditingRow(null);
     refresh();
+  }
+
+  async function handleLock(prodId, locked) {
+    try {
+      const res = await fetch(`/api/productions/${prodId}/lock`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('cp_auth_token')}` },
+        body: JSON.stringify({ locked }),
+      });
+      if (res.ok) {
+        refresh();
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Failed to lock/unlock');
+      }
+    } catch {}
   }
 
   function handleCreate(data) {
@@ -854,10 +870,12 @@ export default function Dashboard() {
                   onStageChange={handleStageChange}
                   onProductionTypeChange={handleProductionTypeChange}
                   isEditor={isEditor}
+                  isAdmin={isAdmin}
                   editingRow={editingRow}
                   setEditingRow={setEditingRow}
                   onSaveRow={handleSaveRow}
                   onInlineEdit={handleInlineEdit}
+                  onLock={handleLock}
                   dragId={dragId}
                   dragOverId={dragOverId}
                   onDragStart={handleDragStart}
@@ -905,7 +923,7 @@ export default function Dashboard() {
           brandId={brandId}
           onClose={() => setShowNewModal(false)}
           onCreate={handleCreate}
-          existingCount={productions.length}
+          existingProductions={productions}
           selectedYear={selectedYear}
         />
       )}
@@ -999,8 +1017,8 @@ const STATUS_ROW_COLORS = {
 };
 
 function ProductionRow({
-  prod, fmt, onOpen, onUpdates, onStageChange, onProductionTypeChange, isEditor,
-  editingRow, setEditingRow, onSaveRow, onInlineEdit,
+  prod, fmt, onOpen, onUpdates, onStageChange, onProductionTypeChange, isEditor, isAdmin,
+  editingRow, setEditingRow, onSaveRow, onInlineEdit, onLock,
   dragId, dragOverId, onDragStart, onDragOver, onDrop, onDragEnd, canDrag,
   hiddenCols = [], colorByStatus = true, orderedCols = [], compactMode = false,
 }) {
@@ -1119,10 +1137,11 @@ function ProductionRow({
             style={{ color: 'var(--brand-secondary)' }}
             className="flex items-center gap-1 group/id"
             title={isEditor ? 'Click to edit suffix' : undefined}
-            onClick={isEditor ? startEditId : undefined}
+            onClick={isEditor && !prod.locked ? startEditId : undefined}
           >
+            {prod.locked && <Lock size={8} className="text-amber-400 flex-shrink-0" />}
             {prod.id}
-            {isEditor && <Pencil size={9} className="opacity-0 group-hover/id:opacity-30 flex-shrink-0" />}
+            {isEditor && !prod.locked && <Pencil size={9} className="opacity-0 group-hover/id:opacity-30 flex-shrink-0" />}
           </span>
         )}
       </td>
@@ -1517,13 +1536,27 @@ function ProductionRow({
           </div>
         ) : (
           <div className="flex items-center gap-1">
-            {isEditor && (
+            {isEditor && !prod.locked && (
               <button
                 onClick={startEdit}
                 className="p-1.5 rounded hover:bg-blue-50 text-gray-300 hover:text-blue-500 transition-colors sm:opacity-0 opacity-60 sm:group-hover:opacity-100"
-                title="Edit row (click pencil)"
+                title="Edit row"
               >
                 <Pencil size={14} />
+              </button>
+            )}
+            {prod.locked && (
+              <span className="p-1.5 text-amber-500" title={`Locked by ${prod.locked_by || 'admin'}`}>
+                <Lock size={13} />
+              </span>
+            )}
+            {isAdmin && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onLock(prod.id, !prod.locked); }}
+                className={`p-1.5 rounded transition-colors sm:opacity-0 opacity-60 sm:group-hover:opacity-100 ${prod.locked ? 'hover:bg-green-50 text-amber-400 hover:text-green-600' : 'hover:bg-amber-50 text-gray-300 hover:text-amber-500'}`}
+                title={prod.locked ? 'Unlock production' : 'Lock production'}
+              >
+                {prod.locked ? <Unlock size={13} /> : <Lock size={13} />}
               </button>
             )}
             <button

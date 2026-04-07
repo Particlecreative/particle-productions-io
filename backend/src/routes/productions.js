@@ -85,8 +85,34 @@ router.post('/', requireAdmin, async (req, res) => {
   }
 });
 
+// POST /api/productions/:id/lock — lock/unlock a production (admin only)
+router.post('/:id/lock', requireAdmin, async (req, res) => {
+  try {
+    const { locked } = req.body;
+    const { rows } = await db.query(
+      `UPDATE productions SET locked = $1, locked_at = CASE WHEN $1 THEN NOW() ELSE NULL END, locked_by = CASE WHEN $1 THEN $2 ELSE NULL END, updated_at = NOW() WHERE id = $3 RETURNING *`,
+      [!!locked, req.user?.name || req.user?.email || 'Admin', req.params.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('POST /productions/:id/lock error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // PATCH /api/productions/:id
 router.patch('/:id', requireEditor, async (req, res) => {
+  // Check if production is locked — only admins can edit locked productions
+  const RANK = { Viewer: 0, Accounting: 1, Editor: 2, Admin: 3 };
+  const isAdmin = (RANK[req.user?.role] ?? 0) >= RANK.Admin;
+  try {
+    const { rows: lockCheck } = await db.query('SELECT locked FROM productions WHERE id = $1', [req.params.id]);
+    if (lockCheck[0]?.locked && !isAdmin) {
+      return res.status(403).json({ error: 'This production is locked. Only admins can edit locked productions.' });
+    }
+  } catch {}
+
   const allowed = [
     'project_name','product_type','producer','planned_start','planned_end',
     'planned_budget_2026','estimated_budget','actual_spent','payment_date',
