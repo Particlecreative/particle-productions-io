@@ -1724,15 +1724,15 @@ router.post('/:id/tts-full', async (req, res) => {
     const scenes = rows[0].scenes || [];
     const scriptTitle = rows[0].title || 'script';
 
-    // Collect all VO text — strip muted spans FIRST (while HTML intact), then strip remaining HTML
+    // Collect all VO text — strip muted spans FIRST, then HTML, NO scene labels (just clean VO text)
     const parts = scenes
-      .map((s, i) => {
+      .map((s) => {
         const raw = (s.what_we_hear || '')
           .replace(/<span[^>]*data-muted[^>]*>.*?<\/span>/gi, '') // muted spans first
           .replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ')
           .replace(/\[[^\]]*\]/g, ' ').replace(/\([^)]*\)/g, ' ')  // stage directions
           .replace(/\s+/g, ' ').trim();
-        return raw ? `Scene ${i + 1}. ${raw}` : null;
+        return raw || null;
       })
       .filter(Boolean);
 

@@ -167,22 +167,23 @@ function FormatToolbar({ style, onDismiss }) {
           if (!sel || sel.rangeCount === 0) return;
           const range = sel.getRangeAt(0);
           // Find the contentEditable parent to trigger input event after mutation
-          const editableEl = range.startContainer.parentElement?.closest?.('[contenteditable]') || range.startContainer.parentElement;
+          let editableEl = range.startContainer;
+          while (editableEl && !editableEl.contentEditable?.toString()?.includes('true')) editableEl = editableEl.parentElement;
           // Check if already muted — if so, unwrap
           const parent = range.startContainer.parentElement;
           if (parent?.dataset?.muted) {
             const text = document.createTextNode(parent.textContent);
             parent.parentNode.replaceChild(text, parent);
-            // Trigger input so React state updates and timer recalculates
-            editableEl?.dispatchEvent(new Event('input', { bubbles: true }));
+            // Trigger input event on the contentEditable so React state + timer update
+            if (editableEl) editableEl.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
             return;
           }
           const span = document.createElement('span');
           span.className = 'vo-muted';
           span.dataset.muted = 'true';
           try { range.surroundContents(span); } catch { /* partial selection */ }
-          // Trigger input so React state updates and timer recalculates
-          editableEl?.dispatchEvent(new Event('input', { bubbles: true }));
+          // Trigger input event on the contentEditable so React state + timer update
+          if (editableEl) editableEl.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
         }}
         className="w-7 h-7 flex items-center justify-center rounded-lg text-orange-300 hover:bg-white/20 text-xs transition-colors"
         title="Mute — exclude from voiceover"
@@ -1044,24 +1045,23 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
 
   // ── AI Image wizard flow ──
   const handleRequestAIImage = (sceneId) => {
-    // Check if setup was already done for this script
-    const existing = getCharProfiles();
     const wizardDone = localStorage.getItem(`script_wizard_${scriptId}`);
-    if (wizardDone || existing.length > 0) {
-      // Already set up — generate with feedback
-      const productName = localStorage.getItem(`script_product_name_${scriptId}`) || '';
-      const charNames = existing.map(c => c.name).filter(Boolean).join(', ');
-      const info = [charNames, productName].filter(Boolean).join(' · ') || 'default settings';
-      toast.success(`Generating with ${info}...`);
-      handleImageGenerate(sceneId);
-    } else {
-      // Show setup wizard
+    if (!wizardDone) {
+      // First time — show full wizard starting at step 1
       setWizardTargetSceneId(sceneId);
       setWizardStep(1);
       setWizardProductName('');
       setWizardProductPhotos([]);
       setWizardRefImages([]);
       setShowImageWizard(true);
+    } else {
+      // Already set up — generate with feedback toast
+      const existing = getCharProfiles();
+      const productName = localStorage.getItem(`script_product_name_${scriptId}`) || '';
+      const charNames = existing.map(c => c.name).filter(Boolean).join(', ');
+      const info = [charNames, productName].filter(Boolean).join(' · ') || 'default settings';
+      toast.success(`Generating with ${info}...`);
+      handleImageGenerate(sceneId);
     }
   };
 

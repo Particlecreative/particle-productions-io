@@ -2,9 +2,21 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   Table2, Volume2, Layout, Maximize2, X, ChevronLeft, ChevronRight,
-  Printer, Loader2, MessageSquare, Send, Check,
+  Printer, Loader2, MessageSquare, Send, Check, Play, Pause, Download,
 } from 'lucide-react';
+import DOMPurify from 'dompurify';
 import clsx from 'clsx';
+
+// Sanitize and render rich text (muted spans, bold, italic, colors)
+const PURIFY_CONFIG = {
+  ALLOWED_TAGS: ['b', 'i', 'u', 'strong', 'em', 'span', 'br', 'font', 'div', 'p'],
+  ALLOWED_ATTR: ['style', 'class', 'data-muted', 'color'],
+};
+function RichTextDisplay({ html, className }) {
+  if (!html) return <span className={className}>—</span>;
+  const clean = DOMPurify.sanitize(html, PURIFY_CONFIG);
+  return <span className={className} dangerouslySetInnerHTML={{ __html: clean }} />;
+}
 
 const API = import.meta.env.VITE_API_URL || '';
 
@@ -33,6 +45,9 @@ export default function ScriptSharePage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [expandedAudio, setExpandedAudio] = useState({});
+  const [playingSceneId, setPlayingSceneId] = useState(null);
+  const [downloadingVO, setDownloadingVO] = useState(false);
+  const audioRef = useRef(null);
   const saveTimer = useRef(null);
   const touchStartX = useRef(null);
 
@@ -102,6 +117,48 @@ export default function ScriptSharePage() {
     const updated = scenes.map(s => s.id === sceneId ? { ...s, [field]: value } : s);
     setScenes(updated);
     debounceSave(updated);
+  }
+
+  // ── TTS Playback (share page) ──
+  async function handlePlayScene(sceneId) {
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+    if (playingSceneId === sceneId) { setPlayingSceneId(null); return; }
+    setPlayingSceneId(sceneId);
+    try {
+      const res = await fetch(`${API}/api/scripts/${script.id}/tts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scene_id: sceneId }),
+      });
+      const data = await res.json();
+      if (!data.audio_base64) { setPlayingSceneId(null); return; }
+      const audio = new Audio(`data:${data.mime_type};base64,${data.audio_base64}`);
+      audioRef.current = audio;
+      audio.onended = () => { setPlayingSceneId(null); audioRef.current = null; };
+      audio.onerror = () => { setPlayingSceneId(null); audioRef.current = null; };
+      audio.play();
+    } catch { setPlayingSceneId(null); }
+  }
+
+  async function handleDownloadFullVO() {
+    if (downloadingVO) return;
+    setDownloadingVO(true);
+    try {
+      const res = await fetch(`${API}/api/scripts/${script.id}/tts-full`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) { setDownloadingVO(false); return; }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${script.title || 'script'}_vo.mp3`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {}
+    setDownloadingVO(false);
   }
 
   function handleSetView(v) {
@@ -223,7 +280,7 @@ export default function ScriptSharePage() {
                 </div>
                 <div>
                   <div className="text-indigo-400 text-xs uppercase tracking-widest mb-3 font-semibold">What We Hear</div>
-                  <p className="text-indigo-200 text-xl leading-relaxed italic">{scene.what_we_hear || '—'}</p>
+                  <RichTextDisplay html={scene.what_we_hear} className="text-indigo-200 text-xl leading-relaxed italic block" />
                 </div>
               </div>
               {scene.images?.length > 0 && (
@@ -335,6 +392,14 @@ export default function ScriptSharePage() {
                 </button>
               )}
               <button
+                onClick={handleDownloadFullVO}
+                disabled={downloadingVO}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium transition-colors disabled:opacity-50"
+              >
+                {downloadingVO ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+                {downloadingVO ? 'Generating...' : 'Full VO'}
+              </button>
+              <button
                 onClick={() => { setPresentIndex(0); setPresentMode(true); }}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-gray-800 hover:bg-gray-900 text-white text-xs font-medium transition-colors"
               >
@@ -399,7 +464,7 @@ export default function ScriptSharePage() {
                       </td>
                       <td className="px-3 py-3" onMouseUp={() => handleTextMouseUp(scene.id, 'what_we_see')}>
                         {readOnly ? (
-                          <p className="text-sm text-gray-700 whitespace-pre-wrap select-text">{scene.what_we_see || '—'}</p>
+                          <RichTextDisplay html={scene.what_we_see} className="text-sm text-gray-700 whitespace-pre-wrap select-text block" />
                         ) : (
                           <textarea value={scene.what_we_see || ''} onChange={e => handleCellChange(scene.id, 'what_we_see', e.target.value)}
                             className="w-full resize-none border-0 outline-none bg-transparent text-sm text-gray-700 min-h-[80px]" rows={4} />
@@ -407,7 +472,7 @@ export default function ScriptSharePage() {
                       </td>
                       <td className="px-3 py-3" onMouseUp={() => handleTextMouseUp(scene.id, 'what_we_hear')}>
                         {readOnly ? (
-                          <p className="text-sm text-indigo-700 italic whitespace-pre-wrap select-text">{scene.what_we_hear || '—'}</p>
+                          <RichTextDisplay html={scene.what_we_hear} className="text-sm text-indigo-700 italic whitespace-pre-wrap select-text block" />
                         ) : (
                           <textarea value={scene.what_we_hear || ''} onChange={e => handleCellChange(scene.id, 'what_we_hear', e.target.value)}
                             className="w-full resize-none border-0 outline-none bg-transparent text-sm text-indigo-700 italic min-h-[80px]" rows={4} />
@@ -475,10 +540,19 @@ export default function ScriptSharePage() {
                       </td>
                       <td className="px-4 py-4" onMouseUp={() => handleTextMouseUp(scene.id, 'what_we_hear')}>
                         {readOnly ? (
-                          <p className="text-base text-indigo-800 italic leading-relaxed whitespace-pre-wrap select-text">{scene.what_we_hear || '—'}</p>
+                          <RichTextDisplay html={scene.what_we_hear} className="text-base text-indigo-800 italic leading-relaxed whitespace-pre-wrap select-text block" />
                         ) : (
                           <textarea value={scene.what_we_hear || ''} onChange={e => handleCellChange(scene.id, 'what_we_hear', e.target.value)}
                             className="w-full resize-none border-0 outline-none bg-transparent text-base text-indigo-800 italic min-h-[80px] leading-relaxed" rows={3} />
+                        )}
+                        {scene.what_we_hear?.trim() && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handlePlayScene(scene.id); }}
+                            className={clsx('mt-2 flex items-center gap-1 text-[10px] px-2 py-1 rounded-full transition-colors',
+                              playingSceneId === scene.id ? 'bg-indigo-100 text-indigo-600' : 'text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50')}
+                          >
+                            {playingSceneId === scene.id ? <><Loader2 size={9} className="animate-spin" /> Playing...</> : <><Play size={9} /> Play</>}
+                          </button>
                         )}
                       </td>
                       {canComment && (
@@ -538,7 +612,7 @@ export default function ScriptSharePage() {
                     )}
                     {scene.what_we_hear && (
                       <button className="text-left w-full mt-1" onClick={() => setExpandedAudio(prev => ({ ...prev, [scene.id]: !prev[scene.id] }))}>
-                        <p className={clsx('text-xs text-indigo-600 italic', expandedAudio[scene.id] ? '' : 'line-clamp-2')}>{scene.what_we_hear}</p>
+                        <RichTextDisplay html={scene.what_we_hear} className={clsx('text-xs text-indigo-600 italic block', expandedAudio[scene.id] ? '' : 'line-clamp-2')} />
                         {scene.what_we_hear.length > 80 && (
                           <span className="text-[10px] text-indigo-400">{expandedAudio[scene.id] ? 'less ▲' : 'more ▼'}</span>
                         )}
