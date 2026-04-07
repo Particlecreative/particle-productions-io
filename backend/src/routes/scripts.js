@@ -1706,7 +1706,7 @@ async function elevenLabsTTS(text, voiceIdOverride, options = {}) {
   const voiceId = voiceIdOverride || process.env.ELEVENLABS_VOICE_ID || '21m00Tcm4TlvDq8ikWAM';
   // Strip muted/non-spoken spans, HTML tags, and decode entities
   const cleanText = text
-    .replace(/<span[^>]*data-muted[^>]*>.*?<\/span>/gi, '') // strip muted spans first (before HTML strip)
+    .replace(/<span[^>]*(?:data-muted|class="vo-muted")[^>]*>[\s\S]*?<\/span>/gi, '') // strip muted spans first (before HTML strip)
     .replace(/<[^>]*>/g, ' ')
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
@@ -1788,7 +1788,7 @@ router.post('/:id/tts', async (req, res) => {
     const audioBase64 = await elevenLabsTTS(rawText, voice_id, { speed, stability, similarity_boost });
     // Estimate duration from clean text (strip muted first, then HTML)
     const cleanForEstimate = rawText
-      .replace(/<span[^>]*data-muted[^>]*>.*?<\/span>/gi, '')
+      .replace(/<span[^>]*(?:data-muted|class="vo-muted")[^>]*>[\s\S]*?<\/span>/gi, '')
       .replace(/<[^>]*>/g, '').trim();
     const estimated = estimateDuration(cleanForEstimate);
     res.json({ audio_base64: audioBase64, mime_type: 'audio/mpeg', duration_seconds: estimated });
@@ -1812,7 +1812,7 @@ router.post('/:id/tts-full', async (req, res) => {
     const parts = scenes
       .map((s) => {
         const raw = (s.what_we_hear || '')
-          .replace(/<span[^>]*data-muted[^>]*>.*?<\/span>/gi, '') // muted spans first
+          .replace(/<span[^>]*(?:data-muted|class="vo-muted")[^>]*>[\s\S]*?<\/span>/gi, '') // muted spans first
           .replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ')
           .replace(/\[[^\]]*\]/g, ' ').replace(/\([^)]*\)/g, ' ')  // stage directions
           .replace(/\s+/g, ' ').trim();

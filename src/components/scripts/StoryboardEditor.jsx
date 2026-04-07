@@ -31,12 +31,14 @@ function jwt() { return localStorage.getItem('cp_auth_token'); }
 const VO_WPM = 130;
 function stripStageDirections(text) {
   return (text || '')
-    .replace(/<span[^>]*data-muted[^>]*>.*?<\/span>/gi, '') // strip muted/non-spoken spans
+    .replace(/<span[^>]*(?:data-muted|class="vo-muted")[^>]*>[\s\S]*?<\/span>/gi, '') // strip muted/non-spoken spans
     .replace(/\[[^\]]*\]/g, '').replace(/\([^)]*\)/g, '').replace(/\s+/g, ' ').trim();
 }
 function estimateSeconds(text) {
   // Strip muted spans FIRST (while HTML is intact), then strip remaining HTML, then stage directions
-  const withoutMuted = (text || '').replace(/<span[^>]*data-muted[^>]*>.*?<\/span>/gi, '');
+  // Use [\s\S]*? to match across nested tags inside muted spans
+  const withoutMuted = (text || '')
+    .replace(/<span[^>]*(?:data-muted|class="vo-muted")[^>]*>[\s\S]*?<\/span>/gi, '');
   const withoutHtml = withoutMuted.replace(/<[^>]*>/g, ' ');
   const clean = withoutHtml.replace(/\[[^\]]*\]/g, '').replace(/\([^)]*\)/g, '').replace(/\s+/g, ' ').trim();
   if (!clean) return 0;
@@ -1438,6 +1440,15 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
               <Volume2 size={10} />
               {accountVoices.find(v => v.voice_id === voiceId)?.name || 'Voice'}
               {voiceSpeed !== 1.0 && <span className="text-[9px] opacity-70">{voiceSpeed}x</span>}
+            </button>
+            <button
+              onClick={handleDownloadFullVO}
+              disabled={downloadingFullVO}
+              className="shrink-0 flex items-center gap-1 text-[10px] px-2 py-1 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors font-semibold"
+              title="Download full script voiceover as MP3"
+            >
+              {downloadingFullVO ? <Loader2 size={10} className="animate-spin" /> : <Play size={10} />}
+              {downloadingFullVO ? 'Generating...' : 'Full VO'}
             </button>
             <div className="flex items-center gap-0.5 bg-gray-100 rounded-md p-0.5 shrink-0">
               {['15', '30', '60'].map(t => (

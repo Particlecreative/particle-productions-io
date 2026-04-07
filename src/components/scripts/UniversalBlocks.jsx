@@ -42,8 +42,12 @@ export default function UniversalBlocks({ brandId, onInsert, onClose, selectedSc
     setLoading(false);
   };
 
+  // New block scenes state (for manual creation without selection)
+  const [newBlockScenes, setNewBlockScenes] = useState([{ location: '', what_we_see: '', what_we_hear: '', duration: '' }]);
+
   const handleCreate = async () => {
-    if (!createName.trim() || !selectedScenes?.length) return;
+    if (!createName.trim()) return;
+    const scenesToSave = selectedScenes?.length > 0 ? selectedScenes : newBlockScenes.filter(s => s.what_we_see || s.what_we_hear);
     setCreating(true);
     try {
       const res = await fetch(`${API}/api/scripts/blocks`, {
@@ -53,7 +57,7 @@ export default function UniversalBlocks({ brandId, onInsert, onClose, selectedSc
           brand_id: brandId,
           name: createName.trim(),
           category: createCategory.trim() || 'general',
-          scenes: selectedScenes,
+          scenes: scenesToSave,
         }),
       });
       const data = await res.json();
@@ -133,14 +137,12 @@ export default function UniversalBlocks({ brandId, onInsert, onClose, selectedSc
               <Package size={18} className="text-indigo-500" /> Universal Blocks
             </h3>
             <div className="flex items-center gap-2">
-              {selectedScenes?.length > 0 && (
-                <button
-                  onClick={() => setShowCreate(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-                >
-                  <Plus size={12} /> Save Selection as Block
-                </button>
-              )}
+              <button
+                onClick={() => setShowCreate(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+              >
+                <Plus size={12} /> New Block
+              </button>
               <button onClick={onClose}><X size={18} className="text-gray-400" /></button>
             </div>
           </div>
@@ -176,8 +178,12 @@ export default function UniversalBlocks({ brandId, onInsert, onClose, selectedSc
 
         {/* Create Block Form */}
         {showCreate && (
-          <div className="px-6 py-4 border-b border-gray-100 bg-indigo-50/50 shrink-0">
-            <p className="text-xs font-semibold text-gray-600 mb-2">Save {selectedScenes?.length} selected scene{selectedScenes?.length !== 1 ? 's' : ''} as a reusable block</p>
+          <div className="px-6 py-4 border-b border-gray-100 bg-indigo-50/50 shrink-0 max-h-[50vh] overflow-y-auto">
+            <p className="text-xs font-semibold text-gray-600 mb-2">
+              {selectedScenes?.length > 0
+                ? `Save ${selectedScenes.length} scene${selectedScenes.length !== 1 ? 's' : ''} as a reusable block`
+                : 'Create a new reusable block'}
+            </p>
             <div className="flex gap-2 mb-2">
               <input
                 value={createName}
@@ -197,6 +203,31 @@ export default function UniversalBlocks({ brandId, onInsert, onClose, selectedSc
                 {categories.map(c => <option key={c} value={c} />)}
               </datalist>
             </div>
+            {/* Scene inputs when no selection */}
+            {(!selectedScenes || selectedScenes.length === 0) && (
+              <div className="space-y-2 mb-2">
+                {newBlockScenes.map((s, i) => (
+                  <div key={i} className="border border-gray-200 rounded-lg p-2 bg-white space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] font-bold text-gray-400">Scene {i + 1}</span>
+                      {newBlockScenes.length > 1 && (
+                        <button onClick={() => setNewBlockScenes(prev => prev.filter((_, j) => j !== i))} className="text-[9px] text-red-400 hover:text-red-600 ml-auto">Remove</button>
+                      )}
+                    </div>
+                    <input value={s.location} onChange={e => setNewBlockScenes(prev => prev.map((sc, j) => j === i ? { ...sc, location: e.target.value } : sc))}
+                      placeholder="Location" className="w-full text-xs border border-gray-100 rounded px-2 py-1 outline-none" />
+                    <textarea value={s.what_we_see} onChange={e => setNewBlockScenes(prev => prev.map((sc, j) => j === i ? { ...sc, what_we_see: e.target.value } : sc))}
+                      placeholder="What We See" rows={2} className="w-full text-xs border border-gray-100 rounded px-2 py-1 outline-none resize-none" />
+                    <textarea value={s.what_we_hear} onChange={e => setNewBlockScenes(prev => prev.map((sc, j) => j === i ? { ...sc, what_we_hear: e.target.value } : sc))}
+                      placeholder="What We Hear" rows={2} className="w-full text-xs border border-gray-100 rounded px-2 py-1 outline-none resize-none text-indigo-700 italic" />
+                  </div>
+                ))}
+                <button onClick={() => setNewBlockScenes(prev => [...prev, { location: '', what_we_see: '', what_we_hear: '', duration: '' }])}
+                  className="text-[10px] text-indigo-600 hover:text-indigo-700 font-semibold flex items-center gap-1">
+                  <Plus size={10} /> Add Scene
+                </button>
+              </div>
+            )}
             <div className="flex gap-2">
               <button onClick={() => setShowCreate(false)} className="px-3 py-1.5 text-xs text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50">Cancel</button>
               <button
