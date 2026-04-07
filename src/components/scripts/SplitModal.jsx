@@ -104,6 +104,30 @@ export default function SplitModal({ scene, scriptId, onClose, onApply }) {
     setLoading(false);
   };
 
+  const handleSplitBySentences = () => {
+    // Split both What We See and What We Hear by sentence boundaries (. ! ?)
+    const splitBySentence = (text) => {
+      if (!text) return [''];
+      const sentences = text.split(/(?<=[.!?])\s+/).filter(s => s.trim());
+      return sentences.length > 0 ? sentences : [text];
+    };
+
+    const seeSentences = splitBySentence(initialWhatWeSee);
+    const hearSentences = splitBySentence(initialWhatWeHear);
+    const maxLen = Math.max(seeSentences.length, hearSentences.length);
+
+    if (maxLen <= 1) return; // Nothing to split
+
+    const newSegments = [];
+    for (let i = 0; i < maxLen; i++) {
+      newSegments.push({
+        whatWeSee: seeSentences[i] || '',
+        whatWeHear: hearSentences[i] || '',
+      });
+    }
+    setSegments(newSegments);
+  };
+
   const handleApply = () => {
     const validSegments = segments.filter(s => s.whatWeSee.trim() || s.whatWeHear.trim());
     if (validSegments.length === 0) return;
@@ -124,14 +148,21 @@ export default function SplitModal({ scene, scriptId, onClose, onApply }) {
               Break this scene into {segments.length} shot{segments.length !== 1 ? 's' : ''}. Edit text for each shot below.
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={handleSplitBySentences}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+              title="Split at every period/sentence"
+            >
+              <Scissors size={11} /> By Sentence
+            </button>
             <button
               onClick={handleSuggestSplits}
               disabled={loading}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors disabled:opacity-50"
             >
               {loading ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-              Suggest Splits
+              AI Suggest
             </button>
             <button onClick={onClose}><X size={18} className="text-gray-400" /></button>
           </div>
