@@ -1048,7 +1048,7 @@ router.post('/:id/ai-image', async (req, res) => {
     return res.status(429).json({ error: 'Too many image generations — please wait a moment before generating more.' });
   }
   try {
-    const { scene_id, prompt: promptOverride, replace_image_id, character_profiles, style_notes, reference_image, reference_image_url, product_info, character_photos, reference_images } = req.body;
+    const { scene_id, prompt: promptOverride, replace_image_id, character_profiles, style_notes, reference_image, reference_image_url, product_info, character_photos, reference_images, independent } = req.body;
     if (!scene_id) return res.status(400).json({ error: 'scene_id is required' });
 
     if (!process.env.GEMINI_API_KEY) {
@@ -1072,8 +1072,8 @@ router.post('/:id/ai-image', async (req, res) => {
       .flatMap(s => (s.images || []).filter(img => img.prompt).map(img => img.prompt))
       .slice(0, 10);
 
-    // Get the immediately previous scene's generated image as visual reference for continuity
-    const prevSceneImage = prevScene?.images?.[0]?.url || null;
+    // Get the immediately previous scene's generated image as visual reference for continuity (skip if independent)
+    const prevSceneImage = !independent ? (prevScene?.images?.[0]?.url || null) : null;
 
     let imagePrompt = promptOverride; // use override if provided (regenerate with edited prompt)
 
@@ -1120,13 +1120,13 @@ ${existingImagePrompts.map(p => `- ${p}`).join('\n')}
 
 Write a single, detailed image generation prompt (2-4 sentences) for the CURRENT SCENE only.
 
-STORYBOARD CONTINUITY RULES (CRITICAL):
+${independent ? `INDEPENDENT SHOT — generate a fresh, standalone image. Use your own creative interpretation for style, lighting, and mood.` : `STORYBOARD CONTINUITY RULES (CRITICAL):
 - This is frame ${sceneIndex + 1} of ${scenes.length} in a continuous storyboard. Every frame MUST feel like it belongs to the same production.
 - SAME color palette, lighting temperature, contrast level, and visual tone across ALL frames.
 - SAME characters must look IDENTICAL in every frame — same clothes, hair, skin, build. No variations.
 - SAME product must look IDENTICAL — exact packaging, colors, branding, size.
 - SAME camera style and lens feel — if previous frames use cinematic wide angles, continue that.
-- Match the mood and energy progression from previous to current scene.
+- Match the mood and energy progression from previous to current scene.`}
 - Include camera angle, lighting, composition, mood in the prompt.
 - Do NOT include text overlays, titles, or watermarks.
 - Return ONLY the prompt text, nothing else.`;

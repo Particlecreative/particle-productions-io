@@ -511,6 +511,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
   const [showBlocks, setShowBlocks] = useState(false);
   const [showGenAllConfirm, setShowGenAllConfirm] = useState(false);
   const [genAllIncludeExisting, setGenAllIncludeExisting] = useState(false);
+  const [singleGenPrompt, setSingleGenPrompt] = useState(null); // { sceneId, info } — shows storyboard vs independent choice
   const [showAIChat, setShowAIChat] = useState(false);
   const [aiChatSelectedText, setAiChatSelectedText] = useState('');
   const [aiChatSceneId, setAiChatSceneId] = useState(null);
@@ -693,7 +694,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
     });
   };
 
-  const handleImageGenerate = async (sceneId) => {
+  const handleImageGenerate = async (sceneId, { independent = false } = {}) => {
     setGeneratingSceneId(sceneId);
     try {
       const charProfiles = getCharProfiles();
@@ -713,6 +714,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
         product_info: productName ? { name: productName, photos: productPhotos } : undefined,
         character_photos: charPhotos.length > 0 ? charPhotos : undefined,
         reference_images: refImages.length > 0 ? refImages.map(r => ({ base64: r.base64, mimeType: r.mimeType })) : undefined,
+        independent: independent || undefined, // skip storyboard continuity if independent
       };
 
       const res = await fetch(`${API}/api/scripts/${scriptId}/ai-image`, {
@@ -1112,13 +1114,20 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
       setWizardRefImages([]);
       setShowImageWizard(true);
     } else {
-      // Already set up — generate with feedback toast
+      // Already set up — ask storyboard continuity or independent
       const existing = getCharProfiles();
       const productName = localStorage.getItem(`script_product_name_${scriptId}`) || '';
       const charNames = existing.map(c => c.name).filter(Boolean).join(', ');
       const info = [charNames, productName].filter(Boolean).join(' · ') || 'default settings';
-      toast.success(`Generating with ${info}...`);
-      handleImageGenerate(sceneId);
+      // If there are other images in the script, show the choice
+      const hasExistingImages = scenes.some(s => s.images?.length > 0);
+      if (hasExistingImages) {
+        setSingleGenPrompt({ sceneId, info });
+      } else {
+        // No existing images — just generate (nothing to match)
+        toast.success(`Generating with ${info}...`);
+        handleImageGenerate(sceneId);
+      }
     }
   };
 
@@ -2402,6 +2411,49 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                 Save — {accountVoices.find(v => v.voice_id === voiceId)?.name || 'this voice'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Single Image: Storyboard vs Independent ── */}
+      {singleGenPrompt && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 animate-fade-in" onClick={() => setSingleGenPrompt(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xs p-5" onClick={e => e.stopPropagation()}>
+            <h3 className="font-black text-gray-900 text-sm mb-1">Generate Image</h3>
+            <p className="text-xs text-gray-500 mb-4">{singleGenPrompt.info}</p>
+            <div className="space-y-2">
+              <button
+                onClick={() => {
+                  const sid = singleGenPrompt.sceneId;
+                  setSingleGenPrompt(null);
+                  toast.success('Generating (storyboard match)...');
+                  handleImageGenerate(sid);
+                }}
+                className="w-full flex items-center gap-3 p-3 border-2 border-purple-200 rounded-xl hover:border-purple-400 hover:bg-purple-50 transition-colors text-left"
+              >
+                <Film size={18} className="text-purple-500 shrink-0" />
+                <div>
+                  <p className="text-xs font-bold text-gray-800">Match Storyboard</p>
+                  <p className="text-[10px] text-gray-500">Same style, colors, tone as other frames</p>
+                </div>
+              </button>
+              <button
+                onClick={() => {
+                  const sid = singleGenPrompt.sceneId;
+                  setSingleGenPrompt(null);
+                  toast.success('Generating (independent shot)...');
+                  handleImageGenerate(sid, { independent: true });
+                }}
+                className="w-full flex items-center gap-3 p-3 border-2 border-gray-200 rounded-xl hover:border-gray-400 hover:bg-gray-50 transition-colors text-left"
+              >
+                <ImageIcon size={18} className="text-gray-500 shrink-0" />
+                <div>
+                  <p className="text-xs font-bold text-gray-800">Independent Shot</p>
+                  <p className="text-[10px] text-gray-500">Fresh look, no continuity constraints</p>
+                </div>
+              </button>
+            </div>
+            <button onClick={() => setSingleGenPrompt(null)} className="w-full mt-3 text-xs text-gray-400 hover:text-gray-600 text-center py-1">Cancel</button>
           </div>
         </div>
       )}
