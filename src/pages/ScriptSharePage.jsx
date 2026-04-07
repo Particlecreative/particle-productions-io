@@ -47,6 +47,7 @@ export default function ScriptSharePage() {
   const [expandedAudio, setExpandedAudio] = useState({});
   const [playingSceneId, setPlayingSceneId] = useState(null);
   const [downloadingVO, setDownloadingVO] = useState(false);
+  const [lightbox, setLightbox] = useState(null); // { url, name }
   const audioRef = useRef(null);
   const saveTimer = useRef(null);
   const touchStartX = useRef(null);
@@ -286,7 +287,7 @@ export default function ScriptSharePage() {
               {scene.images?.length > 0 && (
                 <div className="flex gap-3 overflow-x-auto max-w-full pb-2">
                   {scene.images.map(img => (
-                    <img key={img.id} src={img.url} alt="" className="h-28 w-auto rounded-xl object-cover shrink-0" />
+                    <img key={img.id} src={img.url} alt="" className="h-28 w-auto rounded-xl object-cover shrink-0 cursor-pointer hover:scale-105 transition-transform" onClick={() => setLightbox({ url: img.url, name: img.prompt || '' })} />
                   ))}
                 </div>
               )}
@@ -324,10 +325,28 @@ export default function ScriptSharePage() {
 
       {/* Main page */}
       <div className="min-h-screen bg-gray-50 scripts-share-page">
-        {/* Header */}
+        {/* Image Lightbox */}
+        {lightbox && (
+          <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4 animate-fade-in" onClick={() => setLightbox(null)}>
+            <div className="relative max-w-4xl max-h-[90vh]">
+              <img src={lightbox.url} alt={lightbox.name || 'Visual'} className="max-w-full max-h-[85vh] rounded-xl shadow-2xl object-contain" onClick={e => e.stopPropagation()} />
+              <button onClick={() => setLightbox(null)} className="absolute -top-3 -right-3 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-lg text-gray-500 hover:text-gray-800 transition-colors">
+                <X size={16} />
+              </button>
+              {lightbox.name && lightbox.name !== 'Visual' && (
+                <p className="absolute bottom-4 left-4 right-4 text-white/80 text-xs bg-black/50 rounded-lg px-3 py-2 line-clamp-2">{lightbox.name}</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Header — brand themed */}
         <div className="bg-white border-b border-gray-200 px-6 py-4 scripts-no-print">
           <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
+              {script.brand_name && (
+                <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400 px-2 py-0.5 bg-gray-100 rounded">{script.brand_name}</span>
+              )}
               <div className="flex flex-col">
                 <h1 className="text-lg font-black text-gray-900">{script.title}</h1>
                 {script.project_name && (
@@ -341,7 +360,7 @@ export default function ScriptSharePage() {
                 <span className="text-xs bg-blue-100 text-blue-700 px-2.5 py-1 rounded-full font-semibold">Edit enabled</span>
               )}
               {canComment && script.share_mode === 'comment' && (
-                <span className="text-xs bg-amber-100 text-amber-700 px-2.5 py-1 rounded-full font-semibold">💬 Comment enabled</span>
+                <span className="text-xs bg-amber-100 text-amber-700 px-2.5 py-1 rounded-full font-semibold">Comment enabled</span>
               )}
             </div>
 
@@ -477,13 +496,21 @@ export default function ScriptSharePage() {
                           <textarea value={scene.what_we_hear || ''} onChange={e => handleCellChange(scene.id, 'what_we_hear', e.target.value)}
                             className="w-full resize-none border-0 outline-none bg-transparent text-sm text-indigo-700 italic min-h-[80px]" rows={4} />
                         )}
+                        {scene.what_we_hear?.trim() && (
+                          <button onClick={(e) => { e.stopPropagation(); handlePlayScene(scene.id); }}
+                            className={clsx('mt-1 flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-full transition-colors',
+                              playingSceneId === scene.id ? 'bg-indigo-100 text-indigo-600' : 'text-indigo-300 hover:text-indigo-600 hover:bg-indigo-50')}>
+                            {playingSceneId === scene.id ? <><Loader2 size={8} className="animate-spin" /> Playing</> : <><Play size={8} /> Play</>}
+                          </button>
+                        )}
                       </td>
                       <td className="px-3 py-3">
                         <div className="flex flex-wrap gap-1">
                           {(scene.images || []).map(img => (
                             <img key={img.id} src={img.url} alt=""
                               className="w-16 h-12 object-cover rounded-lg cursor-pointer hover:scale-105 transition-transform scripts-visuals"
-                              onClick={() => window.open(img.url, '_blank')} />
+                              loading="lazy"
+                              onClick={(e) => { e.stopPropagation(); setLightbox({ url: img.url, name: img.prompt || 'Visual' }); }} />
                           ))}
                         </div>
                       </td>

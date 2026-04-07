@@ -255,8 +255,10 @@ function slackScriptPayload({ emoji, headline, script, fields = [], footer = '' 
 router.get('/share/:token', async (req, res) => {
   try {
     const { rows } = await db.query(
-      `SELECT s.*, p.project_name, p.stage FROM scripts s
+      `SELECT s.*, p.project_name, p.stage, b.name AS brand_name
+       FROM scripts s
        LEFT JOIN productions p ON s.production_id = p.id
+       LEFT JOIN brands b ON s.brand_id = b.id
        WHERE s.share_token = $1`,
       [req.params.token]
     );
@@ -265,6 +267,9 @@ router.get('/share/:token', async (req, res) => {
     if (rows[0].share_expires_at && new Date(rows[0].share_expires_at) < new Date()) {
       return res.status(410).json({ error: 'This share link has expired. Ask the script owner for a new link.' });
     }
+    // Fetch brand settings for theming
+    const { rows: settingsRows } = await db.query('SELECT brand_colors FROM settings WHERE brand_id = $1', [rows[0].brand_id]).catch(() => ({ rows: [] }));
+    rows[0].brand_colors = settingsRows[0]?.brand_colors || null;
     res.json(rows[0]);
   } catch (err) {
     console.error('GET /scripts/share/:token error:', err);
