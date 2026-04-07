@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   FileText, Plus, Search, CheckCircle, Eye, Archive, ChevronDown, ChevronRight, ChevronLeft,
-  Loader2, Scroll,
+  Loader2, Scroll, PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react';
 import StoryboardEditor from '../components/scripts/StoryboardEditor';
 import NewScriptModal from '../components/scripts/NewScriptModal';
@@ -26,6 +26,9 @@ export default function Scripts() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [collapsed, setCollapsed] = useState({});
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('cp_scripts_sidebar') ?? 'true'); } catch { return true; }
+  });
 
   useEffect(() => {
     fetchAll();
@@ -40,6 +43,14 @@ export default function Scripts() {
     else url.searchParams.delete('script_id');
     window.history.replaceState(null, '', url);
   }, [selectedId]);
+
+  function toggleSidebar() {
+    setSidebarOpen(v => {
+      const next = !v;
+      localStorage.setItem('cp_scripts_sidebar', JSON.stringify(next));
+      return next;
+    });
+  }
 
   async function fetchAll() {
     setLoading(true);
@@ -101,18 +112,22 @@ export default function Scripts() {
         className={clsx(
           'w-full text-left px-3 py-2.5 transition-all rounded-lg mx-1 mb-0.5',
           isSelected
-            ? 'bg-white shadow-sm border border-indigo-200'
+            ? 'bg-white shadow-sm border'
             : 'hover:bg-white/80 border border-transparent'
         )}
-        style={{ width: 'calc(100% - 8px)' }}
+        style={isSelected ? { borderColor: 'var(--brand-accent, #6366f1)' } : {}}
+        aria-label={`Open script: ${script.title}`}
+        aria-current={isSelected ? 'page' : undefined}
       >
         <div className="flex items-start gap-2.5">
           <div className={clsx('w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5',
-            isSelected ? 'bg-indigo-100' : 'bg-gray-100')}>
-            <Icon size={13} className={isSelected ? 'text-indigo-500' : 'text-gray-400'} />
+            isSelected ? 'bg-opacity-20' : 'bg-gray-100')}
+            style={isSelected ? { background: 'var(--brand-glow, #eef2ff)' } : {}}>
+            <Icon size={13} className={isSelected ? '' : 'text-gray-400'} style={isSelected ? { color: 'var(--brand-accent, #6366f1)' } : {}} />
           </div>
           <div className="flex-1 min-w-0">
-            <div className={clsx('text-xs font-semibold truncate', isSelected ? 'text-indigo-700' : 'text-gray-700')}>
+            <div className={clsx('text-xs font-semibold truncate', isSelected ? '' : 'text-gray-700')}
+              style={isSelected ? { color: 'var(--brand-primary, #1e1b4b)' } : {}}>
               {script.title}
             </div>
             <div className="flex items-center gap-1.5 mt-1">
@@ -134,26 +149,33 @@ export default function Scripts() {
 
   return (
     <div className="flex flex-col md:flex-row h-full">
-      {/* ── Left panel — script list ── */}
+      {/* ── Left panel — script list (collapsible) ── */}
       <div className={clsx(
-        'shrink-0 border-r border-gray-200 bg-gray-50/80 flex flex-col',
-        'w-full md:w-64',
-        selectedId ? 'hidden md:flex' : 'flex',
-        'h-auto md:h-full'
-      )}>
+        'shrink-0 border-r flex flex-col transition-all duration-200',
+        'w-full md:h-full',
+        selectedId && !sidebarOpen ? 'hidden md:flex md:w-0 md:overflow-hidden md:border-0' : '',
+        selectedId && sidebarOpen ? 'hidden md:flex md:w-64' : '',
+        !selectedId ? 'flex' : '',
+      )}
+        style={{ borderColor: 'var(--brand-border, #e5e7eb)', background: 'var(--brand-bg, #f9fafb)' }}
+      >
         {/* Header */}
-        <div className="p-3 border-b border-gray-200 space-y-2.5">
+        <div className="p-3 border-b space-y-2.5" style={{ borderColor: 'var(--brand-border, #e5e7eb)' }}>
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-black text-gray-800 flex items-center gap-2">
-              <Scroll size={15} className="text-indigo-500" /> Scripts
+            <h2 className="text-sm font-black flex items-center gap-2" style={{ color: 'var(--brand-primary, #1e1b4b)' }}>
+              <Scroll size={15} style={{ color: 'var(--brand-accent, #6366f1)' }} /> Scripts
               <span className="text-[10px] font-mono text-gray-400 font-normal">{scripts.length}</span>
             </h2>
-            <button
-              onClick={() => setShowModal(true)}
-              className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-semibold px-3 py-1.5 rounded-lg transition-colors"
-            >
-              <Plus size={12} /> New
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setShowModal(true)}
+                className="flex items-center gap-1.5 text-white text-[11px] font-semibold px-3 py-1.5 rounded-lg transition-colors"
+                style={{ background: 'var(--brand-accent, #6366f1)' }}
+                aria-label="Create new script"
+              >
+                <Plus size={12} /> New
+              </button>
+            </div>
           </div>
           <div className="relative">
             <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -161,10 +183,12 @@ export default function Scripts() {
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Search scripts..."
-              className="w-full pl-7 pr-8 py-2 text-xs border border-gray-200 rounded-lg bg-white outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300 transition-all"
+              className="w-full pl-7 pr-8 py-2 text-xs border rounded-lg bg-white outline-none focus:ring-2 transition-all"
+              style={{ borderColor: 'var(--brand-border, #e5e7eb)', '--tw-ring-color': 'var(--brand-glow, #c7d2fe)' }}
+              aria-label="Search scripts"
             />
             {search && (
-              <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs">x</button>
+              <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs w-5 h-5 flex items-center justify-center" aria-label="Clear search">x</button>
             )}
           </div>
         </div>
@@ -190,10 +214,9 @@ export default function Scripts() {
               </div>
               <p className="text-sm font-medium text-gray-500 mb-1">No scripts yet</p>
               <p className="text-xs text-gray-400 mb-4">Create your first script to get started</p>
-              <button
-                onClick={() => setShowModal(true)}
-                className="inline-flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-700 font-semibold"
-              >
+              <button onClick={() => setShowModal(true)}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold"
+                style={{ color: 'var(--brand-accent, #6366f1)' }}>
                 <Plus size={12} /> Create Script
               </button>
             </div>
@@ -207,6 +230,7 @@ export default function Scripts() {
                     <button
                       onClick={() => toggleCollapse(prodId)}
                       className="w-full flex items-center gap-1.5 px-3 py-2 text-[10px] font-bold text-gray-500 hover:text-gray-700 hover:bg-gray-100/50 transition-colors uppercase tracking-wider"
+                      aria-expanded={isOpen}
                     >
                       {isOpen ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
                       <span className="truncate">{prod?.project_name || 'Unknown'}</span>
@@ -241,12 +265,25 @@ export default function Scripts() {
       <div className={clsx('flex-1 min-w-0 overflow-auto', selectedId ? 'flex flex-col h-full' : 'hidden md:flex flex-col h-full')}>
         {selectedId ? (
           <>
-            <button
-              onClick={() => setSelectedId(null)}
-              className="md:hidden flex items-center gap-1.5 px-4 py-2.5 text-xs text-indigo-600 font-semibold border-b border-gray-200 bg-white shrink-0"
-            >
-              <ChevronLeft size={14} /> All Scripts
-            </button>
+            {/* Mobile back + sidebar toggle */}
+            <div className="flex items-center gap-2 px-3 py-2 border-b bg-white shrink-0" style={{ borderColor: 'var(--brand-border, #e5e7eb)' }}>
+              <button
+                onClick={() => setSelectedId(null)}
+                className="md:hidden flex items-center gap-1 text-xs font-semibold"
+                style={{ color: 'var(--brand-accent, #6366f1)' }}
+                aria-label="Back to scripts list"
+              >
+                <ChevronLeft size={14} /> Scripts
+              </button>
+              <button
+                onClick={toggleSidebar}
+                className="hidden md:flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 p-1 rounded transition-colors"
+                title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+                aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+              >
+                {sidebarOpen ? <PanelLeftClose size={15} /> : <PanelLeftOpen size={15} />}
+              </button>
+            </div>
             <div className="flex-1 min-h-0 overflow-auto">
               <StoryboardEditor
                 key={selectedId}
@@ -258,17 +295,17 @@ export default function Scripts() {
           </>
         ) : (
           <div className="flex flex-col items-center justify-center h-full min-h-[400px] md:min-h-0 text-gray-400 gap-5">
-            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center">
-              <Scroll size={32} className="text-indigo-300" />
+            <div className="w-20 h-20 rounded-2xl flex items-center justify-center"
+              style={{ background: 'var(--brand-glow, #eef2ff)' }}>
+              <Scroll size={32} style={{ color: 'var(--brand-accent, #6366f1)', opacity: 0.5 }} />
             </div>
             <div className="text-center">
               <p className="font-bold text-gray-600 mb-1">No script selected</p>
               <p className="text-sm text-gray-400">Pick a script from the list or create a new one</p>
             </div>
-            <button
-              onClick={() => setShowModal(true)}
-              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-colors shadow-sm"
-            >
+            <button onClick={() => setShowModal(true)}
+              className="flex items-center gap-2 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-colors shadow-sm"
+              style={{ background: 'var(--brand-accent, #6366f1)' }}>
               <Plus size={14} /> New Script
             </button>
           </div>
