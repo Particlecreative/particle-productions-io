@@ -1512,11 +1512,6 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                 title="AI Script Assistant — chat about your script">
                 <Sparkles size={12} /> AI Chat
               </button>
-              <button onClick={() => { setShowAI(true); setAiMode('generate'); setAiPreview(null); }}
-                className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-semibold border border-indigo-200 text-indigo-600 hover:bg-indigo-50 transition-colors"
-                title="Generate/Import script with AI">
-                <Sparkles size={12} /> Generate
-              </button>
               {scenes.some(s => !s.images || s.images.length === 0) && (
                 <button onClick={() => handleGenerateAll()} disabled={generatingAll}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 transition-colors">
