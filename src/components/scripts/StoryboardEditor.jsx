@@ -1698,19 +1698,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
         </div>
       </div>
 
-      {/* ── Generate All Images banner ── */}
-      {!readOnly && scenes.length > 0 && scenes.every(s => !s.images || s.images.length === 0) && !generatingAll && (
-        <div className="mx-4 mt-3 p-3 rounded-xl bg-purple-50 border border-purple-200 flex items-center gap-3 scripts-no-print">
-          <Sparkles size={16} className="text-purple-500 shrink-0" />
-          <div className="flex-1">
-            <p className="text-xs font-semibold text-purple-800">No storyboard images yet</p>
-            <p className="text-xs text-purple-600">Generate AI images for all {scenes.length} scenes at once</p>
-          </div>
-          <button onClick={handleGenerateAll} className="shrink-0 px-3 py-1.5 bg-purple-600 text-white text-xs font-bold rounded-lg hover:bg-purple-700 transition-colors">
-            Generate All
-          </button>
-        </div>
-      )}
+      {/* ── Generate All Images banner (only when no images exist) ── */}
       {generatingAll && (
         <div className="mx-4 mt-3 p-3 rounded-xl bg-purple-50 border border-purple-200 flex items-center gap-3 scripts-no-print">
           <Loader2 size={16} className="text-purple-500 animate-spin shrink-0" />
