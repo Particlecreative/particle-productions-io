@@ -21,6 +21,7 @@ import clsx from 'clsx';
 import DOMPurify from 'dompurify';
 import SplitModal from './SplitModal';
 import UniversalBlocks from './UniversalBlocks';
+import AIChatPanel from './AIChatPanel';
 
 const API = import.meta.env.VITE_API_URL || '';
 
@@ -500,6 +501,9 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
   const [showBlocks, setShowBlocks] = useState(false);
   const [showGenAllConfirm, setShowGenAllConfirm] = useState(false);
   const [genAllIncludeExisting, setGenAllIncludeExisting] = useState(false);
+  const [showAIChat, setShowAIChat] = useState(false);
+  const [aiChatSelectedText, setAiChatSelectedText] = useState('');
+  const [aiChatSceneId, setAiChatSceneId] = useState(null);
 
   // ── Voice picker & settings ──
   const [voiceId, setVoiceId] = useState(() => localStorage.getItem('cp_voice_id') || '21m00Tcm4TlvDq8ikWAM');
@@ -1503,9 +1507,15 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                 title="Insert reusable scene blocks">
                 <Package size={12} /> Blocks
               </button>
+              <button onClick={() => { setShowAIChat(true); setAiChatSelectedText(''); setAiChatSceneId(null); }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-purple-600 text-white hover:bg-purple-700 transition-colors"
+                title="AI Script Assistant — chat about your script">
+                <Sparkles size={12} /> AI Chat
+              </button>
               <button onClick={() => { setShowAI(true); setAiMode('generate'); setAiPreview(null); }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors">
-                <Sparkles size={12} /> AI
+                className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-semibold border border-indigo-200 text-indigo-600 hover:bg-indigo-50 transition-colors"
+                title="Generate/Import script with AI">
+                <Sparkles size={12} /> Generate
               </button>
               {scenes.some(s => !s.images || s.images.length === 0) && (
                 <button onClick={() => handleGenerateAll()} disabled={generatingAll}
@@ -2412,6 +2422,26 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
               return updated;
             });
             onUpdated?.({ id: scriptId });
+          }}
+        />
+      )}
+
+      {/* ── AI Chat Panel ── */}
+      {showAIChat && (
+        <AIChatPanel
+          scriptId={scriptId}
+          selectedText={aiChatSelectedText}
+          selectedSceneId={aiChatSceneId}
+          onClose={() => setShowAIChat(false)}
+          onApplyText={(text) => {
+            // If a scene is focused, update its what_we_hear
+            if (aiChatSceneId) {
+              setScript(prev => {
+                const updated = { ...prev, scenes: prev.scenes.map(s => s.id === aiChatSceneId ? { ...s, what_we_hear: text } : s) };
+                debounceSave(updated);
+                return updated;
+              });
+            }
           }}
         />
       )}

@@ -1404,6 +1404,24 @@ html.dark .skeleton-block {
   100% { background-position: 200% 0; }
 }
 
+/* === SLIDE-IN ANIMATION for side panels === */
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+.animate-slide-in-right {
+  animation: slideInRight 0.25s ease-out;
+}
+
+/* === FADE-IN ANIMATION === */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out;
+}
+
 /* === PRINT: Hide non-printable elements === */
 @media print {
   .scripts-no-print, .mobile-nav, .sidebar, header, nav { display: none !important; }

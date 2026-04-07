@@ -1413,6 +1413,85 @@ router.post('/:id/share', async (req, res) => {
   }
 });
 
+// POST /api/scripts/:id/chat — AI chat about the script (Claude conversation)
+router.post('/:id/chat', async (req, res) => {
+  try {
+    const { messages, selected_text, scene_id } = req.body;
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({ error: 'messages array required' });
+    }
+
+    // Load script context
+    const { rows } = await db.query('SELECT scenes, title FROM scripts WHERE id = $1', [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Script not found' });
+    const scenes = rows[0].scenes || [];
+    const stripHtml = (s) => (s || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+
+    // Build script context for Claude
+    const scenesSummary = scenes.map((s, i) => {
+      const parts = [`Scene ${i + 1}:`];
+      if (s.location) parts.push(`Location: ${s.location}`);
+      if (s.what_we_see) parts.push(`Visual: ${stripHtml(s.what_we_see)}`);
+      if (s.what_we_hear) parts.push(`Audio: ${stripHtml(s.what_we_hear)}`);
+      return parts.join(' | ');
+    }).join('\n');
+
+    let contextNote = '';
+    if (selected_text) {
+      contextNote = `\n\nThe user has selected this specific text from the script:\n"${selected_text}"`;
+    }
+    if (scene_id) {
+      const scene = scenes.find(s => s.id === scene_id);
+      if (scene) {
+        const idx = scenes.indexOf(scene);
+        contextNote += `\n\nFocusing on Scene ${idx + 1} (${scene.location || 'no location'}):
+Visual: ${stripHtml(scene.what_we_see)}
+Audio: ${stripHtml(scene.what_we_hear)}`;
+      }
+    }
+
+    const systemPrompt = `You are a creative scriptwriting assistant for the production "${rows[0].title}". You help refine, rewrite, expand, or discuss the script. Be concise and creative.
+
+Current script (${scenes.length} scenes):
+${scenesSummary}${contextNote}
+
+When suggesting changes to scenes, format them clearly so the user can copy/paste. If the user asks you to rewrite a scene, output the new text directly. Keep responses focused and actionable.`;
+
+    // Build conversation messages for Claude API
+    const claudeMessages = messages.map(m => ({
+      role: m.role === 'user' ? 'user' : 'assistant',
+      content: m.content,
+    }));
+
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 2048,
+        system: systemPrompt,
+        messages: claudeMessages,
+      }),
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      return res.status(resp.status).json({ error: err.error?.message || 'AI request failed' });
+    }
+
+    const data = await resp.json();
+    const reply = data.content[0]?.text || 'No response generated.';
+    res.json({ reply });
+  } catch (err) {
+    console.error('POST /scripts/:id/chat error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/scripts/:id/approve — approve + Drive export + Slack
 router.post('/:id/approve', async (req, res) => {
   try {
