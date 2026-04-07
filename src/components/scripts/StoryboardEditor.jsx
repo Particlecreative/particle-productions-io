@@ -1245,7 +1245,9 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
 
     // Generate for target scene(s) — skip if just editing settings
     if (wizardTargetSceneId === '__all__') {
-      handleGenerateAll(true);
+      // Coming from wizard — skip confirm modal, go straight to generation
+      const withoutImages = scenes.filter(s => !s.images || s.images.length === 0);
+      executeGenerateAll(withoutImages.length === 0); // include existing if all scenes have images
     } else if (wizardTargetSceneId) {
       handleImageGenerate(wizardTargetSceneId);
     }
@@ -1292,10 +1294,11 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
     setShowGenAllConfirm(true);
   };
 
-  const executeGenerateAll = async () => {
+  const executeGenerateAll = async (includeExistingOverride) => {
     setShowGenAllConfirm(false);
     const withoutImages = scenes.filter(s => !s.images || s.images.length === 0);
-    const scenesToGen = genAllIncludeExisting ? [...scenes] : withoutImages;
+    const includeExisting = includeExistingOverride !== undefined ? includeExistingOverride : genAllIncludeExisting;
+    const scenesToGen = includeExisting ? [...scenes] : withoutImages;
 
     if (scenesToGen.length === 0) {
       toast.info('No scenes to generate for');
