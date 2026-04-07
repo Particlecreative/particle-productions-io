@@ -104,28 +104,52 @@ export default function SplitModal({ scene, scriptId, onClose, onApply }) {
     setLoading(false);
   };
 
-  const handleSplitBySentences = () => {
-    // Split both What We See and What We Hear by sentence boundaries (. ! ?)
-    const splitBySentence = (text) => {
-      if (!text) return [''];
-      const sentences = text.split(/(?<=[.!?])\s+/).filter(s => s.trim());
-      return sentences.length > 0 ? sentences : [text];
-    };
+  const handleSplitBySentences = async () => {
+    // Split What We Hear by sentence boundaries
+    const hearSentences = (initialWhatWeHear || '').split(/(?<=[.!?])\s+/).filter(s => s.trim());
+    if (hearSentences.length <= 1) return;
 
-    const seeSentences = splitBySentence(initialWhatWeSee);
-    const hearSentences = splitBySentence(initialWhatWeHear);
-    const maxLen = Math.max(seeSentences.length, hearSentences.length);
+    // Set segments immediately with hear text, empty see (shows loading feel)
+    setSegments(hearSentences.map(s => ({ whatWeSee: '...', whatWeHear: s })));
 
-    if (maxLen <= 1) return; // Nothing to split
+    // Ask Claude to distribute the original What We See across the audio sentences
+    if (initialWhatWeSee?.trim()) {
+      setLoading(true);
+      try {
+        const res = await fetch(`${API}/api/scripts/${scriptId}/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
+          body: JSON.stringify({
+            messages: [{
+              role: 'user',
+              content: `I'm splitting a scene into ${hearSentences.length} shots by audio sentences. Distribute the visual description logically across the shots.
 
-    const newSegments = [];
-    for (let i = 0; i < maxLen; i++) {
-      newSegments.push({
-        whatWeSee: seeSentences[i] || '',
-        whatWeHear: hearSentences[i] || '',
-      });
+Original "What We See" (one block):
+${initialWhatWeSee}
+
+Audio sentences (one per shot):
+${hearSentences.map((s, i) => `Shot ${i + 1}: "${s}"`).join('\n')}
+
+Return ONLY a JSON array of strings — one visual description per shot. Match the visual to what makes sense for each audio line. Example: ["Shot 1 visual", "Shot 2 visual"]`
+            }],
+          }),
+        });
+        const data = await res.json();
+        if (data.reply) {
+          try {
+            const match = data.reply.match(/\[[\s\S]*\]/);
+            if (match) {
+              const visuals = JSON.parse(match[0]);
+              setSegments(hearSentences.map((s, i) => ({
+                whatWeSee: visuals[i] || '',
+                whatWeHear: s,
+              })));
+            }
+          } catch { /* keep ... placeholders if parse fails */ }
+        }
+      } catch {}
+      setLoading(false);
     }
-    setSegments(newSegments);
   };
 
   const handleApply = () => {
