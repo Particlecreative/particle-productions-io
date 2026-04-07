@@ -1422,6 +1422,24 @@ html.dark .skeleton-block {
   animation: fadeIn 0.2s ease-out;
 }
 
+/* === SCRIPTS TABLE: cleaner scene rows === */
+.scripts-table tr {
+  transition: background-color 0.15s ease;
+}
+.scripts-table td {
+  vertical-align: top;
+}
+.scripts-table .group:hover td {
+  background-color: rgba(99, 102, 241, 0.02);
+}
+
+/* === MOBILE SCRIPTS: better touch experience === */
+@media (max-width: 768px) {
+  .scripts-table { min-width: 600px; }
+  .scripts-table td { padding: 8px 6px; }
+  .scripts-table th { padding: 8px 6px; font-size: 9px; }
+}
+
 /* === PRINT: Hide non-printable elements === */
 @media print {
   .scripts-no-print, .mobile-nav, .sidebar, header, nav { display: none !important; }

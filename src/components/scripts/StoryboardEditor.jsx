@@ -1461,7 +1461,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
           </div>
         )}
 
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5 flex-wrap scripts-no-print">
           {/* View toggle */}
           <div className="flex items-center gap-0.5 bg-gray-100 rounded-lg p-0.5">
             {[{ id: 'table', icon: Table2, label: 'Table' }, { id: 'vo', icon: Volume2, label: 'VO' }, { id: 'storyboard', icon: Layout, label: 'Visual' }].map(v => (
