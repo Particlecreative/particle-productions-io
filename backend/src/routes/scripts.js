@@ -1066,11 +1066,14 @@ router.post('/:id/ai-image', async (req, res) => {
     const prevScene = sceneIndex > 0 ? scenes[sceneIndex - 1] : null;
     const nextScene = sceneIndex < scenes.length - 1 ? scenes[sceneIndex + 1] : null;
 
-    // All existing image prompts for visual consistency
+    // All existing image prompts for visual consistency (use more for better continuity)
     const existingImagePrompts = scenes
       .filter(s => s.id !== scene_id)
       .flatMap(s => (s.images || []).filter(img => img.prompt).map(img => img.prompt))
-      .slice(0, 5);
+      .slice(0, 10);
+
+    // Get the immediately previous scene's generated image as visual reference for continuity
+    const prevSceneImage = prevScene?.images?.[0]?.url || null;
 
     let imagePrompt = promptOverride; // use override if provided (regenerate with edited prompt)
 
@@ -1116,12 +1119,17 @@ ${existingImagePrompts.map(p => `- ${p}`).join('\n')}
 ` : ''}
 
 Write a single, detailed image generation prompt (2-4 sentences) for the CURRENT SCENE only.
-- Cinematic storyboard frame style
-- Include camera angle, lighting, composition, mood
-- If characters are listed above, include their exact visual descriptions
-- Match the visual style of existing frames for consistency
-- Do NOT include text overlays, titles, or watermarks
-- Return ONLY the prompt text, nothing else`;
+
+STORYBOARD CONTINUITY RULES (CRITICAL):
+- This is frame ${sceneIndex + 1} of ${scenes.length} in a continuous storyboard. Every frame MUST feel like it belongs to the same production.
+- SAME color palette, lighting temperature, contrast level, and visual tone across ALL frames.
+- SAME characters must look IDENTICAL in every frame — same clothes, hair, skin, build. No variations.
+- SAME product must look IDENTICAL — exact packaging, colors, branding, size.
+- SAME camera style and lens feel — if previous frames use cinematic wide angles, continue that.
+- Match the mood and energy progression from previous to current scene.
+- Include camera angle, lighting, composition, mood in the prompt.
+- Do NOT include text overlays, titles, or watermarks.
+- Return ONLY the prompt text, nothing else.`;
 
       try {
         imagePrompt = await callClaude(contextPrompt, 'You are a professional storyboard artist and cinematographer. Write concise, vivid image generation prompts.');
@@ -1162,6 +1170,22 @@ Write a single, detailed image generation prompt (2-4 sentences) for the CURRENT
       }
     }
 
+    // Fetch previous scene's generated image as CONTINUITY reference (so Gemini sees the last frame)
+    if (prevSceneImage && !promptOverride) {
+      try {
+        const prevImgUrl = prevSceneImage.startsWith('data:') ? null : prevSceneImage;
+        if (prevImgUrl) {
+          const prevRes = await fetch(prevImgUrl, { signal: AbortSignal.timeout(5000) });
+          if (prevRes.ok) {
+            const prevBuf = Buffer.from(await prevRes.arrayBuffer());
+            const prevMime = prevRes.headers.get('content-type') || 'image/jpeg';
+            // Push as FIRST reference — Gemini sees this frame first for continuity
+            refImages.unshift({ base64: prevBuf.toString('base64'), mimeType: prevMime });
+          }
+        }
+      } catch { /* non-critical — continue without prev image */ }
+    }
+
     if (reference_image?.base64) {
       refImages.push({ base64: reference_image.base64, mimeType: reference_image.mimeType || 'image/jpeg' });
     } else if (reference_image_url) {
@@ -1179,6 +1203,11 @@ Write a single, detailed image generation prompt (2-4 sentences) for the CURRENT
       } catch (refErr) {
         console.warn('Could not fetch reference image URL:', refErr.message);
       }
+    }
+
+    // STORYBOARD CONTINUITY: if we have the previous frame, tell Gemini to match it
+    if (prevSceneImage && !promptOverride && refImages.length > 0) {
+      imagePrompt += ' STORYBOARD CONTINUITY: The FIRST reference image is the previous frame in this storyboard sequence. Match its exact color grading, lighting temperature, visual tone, and cinematic style. Characters must look identical. This new frame must feel like the immediate next shot in the same production.';
     }
 
     // If product photos were added (and no override), tell model to replicate product precisely
