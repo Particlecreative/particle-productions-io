@@ -1243,13 +1243,12 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
     localStorage.setItem(`script_wizard_${scriptId}`, 'done');
     setShowImageWizard(false);
 
-    // Generate for target scene(s) — skip if just editing settings
+    // Generate for target scene(s) — delay briefly so wizard unmounts and progress bar is visible
     if (wizardTargetSceneId === '__all__') {
-      // Coming from wizard — skip confirm modal, go straight to generation
       const withoutImages = scenes.filter(s => !s.images || s.images.length === 0);
-      executeGenerateAll(withoutImages.length === 0); // include existing if all scenes have images
+      setTimeout(() => executeGenerateAll(withoutImages.length === 0), 100);
     } else if (wizardTargetSceneId) {
-      handleImageGenerate(wizardTargetSceneId);
+      setTimeout(() => handleImageGenerate(wizardTargetSceneId), 100);
     }
   };
 
@@ -1712,15 +1711,26 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
 
       {/* ── Generate All Images banner (only when no images exist) ── */}
       {generatingAll && (
-        <div className="mx-4 mt-3 p-3 rounded-xl bg-purple-50 border border-purple-200 flex items-center gap-3 scripts-no-print">
-          <Loader2 size={16} className="text-purple-500 animate-spin shrink-0" />
-          <div className="flex-1">
-            <p className="text-xs font-semibold text-purple-800">Generating storyboard images...</p>
-            <div className="mt-1.5 h-1.5 bg-purple-200 rounded-full overflow-hidden">
-              <div className="h-full bg-purple-500 rounded-full transition-all" style={{ width: `${generateAllProgress.total > 0 ? (generateAllProgress.current / generateAllProgress.total) * 100 : 0}%` }} />
+        <div className="mx-4 mt-3 p-4 rounded-xl bg-purple-50 border border-purple-200 scripts-no-print">
+          <div className="flex items-center gap-3 mb-2">
+            <Loader2 size={18} className="text-purple-500 animate-spin shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm font-bold text-purple-800">
+                Generating storyboard images...
+              </p>
+              <p className="text-xs text-purple-600 mt-0.5">
+                Scene {generateAllProgress.current} of {generateAllProgress.total}
+                {generateAllProgress.current > 0 && generateAllProgress.total > 0 &&
+                  ` — ~${Math.ceil((generateAllProgress.total - generateAllProgress.current) * 15)}s remaining`}
+              </p>
             </div>
+            <span className="text-lg font-black text-purple-700">
+              {generateAllProgress.total > 0 ? Math.round((generateAllProgress.current / generateAllProgress.total) * 100) : 0}%
+            </span>
           </div>
-          <span className="text-xs font-mono text-purple-700">{generateAllProgress.current}/{generateAllProgress.total}</span>
+          <div className="h-2 bg-purple-200 rounded-full overflow-hidden">
+            <div className="h-full bg-purple-500 rounded-full transition-all duration-500" style={{ width: `${generateAllProgress.total > 0 ? (generateAllProgress.current / generateAllProgress.total) * 100 : 0}%` }} />
+          </div>
         </div>
       )}
 
