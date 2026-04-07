@@ -140,6 +140,24 @@ function RichTextCell({ value, onChange, placeholder, readOnly, className, onMou
   );
 }
 
+// Resize image to max dimension for localStorage efficiency (returns base64)
+function resizeImageBase64(base64, mimeType, maxDim = 800) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      if (img.width <= maxDim && img.height <= maxDim) { resolve(base64); return; }
+      const scale = maxDim / Math.max(img.width, img.height);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL(mimeType || 'image/jpeg', 0.8).split(',')[1]);
+    };
+    img.onerror = () => resolve(base64);
+    img.src = `data:${mimeType || 'image/jpeg'};base64,${base64}`;
+  });
+}
+
 // Strip HTML for TTS/AI (plain text only)
 function stripHtml(html) {
   return html?.replace(/<[^>]*>/g, '') || '';
@@ -698,14 +716,23 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
     setGeneratingSceneId(sceneId);
     try {
       const charProfiles = getCharProfiles();
-      const styleNotes = localStorage.getItem(`script_style_${scriptId}`) || '';
-      const productName = localStorage.getItem(`script_product_name_${scriptId}`) || '';
+      // Read from localStorage with fallback to current wizard state (in case localStorage quota exceeded)
+      const styleNotes = localStorage.getItem(`script_style_${scriptId}`) || wizardStyleNotes || '';
+      const productName = localStorage.getItem(`script_product_name_${scriptId}`) || wizardProductName || '';
       let productPhotos = [];
       try { productPhotos = JSON.parse(localStorage.getItem(`script_product_photos_${scriptId}`) || '[]'); } catch {}
+      if (productPhotos.length === 0 && wizardProductPhotos.length > 0) productPhotos = wizardProductPhotos.map(p => ({ base64: p.base64, mimeType: p.mimeType }));
       let charPhotos = [];
       try { charPhotos = JSON.parse(localStorage.getItem(`script_char_photos_${scriptId}`) || '[]'); } catch {}
+      if (charPhotos.length === 0 && wizardCharacters.some(c => c.photoBase64 || c.photos?.length)) {
+        wizardCharacters.forEach(c => {
+          const photos = c.photos || (c.photoBase64 ? [{ base64: c.photoBase64, mimeType: c.photoMime }] : []);
+          photos.forEach(p => { if (p.base64) charPhotos.push({ name: c.name, base64: p.base64, mimeType: p.mimeType || 'image/jpeg' }); });
+        });
+      }
       let refImages = [];
       try { refImages = JSON.parse(localStorage.getItem(`script_ref_images_${scriptId}`) || '[]'); } catch {}
+      if (refImages.length === 0 && wizardRefImages.length > 0) refImages = wizardRefImages;
 
       const body = {
         scene_id: sceneId,
@@ -714,7 +741,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
         product_info: productName ? { name: productName, photos: productPhotos } : undefined,
         character_photos: charPhotos.length > 0 ? charPhotos : undefined,
         reference_images: refImages.length > 0 ? refImages.map(r => ({ base64: r.base64, mimeType: r.mimeType })) : undefined,
-        independent: independent || undefined, // skip storyboard continuity if independent
+        independent: independent || undefined,
       };
 
       const res = await fetch(`${API}/api/scripts/${scriptId}/ai-image`, {
@@ -1221,25 +1248,29 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
       setShowImageWizard(false);
       return;
     }
-    // Save character profiles
+    // Save all wizard data to localStorage (wrapped in try/catch — localStorage has ~5MB limit)
     const profiles = wizardCharacters.filter(c => c.description).map(c => ({ name: c.name, description: c.description }));
     saveCharProfiles(profiles);
-    // Save ALL character photos (multiple per character) for image generation
-    const charPhotos = [];
-    wizardCharacters.forEach(c => {
-      const photos = c.photos || (c.photoBase64 ? [{ base64: c.photoBase64, mimeType: c.photoMime || 'image/jpeg' }] : []);
-      photos.forEach(p => { if (p.base64) charPhotos.push({ name: c.name, base64: p.base64, mimeType: p.mimeType || 'image/jpeg' }); });
-    });
-    if (charPhotos.length > 0) localStorage.setItem(`script_char_photos_${scriptId}`, JSON.stringify(charPhotos));
-    else localStorage.removeItem(`script_char_photos_${scriptId}`);
-    if (wizardStyleNotes.trim()) localStorage.setItem(`script_style_${scriptId}`, wizardStyleNotes.trim());
-    if (wizardProductName.trim()) localStorage.setItem(`script_product_name_${scriptId}`, wizardProductName.trim());
-    const productPhotosToSave = wizardProductPhotos.slice(0, 3).map(p => ({ base64: p.base64, mimeType: p.mimeType }));
-    if (productPhotosToSave.length > 0) localStorage.setItem(`script_product_photos_${scriptId}`, JSON.stringify(productPhotosToSave));
-    // Save general reference images
-    const refImagesToSave = wizardRefImages.slice(0, 5).map(r => ({ base64: r.base64, mimeType: r.mimeType, previewUrl: r.previewUrl }));
-    if (refImagesToSave.length > 0) localStorage.setItem(`script_ref_images_${scriptId}`, JSON.stringify(refImagesToSave));
-    else localStorage.removeItem(`script_ref_images_${scriptId}`);
+    try {
+      const charPhotos = [];
+      wizardCharacters.forEach(c => {
+        const photos = c.photos || (c.photoBase64 ? [{ base64: c.photoBase64, mimeType: c.photoMime || 'image/jpeg' }] : []);
+        photos.forEach(p => { if (p.base64) charPhotos.push({ name: c.name, base64: p.base64, mimeType: p.mimeType || 'image/jpeg' }); });
+      });
+      if (charPhotos.length > 0) localStorage.setItem(`script_char_photos_${scriptId}`, JSON.stringify(charPhotos));
+      else localStorage.removeItem(`script_char_photos_${scriptId}`);
+    } catch (e) { console.warn('Could not save character photos to localStorage (quota?):', e.message); }
+    try {
+      if (wizardStyleNotes.trim()) localStorage.setItem(`script_style_${scriptId}`, wizardStyleNotes.trim());
+      if (wizardProductName.trim()) localStorage.setItem(`script_product_name_${scriptId}`, wizardProductName.trim());
+      const productPhotosToSave = wizardProductPhotos.slice(0, 3).map(p => ({ base64: p.base64, mimeType: p.mimeType }));
+      if (productPhotosToSave.length > 0) localStorage.setItem(`script_product_photos_${scriptId}`, JSON.stringify(productPhotosToSave));
+    } catch (e) { console.warn('Could not save product photos to localStorage (quota?):', e.message); }
+    try {
+      const refImagesToSave = wizardRefImages.slice(0, 5).map(r => ({ base64: r.base64, mimeType: r.mimeType })); // drop previewUrl to save space
+      if (refImagesToSave.length > 0) localStorage.setItem(`script_ref_images_${scriptId}`, JSON.stringify(refImagesToSave));
+      else localStorage.removeItem(`script_ref_images_${scriptId}`);
+    } catch (e) { console.warn('Could not save ref images to localStorage (quota?):', e.message); }
     localStorage.setItem(`script_wizard_${scriptId}`, 'done');
 
     // Close wizard and start generation
@@ -2772,12 +2803,16 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                         const file = e.target.files?.[0];
                         if (!file) return;
                         const reader = new FileReader();
-                        reader.onload = ev => {
+                        reader.onload = async (ev) => {
                           const dataUrl = ev.target.result;
+                          const rawBase64 = dataUrl.split(',')[1];
+                          const mime = file.type || 'image/jpeg';
+                          // Resize to 800px max to prevent localStorage quota issues
+                          const resized = await resizeImageBase64(rawBase64, mime, 800);
                           setWizardProductPhotos(prev => [...prev, {
-                            base64: dataUrl.split(',')[1],
-                            mimeType: file.type || 'image/jpeg',
-                            previewUrl: dataUrl,
+                            base64: resized,
+                            mimeType: mime,
+                            previewUrl: `data:${mime};base64,${resized}`,
                           }]);
                         };
                         reader.readAsDataURL(file);
