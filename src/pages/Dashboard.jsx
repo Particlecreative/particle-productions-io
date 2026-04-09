@@ -404,6 +404,7 @@ export default function Dashboard() {
 
   const totalBudget = productions.reduce((s, p) => s + (parseFloat(p.planned_budget_2026) || 0), 0);
   const totalSpent = productions.reduce((s, p) => s + (parseFloat(p.actual_spent) || 0), 0);
+  const yearlyBudget = Number(localStorage.getItem(`cp_yearly_budget_${brandId}_${selectedYear}`)) || 0;
   const canSaveForAll = isAdmin || isEditor;
 
   // Compact number formatter: $50,000 → $50K, $1,200,000 → $1.2M
@@ -451,11 +452,27 @@ export default function Dashboard() {
             </button>
             {showSummary && (
               <div className="rounded-2xl overflow-hidden" style={{ background: 'linear-gradient(135deg, rgba(3,11,46,0.04) 0%, rgba(8,8,248,0.04) 100%)', border: '1px solid rgba(8,8,248,0.08)' }}>
-                <div className={clsx('grid grid-cols-2 md:grid-cols-4 p-4', compactMode ? 'gap-3' : 'gap-4')}>
+                <div className={clsx('grid grid-cols-2 md:grid-cols-5 p-4', compactMode ? 'gap-3' : 'gap-4')}>
 
-                  {/* Total Budget */}
+                  {/* Yearly Budget */}
+                  {yearlyBudget > 0 && (
+                    <div className="kpi-card flex flex-col justify-center min-w-0">
+                      <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1 kpi-label">{selectedYear} Yearly Budget</div>
+                      <div className="text-lg sm:text-xl md:text-2xl font-black tracking-tight truncate kpi-value" style={{ color: 'var(--brand-primary)', letterSpacing: '-0.03em' }}>
+                        {df(yearlyBudget)}
+                      </div>
+                      <div className="mt-2 flex items-center gap-2">
+                        <div className="flex-1 h-1.5 rounded-full bg-gray-200 overflow-hidden" style={{ maxWidth: 80 }}>
+                          <div className="h-full rounded-full" style={{ width: `${Math.min(yearlyBudget > 0 ? (totalBudget / yearlyBudget) * 100 : 0, 100)}%`, background: 'var(--brand-accent)' }} />
+                        </div>
+                        <span className="text-[10px] text-gray-400 font-medium">{yearlyBudget > 0 ? Math.round((totalBudget / yearlyBudget) * 100) : 0}% allocated</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Allocated to Productions */}
                   <div className="kpi-card flex flex-col justify-center min-w-0">
-                    <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1 kpi-label">{selectedYear} Total Budget</div>
+                    <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1 kpi-label">Allocated</div>
                     <div className="text-lg sm:text-xl md:text-2xl font-black tracking-tight truncate kpi-value" style={{ color: 'var(--brand-primary)', letterSpacing: '-0.03em' }}>
                       {df(totalBudget)}
                     </div>
