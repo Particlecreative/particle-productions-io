@@ -116,11 +116,21 @@ const cron = require('node-cron');
 const driveRouter = require('./routes/drive');
 cron.schedule('0 21 * * *', async () => {
   console.log('[CRON] Starting nightly Dropbox backup...');
-  try {
-    const result = await driveRouter.runDropboxBackup();
-    console.log('[CRON] Backup done:', result);
-  } catch (err) {
-    console.error('[CRON] Backup failed:', err.message);
+  // Retry up to 3 times with 30s delay
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const result = await driveRouter.runDropboxBackup();
+      console.log(`[CRON] Backup done (attempt ${attempt}):`, result);
+      return; // success — exit
+    } catch (err) {
+      console.error(`[CRON] Backup attempt ${attempt}/3 failed:`, err.message);
+      if (attempt < 3) {
+        console.log('[CRON] Retrying in 30 seconds...');
+        await new Promise(r => setTimeout(r, 30000));
+      } else {
+        console.error('[CRON] All 3 backup attempts failed. Check Dropbox connection in Settings.');
+      }
+    }
   }
 }, { timezone: 'Asia/Jerusalem' });
 

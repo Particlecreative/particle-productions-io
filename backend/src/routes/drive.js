@@ -47,7 +47,9 @@ async function getDropboxToken() {
       await db.query("UPDATE settings SET dropbox_tokens = $1 WHERE brand_id = 'particle'", [JSON.stringify(updated)]);
       return updated.access_token;
     }
-    console.error('Dropbox refresh failed:', res.status);
+    const errBody = await res.text().catch(() => '');
+    console.error(`Dropbox refresh failed: ${res.status} — ${errBody}`);
+    console.error('Ensure DROPBOX_APP_KEY and DROPBOX_APP_SECRET are set in docker-compose.prod.yml');
     return null;
   }
   return parsed.access_token;
