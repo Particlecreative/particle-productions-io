@@ -452,61 +452,61 @@ export default function Dashboard() {
             </button>
             {showSummary && (
               <div className="rounded-2xl overflow-hidden" style={{ background: 'linear-gradient(135deg, rgba(3,11,46,0.04) 0%, rgba(8,8,248,0.04) 100%)', border: '1px solid rgba(8,8,248,0.08)' }}>
-                <div className={clsx('grid grid-cols-2 md:grid-cols-5 p-4', compactMode ? 'gap-3' : 'gap-4')}>
+                <div className={clsx('grid grid-cols-2 md:grid-cols-5 p-3', compactMode ? 'gap-2' : 'gap-3')}>
 
                   {/* Yearly Budget */}
-                  {yearlyBudget > 0 && (
-                    <div className="kpi-card flex flex-col justify-center min-w-0">
-                      <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1 kpi-label">{selectedYear} Yearly Budget</div>
-                      <div className="text-lg sm:text-xl md:text-2xl font-black tracking-tight truncate kpi-value" style={{ color: 'var(--brand-primary)', letterSpacing: '-0.03em' }}>
-                        {df(yearlyBudget)}
-                      </div>
-                      <div className="mt-2 flex items-center gap-2">
-                        <div className="flex-1 h-1.5 rounded-full bg-gray-200 overflow-hidden" style={{ maxWidth: 80 }}>
-                          <div className="h-full rounded-full" style={{ width: `${Math.min(yearlyBudget > 0 ? (totalBudget / yearlyBudget) * 100 : 0, 100)}%`, background: 'var(--brand-accent)' }} />
+                  <div className="kpi-card flex flex-col justify-center min-w-0 p-3">
+                    <div className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest mb-1">{selectedYear} Budget</div>
+                    <div className="text-base sm:text-lg font-black tracking-tight kpi-value" style={{ color: 'var(--brand-primary)', letterSpacing: '-0.03em' }}>
+                      {yearlyBudget > 0 ? fmtShort(yearlyBudget) : fmtShort(totalBudget)}
+                    </div>
+                    {yearlyBudget > 0 && (
+                      <div className="mt-1.5 flex items-center gap-1.5">
+                        <div className="flex-1 h-1 rounded-full bg-gray-200 overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${Math.min((totalBudget / yearlyBudget) * 100, 100)}%`, background: 'var(--brand-accent)' }} />
                         </div>
-                        <span className="text-[10px] text-gray-400 font-medium">{yearlyBudget > 0 ? Math.round((totalBudget / yearlyBudget) * 100) : 0}% allocated</span>
+                        <span className="text-[9px] text-gray-400">{Math.round((totalBudget / yearlyBudget) * 100)}%</span>
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
 
-                  {/* Allocated to Productions */}
-                  <div className="kpi-card flex flex-col justify-center min-w-0">
-                    <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1 kpi-label">Allocated</div>
-                    <div className="text-lg sm:text-xl md:text-2xl font-black tracking-tight truncate kpi-value" style={{ color: 'var(--brand-primary)', letterSpacing: '-0.03em' }}>
-                      {df(totalBudget)}
+                  {/* Allocated */}
+                  <div className="kpi-card flex flex-col justify-center min-w-0 p-3">
+                    <div className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest mb-1">Allocated</div>
+                    <div className="text-base sm:text-lg font-black tracking-tight kpi-value" style={{ color: 'var(--brand-primary)', letterSpacing: '-0.03em' }}>
+                      {fmtShort(totalBudget)}
                     </div>
-                    <div className="mt-2 h-1 w-16 rounded-full" style={{ background: 'var(--brand-accent)' }} />
+                    <div className="mt-1.5 h-1 w-12 rounded-full" style={{ background: 'var(--brand-accent)' }} />
                   </div>
 
                   {/* Spent */}
-                  <div className="kpi-card flex flex-col justify-center min-w-0">
-                    <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1 kpi-label">Spent</div>
-                    <div className="text-lg sm:text-xl font-black tracking-tight text-green-600 truncate kpi-value" style={{ letterSpacing: '-0.02em' }}>
-                      {df(totalSpent)}
+                  <div className="kpi-card flex flex-col justify-center min-w-0 p-3">
+                    <div className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest mb-1">Spent</div>
+                    <div className="text-base sm:text-lg font-black tracking-tight text-green-600 kpi-value">
+                      {fmtShort(totalSpent)}
                     </div>
-                    <div className="mt-2 flex items-center gap-2">
-                      <div className="flex-1 h-1.5 rounded-full bg-gray-200 overflow-hidden" style={{ maxWidth: 80 }}>
-                        <div className="h-full rounded-full" style={{ width: `${Math.min(pctSpent, 100)}%`, background: '#22c55e' }} />
+                    <div className="mt-1.5 flex items-center gap-1.5">
+                      <div className="flex-1 h-1 rounded-full bg-gray-200 overflow-hidden">
+                        <div className="h-full rounded-full bg-green-500" style={{ width: `${Math.min(pctSpent, 100)}%` }} />
                       </div>
-                      <span className="text-[10px] text-gray-400 font-medium">{pctSpent}%</span>
+                      <span className="text-[9px] text-gray-400">{pctSpent}%</span>
                     </div>
                   </div>
 
                   {/* Remaining */}
-                  <div className="kpi-card flex flex-col justify-center min-w-0">
-                    <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1 kpi-label">Remaining</div>
-                    <div className="text-lg sm:text-xl font-black tracking-tight truncate kpi-value" style={{ color: 'var(--brand-secondary)', letterSpacing: '-0.02em' }}>
-                      {df(totalBudget - totalSpent)}
+                  <div className="kpi-card flex flex-col justify-center min-w-0 p-3">
+                    <div className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest mb-1">Remaining</div>
+                    <div className="text-base sm:text-lg font-black tracking-tight kpi-value" style={{ color: 'var(--brand-secondary)' }}>
+                      {fmtShort(totalBudget - totalSpent)}
                     </div>
-                    <div className="mt-2 text-[10px] text-gray-400 font-medium">
+                    <div className="mt-1.5 text-[9px] text-gray-400">
                       {totalBudget > 0 ? `${100 - pctSpent}% left` : ''}
                     </div>
                   </div>
 
                   {/* Stage Pills */}
-                  <div className="kpi-card flex flex-col justify-center min-w-0">
-                    <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5 kpi-label">By Stage</div>
+                  <div className="kpi-card flex flex-col justify-center min-w-0 p-3">
+                    <div className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">By Stage</div>
                     <div className="flex flex-wrap gap-1">
                       {Object.entries(stageBreakdown).map(([stage, count]) => {
                         const sc = { 'Pending': '#6b46c1', 'Pre-Production': '#4527A0', 'Production': '#1565C0', 'Post Production': '#e65100', 'Completed': '#2e7d32', 'Paused': '#f57f17' }[stage] || '#6b7280';
