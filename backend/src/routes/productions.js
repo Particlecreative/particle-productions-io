@@ -153,15 +153,32 @@ router.patch('/:id', requireEditor, async (req, res) => {
   }
 });
 
-// DELETE /api/productions/:id  (admin only)
+// DELETE /api/productions/:id  (admin only — cascades all related data)
 router.delete('/:id', requireAdmin, async (req, res) => {
   try {
-    const { rows } = await db.query(
-      'DELETE FROM productions WHERE id = $1 RETURNING id',
-      [req.params.id]
-    );
+    const prodId = req.params.id;
+    // Check production exists
+    const { rows: check } = await db.query('SELECT id, project_name, locked FROM productions WHERE id = $1', [prodId]);
+    if (!check[0]) return res.status(404).json({ error: 'Not found' });
+    if (check[0].locked) return res.status(403).json({ error: 'Cannot delete a locked production. Unlock it first.' });
+
+    // Explicitly clean up tables without FK CASCADE (orphan-prone)
+    await db.query('DELETE FROM casting WHERE production_id = $1', [prodId]).catch(() => {});
+    await db.query('DELETE FROM change_history WHERE production_id = $1', [prodId]).catch(() => {});
+    await db.query('DELETE FROM cc_purchases WHERE production_id = $1', [prodId]).catch(() => {});
+    // Unlink contracts (set production_id to null, don't delete contracts themselves)
+    await db.query('UPDATE contracts SET production_id = NULL WHERE production_id = $1', [prodId]).catch(() => {});
+    // Unlink suppliers (remove from production association)
+    await db.query('DELETE FROM supplier_productions WHERE production_id = $1', [prodId]).catch(() => {});
+    // Unlink scripts (set production_id null, don't delete scripts)
+    await db.query('UPDATE scripts SET production_id = NULL WHERE production_id = $1', [prodId]).catch(() => {});
+
+    // Delete production (cascades: line_items, comments, links, gantt_events, invoices, receipts, call_sheets, weekly entries, people_on_set, etc.)
+    const { rows } = await db.query('DELETE FROM productions WHERE id = $1 RETURNING id, project_name', [prodId]);
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
-    res.json({ success: true, id: rows[0].id });
+
+    console.log(`[ADMIN] Production deleted: ${rows[0].project_name} (${rows[0].id}) by ${req.user?.name || req.user?.email}`);
+    res.json({ success: true, id: rows[0].id, name: rows[0].project_name });
   } catch (err) {
     console.error('DELETE /productions error:', err);
     res.status(500).json({ error: 'Server error' });

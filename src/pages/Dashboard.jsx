@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Eye, EyeOff, ChevronUp, ChevronDown, MessageSquare, GripVertical, Save, X, Check, Pencil, SlidersHorizontal, RefreshCw, HelpCircle, Upload, Lock, Unlock } from 'lucide-react';
+import { Plus, Search, Eye, EyeOff, ChevronUp, ChevronDown, MessageSquare, GripVertical, Save, X, Check, Pencil, SlidersHorizontal, RefreshCw, HelpCircle, Upload, Lock, Unlock, Trash2, Loader2 } from 'lucide-react';
 import { useBrand } from '../context/BrandContext';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency } from '../context/CurrencyContext';
@@ -112,6 +112,9 @@ export default function Dashboard() {
 
   // Row-level editing (replaces cell-level editing)
   const [editingRow, setEditingRow] = useState(null);
+  // Delete confirmation
+  const [deleteConfirm, setDeleteConfirm] = useState(null); // { id, name }
+  const [deleting, setDeleting] = useState(false);
 
   // Crew auto-populate confirmation
   const [crewConfirm, setCrewConfirm] = useState(null);
@@ -309,6 +312,26 @@ export default function Dashboard() {
         alert(err.error || 'Failed to lock/unlock');
       }
     } catch {}
+  }
+
+  async function handleDeleteProduction() {
+    if (!deleteConfirm) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/productions/${deleteConfirm.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${localStorage.getItem('cp_auth_token')}` },
+      });
+      const data = await res.json();
+      if (data.success) {
+        setProductions(prev => prev.filter(p => p.id !== deleteConfirm.id));
+        setDeleteConfirm(null);
+        addNotification('delete', `Production "${deleteConfirm.name}" deleted`, null);
+      } else {
+        alert(data.error || 'Failed to delete');
+      }
+    } catch { alert('Failed to delete production'); }
+    setDeleting(false);
   }
 
   function handleCreate(data) {
@@ -876,6 +899,7 @@ export default function Dashboard() {
                   onSaveRow={handleSaveRow}
                   onInlineEdit={handleInlineEdit}
                   onLock={handleLock}
+                  onDelete={(id, name) => setDeleteConfirm({ id, name })}
                   dragId={dragId}
                   dragOverId={dragOverId}
                   onDragStart={handleDragStart}
@@ -960,6 +984,58 @@ export default function Dashboard() {
         />
       )}
 
+      {/* Delete Production Confirmation */}
+      {deleteConfirm && (
+        <div className="modal-overlay" onClick={() => !deleting && setDeleteConfirm(null)}>
+          <div className="modal-panel" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                <Trash2 size={18} className="text-red-600" />
+              </div>
+              <div>
+                <h2 className="text-base font-black text-gray-900">Delete Production</h2>
+                <p className="text-xs text-gray-400">This action cannot be undone</p>
+              </div>
+            </div>
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4">
+              <p className="text-sm text-red-800 font-semibold mb-2">
+                Are you sure you want to delete "{deleteConfirm.name}"?
+              </p>
+              <p className="text-xs text-red-600 leading-relaxed">
+                This will permanently delete all associated data including:
+              </p>
+              <ul className="text-xs text-red-600 mt-1.5 space-y-0.5 list-disc pl-4">
+                <li>Budget line items & payments</li>
+                <li>Cast members & contracts linked to this production</li>
+                <li>Gantt events & timelines</li>
+                <li>Call sheets & crew assignments</li>
+                <li>Links, comments, invoices & receipts</li>
+                <li>Change history</li>
+                <li>CC purchases</li>
+              </ul>
+              <p className="text-xs text-red-500 mt-2 italic">Scripts and contracts will be unlinked (not deleted).</p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                disabled={deleting}
+                className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteProduction}
+                disabled={deleting}
+                className="flex-1 py-2.5 bg-red-600 text-white rounded-xl text-sm font-bold hover:bg-red-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+              >
+                {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                {deleting ? 'Deleting...' : 'Yes, Delete Production'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Crew Auto-Populate Confirmation */}
       {crewConfirm && (
         <CrewConfirmModal
@@ -1018,7 +1094,7 @@ const STATUS_ROW_COLORS = {
 
 function ProductionRow({
   prod, fmt, onOpen, onUpdates, onStageChange, onProductionTypeChange, isEditor, isAdmin,
-  editingRow, setEditingRow, onSaveRow, onInlineEdit, onLock,
+  editingRow, setEditingRow, onSaveRow, onInlineEdit, onLock, onDelete,
   dragId, dragOverId, onDragStart, onDragOver, onDrop, onDragEnd, canDrag,
   hiddenCols = [], colorByStatus = true, orderedCols = [], compactMode = false,
 }) {
@@ -1566,6 +1642,15 @@ function ProductionRow({
             >
               <MessageSquare size={14} />
             </button>
+            {isAdmin && !prod.locked && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onDelete(prod.id, prod.project_name); }}
+                className="p-1.5 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors sm:opacity-0 sm:group-hover:opacity-100"
+                title="Delete production"
+              >
+                <Trash2 size={13} />
+              </button>
+            )}
           </div>
         )}
       </td>
