@@ -799,10 +799,11 @@ export default function Settings() {
   }
 
   const COLORS = [
-    { key: 'bg',        label: 'Background' },
-    { key: 'primary',   label: 'Primary / Titles' },
-    { key: 'secondary', label: 'Secondary' },
-    { key: 'accent',    label: 'Accent / CTA' },
+    { key: 'bg',         label: 'Background' },
+    { key: 'primary',    label: 'Primary / Titles' },
+    { key: 'secondary',  label: 'Secondary' },
+    { key: 'accent',     label: 'Accent / CTA' },
+    { key: 'sidebar-bg', label: 'Sidebar' },
   ];
 
   const FONT_OPTIONS = [

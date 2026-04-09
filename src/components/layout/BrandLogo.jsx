@@ -31,7 +31,7 @@ export default function BrandLogo({ compact = false, dark = false }) {
         <img
           src={logoUrl}
           alt={brand.name}
-          style={{ maxWidth: 32, maxHeight: 32, objectFit: 'contain' }}
+          style={{ width: 32, height: 32, objectFit: 'contain', objectPosition: 'left center' }}
           className="flex-shrink-0"
         />
       );
@@ -51,7 +51,7 @@ export default function BrandLogo({ compact = false, dark = false }) {
       <img
         src={logoUrl}
         alt={brand.name}
-        style={{ maxWidth: 200, maxHeight: 50, objectFit: 'contain' }}
+        style={{ width: 180, height: 40, objectFit: 'contain', objectPosition: 'left center' }}
         className="flex-shrink-0"
       />
     );
