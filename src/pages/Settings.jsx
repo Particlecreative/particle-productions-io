@@ -894,8 +894,10 @@ export default function Settings() {
                             }),
                           });
                           const data = await res.json();
-                          if (data.url) {
-                            setSettings(s => ({ ...s, logo_url: data.url }));
+                          if (data.fileId) {
+                            // Use Drive thumbnail URL for direct image access
+                            const logoUrl = `https://drive.google.com/thumbnail?id=${data.fileId}&sz=w400`;
+                            setSettings(s => ({ ...s, logo_url: logoUrl }));
                           } else {
                             setSettings(s => ({ ...s, logo_url: '' }));
                             alert(data.error || 'Upload failed');
