@@ -1,5 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
+
+// Company details — used across all contract templates
+const COMPANY_NAME = 'Particle Aesthetic Science Ltd.';
+const COMPANY_ADDRESS = 'King George 48, Tel Aviv';
 import {
   CheckCircle, RotateCcw, Undo2, PenTool, FileText,
   DollarSign, Shield, AlertTriangle, RefreshCw, Clock,
@@ -422,7 +426,7 @@ export default function ContractSign() {
             {/* Contract summary card */}
             <div className="bg-white rounded-xl shadow border border-gray-100 p-6 mb-6">
               <div className="text-center mb-4">
-                <p className="text-[10px] uppercase tracking-[3px] text-gray-400 mb-2">Particle Aesthetic Science Ltd.</p>
+                <p className="text-[10px] uppercase tracking-[3px] text-gray-400 mb-2">{COMPANY_NAME}</p>
                 <h3 className="text-xl font-bold text-gray-900">SERVICES AGREEMENT</h3>
                 {cd.effective_date && (
                   <p className="text-xs text-gray-500 mt-1">
@@ -433,7 +437,7 @@ export default function ContractSign() {
               <div className="grid grid-cols-2 gap-4 text-sm mb-4">
                 <div className="bg-gray-50 rounded-lg p-3">
                   <p className="text-[10px] uppercase text-gray-400 mb-1">Company</p>
-                  <p className="font-semibold text-gray-900">Particle Aesthetic Science Ltd.</p>
+                  <p className="font-semibold text-gray-900">{COMPANY_NAME}</p>
                 </div>
                 <div className="bg-gray-50 rounded-lg p-3">
                   <p className="text-[10px] uppercase text-gray-400 mb-1">Service Provider</p>
@@ -541,7 +545,7 @@ export default function ContractSign() {
             {/* Security footer */}
             <div className="flex items-center justify-center gap-2 mt-6 text-[11px] text-gray-400">
               <Shield size={11} />
-              <span>Secured & powered by Particle Aesthetic Science Ltd.</span>
+              <span>Secured & powered by {COMPANY_NAME}</span>
             </div>
           </div>
         </Shell>
@@ -664,14 +668,14 @@ export default function ContractSign() {
             {/* Agreement Header */}
             <div className="px-6 sm:px-10 pt-10 pb-8 border-b border-gray-100">
               <div className="text-center mb-8">
-                <p className="text-[10px] uppercase tracking-[3px] text-gray-400 mb-3">Particle Aesthetic Science Ltd.</p>
+                <p className="text-[10px] uppercase tracking-[3px] text-gray-400 mb-3">{COMPANY_NAME}</p>
                 <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight">SERVICES AGREEMENT</h1>
                 <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 bg-gray-50 rounded-full text-xs text-gray-500">
                   <Calendar size={11} /> Effective Date: {effectiveDate}
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                <PartyCard label="The Company" name="Particle Aesthetic Science Ltd." subtitle={contractData?.hocp_signature?.signer_name || contractData?.signer_name || 'Authorized Signatory'} role="Company" />
+                <PartyCard label="The Company" name="{COMPANY_NAME}" subtitle={contractData?.hocp_signature?.signer_name || contractData?.signer_name || 'Authorized Signatory'} role="Company" />
                 <PartyCard label="Service Provider" name={d.provider_name || '—'} role="Provider" />
               </div>
             </div>
@@ -718,7 +722,7 @@ export default function ContractSign() {
                 {/* Company / HOCP */}
                 <div className="bg-white rounded-lg border border-gray-200 p-5">
                   <p className="text-[10px] uppercase tracking-[2px] text-gray-400 mb-3">For the Company</p>
-                  <p className="text-sm font-semibold text-gray-900">Particle Aesthetic Science Ltd.</p>
+                  <p className="text-sm font-semibold text-gray-900">{COMPANY_NAME}</p>
                   <p className="text-xs text-gray-500 mt-1">{contractData?.hocp_signature?.signer_name || contractData?.signer_name || 'Authorized Signatory'}</p>
                   {contractData?.hocp_signature?.signature_data && (
                     <img src={contractData.hocp_signature.signature_data} alt="Company Signature" className="max-h-16 mt-3" />
@@ -788,7 +792,7 @@ export default function ContractSign() {
           {/* Security footer */}
           <div className="flex items-center justify-center gap-2 mt-6 text-[11px] text-gray-400">
             <Shield size={11} />
-            <span>Secured & powered by Particle Aesthetic Science Ltd.</span>
+            <span>Secured & powered by {COMPANY_NAME}</span>
           </div>
         </Shell>
       );
@@ -833,7 +837,7 @@ export default function ContractSign() {
         {/* ── Section 1: Agreement Header ── */}
         <div className="px-6 sm:px-10 pt-10 pb-8 border-b border-gray-100">
           <div className="text-center mb-8">
-            <p className="text-[10px] uppercase tracking-[3px] text-gray-400 mb-3">Particle Aesthetic Science Ltd.</p>
+            <p className="text-[10px] uppercase tracking-[3px] text-gray-400 mb-3">{COMPANY_NAME}</p>
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight">SERVICES AGREEMENT</h1>
             <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 bg-gray-50 rounded-full text-xs text-gray-500">
               <Calendar size={11} />
@@ -841,7 +845,7 @@ export default function ContractSign() {
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-            <PartyCard label="The Company" name="Particle Aesthetic Science Ltd." subtitle={contractData?.hocp_signature?.signer_name || contractData?.signer_name || 'Authorized Signatory'} role="Company" />
+            <PartyCard label="The Company" name="{COMPANY_NAME}" subtitle={contractData?.hocp_signature?.signer_name || contractData?.signer_name || 'Authorized Signatory'} role="Company" />
             <PartyCard label="Service Provider" name={d.provider_name || '\u2014'} role={d.signer_role === 'hocp' ? 'HOCP' : 'Provider'} />
           </div>
         </div>
@@ -1121,7 +1125,7 @@ export default function ContractSign() {
       {/* ── Security footer ── */}
       <div className="flex items-center justify-center gap-2 mt-6 text-[11px] text-gray-400">
         <Shield size={11} />
-        <span>Secured & powered by Particle Aesthetic Science Ltd.</span>
+        <span>Secured & powered by {COMPANY_NAME}</span>
       </div>
 
       {/* ── Mobile Sticky Bottom Bar ── */}
@@ -1234,7 +1238,7 @@ function FullContractText({ data: d, effectiveDate, liveId, liveAddress, noScrol
     <div className={noScroll ? '' : 'max-h-[500px] overflow-y-auto pr-2'} style={noScroll ? {} : { scrollbarWidth: 'thin' }}>
       {/* Preamble */}
       <P>
-        This Services Agreement (&ldquo;Agreement&rdquo;) is made and entered into on {effectiveDate} (&ldquo;Effective Date&rdquo;), by and between Particle Aesthetic Science Ltd., a company registered in Israel, with a principal place of business at King George 48, Tel Aviv (&ldquo;Company&rdquo;), and {providerName}, ID/Passport number {providerId}, with a principal place of business at {providerAddr} (&ldquo;Service Provider&rdquo;),
+        This Services Agreement (&ldquo;Agreement&rdquo;) is made and entered into on {effectiveDate} (&ldquo;Effective Date&rdquo;), by and between {COMPANY_NAME}, a company registered in Israel, with a principal place of business at {COMPANY_ADDRESS} (&ldquo;Company&rdquo;), and {providerName}, ID/Passport number {providerId}, with a principal place of business at {providerAddr} (&ldquo;Service Provider&rdquo;),
       </P>
       <P>WHEREAS, Service Provider has the skills, resources, know-how and ability required to provide the Services and create the Deliverables (each as defined below); and</P>
       <P>WHEREAS, based on Service Provider&rsquo;s representations hereunder, the parties desire that Service Provider provide the Services as an independent contractor of Company upon the terms and conditions hereinafter specified;</P>

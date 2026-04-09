@@ -23,6 +23,7 @@ import SplitModal from './SplitModal';
 import UniversalBlocks from './UniversalBlocks';
 import AIChatPanel from './AIChatPanel';
 import VideoMatchModal from './VideoMatchModal';
+import ImageGalleryModal from './ImageGalleryModal';
 
 const API = import.meta.env.VITE_API_URL || '';
 
@@ -541,6 +542,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
   const [singleGenPrompt, setSingleGenPrompt] = useState(null); // { sceneId, info } — shows storyboard vs independent choice
   const [showAIChat, setShowAIChat] = useState(false);
   const [showVideoMatch, setShowVideoMatch] = useState(false);
+  const [galleryTarget, setGalleryTarget] = useState(null); // { sceneId, imageId } — opens gallery to replace
   const [aiChatSelectedText, setAiChatSelectedText] = useState('');
   const [aiChatSceneId, setAiChatSceneId] = useState(null);
 
@@ -1403,6 +1405,19 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
     setRegenRefBase64(''); setRegenRefMime(''); setRegenRefUrl(''); setRegenRefPreview('');
   };
 
+  const handleGalleryReplace = (sceneId, imageId, newImage) => {
+    setScript(prev => {
+      const updated = { ...prev, scenes: prev.scenes.map(s => {
+        if (s.id !== sceneId) return s;
+        return { ...s, images: (s.images || []).map(img =>
+          img.id === imageId ? { ...img, url: newImage.url, prompt: newImage.prompt || img.prompt, source: newImage.type || 'gallery' } : img
+        )};
+      })};
+      debounceSave(updated);
+      return updated;
+    });
+  };
+
   const handleRegenConfirm = async () => {
     if (!regenModal) return;
     setRegenLoading(true);
@@ -2255,8 +2270,15 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-gray-900 flex items-center gap-2"><RefreshCw size={16} className="text-purple-500" /> Regenerate Image</h3>
-              <button onClick={() => setRegenModal(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+              <h3 className="font-bold text-gray-900 flex items-center gap-2"><RefreshCw size={16} className="text-purple-500" /> Replace Image</h3>
+              <div className="flex items-center gap-1">
+                <button onClick={() => { setGalleryTarget({ sceneId: regenModal.sceneId, imageId: regenModal.imageId }); setRegenModal(null); }}
+                  className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+                  title="Browse all script images">
+                  <ImageIcon size={12} /> Gallery
+                </button>
+                <button onClick={() => setRegenModal(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+              </div>
             </div>
             <div className="space-y-3 mb-4">
               <label className="flex items-start gap-3 p-3 border-2 rounded-xl cursor-pointer transition-colors hover:border-purple-300" style={{ borderColor: regenMode === 'same' ? '#a855f7' : undefined }}>
@@ -2610,6 +2632,21 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
               return updated;
             });
             onUpdated?.({ id: scriptId });
+          }}
+        />
+      )}
+
+      {/* ── Image Gallery ── */}
+      {galleryTarget && (
+        <ImageGalleryModal
+          scriptId={scriptId}
+          scenes={scenes}
+          targetSceneId={galleryTarget.sceneId}
+          onClose={() => setGalleryTarget(null)}
+          onSelect={(img) => {
+            handleGalleryReplace(galleryTarget.sceneId, galleryTarget.imageId, img);
+            setGalleryTarget(null);
+            toast.success('Image replaced');
           }}
         />
       )}

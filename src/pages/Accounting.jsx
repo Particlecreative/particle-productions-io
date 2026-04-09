@@ -3,6 +3,7 @@ import { X, Plus, ChevronDown, ChevronRight, ExternalLink, Upload, Download, Tra
 import { useBrand } from '../context/BrandContext';
 import ExportMenu from '../components/ui/ExportMenu';
 import { useCurrency } from '../context/CurrencyContext';
+import { toast } from '../lib/toast';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationsContext';
 import { getProductions, getAllLineItems, updateLineItem, createReceipt, updateReceipt, getReceipts, generateId } from '../lib/dataService';
@@ -99,6 +100,7 @@ export default function Accounting() {
       const item = allItems.find(i => i.id === itemId);
       if (item?.invoice_status !== 'Received' || !item?.invoice_url) {
         setPaymentBlockedId(itemId);
+        toast.error('Invoice required — mark invoice as "Received" with a link before marking as Paid');
         setTimeout(() => setPaymentBlockedId(id => id === itemId ? null : id), 4000);
         return;
       }
