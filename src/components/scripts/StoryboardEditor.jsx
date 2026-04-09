@@ -366,9 +366,17 @@ const SortableSceneRow = memo(function SortableSceneRow({ scene, index, visibleC
         </td>
       )}
 
-      {/* Visuals */}
+      {/* Visuals — supports clipboard paste (Ctrl+V) */}
       {visibleCols.visuals && (
-        <td className="w-56 px-2 py-2 align-top">
+        <td className="w-56 px-2 py-2 align-top" tabIndex={0} onPaste={(e) => {
+          if (readOnly) return;
+          const items = Array.from(e.clipboardData?.items || []);
+          const imageItem = items.find(i => i.type.startsWith('image/'));
+          if (!imageItem) return;
+          e.preventDefault();
+          const file = imageItem.getAsFile();
+          if (file) onImageUpload(scene.id, file);
+        }}>
           <div className="flex flex-wrap gap-1.5">
             {(scene.images || []).map(img => (
               <div key={img.id} className="relative group/img">
