@@ -19,7 +19,7 @@ export default function SplitModal({ scene, scriptId, onClose, onApply }) {
     { whatWeSee: initialWhatWeSee, whatWeHear: initialWhatWeHear },
   ]);
   const [loading, setLoading] = useState(false);
-  const [generateImages, setGenerateImages] = useState(true);
+  const [generateImages, setGenerateImages] = useState(false);
 
   const addBreakAfter = (index) => {
     setSegments(prev => {
@@ -84,29 +84,58 @@ export default function SplitModal({ scene, scriptId, onClose, onApply }) {
       const data = await res.json();
       const shots = data.shots || [];
       if (shots.length > 1) {
+        // Set visuals from AI, placeholder for audio
         setSegments(shots.map(shot => ({
           whatWeSee: shot.description || '',
-          whatWeHear: '', // AI suggests visual shots, user can fill in audio
+          whatWeHear: '...',
         })));
-        // Try to distribute the original what_we_hear across segments
-        if (initialWhatWeHear) {
-          const sentences = initialWhatWeHear.split(/(?<=[.!?])\s+/).filter(s => s.trim());
-          const perSegment = Math.ceil(sentences.length / shots.length);
-          setSegments(prev => prev.map((seg, i) => ({
-            ...seg,
-            whatWeHear: sentences.slice(i * perSegment, (i + 1) * perSegment).join(' '),
-          })));
+
+        // Ask Claude to distribute What We Hear across the AI-suggested shots
+        if (initialWhatWeHear?.trim()) {
+          try {
+            const chatRes = await fetch(`${API}/api/scripts/${scriptId}/chat`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
+              body: JSON.stringify({
+                messages: [{
+                  role: 'user',
+                  content: `I'm splitting a scene into ${shots.length} shots. Distribute the audio/dialogue logically across the shots.
+
+Original "What We Hear" (one block):
+${initialWhatWeHear}
+
+Shots (one per visual):
+${shots.map((s, i) => `Shot ${i + 1}: "${s.description}"`).join('\n')}
+
+Return ONLY a JSON array of strings — one audio line per shot. Match the dialogue to what makes sense for each visual. Example: ["Shot 1 audio", "Shot 2 audio"]`
+                }],
+              }),
+            });
+            const chatData = await chatRes.json();
+            if (chatData.reply) {
+              const match = chatData.reply.match(/\[[\s\S]*\]/);
+              if (match) {
+                const audioLines = JSON.parse(match[0]);
+                setSegments(prev => prev.map((seg, i) => ({
+                  ...seg,
+                  whatWeHear: audioLines[i] || '',
+                })));
+              }
+            }
+          } catch { /* keep ... placeholders */ }
         }
       }
-    } catch {
-      // fallback: keep current segments
-    }
+    } catch {}
     setLoading(false);
   };
 
   const handleSplitBySentences = async () => {
-    // Split What We Hear by sentence boundaries
-    const hearSentences = (initialWhatWeHear || '').split(/(?<=[.!?])\s+/).filter(s => s.trim());
+    // Split What We Hear by sentence boundaries (period, !, ?, or " followed by space)
+    let hearSentences = (initialWhatWeHear || '').split(/(?<=[.!?"""])\s+/).filter(s => s.trim());
+    // Fallback: split by commas or clauses if no sentence breaks found
+    if (hearSentences.length <= 1) {
+      hearSentences = (initialWhatWeHear || '').split(/,\s+|;\s+|—\s+|\.\s+/).filter(s => s.trim());
+    }
     if (hearSentences.length <= 1) return;
 
     // Set segments immediately with hear text, empty see (shows loading feel)
