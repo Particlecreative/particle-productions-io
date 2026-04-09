@@ -417,7 +417,10 @@ export default function Dashboard() {
   }
   const df = compactMode ? fmtShort : fmt; // display formatter
 
-  const pctSpent = totalBudget ? Math.round((totalSpent / totalBudget) * 100) : 0;
+  const budgetBase = yearlyBudget > 0 ? yearlyBudget : totalBudget; // yearly budget is the anchor
+  const pctAllocated = budgetBase > 0 ? Math.round((totalBudget / budgetBase) * 100) : 0;
+  const pctSpent = budgetBase > 0 ? Math.round((totalSpent / budgetBase) * 100) : 0;
+  const remaining = budgetBase - totalSpent;
   const stageBreakdown = productions.reduce((m, p) => {
     const s = p.stage || 'Pending';
     m[s] = (m[s] || 0) + 1;
@@ -454,53 +457,54 @@ export default function Dashboard() {
               <div className="rounded-2xl overflow-hidden" style={{ background: 'linear-gradient(135deg, rgba(3,11,46,0.04) 0%, rgba(8,8,248,0.04) 100%)', border: '1px solid rgba(8,8,248,0.08)' }}>
                 <div className={clsx('grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 p-3', compactMode ? 'gap-2' : 'gap-3')}>
 
-                  {/* Yearly Budget */}
+                  {/* Yearly Budget — the anchor */}
                   <div className="kpi-card flex flex-col justify-center min-w-0 p-3">
-                    <div className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest mb-1">{selectedYear} Budget</div>
+                    <div className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest mb-1">{selectedYear} Total Budget</div>
                     <div className="text-base sm:text-lg font-black tracking-tight kpi-value" style={{ color: 'var(--brand-primary)', letterSpacing: '-0.03em' }}>
-                      {yearlyBudget > 0 ? fmtShort(yearlyBudget) : fmtShort(totalBudget)}
+                      {fmtShort(budgetBase)}
                     </div>
-                    {yearlyBudget > 0 && (
-                      <div className="mt-1.5 flex items-center gap-1.5">
-                        <div className="flex-1 h-1 rounded-full bg-gray-200 overflow-hidden">
-                          <div className="h-full rounded-full" style={{ width: `${Math.min((totalBudget / yearlyBudget) * 100, 100)}%`, background: 'var(--brand-accent)' }} />
-                        </div>
-                        <span className="text-[9px] text-gray-400">{Math.round((totalBudget / yearlyBudget) * 100)}%</span>
-                      </div>
-                    )}
+                    <div className="mt-1.5 text-[9px] text-gray-400">
+                      {yearlyBudget > 0 ? 'Set in Financial' : 'Sum of productions'}
+                    </div>
                   </div>
 
-                  {/* Allocated */}
+                  {/* Allocated — sum of production planned budgets */}
                   <div className="kpi-card flex flex-col justify-center min-w-0 p-3">
                     <div className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest mb-1">Allocated</div>
                     <div className="text-base sm:text-lg font-black tracking-tight kpi-value" style={{ color: 'var(--brand-primary)', letterSpacing: '-0.03em' }}>
                       {fmtShort(totalBudget)}
                     </div>
-                    <div className="mt-1.5 h-1 w-12 rounded-full" style={{ background: 'var(--brand-accent)' }} />
+                    <div className="mt-1.5 flex items-center gap-1.5">
+                      <div className="flex-1 h-1 rounded-full bg-gray-200 overflow-hidden">
+                        <div className="h-full rounded-full" style={{ width: `${Math.min(pctAllocated, 100)}%`, background: 'var(--brand-accent)' }} />
+                      </div>
+                      <span className="text-[9px] text-gray-400">{pctAllocated}% of budget</span>
+                    </div>
                   </div>
 
-                  {/* Spent */}
+                  {/* Spent — total actual spend */}
                   <div className="kpi-card flex flex-col justify-center min-w-0 p-3">
                     <div className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest mb-1">Spent</div>
-                    <div className="text-base sm:text-lg font-black tracking-tight text-green-600 kpi-value">
+                    <div className="text-base sm:text-lg font-black tracking-tight kpi-value" style={{ color: pctSpent > 90 ? '#dc2626' : '#16a34a' }}>
                       {fmtShort(totalSpent)}
                     </div>
                     <div className="mt-1.5 flex items-center gap-1.5">
                       <div className="flex-1 h-1 rounded-full bg-gray-200 overflow-hidden">
-                        <div className="h-full rounded-full bg-green-500" style={{ width: `${Math.min(pctSpent, 100)}%` }} />
+                        <div className="h-full rounded-full" style={{ width: `${Math.min(pctSpent, 100)}%`, background: pctSpent > 90 ? '#dc2626' : '#22c55e' }} />
                       </div>
-                      <span className="text-[9px] text-gray-400">{pctSpent}%</span>
+                      <span className="text-[9px] text-gray-400">{pctSpent}% of budget</span>
                     </div>
                   </div>
 
-                  {/* Remaining */}
+                  {/* Remaining — out of yearly budget */}
                   <div className="kpi-card flex flex-col justify-center min-w-0 p-3">
                     <div className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest mb-1">Remaining</div>
-                    <div className="text-base sm:text-lg font-black tracking-tight kpi-value" style={{ color: 'var(--brand-secondary)' }}>
-                      {fmtShort(totalBudget - totalSpent)}
+                    <div className={`text-base sm:text-lg font-black tracking-tight kpi-value`} style={{ color: remaining >= 0 ? 'var(--brand-secondary)' : '#dc2626' }}>
+                      {fmtShort(Math.abs(remaining))}
+                      {remaining < 0 && <span className="text-[10px] ml-1">over</span>}
                     </div>
                     <div className="mt-1.5 text-[9px] text-gray-400">
-                      {totalBudget > 0 ? `${100 - pctSpent}% left` : ''}
+                      {remaining >= 0 ? `${100 - pctSpent}% of budget left` : `${Math.abs(100 - pctSpent)}% over budget`}
                     </div>
                   </div>
 
