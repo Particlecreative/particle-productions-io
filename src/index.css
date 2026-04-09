@@ -1497,11 +1497,24 @@ html.dark .skeleton-block {
   .scripts-table th { padding: 8px 6px; font-size: 9px; }
 }
 
-/* === PRINT: Hide non-printable elements === */
+/* === PRINT: Clean script output === */
 @media print {
-  .scripts-no-print, .mobile-nav, .sidebar, header, nav { display: none !important; }
+  .scripts-no-print, .mobile-nav, .sidebar, header, nav,
+  .scripts-share-page .scripts-no-print { display: none !important; }
   .main-content { margin: 0 !important; padding: 0 !important; }
   .brand-card { box-shadow: none; border: 1px solid #e5e7eb; }
+  body { background: white !important; }
+
+  /* Scripts table clean print */
+  .scripts-table { min-width: 0 !important; font-size: 11px; }
+  .scripts-table th { background: #f3f4f6 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; padding: 6px 8px !important; font-size: 9px; }
+  .scripts-table td { padding: 8px !important; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+  .scripts-table img { max-width: 120px; max-height: 80px; object-fit: cover; border-radius: 4px; }
+
+  /* Script header for print */
+  .scripts-printable { page-break-inside: avoid; }
+  .scripts-printable h1, .scripts-printable h2 { page-break-after: avoid; }
+  .scripts-printable tr { page-break-inside: avoid; }
 }
 
 /* === TYPOGRAPHY CONSISTENCY === */

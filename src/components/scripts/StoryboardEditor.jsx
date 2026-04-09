@@ -22,6 +22,7 @@ import DOMPurify from 'dompurify';
 import SplitModal from './SplitModal';
 import UniversalBlocks from './UniversalBlocks';
 import AIChatPanel from './AIChatPanel';
+import VideoMatchModal from './VideoMatchModal';
 
 const API = import.meta.env.VITE_API_URL || '';
 
@@ -539,6 +540,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
   const [genAllIncludeExisting, setGenAllIncludeExisting] = useState(false);
   const [singleGenPrompt, setSingleGenPrompt] = useState(null); // { sceneId, info } — shows storyboard vs independent choice
   const [showAIChat, setShowAIChat] = useState(false);
+  const [showVideoMatch, setShowVideoMatch] = useState(false);
   const [aiChatSelectedText, setAiChatSelectedText] = useState('');
   const [aiChatSceneId, setAiChatSceneId] = useState(null);
 
@@ -1625,6 +1627,10 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
               <button onClick={() => setShowBlocks(true)} className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-gray-600 hover:bg-gray-100 border border-gray-200 transition-colors">
                 <Package size={11} /> Blocks
               </button>
+              <button onClick={() => setShowVideoMatch(true)} className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-gray-600 hover:bg-gray-100 border border-gray-200 transition-colors"
+                title="Match video frames to script scenes">
+                <Film size={11} /> Video
+              </button>
               <button onClick={() => { setShowAIChat(true); setAiChatSelectedText(''); setAiChatSceneId(null); }}
                 className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-purple-600 text-white hover:bg-purple-700 transition-colors">
                 <Sparkles size={11} /> AI
@@ -1686,6 +1692,34 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                     <Download size={12} className="text-indigo-500" />
                     {downloadingFullVO ? 'Generating VO...' : 'Download Full VO (MP3)'}
                   </button>
+                  <button onClick={() => { setShowMoreMenu(false); window.print(); }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50">
+                    <Download size={12} className="text-green-500" />
+                    Export PDF (Print)
+                  </button>
+                  <button onClick={() => { setShowMoreMenu(false); handleOpenImageSetup(); }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50">
+                    <Settings size={12} className="text-purple-500" />
+                    Image Setup
+                  </button>
+                  <button onClick={() => { setShowMoreMenu(false); setShowVersions(true); loadVersions(); }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50">
+                    <History size={12} />
+                    Version History
+                  </button>
+                  {script.status !== 'approved' && (
+                    <button onClick={() => { setShowMoreMenu(false); handleApprove(); }} disabled={approvingLoading}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-green-600 hover:bg-green-50">
+                      <CheckCircle size={12} />
+                      {approvingLoading ? 'Approving...' : 'Approve Script'}
+                    </button>
+                  )}
+                  {script.drive_url && (
+                    <a href={script.drive_url} target="_blank" rel="noopener noreferrer"
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-green-600 hover:bg-green-50">
+                      <ExternalLink size={12} /> Open in Google Drive
+                    </a>
+                  )}
                   <div className="border-t border-gray-100 my-1" />
                   <button onClick={() => {
                     setShowMoreMenu(false);
@@ -2548,6 +2582,16 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
             });
             onUpdated?.({ id: scriptId });
           }}
+        />
+      )}
+
+      {/* ── Video Match Modal ── */}
+      {showVideoMatch && (
+        <VideoMatchModal
+          scriptId={scriptId}
+          sceneCount={scenes.length}
+          onClose={() => setShowVideoMatch(false)}
+          onApplied={() => loadScript()}
         />
       )}
 

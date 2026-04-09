@@ -6,6 +6,10 @@ const mammoth = require('mammoth');
 const { verifyJWT } = require('../middleware/auth');
 
 const DRIVE_FOLDER_ID = process.env.DRIVE_FOLDER_ID;
+const { execFile } = require('child_process');
+const os = require('os');
+const path = require('path');
+const fs = require('fs');
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -120,6 +124,97 @@ async function callGemini(prompt, fileBase64, mimeType) {
 
 // Gemini 3.1 Flash Image (Nano Banana 2) — storyboard image generation
 // referenceImages: optional array of { base64, mimeType } — sent to Gemini as visual guidance
+// Google OAuth client for Drive file access
+function getOAuth2Client() {
+  return new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET, process.env.GOOGLE_REDIRECT_URI);
+}
+
+// Upload video to Gemini File API (for video analysis)
+async function uploadToGeminiFileAPI(buffer, mimeType, displayName) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error('GEMINI_API_KEY not configured');
+  // Resumable upload
+  const initRes = await fetch(`https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Goog-Upload-Protocol': 'resumable',
+      'X-Goog-Upload-Command': 'start',
+      'X-Goog-Upload-Header-Content-Length': buffer.length.toString(),
+      'X-Goog-Upload-Header-Content-Type': mimeType,
+    },
+    body: JSON.stringify({ file: { display_name: displayName } }),
+  });
+  const uploadUrl = initRes.headers.get('x-goog-upload-url');
+  if (!uploadUrl) throw new Error('Failed to initiate Gemini upload');
+  // Upload the data
+  const uploadRes = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Length': buffer.length.toString(),
+      'X-Goog-Upload-Offset': '0',
+      'X-Goog-Upload-Command': 'upload, finalize',
+    },
+    body: buffer,
+  });
+  const uploadData = await uploadRes.json();
+  const fileUri = uploadData.file?.uri;
+  const fileName = uploadData.file?.name;
+  if (!fileUri) throw new Error('Gemini upload failed: no file URI returned');
+  // Poll until ACTIVE
+  for (let i = 0; i < 30; i++) {
+    const checkRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/${fileName}?key=${apiKey}`);
+    const checkData = await checkRes.json();
+    if (checkData.state === 'ACTIVE') return { fileUri, fileName: checkData.name };
+    if (checkData.state === 'FAILED') throw new Error('Gemini file processing failed');
+    await new Promise(r => setTimeout(r, 2000)); // wait 2s
+  }
+  throw new Error('Gemini file processing timed out');
+}
+
+// Call Gemini with a file reference (video/large files)
+async function callGeminiWithFile(prompt, fileUri, mimeType) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  const resp = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [
+          { file_data: { file_uri: fileUri, mime_type: mimeType } },
+          { text: prompt },
+        ]}],
+      }),
+    }
+  );
+  if (!resp.ok) throw new Error(`Gemini API error: ${resp.statusText}`);
+  const data = await resp.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+}
+
+// Extract a single frame from video at timestamp using ffmpeg
+function extractFrameAtTimestamp(videoPath, timestampSec) {
+  return new Promise((resolve, reject) => {
+    const args = ['-ss', String(timestampSec), '-i', videoPath, '-frames:v', '1', '-q:v', '2', '-f', 'image2', 'pipe:1'];
+    const proc = execFile('ffmpeg', args, { maxBuffer: 10 * 1024 * 1024, encoding: 'buffer' }, (err, stdout) => {
+      if (err) return reject(err);
+      resolve(stdout);
+    });
+  });
+}
+
+// Download YouTube video via yt-dlp
+function downloadYouTubeVideo(url) {
+  return new Promise((resolve, reject) => {
+    const outPath = path.join(os.tmpdir(), `yt-${Date.now()}.mp4`);
+    execFile('yt-dlp', ['-f', 'mp4', '-o', outPath, '--no-playlist', url], { timeout: 120000 }, (err) => {
+      if (err) return reject(err);
+      resolve(outPath);
+    });
+  });
+}
+
 async function generateGeminiImage(prompt, referenceImages = []) {
   if (!process.env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY not configured in .env');
   const parts = [];
@@ -1559,6 +1654,185 @@ When suggesting changes to scenes, format them clearly so the user can copy/past
     res.json({ reply });
   } catch (err) {
     console.error('POST /scripts/:id/chat error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ── Video-to-Script Frame Matching ───────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const multer = require('multer');
+const videoUpload = multer({ dest: os.tmpdir(), limits: { fileSize: 500 * 1024 * 1024 } });
+
+// POST /api/scripts/:id/video-match — start video matching job
+router.post('/:id/video-match', videoUpload.single('video'), async (req, res) => {
+  try {
+    const scriptId = req.params.id;
+    const { rows } = await db.query('SELECT scenes, title FROM scripts WHERE id = $1', [scriptId]);
+    if (!rows[0]) return res.status(404).json({ error: 'Script not found' });
+    const scenes = rows[0].scenes || [];
+    if (scenes.length === 0) return res.status(400).json({ error: 'Script has no scenes' });
+
+    const { youtube_url, dropbox_path, drive_file_id } = req.body;
+
+    // Create job
+    const { rows: jobRows } = await db.query(
+      `INSERT INTO video_match_jobs (script_id, status, video_source) VALUES ($1, 'pending', $2) RETURNING id`,
+      [scriptId, req.file ? 'upload' : youtube_url ? 'youtube' : dropbox_path ? 'dropbox' : drive_file_id ? 'google_drive' : 'unknown']
+    );
+    const jobId = jobRows[0].id;
+    res.json({ job_id: jobId });
+
+    // Process in background
+    (async () => {
+      try {
+        let videoPath;
+
+        // Step 1: Get the video file
+        await db.query(`UPDATE video_match_jobs SET status = 'downloading' WHERE id = $1`, [jobId]);
+        if (req.file) {
+          videoPath = req.file.path;
+        } else if (youtube_url) {
+          videoPath = await downloadYouTubeVideo(youtube_url);
+        } else if (drive_file_id) {
+          // Download from Google Drive
+          const { rows: settingsRows } = await db.query("SELECT google_tokens FROM settings WHERE brand_id = 'particle'");
+          if (settingsRows[0]?.google_tokens) {
+            const tokens = typeof settingsRows[0].google_tokens === 'string' ? JSON.parse(settingsRows[0].google_tokens) : settingsRows[0].google_tokens;
+            const oauth2 = getOAuth2Client();
+            oauth2.setCredentials(tokens);
+            const drive = google.drive({ version: 'v3', auth: oauth2 });
+            const destPath = path.join(os.tmpdir(), `drive-${Date.now()}.mp4`);
+            const dest = fs.createWriteStream(destPath);
+            const driveRes = await drive.files.get({ fileId: drive_file_id, alt: 'media', supportsAllDrives: true }, { responseType: 'stream' });
+            await new Promise((resolve, reject) => { driveRes.data.pipe(dest).on('finish', resolve).on('error', reject); });
+            videoPath = destPath;
+          }
+        }
+        if (!videoPath) throw new Error('No video source provided');
+
+        // Step 2: Upload to Gemini File API
+        await db.query(`UPDATE video_match_jobs SET status = 'uploading_to_gemini' WHERE id = $1`, [jobId]);
+        const videoBuffer = fs.readFileSync(videoPath);
+        const { fileUri } = await uploadToGeminiFileAPI(videoBuffer, 'video/mp4', `script-${scriptId}-video`);
+        await db.query(`UPDATE video_match_jobs SET gemini_file_uri = $1 WHERE id = $2`, [fileUri, jobId]);
+
+        // Step 3: Analyze with Gemini
+        await db.query(`UPDATE video_match_jobs SET status = 'analyzing' WHERE id = $1`, [jobId]);
+        const stripHtml = (s) => (s || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+        const scenesPrompt = scenes.map((s, i) => `Scene ${i + 1} (ID: ${s.id}):\n  Location: ${s.location || 'N/A'}\n  What We See: ${stripHtml(s.what_we_see) || 'N/A'}\n  What We Hear: ${stripHtml(s.what_we_hear) || 'N/A'}`).join('\n\n');
+
+        const prompt = `You are analyzing a video to match it against a script. For each scene, find the BEST matching moment in the video.
+
+SCRIPT (${scenes.length} scenes):
+${scenesPrompt}
+
+MATCHING STRATEGY:
+1. Listen for dialogue/voiceover matching "What We Hear" text (highest priority)
+2. Look for visuals matching "What We See" descriptions
+3. Use both audio+visual when available
+4. Timestamps must follow scene order (Scene 2 after Scene 1)
+5. Spread timestamps across the video (don't cluster)
+6. If no match found, estimate based on position in video
+
+Return ONLY valid JSON:
+{"matches": [
+  {"scene_id": "...", "scene_number": 1, "timestamp_sec": 12.5, "confidence": 0.9, "match_type": "audio+visual", "description": "Brief reason"}
+]}`;
+
+        const analysisResult = await callGeminiWithFile(prompt, fileUri, 'video/mp4');
+        let matches = [];
+        try {
+          const jsonMatch = analysisResult.match(/\{[\s\S]*\}/);
+          if (jsonMatch) matches = JSON.parse(jsonMatch[0]).matches || [];
+        } catch { matches = []; }
+
+        // Step 4: Extract frames
+        await db.query(`UPDATE video_match_jobs SET status = 'extracting_frames' WHERE id = $1`, [jobId]);
+        for (const match of matches) {
+          try {
+            const frameBuffer = await extractFrameAtTimestamp(videoPath, match.timestamp_sec);
+            // Upload to Google Drive
+            const { rows: settingsRows } = await db.query("SELECT google_tokens FROM settings WHERE brand_id = 'particle'");
+            if (settingsRows[0]?.google_tokens) {
+              const tokens = typeof settingsRows[0].google_tokens === 'string' ? JSON.parse(settingsRows[0].google_tokens) : settingsRows[0].google_tokens;
+              const oauth2 = getOAuth2Client();
+              oauth2.setCredentials(tokens);
+              const drive = google.drive({ version: 'v3', auth: oauth2 });
+              const url = await driveUploadBuffer({ drive, fileName: `frame-scene${match.scene_number}-${Math.round(match.timestamp_sec)}s.jpg`, buffer: frameBuffer, mimeType: 'image/jpeg', subfolder: 'Scripts/Video Frames' });
+              match.frame_url = url;
+            } else {
+              // Fallback: base64 data URL
+              match.frame_url = `data:image/jpeg;base64,${frameBuffer.toString('base64')}`;
+            }
+          } catch (frameErr) {
+            console.warn(`Frame extraction failed for scene ${match.scene_number}:`, frameErr.message);
+            match.frame_url = null;
+          }
+        }
+
+        // Cleanup temp video
+        try { fs.unlinkSync(videoPath); } catch {}
+
+        // Done
+        await db.query(
+          `UPDATE video_match_jobs SET status = 'complete', match_results = $1, completed_at = NOW() WHERE id = $2`,
+          [JSON.stringify(matches), jobId]
+        );
+      } catch (err) {
+        console.error('Video match job failed:', err);
+        await db.query(`UPDATE video_match_jobs SET status = 'failed', error = $1 WHERE id = $2`, [err.message, jobId]);
+      }
+    })();
+  } catch (err) {
+    console.error('POST /scripts/:id/video-match error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/scripts/:id/video-match/:jobId — poll job status
+router.get('/:id/video-match/:jobId', async (req, res) => {
+  try {
+    const { rows } = await db.query('SELECT * FROM video_match_jobs WHERE id = $1 AND script_id = $2', [req.params.jobId, req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Job not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/scripts/:id/video-match/:jobId/apply — apply matched frames to scenes
+router.post('/:id/video-match/:jobId/apply', async (req, res) => {
+  try {
+    const { selected_scene_ids } = req.body; // optional: only apply these
+    const { rows: jobRows } = await db.query('SELECT match_results FROM video_match_jobs WHERE id = $1', [req.params.jobId]);
+    if (!jobRows[0]) return res.status(404).json({ error: 'Job not found' });
+    const matches = jobRows[0].match_results || [];
+
+    const { rows: scriptRows } = await db.query('SELECT scenes FROM scripts WHERE id = $1', [req.params.id]);
+    if (!scriptRows[0]) return res.status(404).json({ error: 'Script not found' });
+    const scenes = scriptRows[0].scenes || [];
+
+    // Apply matched frames
+    const updatedScenes = scenes.map(s => {
+      const match = matches.find(m => m.scene_id === s.id);
+      if (!match || !match.frame_url) return s;
+      if (selected_scene_ids && !selected_scene_ids.includes(s.id)) return s;
+      return {
+        ...s,
+        images: [...(s.images || []), {
+          id: crypto.randomUUID(),
+          url: match.frame_url,
+          prompt: `Video frame at ${match.timestamp_sec}s — ${match.description || ''}`,
+          source: 'video-extract',
+        }],
+      };
+    });
+
+    await db.query('UPDATE scripts SET scenes = $1, updated_at = NOW() WHERE id = $2', [JSON.stringify(updatedScenes), req.params.id]);
+    res.json({ success: true, updated: updatedScenes.length });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
