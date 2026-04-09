@@ -452,7 +452,7 @@ export default function Dashboard() {
             </button>
             {showSummary && (
               <div className="rounded-2xl overflow-hidden" style={{ background: 'linear-gradient(135deg, rgba(3,11,46,0.04) 0%, rgba(8,8,248,0.04) 100%)', border: '1px solid rgba(8,8,248,0.08)' }}>
-                <div className={clsx('grid grid-cols-2 md:grid-cols-5 p-3', compactMode ? 'gap-2' : 'gap-3')}>
+                <div className={clsx('grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 p-3', compactMode ? 'gap-2' : 'gap-3')}>
 
                   {/* Yearly Budget */}
                   <div className="kpi-card flex flex-col justify-center min-w-0 p-3">
@@ -505,7 +505,7 @@ export default function Dashboard() {
                   </div>
 
                   {/* Stage Pills */}
-                  <div className="kpi-card flex flex-col justify-center min-w-0 p-3">
+                  <div className="kpi-card flex flex-col justify-center min-w-0 p-3 col-span-2 sm:col-span-1">
                     <div className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">By Stage</div>
                     <div className="flex flex-wrap gap-1">
                       {Object.entries(stageBreakdown).map(([stage, count]) => {
