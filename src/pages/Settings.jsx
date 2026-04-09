@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Save, Upload, Palette, Type, Globe, List, Plus, X, Check, ChevronUp, ChevronDown, RotateCcw, Clock, Wrench, Trash2, Building2, Pencil, ServerCog, Mail, Link2, CheckCircle, AlertCircle, Grid3x3 } from 'lucide-react';
 import { useBrand } from '../context/BrandContext';
+const API = import.meta.env.VITE_API_URL || '';
 import { useLists } from '../context/ListsContext';
 import { useAuth } from '../context/AuthContext';
 import { getSettings, updateSettings, getImprovementTickets, createImprovementTicket, updateImprovementTicket, deleteImprovementTicket, generateId, getBrands, createBrand, updateBrand, deleteBrand, getProductions, bulkCreateLineItems, bulkCreateCastMembers, getDriveAuthUrl, getDriveStatus } from '../lib/dataService';
@@ -853,20 +854,63 @@ export default function Settings() {
               <h2 className="font-bold text-sm" style={{ color: 'var(--brand-primary)' }}>Logo</h2>
             </div>
             <div className="flex items-center gap-4">
-              <div
-                className="w-24 h-10 rounded-lg flex items-center justify-center text-white font-black text-lg"
-                style={{ background: 'var(--brand-primary)' }}
-              >
-                {brand.name[0]}
+              {/* Logo preview */}
+              <div className="w-24 h-14 rounded-lg flex items-center justify-center overflow-hidden border"
+                style={{ borderColor: 'var(--brand-border, #e5e7eb)', background: settings.logo_url ? '#fff' : 'var(--brand-primary)' }}>
+                {settings.logo_url ? (
+                  <img src={settings.logo_url} alt="Brand logo" className="max-w-full max-h-full object-contain" />
+                ) : (
+                  <span className="text-white font-black text-lg">{brand.name[0]}</span>
+                )}
               </div>
-              <div className="flex-1">
-                <input
-                  className="brand-input text-sm"
-                  value={settings.logo_url || ''}
-                  onChange={e => setSettings(s => ({ ...s, logo_url: e.target.value }))}
-                  placeholder="https://… or /assets/logo.png"
-                />
-                <p className="text-[10px] text-gray-400 mt-0.5">250x50px recommended</p>
+              <div className="flex-1 space-y-1.5">
+                <div className="flex gap-2">
+                  <input
+                    className="brand-input text-sm flex-1"
+                    value={settings.logo_url || ''}
+                    onChange={e => setSettings(s => ({ ...s, logo_url: e.target.value }))}
+                    placeholder="Logo URL or upload below"
+                  />
+                  <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors border hover:bg-gray-50"
+                    style={{ borderColor: 'var(--brand-border, #e5e7eb)', color: 'var(--brand-primary)' }}>
+                    <Upload size={12} />
+                    Upload
+                    <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = async (ev) => {
+                        const base64 = ev.target.result.split(',')[1];
+                        setSettings(s => ({ ...s, logo_url: '...' })); // show loading
+                        try {
+                          const res = await fetch(`${API}/api/drive/upload`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('cp_auth_token')}` },
+                            body: JSON.stringify({
+                              fileName: `${brand.id}-logo.${file.type.includes('png') ? 'png' : 'jpg'}`,
+                              fileContent: base64,
+                              mimeType: file.type || 'image/png',
+                              subfolder: 'Brand Assets',
+                            }),
+                          });
+                          const data = await res.json();
+                          if (data.url) {
+                            setSettings(s => ({ ...s, logo_url: data.url }));
+                          } else {
+                            setSettings(s => ({ ...s, logo_url: '' }));
+                            alert(data.error || 'Upload failed');
+                          }
+                        } catch {
+                          setSettings(s => ({ ...s, logo_url: '' }));
+                          alert('Upload failed — is Google Drive connected?');
+                        }
+                      };
+                      reader.readAsDataURL(file);
+                      e.target.value = '';
+                    }} />
+                  </label>
+                </div>
+                <p className="text-[10px] text-gray-400">PNG or SVG recommended. Used in PDFs, emails, and share pages.</p>
               </div>
             </div>
           </section>
