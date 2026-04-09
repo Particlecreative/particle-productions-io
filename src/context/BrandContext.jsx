@@ -5,16 +5,25 @@ const IS_DEV = import.meta.env.DEV;
 
 const BrandContext = createContext(null);
 
-// Keep the static BRANDS constant for backward-compat with any code that imports it directly
+// Static brand definitions (fallback defaults) — Particle first
 export const BRANDS = {
   particle: {
     id: 'particle',
     name: 'Particle',
     tagline: 'For Men',
-    bg: '#b7b7b7',
+    bg: '#f4f5f7',
     primary: '#030b2e',
     secondary: '#0808f8',
     accent: '#0808f8',
+  },
+  biomella: {
+    id: 'biomella',
+    name: 'Biomella',
+    tagline: '',
+    bg: '#f0f7f4',
+    primary: '#0d4a2e',
+    secondary: '#1a8c5c',
+    accent: '#22c55e',
   },
   blurr: {
     id: 'blurr',
@@ -23,9 +32,12 @@ export const BRANDS = {
     bg: '#F5F5F5',
     primary: '#B842A9',
     secondary: '#862F7B',
-    accent: '#B842A9',
+    accent: '#F86EE6',
   },
 };
+
+// Preferred brand display order (Particle first)
+const BRAND_ORDER = ['particle', 'biomella', 'blurr'];
 
 export function BrandProvider({ children }) {
   const [brandId, setBrandId] = useState(() => {
@@ -34,15 +46,22 @@ export function BrandProvider({ children }) {
 
   const [brands, setBrands] = useState(Object.values(BRANDS));
 
+  // Sort brands so Particle is always first
+  function sortBrands(list) {
+    return [...list].sort((a, b) => {
+      const ai = BRAND_ORDER.indexOf(a.id);
+      const bi = BRAND_ORDER.indexOf(b.id);
+      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+    });
+  }
+
   const refreshBrands = useCallback(() => {
-    // In prod, skip the fetch if no auth token exists (e.g. on the login page)
     if (!IS_DEV && !localStorage.getItem('cp_auth_token')) return;
-    // In dev mode getBrands() is synchronous; in prod it's a Promise
     const result = getBrands();
     if (result && typeof result.then === 'function') {
-      result.then(b => { if (b?.length) setBrands(b); }).catch(() => {});
+      result.then(b => { if (b?.length) setBrands(sortBrands(b)); }).catch(() => {});
     } else if (result?.length) {
-      setBrands(result);
+      setBrands(sortBrands(result));
     }
   }, []);
 
