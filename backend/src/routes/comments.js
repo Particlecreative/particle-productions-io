@@ -5,6 +5,28 @@ const { verifyJWT } = require('../middleware/auth');
 
 router.use(verifyJWT);
 
+// GET /api/comments/all — global feed of all updates across productions
+router.get('/all', async (req, res) => {
+  try {
+    const brand_id = req.user?.brand_id || req.query.brand_id;
+    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+    const offset = parseInt(req.query.offset) || 0;
+    const { rows } = await db.query(
+      `SELECT c.*, p.project_name, p.stage as production_stage
+       FROM comments c
+       JOIN productions p ON c.production_id = p.id
+       ${brand_id ? 'WHERE p.brand_id = $3' : ''}
+       ORDER BY c.created_at DESC
+       LIMIT $1 OFFSET $2`,
+      brand_id ? [limit, offset, brand_id] : [limit, offset]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('GET /comments/all error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // GET /api/comments?production_id=PRD26-01
 router.get('/', async (req, res) => {
   const { production_id } = req.query;

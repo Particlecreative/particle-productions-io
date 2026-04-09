@@ -25,6 +25,7 @@ import clsx from 'clsx';
 import { getTablePrefs, toggleColumnVisibility, getColOrder, saveColOrder } from '../lib/tablePrefs';
 import WeeklyView from '../components/dashboard/WeeklyView';
 import AnalysisView from '../components/dashboard/AnalysisView';
+import GlobalUpdatesTab from '../components/dashboard/GlobalUpdatesTab';
 import SkeletonLoader from '../components/shared/SkeletonLoader';
 
 const FIELD_LABELS = {
@@ -740,6 +741,7 @@ export default function Dashboard() {
       <div className="flex items-center gap-1 border-b border-gray-100 mb-4">
         {[
           { id: 'productions', label: '📋 Productions' },
+          { id: 'updates',    label: '💬 Updates' },
           { id: 'weekly',      label: '📅 Weekly' },
           { id: 'analysis',   label: '📊 Analysis' },
         ].map(t => (
@@ -976,6 +978,11 @@ export default function Dashboard() {
       </div>}
 
       {/* Weekly Tab */}
+      {/* Updates Tab */}
+      {activeTab === 'updates' && (
+        <GlobalUpdatesTab brandId={brandId} />
+      )}
+
       {activeTab === 'weekly' && (
         <WeeklyView
           productions={productions}
