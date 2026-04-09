@@ -14,9 +14,9 @@ export default {
         'blurr-title': ['Avenir Next Condensed', 'AvenirNextCondensed', 'Impact', 'sans-serif'],
         'blurr-secondary': ['Proxima Nova ExtraBold', 'ProximaNova', 'Arial Black', 'sans-serif'],
         'blurr-body': ['Avenir', 'AvenirLT', 'Helvetica Neue', 'Arial', 'sans-serif'],
-        'biomella-title': ['Inter', 'system-ui', 'sans-serif'],
-        'biomella-secondary': ['Inter', 'system-ui', 'sans-serif'],
-        'biomella-body': ['Inter', 'system-ui', 'sans-serif'],
+        'biomella-title': ['Epilogue', 'Inter', 'sans-serif'],
+        'biomella-secondary': ['Epilogue', 'Inter', 'sans-serif'],
+        'biomella-body': ['Epilogue', 'Inter', 'sans-serif'],
       },
       colors: {
         particle: {

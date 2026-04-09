@@ -19,11 +19,11 @@ export const BRANDS = {
   biomella: {
     id: 'biomella',
     name: 'Biomella',
-    tagline: '',
-    bg: '#f0f7f4',
-    primary: '#0d4a2e',
-    secondary: '#1a8c5c',
-    accent: '#22c55e',
+    tagline: 'The beauty biohack',
+    bg: '#f9f7f5',
+    primary: '#C41E1E',
+    secondary: '#8B1515',
+    accent: '#C41E1E',
   },
   blurr: {
     id: 'blurr',
