@@ -1582,7 +1582,7 @@ router.post('/:id/share', async (req, res) => {
 // POST /api/scripts/:id/chat — AI chat about the script (Claude conversation)
 router.post('/:id/chat', async (req, res) => {
   try {
-    const { messages, selected_text, scene_id } = req.body;
+    const { messages, selected_text, scene_id, reference_url } = req.body;
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: 'messages array required' });
     }
@@ -1603,6 +1603,17 @@ router.post('/:id/chat', async (req, res) => {
     }).join('\n');
 
     let contextNote = '';
+    // Fetch reference URL content if provided
+    if (reference_url) {
+      try {
+        const urlRes = await fetch(reference_url, { signal: AbortSignal.timeout(8000) });
+        if (urlRes.ok) {
+          const text = await urlRes.text();
+          const cleanText = text.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 5000);
+          contextNote += `\n\nReference URL content (${reference_url}):\n${cleanText}`;
+        }
+      } catch {}
+    }
     if (selected_text) {
       contextNote = `\n\nThe user has selected this specific text from the script:\n"${selected_text}"`;
     }
@@ -1616,12 +1627,41 @@ Audio: ${stripHtml(scene.what_we_hear)}`;
       }
     }
 
-    const systemPrompt = `You are a creative scriptwriting assistant for the production "${rows[0].title}". You help refine, rewrite, expand, or discuss the script. Be concise and creative.
+    const systemPrompt = `You are a powerful scriptwriting assistant for "${rows[0].title}". You can DISCUSS and also EXECUTE actions on the script.
 
 Current script (${scenes.length} scenes):
 ${scenesSummary}${contextNote}
 
-When suggesting changes to scenes, format them clearly so the user can copy/paste. If the user asks you to rewrite a scene, output the new text directly. Keep responses focused and actionable.`;
+CAPABILITIES — you can perform these actions by including a JSON block in your response:
+
+1. EDIT a scene: \`\`\`action
+{"action":"edit_scene","scene_number":1,"field":"what_we_hear","value":"New text here"}
+\`\`\`
+   Fields: "what_we_see", "what_we_hear", "location", "duration"
+
+2. DELETE a scene: \`\`\`action
+{"action":"delete_scene","scene_number":3}
+\`\`\`
+
+3. ADD a scene (inserted after scene_number): \`\`\`action
+{"action":"add_scene","after_scene_number":2,"location":"INT. STUDIO","what_we_see":"New visual","what_we_hear":"New dialogue"}
+\`\`\`
+
+4. FIND & REPLACE text across all scenes: \`\`\`action
+{"action":"find_replace","find":"old text","replace":"new text"}
+\`\`\`
+
+5. DUPLICATE script as new version: \`\`\`action
+{"action":"duplicate_script","new_title":"Script v2 - Revised"}
+\`\`\`
+
+RULES:
+- Always explain what you're doing BEFORE the action block
+- You can include multiple action blocks in one response
+- For rewrites, use edit_scene with the full new text
+- Be creative and concise in your explanations
+- If the user just wants to discuss, don't include action blocks
+- When editing, output the COMPLETE new text for the field (not just the changed part)`;
 
     // Build conversation messages for Claude API
     const claudeMessages = messages.map(m => ({
@@ -1651,7 +1691,16 @@ When suggesting changes to scenes, format them clearly so the user can copy/past
 
     const data = await resp.json();
     const reply = data.content[0]?.text || 'No response generated.';
-    res.json({ reply });
+    // Parse action blocks from reply
+    const actions = [];
+    const actionRegex = /```action\n([\s\S]*?)```/g;
+    let match;
+    while ((match = actionRegex.exec(reply)) !== null) {
+      try { actions.push(JSON.parse(match[1].trim())); } catch {}
+    }
+    // Clean reply text (remove action blocks for display)
+    const cleanReply = reply.replace(/```action\n[\s\S]*?```/g, '').trim();
+    res.json({ reply: cleanReply, actions: actions.length > 0 ? actions : undefined });
   } catch (err) {
     console.error('POST /scripts/:id/chat error:', err);
     res.status(500).json({ error: err.message });

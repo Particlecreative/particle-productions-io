@@ -1,40 +1,35 @@
 import { useState, useRef, useEffect } from 'react';
-import { X, Send, Loader2, Sparkles, Copy, Check, Trash2 } from 'lucide-react';
+import { X, Send, Loader2, Sparkles, Copy, Check, Trash2, Play, Pencil, Plus, Search, Link2, ArrowRight } from 'lucide-react';
+import { toast } from '../../lib/toast';
 
 const API = import.meta.env.VITE_API_URL || '';
 function jwt() { return localStorage.getItem('cp_auth_token'); }
 
 /**
- * AIChatPanel — slide-in side panel for Claude script conversations.
- * Supports: free chat, selected text context, scene-specific context.
+ * AIChatPanel — AI script assistant with action execution.
+ * Can edit scenes, delete, add, find/replace, duplicate scripts, read URLs.
  */
-export default function AIChatPanel({ scriptId, selectedText, selectedSceneId, onClose, onApplyText }) {
+export default function AIChatPanel({ scriptId, script, scenes, selectedText, selectedSceneId, onClose, onScriptUpdate, onDuplicate }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(null);
+  const [refUrl, setRefUrl] = useState('');
+  const [showUrlInput, setShowUrlInput] = useState(false);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
-  // Auto-scroll to bottom
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  // Focus input on open
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
   useEffect(() => { inputRef.current?.focus(); }, []);
-
-  // If selected text changes, add context hint
   useEffect(() => {
     if (selectedText && messages.length === 0) {
-      setInput(`About this text: "${selectedText.slice(0, 100)}${selectedText.length > 100 ? '...' : ''}" — `);
+      setInput(`About: "${selectedText.slice(0, 80)}${selectedText.length > 80 ? '...' : ''}" — `);
     }
   }, [selectedText]);
 
   const handleSend = async () => {
     const text = input.trim();
     if (!text || loading) return;
-
     const userMsg = { role: 'user', content: text };
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
@@ -49,50 +44,122 @@ export default function AIChatPanel({ scriptId, selectedText, selectedSceneId, o
           messages: newMessages,
           selected_text: selectedText || undefined,
           scene_id: selectedSceneId || undefined,
+          reference_url: refUrl.trim() || undefined,
         }),
       });
       const data = await res.json();
-      if (data.reply) {
-        setMessages(prev => [...prev, { role: 'assistant', content: data.reply }]);
+      if (data.reply || data.actions) {
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: data.reply || '',
+          actions: data.actions || [],
+        }]);
       } else {
-        setMessages(prev => [...prev, { role: 'assistant', content: data.error || 'Failed to get response.' }]);
+        setMessages(prev => [...prev, { role: 'assistant', content: data.error || 'Failed.' }]);
       }
-    } catch (err) {
-      setMessages(prev => [...prev, { role: 'assistant', content: 'Connection error. Please try again.' }]);
+    } catch {
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Connection error.' }]);
     }
     setLoading(false);
+    setRefUrl('');
+    setShowUrlInput(false);
   };
 
-  const handleCopy = (text, idx) => {
-    navigator.clipboard.writeText(text);
-    setCopied(idx);
-    setTimeout(() => setCopied(null), 1500);
-  };
-
-  const handleClear = () => {
-    setMessages([]);
-    setInput('');
+  const executeAction = (action) => {
+    if (!onScriptUpdate) return;
+    switch (action.action) {
+      case 'edit_scene': {
+        const idx = (action.scene_number || 1) - 1;
+        if (idx >= 0 && idx < scenes.length) {
+          const updated = [...scenes];
+          updated[idx] = { ...updated[idx], [action.field]: action.value };
+          onScriptUpdate(updated);
+          toast.success(`Scene ${action.scene_number} — ${action.field} updated`);
+        }
+        break;
+      }
+      case 'delete_scene': {
+        const idx = (action.scene_number || 1) - 1;
+        if (idx >= 0 && idx < scenes.length) {
+          const updated = scenes.filter((_, i) => i !== idx);
+          updated.forEach((s, i) => s.order = i);
+          onScriptUpdate(updated);
+          toast.success(`Scene ${action.scene_number} deleted`);
+        }
+        break;
+      }
+      case 'add_scene': {
+        const afterIdx = (action.after_scene_number || scenes.length) - 1;
+        const newScene = {
+          id: crypto.randomUUID(),
+          order: afterIdx + 1,
+          location: action.location || '',
+          what_we_see: action.what_we_see || '',
+          what_we_hear: action.what_we_hear || '',
+          duration: action.duration || '',
+          images: [],
+          collapsed: false,
+        };
+        const updated = [...scenes];
+        updated.splice(afterIdx + 1, 0, newScene);
+        updated.forEach((s, i) => s.order = i);
+        onScriptUpdate(updated);
+        toast.success(`Scene added after scene ${action.after_scene_number}`);
+        break;
+      }
+      case 'find_replace': {
+        let count = 0;
+        const updated = scenes.map(s => {
+          const newScene = { ...s };
+          ['what_we_see', 'what_we_hear', 'location'].forEach(field => {
+            if (newScene[field]?.includes(action.find)) {
+              newScene[field] = newScene[field].replaceAll(action.find, action.replace);
+              count++;
+            }
+          });
+          return newScene;
+        });
+        onScriptUpdate(updated);
+        toast.success(`Replaced "${action.find}" → "${action.replace}" in ${count} field${count !== 1 ? 's' : ''}`);
+        break;
+      }
+      case 'duplicate_script': {
+        if (onDuplicate) onDuplicate(action.new_title || `${script?.title || 'Script'} (Copy)`);
+        break;
+      }
+    }
   };
 
   const quickPrompts = [
-    'Rewrite this scene to be more emotional',
-    'Make the voiceover shorter and punchier',
-    'Suggest a stronger CTA',
-    'Add more visual detail to what we see',
-    'Write an alternative version of this scene',
+    { label: 'Rewrite scene emotionally', icon: Pencil },
+    { label: 'Shorten the VO text', icon: ArrowRight },
+    { label: 'Suggest a stronger CTA', icon: Sparkles },
+    { label: 'Add a new intro scene', icon: Plus },
+    { label: 'Find & replace a word', icon: Search },
   ];
 
+  const ACTION_LABELS = {
+    edit_scene: { icon: '✏️', label: 'Edit Scene' },
+    delete_scene: { icon: '🗑️', label: 'Delete Scene' },
+    add_scene: { icon: '➕', label: 'Add Scene' },
+    find_replace: { icon: '🔄', label: 'Find & Replace' },
+    duplicate_script: { icon: '📋', label: 'Duplicate Script' },
+  };
+
   return (
-    <div className="fixed top-0 right-0 bottom-0 w-full sm:w-96 bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-700 z-50 flex flex-col shadow-2xl animate-slide-in-right">
+    <div className="fixed top-0 right-0 bottom-0 w-full sm:w-[420px] bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-700 z-50 flex flex-col shadow-2xl animate-slide-in-right">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-800 shrink-0">
         <div className="flex items-center gap-2">
           <Sparkles size={16} className="text-purple-500" />
-          <h3 className="text-sm font-black text-gray-900 dark:text-gray-100">AI Script Assistant</h3>
+          <div>
+            <h3 className="text-sm font-black text-gray-900 dark:text-gray-100">AI Assistant</h3>
+            <p className="text-[9px] text-gray-400">Can edit, delete, add scenes, find/replace, duplicate</p>
+          </div>
         </div>
         <div className="flex items-center gap-1">
           {messages.length > 0 && (
-            <button onClick={handleClear} className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors" title="Clear chat">
+            <button onClick={() => { setMessages([]); setInput(''); }} className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors" title="Clear">
               <Trash2 size={14} />
             </button>
           )}
@@ -102,34 +169,26 @@ export default function AIChatPanel({ scriptId, selectedText, selectedSceneId, o
         </div>
       </div>
 
-      {/* Context indicator */}
+      {/* Context */}
       {(selectedText || selectedSceneId) && (
-        <div className="px-4 py-2 bg-purple-50 dark:bg-purple-900/20 border-b border-purple-100 dark:border-purple-800/30 shrink-0">
-          <p className="text-[10px] text-purple-600 dark:text-purple-400 font-semibold uppercase tracking-wide">Context</p>
-          {selectedText && (
-            <p className="text-xs text-purple-700 dark:text-purple-300 italic line-clamp-2 mt-0.5">"{selectedText}"</p>
-          )}
-          {selectedSceneId && !selectedText && (
-            <p className="text-xs text-purple-700 dark:text-purple-300 mt-0.5">Focused on selected scene</p>
-          )}
+        <div className="px-4 py-2 bg-purple-50 dark:bg-purple-900/20 border-b border-purple-100 shrink-0">
+          <p className="text-[9px] text-purple-600 font-semibold uppercase tracking-wide">Context</p>
+          {selectedText && <p className="text-[10px] text-purple-700 italic line-clamp-2 mt-0.5">"{selectedText}"</p>}
+          {selectedSceneId && !selectedText && <p className="text-[10px] text-purple-700 mt-0.5">Scene selected</p>}
         </div>
       )}
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
         {messages.length === 0 && (
-          <div className="text-center py-8">
-            <Sparkles size={28} className="mx-auto mb-3 text-gray-200" />
-            <p className="text-sm text-gray-400 font-medium mb-1">Ask me anything about your script</p>
-            <p className="text-xs text-gray-400 mb-4">I can rewrite scenes, refine VO, suggest ideas, or discuss creative direction.</p>
-            <div className="space-y-1.5">
-              {quickPrompts.map((prompt, i) => (
-                <button
-                  key={i}
-                  onClick={() => { setInput(prompt); inputRef.current?.focus(); }}
-                  className="w-full text-left text-xs text-gray-500 hover:text-purple-600 hover:bg-purple-50 px-3 py-2 rounded-lg transition-colors border border-gray-100 hover:border-purple-200"
-                >
-                  {prompt}
+          <div className="text-center py-6">
+            <Sparkles size={24} className="mx-auto mb-2 text-gray-200" />
+            <p className="text-xs text-gray-400 font-medium mb-3">Ask me anything — I can edit your script directly</p>
+            <div className="space-y-1">
+              {quickPrompts.map((p, i) => (
+                <button key={i} onClick={() => { setInput(p.label); inputRef.current?.focus(); }}
+                  className="w-full text-left text-[11px] text-gray-500 hover:text-purple-600 hover:bg-purple-50 px-3 py-2 rounded-lg transition-colors border border-gray-100 hover:border-purple-200 flex items-center gap-2">
+                  <p.icon size={11} className="shrink-0" /> {p.label}
                 </button>
               ))}
             </div>
@@ -138,28 +197,42 @@ export default function AIChatPanel({ scriptId, selectedText, selectedSceneId, o
 
         {messages.map((msg, i) => (
           <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 ${
+            <div className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 ${
               msg.role === 'user'
                 ? 'bg-purple-600 text-white rounded-br-md'
                 : 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 rounded-bl-md'
             }`}>
-              <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
-              {msg.role === 'assistant' && (
-                <div className="flex items-center gap-1 mt-2 -mb-0.5">
-                  <button
-                    onClick={() => handleCopy(msg.content, i)}
-                    className="text-[10px] text-gray-400 hover:text-gray-600 flex items-center gap-1 transition-colors"
-                  >
-                    {copied === i ? <><Check size={10} className="text-green-500" /> Copied</> : <><Copy size={10} /> Copy</>}
+              <p className="text-[13px] leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+
+              {/* Action buttons */}
+              {msg.actions?.length > 0 && (
+                <div className="mt-2 space-y-1.5 border-t border-gray-200 dark:border-gray-700 pt-2">
+                  {msg.actions.map((action, ai) => {
+                    const meta = ACTION_LABELS[action.action] || { icon: '⚡', label: action.action };
+                    return (
+                      <button key={ai} onClick={() => executeAction(action)}
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs font-semibold transition-colors text-left">
+                        <span>{meta.icon}</span>
+                        <span className="flex-1">{meta.label}
+                          {action.scene_number && ` — Scene ${action.scene_number}`}
+                          {action.field && ` (${action.field.replace(/_/g, ' ')})`}
+                          {action.find && ` "${action.find}" → "${action.replace}"`}
+                          {action.new_title && ` "${action.new_title}"`}
+                        </span>
+                        <Play size={10} />
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Copy button for assistant messages */}
+              {msg.role === 'assistant' && msg.content && (
+                <div className="flex items-center gap-2 mt-1.5">
+                  <button onClick={() => { navigator.clipboard.writeText(msg.content); setCopied(i); setTimeout(() => setCopied(null), 1500); }}
+                    className="text-[9px] text-gray-400 hover:text-gray-600 flex items-center gap-1">
+                    {copied === i ? <><Check size={9} className="text-green-500" /> Copied</> : <><Copy size={9} /> Copy</>}
                   </button>
-                  {onApplyText && (
-                    <button
-                      onClick={() => onApplyText(msg.content)}
-                      className="text-[10px] text-purple-400 hover:text-purple-600 flex items-center gap-1 ml-2 transition-colors"
-                    >
-                      <Sparkles size={10} /> Apply to scene
-                    </button>
-                  )}
                 </div>
               )}
             </div>
@@ -169,36 +242,52 @@ export default function AIChatPanel({ scriptId, selectedText, selectedSceneId, o
         {loading && (
           <div className="flex justify-start">
             <div className="bg-gray-100 dark:bg-gray-800 rounded-2xl rounded-bl-md px-4 py-3">
-              <div className="flex items-center gap-2 text-gray-400">
-                <Loader2 size={14} className="animate-spin" />
-                <span className="text-xs">Thinking...</span>
-              </div>
+              <Loader2 size={14} className="animate-spin text-gray-400" />
             </div>
           </div>
         )}
         <div ref={messagesEndRef} />
       </div>
 
+      {/* URL input toggle */}
+      {showUrlInput && (
+        <div className="px-4 py-2 border-t border-gray-100 shrink-0">
+          <div className="flex items-center gap-2">
+            <Link2 size={12} className="text-gray-400 shrink-0" />
+            <input
+              value={refUrl}
+              onChange={e => setRefUrl(e.target.value)}
+              placeholder="Paste reference URL..."
+              className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-purple-300"
+            />
+            <button onClick={() => setShowUrlInput(false)} className="text-gray-400 hover:text-gray-600"><X size={12} /></button>
+          </div>
+        </div>
+      )}
+
       {/* Input */}
       <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-800 shrink-0">
         <div className="flex items-end gap-2">
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
-            }}
-            placeholder="Ask about your script..."
-            className="flex-1 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm outline-none resize-none max-h-32 focus:border-purple-400 dark:bg-gray-800 dark:text-gray-200"
-            rows={1}
-          />
-          <button
-            onClick={handleSend}
-            disabled={!input.trim() || loading}
-            className="p-2.5 rounded-xl bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-40 transition-colors shrink-0"
-          >
-            <Send size={16} />
+          <div className="flex-1">
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+              placeholder="Edit scene 3 VO to be shorter..."
+              className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm outline-none resize-none max-h-24 focus:border-purple-400 dark:bg-gray-800 dark:text-gray-200"
+              rows={1}
+            />
+            <div className="flex items-center gap-2 mt-1">
+              <button onClick={() => setShowUrlInput(v => !v)}
+                className={`text-[9px] flex items-center gap-1 ${refUrl ? 'text-purple-600 font-semibold' : 'text-gray-400 hover:text-gray-600'}`}>
+                <Link2 size={9} /> {refUrl ? 'URL attached' : 'Add URL'}
+              </button>
+            </div>
+          </div>
+          <button onClick={handleSend} disabled={!input.trim() || loading}
+            className="p-2.5 rounded-xl bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-40 transition-colors shrink-0 mb-5">
+            <Send size={15} />
           </button>
         </div>
       </div>

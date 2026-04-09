@@ -2628,18 +2628,38 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
       {showAIChat && (
         <AIChatPanel
           scriptId={scriptId}
+          script={script}
+          scenes={scenes}
           selectedText={aiChatSelectedText}
           selectedSceneId={aiChatSceneId}
           onClose={() => setShowAIChat(false)}
-          onApplyText={(text) => {
-            // If a scene is focused, update its what_we_hear
-            if (aiChatSceneId) {
-              setScript(prev => {
-                const updated = { ...prev, scenes: prev.scenes.map(s => s.id === aiChatSceneId ? { ...s, what_we_hear: text } : s) };
-                debounceSave(updated);
-                return updated;
+          onScriptUpdate={(updatedScenes) => {
+            setScript(prev => {
+              const updated = { ...prev, scenes: updatedScenes };
+              debounceSave(updated);
+              return updated;
+            });
+            onUpdated?.({ id: scriptId });
+          }}
+          onDuplicate={async (newTitle) => {
+            try {
+              const res = await fetch(`${API}/api/scripts`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
+                body: JSON.stringify({
+                  title: newTitle,
+                  production_id: script?.production_id || null,
+                  brand_id: script?.brand_id || null,
+                  scenes: script?.scenes || [],
+                  status: 'draft',
+                }),
               });
-            }
+              const newScript = await res.json();
+              if (newScript.id) {
+                onUpdated?.(newScript);
+                toast.success(`Duplicated as "${newTitle}"`);
+              }
+            } catch { toast.error('Failed to duplicate'); }
           }}
         />
       )}
