@@ -259,7 +259,7 @@ export default function Sidebar({ open, onToggle }) {
             'border-t border-white/10 flex items-center',
             open ? 'px-4 py-3 justify-between' : 'px-2 py-3 justify-center'
           )}>
-            {open && <span className="text-white/20 text-[10px]">CP Panel v2.0 · {brand.name}</span>}
+            {open && <span className="text-white/20 text-[10px]">CP Panel v2.1 · {brand.name}</span>}
             <button
               onClick={toggleDark}
               title={dark ? 'Switch to light mode' : 'Switch to dark mode'}

@@ -549,6 +549,8 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
   const [voiceSpeed, setVoiceSpeed] = useState(() => parseFloat(localStorage.getItem('cp_voice_speed') || '1.0'));
   const [voiceStability, setVoiceStability] = useState(() => parseFloat(localStorage.getItem('cp_voice_stability') || '0.5'));
   const [showVoicePicker, setShowVoicePicker] = useState(false);
+  const [voiceSearchState, setVoiceSearchState] = useState('');
+  const [genderFilterState, setGenderFilterState] = useState('');
   const [previewingVoice, setPreviewingVoice] = useState(null);
   const [voicePreviewError, setVoicePreviewError] = useState(null);
   const [accountVoices, setAccountVoices] = useState([]);
@@ -2347,64 +2349,90 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
       )}
 
       {/* ── Voice Picker Modal ── */}
-      {showVoicePicker && (
+      {showVoicePicker && (() => {
+        const [voiceSearch, setVoiceSearch] = [voiceSearchState, setVoiceSearchState];
+        const [genderFilter, setGenderFilter] = [genderFilterState, setGenderFilterState];
+        const filteredVoices = accountVoices.filter(v => {
+          if (voiceSearch && !v.name.toLowerCase().includes(voiceSearch.toLowerCase()) && !(v.description || '').toLowerCase().includes(voiceSearch.toLowerCase())) return false;
+          if (genderFilter && v.gender && v.gender.toLowerCase() !== genderFilter) return false;
+          return true;
+        });
+        const custom = filteredVoices.filter(v => v.category !== 'premade');
+        const premade = filteredVoices.filter(v => v.category === 'premade');
+        const renderVoice = (v) => (
+          <div key={v.voice_id}
+            className={`flex items-center gap-3 p-2.5 rounded-xl border-2 transition-all cursor-pointer ${voiceId === v.voice_id ? 'border-indigo-400 bg-indigo-50' : 'border-gray-100 hover:border-gray-200'}`}
+            onClick={() => setVoiceId(v.voice_id)}
+          >
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${voiceId === v.voice_id ? 'bg-indigo-600 text-white' : v.gender === 'male' ? 'bg-blue-100 text-blue-700' : v.gender === 'female' ? 'bg-pink-100 text-pink-700' : 'bg-gray-100 text-gray-600'}`}>
+              {v.gender === 'male' ? '♂' : v.gender === 'female' ? '♀' : v.name.charAt(0)}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5">
+                <p className={`text-sm font-bold truncate ${voiceId === v.voice_id ? 'text-indigo-800' : 'text-gray-800'}`}>{v.name}</p>
+                {v.gender && <span className="text-[8px] px-1 py-0.5 rounded bg-gray-100 text-gray-500 font-semibold shrink-0">{v.gender}</span>}
+              </div>
+              {v.description && <p className="text-[10px] text-gray-400 truncate">{v.description}</p>}
+            </div>
+            <button
+              onClick={e => { e.stopPropagation(); handlePreviewVoice(v.voice_id); }}
+              className="w-7 h-7 flex items-center justify-center rounded-full bg-gray-100 hover:bg-indigo-100 text-gray-500 hover:text-indigo-600 transition-colors shrink-0"
+            >
+              {previewingVoice === v.voice_id ? <Loader2 size={12} className="animate-spin" /> : <Play size={11} />}
+            </button>
+          </div>
+        );
+        return (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
             <div className="px-5 pt-5 pb-3 border-b border-gray-100 flex items-center justify-between">
               <div>
                 <h3 className="font-black text-gray-900 flex items-center gap-2"><Volume2 size={16} className="text-indigo-500" /> Voice Settings</h3>
-                <p className="text-xs text-gray-400 mt-0.5">Pick a voice, speed, and style for VO preview</p>
+                <p className="text-xs text-gray-400 mt-0.5">Pick a voice, speed, and stability</p>
               </div>
               <button onClick={() => setShowVoicePicker(false)}><X size={16} className="text-gray-400" /></button>
             </div>
-            <div className="p-4 space-y-2 max-h-72 overflow-y-auto">
+            {/* Search + gender filter */}
+            <div className="px-4 pt-3 pb-2 space-y-2">
+              <input
+                value={voiceSearch}
+                onChange={e => setVoiceSearch(e.target.value)}
+                placeholder="Search voices..."
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:border-indigo-300"
+              />
+              <div className="flex gap-1">
+                {[{ key: '', label: 'All' }, { key: 'male', label: '♂ Male' }, { key: 'female', label: '♀ Female' }].map(f => (
+                  <button key={f.key} onClick={() => setGenderFilter(f.key)}
+                    className={`text-[10px] px-2 py-1 rounded-lg font-semibold transition-colors ${genderFilter === f.key ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:bg-gray-100'}`}>
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="px-4 pb-2 space-y-1.5 max-h-60 overflow-y-auto">
               {loadingVoices ? (
                 <div className="flex items-center justify-center py-8 text-gray-400">
-                  <Loader2 size={18} className="animate-spin mr-2" /> Loading your voices...
+                  <Loader2 size={18} className="animate-spin mr-2" /> Loading voices...
                 </div>
-              ) : accountVoices.length === 0 ? (
-                <div className="text-center py-6 text-gray-400 text-sm">No voices loaded</div>
-              ) : (() => {
-                const custom = accountVoices.filter(v => v.category !== 'premade');
-                const premade = accountVoices.filter(v => v.category === 'premade');
-                const renderVoice = (v) => (
-                  <div key={v.voice_id}
-                    className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all cursor-pointer ${voiceId === v.voice_id ? 'border-indigo-400 bg-indigo-50' : 'border-gray-100 hover:border-gray-200'}`}
-                    onClick={() => setVoiceId(v.voice_id)}
-                  >
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${voiceId === v.voice_id ? 'bg-indigo-600 text-white' : v.category === 'cloned' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}`}>
-                      {v.gender ? v.gender.charAt(0).toUpperCase() : v.name.charAt(0)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-sm font-bold truncate ${voiceId === v.voice_id ? 'text-indigo-800' : 'text-gray-800'}`}>{v.name}</p>
-                      {v.description && <p className="text-xs text-gray-400 truncate">{v.description}</p>}
-                    </div>
-                    <button
-                      onClick={e => { e.stopPropagation(); handlePreviewVoice(v.voice_id); }}
-                      className="w-7 h-7 flex items-center justify-center rounded-full bg-gray-100 hover:bg-indigo-100 text-gray-500 hover:text-indigo-600 transition-colors shrink-0"
-                    >
-                      {previewingVoice === v.voice_id ? <Loader2 size={12} className="animate-spin" /> : <Play size={11} />}
-                    </button>
-                  </div>
-                );
-                return (
-                  <>
-                    {custom.length > 0 && (
-                      <>
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-purple-500 px-1 pt-1">Your Voices</p>
-                        {custom.map(renderVoice)}
-                        {premade.length > 0 && <div className="border-t border-gray-100 my-1" />}
-                      </>
-                    )}
-                    {premade.length > 0 && (
-                      <>
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 px-1 pt-1">Premade</p>
-                        {premade.map(renderVoice)}
-                      </>
-                    )}
-                  </>
-                );
-              })()}
+              ) : filteredVoices.length === 0 ? (
+                <div className="text-center py-6 text-gray-400 text-xs">No voices match</div>
+              ) : (
+                <>
+                  {custom.length > 0 && (
+                    <>
+                      <p className="text-[9px] font-bold uppercase tracking-widest text-purple-500 px-1 pt-1">Your Voices</p>
+                      {custom.map(renderVoice)}
+                      {premade.length > 0 && <div className="border-t border-gray-100 my-1" />}
+                    </>
+                  )}
+                  {premade.length > 0 && (
+                    <>
+                      <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 px-1 pt-1">Premade</p>
+                      {premade.map(renderVoice)}
+                    </>
+                  )}
+                </>
+              )}
             </div>
             {voicePreviewError && (
               <div className="mx-4 mb-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-600">{voicePreviewError}</div>
@@ -2430,9 +2458,9 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
               </div>
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-semibold text-gray-700">Style</label>
+                  <label className="text-xs font-semibold text-gray-700">Stability</label>
                   <span className="text-xs text-indigo-600 font-mono font-bold">
-                    {voiceStability <= 0.35 ? '🎭 Expressive' : voiceStability >= 0.7 ? '🎙️ Stable' : '⚖️ Balanced'} · {Math.round(voiceStability * 100)}%
+                    {voiceStability <= 0.35 ? '🎭 Expressive' : voiceStability >= 0.7 ? '🎙️ Consistent' : '⚖️ Balanced'} · {Math.round(voiceStability * 100)}%
                   </span>
                 </div>
                 <input
@@ -2441,9 +2469,9 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                   onChange={e => setVoiceStability(parseFloat(e.target.value))}
                   className="w-full accent-indigo-600 h-1.5 rounded-full"
                 />
-                <div className="flex justify-between text-[10px] text-gray-400 mt-0.5">
-                  <span>Expressive</span><span>Balanced</span><span>Stable</span>
-                </div>
+                <p className="text-[9px] text-gray-400 mt-1 leading-relaxed">
+                  Low = more emotional, varied delivery. High = consistent, predictable tone. Use low for dramatic reads, high for narration.
+                </p>
               </div>
             </div>
             <div className="px-4 pb-4 pt-2">
@@ -2461,7 +2489,8 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* ── Single Image: Storyboard vs Independent ── */}
       {singleGenPrompt && (

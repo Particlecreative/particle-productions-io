@@ -441,20 +441,29 @@ const CATEGORIES = [
         summary: 'Version history.',
         keywords: ['changelog', 'version', 'update', 'release', 'new', 'fix'],
         content: [
-          { type: 'guide', title: 'v2.0 — April 2026', steps: [
-            '📜 Scripts & Storyboards — full scene-based editor with 3 views, AI generation, import, sharing, comments, versions.',
-            '🎨 AI Image Generation — character IDENTITY LOCK, product consistency, style references, regeneration.',
-            '🎙️ Voice Over — ElevenLabs with voice picker, per-scene playback, full VO download.',
-            '🔇 VO Mute — exclude non-spoken text from TTS and timing.',
-            '✂️ Split Modal — break scenes into shots with manual or AI-suggested dividers.',
-            '📦 Universal Blocks — reusable scene templates with free-text categories.',
-            '▦ Cards View — responsive production card grid on Dashboard.',
-            '▥ Kanban View — stage-based swimlane columns on Dashboard.',
-            '📎 Multi-Reference AI — up to 3 URLs/files for script generation context.',
-            '⏱️ Segmented Timer — per-scene timing bar with custom targets.',
-            '📜 History Page — documented with field/user/date filters and value restore.',
-            '🎬 Studio Tickets — Monday.com integration documented.',
-            '📖 Manual v2.0 — card-based help center with role-aware visibility.',
+          { type: 'guide', title: 'v2.1 — April 2026', steps: [
+            '🎬 Video-to-Script Matching — upload MP4, YouTube URL, or Google Drive link. AI matches video frames to script scenes by audio + visual content.',
+            '📋 Clipboard Paste — Ctrl+V images directly into storyboard visuals.',
+            '📄 PDF Export — print-optimized script output from More menu.',
+            '🔊 Voice Picker — search by name, filter by gender (male/female), stability explanation.',
+            '🔊 Share Page VO — Play per-scene and Play All now work on public share links.',
+            '🔒 Production Lock — lock completed productions, only admins can edit.',
+            '🗑️ Delete Production — cascade cleanup with confirmation modal.',
+            '🏷️ Biomella Brand — red theme, Epilogue font, full CSS variables.',
+            '🖼️ Logo Upload — upload to Google Drive, auto-save, shows in sidebar.',
+            '🎨 Sidebar Color — customizable via Settings brand colors.',
+            '💾 Dropbox Backup Fix — missing API keys added, 3x retry.',
+            '🔐 Security — requireEditor on all routes, DOMPurify XSS, password 8+ chars.',
+          ]},
+          { type: 'guide', title: 'v2.1 — April 2026', steps: [
+            '📜 Scripts & Storyboards — scene editor, 3 views, AI generation, import, sharing, comments, versions.',
+            '🎨 AI Image Generation — IDENTITY LOCK, product consistency, storyboard continuity, reference images.',
+            '🎙️ Voice Over — ElevenLabs, mute non-spoken text, segmented timing bar.',
+            '✂️ Split Modal — by sentence + AI suggest, save as Universal Block.',
+            '📦 Universal Blocks — reusable scene templates with categories.',
+            '💬 AI Chat — Claude conversation panel for script refinement.',
+            '▦ Cards + ▥ Kanban — new Dashboard views.',
+            '📖 Manual v2.1 — card-based help center with role-aware visibility.',
           ]},
           { type: 'guide', title: 'v1.9 — March 2026', steps: [
             '🌙 Dark mode. 🔍 Global Search. 📖 Manual (first version). 📱 Mobile "More" menu. 💾 Filter persistence. 🔐 Security hardening. ⌨️ Shortcuts.',
@@ -593,7 +602,7 @@ export default function Manual() {
         <div className="flex items-center gap-2.5">
           <BookOpen size={20} style={{ color: 'var(--brand-primary)' }} />
           <h1 className="text-lg font-black" style={{ color: 'var(--brand-primary)' }}>CP Panel Manual</h1>
-          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-500">v2.0</span>
+          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-500">v2.1</span>
         </div>
         <div className="relative w-72">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
