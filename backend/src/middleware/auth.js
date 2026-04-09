@@ -23,7 +23,7 @@ function verifyJWT(req, res, next) {
  * Must be used after verifyJWT.
  */
 function requireEditor(req, res, next) {
-  const RANK = { Viewer: 0, Accounting: 1, Editor: 2, Admin: 3 };
+  const RANK = { Viewer: 0, Accounting: 1, Studio: 1, Editor: 2, Admin: 3 };
   if ((RANK[req.user?.role] ?? -1) < RANK.Editor) {
     return res.status(403).json({ error: 'Editor access required' });
   }
@@ -35,7 +35,7 @@ function requireEditor(req, res, next) {
  * Must be used after verifyJWT.
  */
 function requireAdmin(req, res, next) {
-  const RANK = { Viewer: 0, Accounting: 1, Editor: 2, Admin: 3 };
+  const RANK = { Viewer: 0, Accounting: 1, Studio: 1, Editor: 2, Admin: 3 };
   if ((RANK[req.user?.role] ?? -1) < RANK.Admin) {
     return res.status(403).json({ error: 'Admin access required' });
   }

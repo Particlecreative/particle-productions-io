@@ -24,18 +24,18 @@ import clsx from 'clsx';
 const DEFAULT_NAV_ITEMS = [
   { to: '/',               icon: LayoutDashboard,  label: 'Productions', exact: true, accountingHide: true },
   { to: '/links',          icon: Link,             label: 'Links',       accountingHide: true },
-  { to: '/contracts',      icon: FileSignature,    label: 'Contracts',   accountingHide: true },
-  { to: '/suppliers',      icon: Users2,           label: 'Suppliers',   accountingHide: true },
+  { to: '/contracts',      icon: FileSignature,    label: 'Contracts',   accountingHide: true, studioHide: true },
+  { to: '/suppliers',      icon: Users2,           label: 'Suppliers',   accountingHide: true, studioHide: true },
   { to: '/studio-tickets', icon: Clapperboard,     label: 'Studio',      accountingHide: true, particleOnly: true },
-  { to: '/gantts',         icon: GanttChartSquare, label: 'Gantts',      accountingHide: true },
-  { to: '/call-sheets',    icon: FileText,         label: 'Call Sheets', accountingHide: true },
-  { to: '/financial',      icon: DollarSign,       label: 'Financial' },
-  { to: '/accounting',     icon: BookOpen,         label: 'Accounting' },
-  { to: '/invoices',       icon: FileText,         label: 'Invoices' },
-  { to: '/history',        icon: History,          label: 'History' },
-  { to: '/casting-rights', icon: Star,             label: 'Casting',      accountingHide: true },
-  { to: '/scripts',        icon: Scroll,           label: 'Scripts',      accountingHide: true },
-  { to: '/manual',         icon: BookOpen,         label: 'Manual',       accountingHide: true },
+  { to: '/gantts',         icon: GanttChartSquare, label: 'Gantts',      accountingHide: true, studioHide: true },
+  { to: '/call-sheets',    icon: FileText,         label: 'Call Sheets', accountingHide: true, studioHide: true },
+  { to: '/financial',      icon: DollarSign,       label: 'Budget Overview', studioHide: true },
+  { to: '/accounting',     icon: BookOpen,         label: 'Payments',    studioHide: true },
+  { to: '/invoices',       icon: FileText,         label: 'Invoices',    studioHide: true },
+  { to: '/history',        icon: History,          label: 'History',     studioHide: true },
+  { to: '/casting-rights', icon: Star,             label: 'Casting',     accountingHide: true, studioHide: true },
+  { to: '/scripts',        icon: Scroll,           label: 'Scripts',     accountingHide: true },
+  { to: '/manual',         icon: BookOpen,         label: 'Manual',      accountingHide: true },
 ];
 
 const ADMIN_ITEMS = [
@@ -108,10 +108,10 @@ export default function Sidebar({ open, onToggle }) {
   // page_access: if non-null array from user's group, restrict to those paths only
   const pageAccess = user?.page_access ?? null;
 
-  const visibleItems = (isAccounting
-    ? navItems.filter(i => !i.accountingHide)
-    : navItems
-  )
+  const isStudio = user?.role === 'Studio';
+  const visibleItems = navItems
+    .filter(i => !isAccounting || !i.accountingHide)
+    .filter(i => !isStudio || !i.studioHide)
     .filter(i => !i.particleOnly || brand.id === 'particle')
     .filter(i => !pageAccess || isAdmin || pageAccess.includes(i.to));
 

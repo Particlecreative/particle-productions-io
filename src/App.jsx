@@ -35,12 +35,13 @@ import WeeklySharePage from './pages/WeeklySharePage';
 import Scripts from './pages/Scripts';
 import ScriptSharePage from './pages/ScriptSharePage';
 
-function ProtectedRoute({ children, adminOnly = false, blockForAccounting = false }) {
-  const { user, loading, isAdmin, isAccounting } = useAuth();
+function ProtectedRoute({ children, adminOnly = false, blockForAccounting = false, blockForStudio = false }) {
+  const { user, loading, isAdmin, isAccounting, isStudio } = useAuth();
   if (loading) return null;
   if (!user) return <Navigate to="/login" replace />;
   if (adminOnly && !isAdmin) return <Navigate to="/" replace />;
   if (blockForAccounting && isAccounting) return <Navigate to="/financial" replace />;
+  if (blockForStudio && isStudio) return <Navigate to="/" replace />;
   return children;
 }
 
@@ -97,19 +98,19 @@ function AppRoutes() {
         <Route path="/login" element={loading ? null : (user ? <Navigate to="/" replace /> : <Login />)} />
         <Route path="/" element={<ProtectedRoute blockForAccounting><AppShell><ErrorBoundary><Dashboard /></ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="/production/:id" element={<ProtectedRoute><AppShell><ErrorBoundary><ProductionBoard /></ErrorBoundary></AppShell></ProtectedRoute>} />
-        <Route path="/financial" element={<ProtectedRoute><AppShell><ErrorBoundary><Financial /></ErrorBoundary></AppShell></ProtectedRoute>} />
-        <Route path="/accounting" element={<ProtectedRoute><AppShell><ErrorBoundary><Accounting /></ErrorBoundary></AppShell></ProtectedRoute>} />
-        <Route path="/invoices" element={<ProtectedRoute><AppShell><ErrorBoundary><Invoices /></ErrorBoundary></AppShell></ProtectedRoute>} />
+        <Route path="/financial" element={<ProtectedRoute blockForStudio><AppShell><ErrorBoundary><Financial /></ErrorBoundary></AppShell></ProtectedRoute>} />
+        <Route path="/accounting" element={<ProtectedRoute blockForStudio><AppShell><ErrorBoundary><Accounting /></ErrorBoundary></AppShell></ProtectedRoute>} />
+        <Route path="/invoices" element={<ProtectedRoute blockForStudio><AppShell><ErrorBoundary><Invoices /></ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute adminOnly><AppShell><ErrorBoundary><Settings /></ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="/users" element={<ProtectedRoute adminOnly><AppShell><ErrorBoundary><Users /></ErrorBoundary></AppShell></ProtectedRoute>} />
-        <Route path="/history" element={<ProtectedRoute><AppShell><ErrorBoundary><History /></ErrorBoundary></AppShell></ProtectedRoute>} />
+        <Route path="/history" element={<ProtectedRoute blockForStudio><AppShell><ErrorBoundary><History /></ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="/links" element={<ProtectedRoute><AppShell><ErrorBoundary><Links /></ErrorBoundary></AppShell></ProtectedRoute>} />
-        <Route path="/contracts" element={<ProtectedRoute><AppShell><ErrorBoundary><Contracts /></ErrorBoundary></AppShell></ProtectedRoute>} />
-        <Route path="/suppliers" element={<ProtectedRoute><AppShell><ErrorBoundary><Suppliers /></ErrorBoundary></AppShell></ProtectedRoute>} />
+        <Route path="/contracts" element={<ProtectedRoute blockForStudio><AppShell><ErrorBoundary><Contracts /></ErrorBoundary></AppShell></ProtectedRoute>} />
+        <Route path="/suppliers" element={<ProtectedRoute blockForStudio><AppShell><ErrorBoundary><Suppliers /></ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="/studio-tickets" element={<ProtectedRoute><AppShell><ErrorBoundary><StudioTickets /></ErrorBoundary></AppShell></ProtectedRoute>} />
-        <Route path="/gantts" element={<ProtectedRoute blockForAccounting><AppShell><ErrorBoundary><Gantts /></ErrorBoundary></AppShell></ProtectedRoute>} />
-        <Route path="/casting-rights" element={<ProtectedRoute><AppShell><ErrorBoundary><CastingRights /></ErrorBoundary></AppShell></ProtectedRoute>} />
-        <Route path="/call-sheets" element={<ProtectedRoute blockForAccounting><AppShell><ErrorBoundary><CallSheets /></ErrorBoundary></AppShell></ProtectedRoute>} />
+        <Route path="/gantts" element={<ProtectedRoute blockForAccounting blockForStudio><AppShell><ErrorBoundary><Gantts /></ErrorBoundary></AppShell></ProtectedRoute>} />
+        <Route path="/casting-rights" element={<ProtectedRoute blockForStudio><AppShell><ErrorBoundary><CastingRights /></ErrorBoundary></AppShell></ProtectedRoute>} />
+        <Route path="/call-sheets" element={<ProtectedRoute blockForAccounting blockForStudio><AppShell><ErrorBoundary><CallSheets /></ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="/manual" element={<ProtectedRoute><AppShell><ErrorBoundary><Manual /></ErrorBoundary></AppShell></ProtectedRoute>} />
         {/* Public forms — no auth required */}
         <Route path="/supplier-form/:productionId" element={<SupplierForm />} />

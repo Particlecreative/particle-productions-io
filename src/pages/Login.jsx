@@ -268,7 +268,7 @@ export default function Login() {
                     className="brand-input"
                     placeholder="Type it again"
                     required
-                    minLength={6}
+                    minLength={8}
                   />
                 </div>
                 {error === '__UPDATING__' ? (

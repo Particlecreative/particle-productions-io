@@ -9,11 +9,12 @@ import clsx from 'clsx';
 
 const IS_DEV = import.meta.env.DEV;
 
-const ROLES = ['Viewer', 'Editor', 'Admin', 'Accounting'];
+const ROLES = ['Viewer', 'Studio', 'Editor', 'Admin', 'Accounting'];
 
 const ROLE_STYLES = {
   Admin:      'bg-blue-50 border-blue-200 text-blue-700',
   Editor:     'bg-green-50 border-green-200 text-green-700',
+  Studio:     'bg-pink-50 border-pink-200 text-pink-700',
   Accounting: 'bg-purple-50 border-purple-200 text-purple-700',
   Viewer:     'bg-gray-100 border-gray-200 text-gray-600',
 };

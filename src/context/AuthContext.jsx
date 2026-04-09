@@ -85,6 +85,7 @@ export function AuthProvider({ children }) {
   const isEditor      = effectiveRole === 'Editor' || isAdmin;
   const isViewer      = !!user;
   const isAccounting  = effectiveRole === 'Accounting';
+  const isStudio      = effectiveRole === 'Studio';
 
   return (
     <AuthContext.Provider value={{
@@ -97,6 +98,7 @@ export function AuthProvider({ children }) {
       isEditor,
       isViewer,
       isAccounting,
+      isStudio,
     }}>
       {children}
     </AuthContext.Provider>

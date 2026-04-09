@@ -740,10 +740,10 @@ export default function Dashboard() {
       {/* Tab Bar + New Production */}
       <div className="flex items-center gap-1 border-b border-gray-100 mb-4">
         {[
-          { id: 'productions', label: '📋 Productions' },
-          { id: 'updates',    label: '💬 Updates' },
-          { id: 'weekly',      label: '📅 Weekly' },
-          { id: 'analysis',   label: '📊 Analysis' },
+          { id: 'productions', label: 'Productions' },
+          { id: 'updates',    label: 'Updates' },
+          { id: 'weekly',      label: 'Weekly' },
+          { id: 'analysis',   label: 'Analysis' },
         ].map(t => (
           <button key={t.id} onClick={() => setActiveTab(t.id)}
             className={clsx('px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-all',

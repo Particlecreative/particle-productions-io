@@ -41,11 +41,11 @@
   --brand-sidebar-active: #0808f8;
   --brand-glow: rgba(8, 8, 248, 0.12);
   --brand-gradient: linear-gradient(135deg, #030b2e 0%, #0808f8 100%);
-  --card-shadow: 0 1px 3px rgba(0,0,0,0.02), 0 4px 20px rgba(0,0,0,0.04);
-  --card-shadow-hover: 0 8px 40px rgba(0,0,0,0.08);
-  --radius: 20px;
-  --radius-sm: 14px;
-  --radius-xs: 10px;
+  --card-shadow: 0 1px 3px rgba(0,0,0,0.02), 0 2px 12px rgba(0,0,0,0.03);
+  --card-shadow-hover: 0 4px 24px rgba(0,0,0,0.06);
+  --radius: 16px;
+  --radius-sm: 12px;
+  --radius-xs: 8px;
 }
 
 [data-brand="blurr"] {
@@ -245,26 +245,23 @@ h1, h2, h3 { letter-spacing: -0.025em; }
 
 /* === BRAND CTA BUTTON — clean pill === */
 .btn-cta {
-  background: var(--brand-gradient);
+  background: var(--brand-accent);
   color: white;
-  font-weight: 700;
-  padding: 11px 28px;
-  border-radius: 50px;
+  font-weight: 600;
+  padding: 10px 24px;
+  border-radius: var(--radius-sm);
   border: none;
   cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.2s ease;
   font-size: 13px;
   letter-spacing: 0.01em;
-  box-shadow: 0 2px 8px var(--brand-glow);
 }
 .btn-cta:hover {
-  box-shadow: 0 6px 24px var(--brand-glow);
-  transform: translateY(-2px);
-  filter: brightness(1.08);
+  opacity: 0.9;
+  box-shadow: 0 2px 12px var(--brand-glow);
 }
 .btn-cta:active {
-  transform: translateY(0);
-  box-shadow: 0 2px 8px var(--brand-glow);
+  transform: scale(0.98);
 }
 
 [data-brand="blurr"] .btn-cta {
@@ -561,8 +558,8 @@ h1, h2, h3 { letter-spacing: -0.025em; }
 
 /* === INPUT STYLES === */
 .brand-input {
-  border: 1px solid rgba(0,0,0,0.08);
-  border-radius: var(--radius-sm);
+  border: 1px solid rgba(0,0,0,0.1);
+  border-radius: var(--radius-xs);
   padding-top: 10px;
   padding-bottom: 10px;
   padding-left: 14px;
@@ -596,8 +593,7 @@ h1, h2, h3 { letter-spacing: -0.025em; }
   transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .brand-card:hover {
-  box-shadow: 0 8px 40px rgba(0,0,0,0.08);
-  transform: translateY(-2px);
+  box-shadow: var(--card-shadow-hover);
 }
 
 /* Summary/KPI cards — big numbers, floating bento style */
