@@ -11,6 +11,22 @@
   font-style: normal;
 }
 
+/* === LOCAL FONT: Epilogue (variable weight, for Biomella) === */
+@font-face {
+  font-family: 'Epilogue';
+  src: url('/fonts/Epilogue-Variable.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Epilogue';
+  src: url('/fonts/Epilogue-Italic-Variable.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+
 /* === BRAND CSS VARIABLES — clean bento-box style === */
 :root {
   --brand-bg: #f4f5f7;
@@ -45,6 +61,30 @@
   --brand-sidebar-active: #F86EE6;
   --brand-glow: rgba(248, 110, 230, 0.12);
   --brand-gradient: linear-gradient(135deg, #B842A9 0%, #F86EE6 100%);
+}
+
+/* Biomella typography hierarchy: Bold titles, Italic secondary, Regular body */
+[data-brand="biomella"] .brand-title,
+[data-brand="biomella"] h1,
+[data-brand="biomella"] h2,
+[data-brand="biomella"] h3 {
+  font-family: 'Epilogue', 'Inter', sans-serif !important;
+  font-weight: 700 !important;
+}
+[data-brand="biomella"] .brand-subtitle,
+[data-brand="biomella"] .text-secondary {
+  font-family: 'Epilogue', 'Inter', sans-serif !important;
+  font-style: italic;
+  font-weight: 400;
+}
+[data-brand="biomella"] body,
+[data-brand="biomella"] p,
+[data-brand="biomella"] span,
+[data-brand="biomella"] input,
+[data-brand="biomella"] textarea,
+[data-brand="biomella"] button,
+[data-brand="biomella"] select {
+  font-family: 'Epilogue', 'Inter', sans-serif;
 }
 
 [data-brand="biomella"] {
