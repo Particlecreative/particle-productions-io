@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const db     = require('../db');
+const { logAction } = require('../lib/auditLog');
 const { verifyJWT, requireEditor } = require('../middleware/auth');
 
 router.use(verifyJWT);
@@ -49,6 +50,7 @@ router.post('/', requireEditor, async (req, res) => {
         notes || '', created_at || new Date().toISOString(),
       ]
     );
+    logAction({ production_id: rows[0].production_id, entity: "casting", action: "create", summary: `Added cast member "${rows[0].name || ''}"`, user_id: req.user?.id, user_name: req.user?.name });
     res.status(201).json(rows[0]);
   } catch (err) {
     console.error('POST /casting error:', err);

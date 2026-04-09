@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const db     = require('../db');
+const { logAction } = require('../lib/auditLog');
 const { verifyJWT } = require('../middleware/auth');
 
 router.use(verifyJWT);
@@ -35,6 +36,7 @@ router.post('/', async (req, res) => {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
       [line_item_id || null, production_id || null, file_url || null, amount || null, date_received || null, payment_due || null, status || 'pending', mismatch || false]
     );
+    logAction({ production_id: rows[0].production_id, entity: "invoice", action: "create", summary: `Created invoice for "${rows[0].item || ''}" — ${rows[0].invoice_status || ''}`, user_id: req.user?.id, user_name: req.user?.name });
     res.status(201).json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: 'Server error' });

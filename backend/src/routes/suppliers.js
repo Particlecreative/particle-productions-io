@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const db     = require('../db');
+const { logAction } = require('../lib/auditLog');
 const rateLimit = require('express-rate-limit');
 const { verifyJWT, requireEditor } = require('../middleware/auth');
 
@@ -87,6 +88,7 @@ router.post('/', requireEditor, async (req, res) => {
         s.address || null, s.transport_mode || null,
       ]
     );
+    logAction({ entity: "supplier", action: "create", summary: `Added supplier "${req.body.name || ''}"`, user_id: req.user?.id, user_name: req.user?.name });
     res.status(201).json(rows[0]);
   } catch (err) {
     console.error('POST /suppliers error:', err);

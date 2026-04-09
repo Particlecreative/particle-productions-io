@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const db     = require('../db');
+const { logAction } = require('../lib/auditLog');
 const { verifyJWT, requireEditor } = require('../middleware/auth');
 
 router.use(verifyJWT);
@@ -39,6 +40,7 @@ router.post('/', requireEditor, async (req, res) => {
       'INSERT INTO links (production_id, category, title, url, "order") VALUES ($1,$2,$3,$4,$5) RETURNING *',
       [production_id, category, title, url, order]
     );
+    logAction({ production_id, entity: "link", action: "create", summary: `Added link "${title}" to ${production_id}`, user_id: req.user?.id, user_name: req.user?.name });
     res.status(201).json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: 'Server error' });

@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const db     = require('../db');
+const { logAction } = require('../lib/auditLog');
 const { verifyJWT } = require('../middleware/auth');
 
 router.use(verifyJWT);
@@ -31,6 +32,7 @@ router.post('/', async (req, res) => {
        VALUES ($1, $2, $3, $4, $5) RETURNING *`,
       [production_id, req.user.id, req.user.name, commentBody, mentions || []]
     );
+    logAction({ production_id: req.body.production_id, entity: "comment", action: "create", summary: `Added comment on ${req.body.production_id || ''}`, user_id: req.user?.id, user_name: req.user?.name });
     res.status(201).json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: 'Server error' });

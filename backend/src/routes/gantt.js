@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const db     = require('../db');
+const { logAction } = require('../lib/auditLog');
 const { verifyJWT, requireEditor } = require('../middleware/auth');
 const { syncEventToGoogle, deleteEventFromGoogle } = require('./gcal');
 

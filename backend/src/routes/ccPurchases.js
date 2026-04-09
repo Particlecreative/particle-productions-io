@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const db     = require('../db');
+const { logAction } = require('../lib/auditLog');
 const { verifyJWT, requireEditor } = require('../middleware/auth');
 
 router.use(verifyJWT);
@@ -57,6 +58,7 @@ router.post('/', requireEditor, async (req, res) => {
         submitted_at    || new Date().toISOString(),
       ]
     );
+    logAction({ production_id: rows[0].production_id, entity: "cc_purchase", action: "create", summary: `CC purchase at "${rows[0].store_name || ''}"`, user_id: req.user?.id, user_name: req.user?.name });
     res.status(201).json(rows[0]);
   } catch (err) {
     console.error('POST /cc-purchases error:', err);
