@@ -508,21 +508,56 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  {/* Stage Pills */}
+                  {/* Stage Bar — clickable segments */}
                   <div className="kpi-card flex flex-col justify-center min-w-0 p-3 col-span-2 sm:col-span-1">
-                    <div className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest mb-1.5">By Stage</div>
-                    <div className="flex flex-wrap gap-1">
-                      {Object.entries(stageBreakdown).map(([stage, count]) => {
-                        const sc = { 'Pending': '#6b46c1', 'Pre-Production': '#4527A0', 'Production': '#1565C0', 'Post Production': '#e65100', 'Completed': '#2e7d32', 'Paused': '#f57f17' }[stage] || '#6b7280';
-                        return (
-                          <span key={stage} className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white" style={{ background: sc }}>
-                            {stage.replace('Production', 'Prod').replace('Pre-Prod', 'Pre')} {count}
-                          </span>
-                        );
-                      })}
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest">
+                        {stageFilter ? stageFilter : 'By Stage'}
+                      </div>
+                      {stageFilter && (
+                        <button onClick={() => { setStageFilter(''); localStorage.setItem('cp_dash_filters', JSON.stringify({ ...JSON.parse(localStorage.getItem('cp_dash_filters') || '{}'), stageFilter: '' })); }}
+                          className="text-[9px] font-semibold text-red-500 hover:text-red-700 flex items-center gap-0.5 transition-colors">
+                          <X size={9} /> Clear
+                        </button>
+                      )}
                     </div>
-                    <div className="text-lg font-black mt-1" style={{ color: 'var(--brand-primary)' }}>
-                      {productions.length} <span className="text-[10px] font-medium text-gray-400">total</span>
+                    {/* Stacked bar */}
+                    <div className="flex h-3 rounded-full overflow-hidden mb-2 cursor-pointer">
+                      {(() => {
+                        const stageColors = { 'Pending': '#8b5cf6', 'Pre-Production': '#6366f1', 'Production': '#3b82f6', 'Post Production': '#f97316', 'Completed': '#22c55e', 'Paused': '#eab308' };
+                        const total = productions.length || 1;
+                        return Object.entries(stageBreakdown).map(([stage, count]) => (
+                          <div
+                            key={stage}
+                            onClick={() => {
+                              const newFilter = stageFilter === stage ? '' : stage;
+                              setStageFilter(newFilter);
+                              localStorage.setItem('cp_dash_filters', JSON.stringify({ ...JSON.parse(localStorage.getItem('cp_dash_filters') || '{}'), stageFilter: newFilter }));
+                            }}
+                            className={`h-full transition-all duration-300 hover:opacity-80 ${stageFilter === stage ? 'ring-2 ring-offset-1 ring-gray-800 z-10' : ''}`}
+                            style={{ width: `${(count / total) * 100}%`, background: stageColors[stage] || '#6b7280', minWidth: count > 0 ? '8px' : 0 }}
+                            title={`${stage}: ${count} (click to filter)`}
+                          />
+                        ));
+                      })()}
+                    </div>
+                    {/* Legend */}
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                      {(() => {
+                        const stageColors = { 'Pending': '#8b5cf6', 'Pre-Production': '#6366f1', 'Production': '#3b82f6', 'Post Production': '#f97316', 'Completed': '#22c55e', 'Paused': '#eab308' };
+                        return Object.entries(stageBreakdown).map(([stage, count]) => (
+                          <button key={stage}
+                            onClick={() => {
+                              const newFilter = stageFilter === stage ? '' : stage;
+                              setStageFilter(newFilter);
+                              localStorage.setItem('cp_dash_filters', JSON.stringify({ ...JSON.parse(localStorage.getItem('cp_dash_filters') || '{}'), stageFilter: newFilter }));
+                            }}
+                            className={`flex items-center gap-1 text-[9px] transition-all ${stageFilter === stage ? 'font-black' : 'text-gray-500 hover:text-gray-700'}`}>
+                            <div className="w-2 h-2 rounded-full shrink-0" style={{ background: stageColors[stage] || '#6b7280' }} />
+                            {stage.replace('Production', 'Prod').replace('Pre-Prod', 'Pre')} <span className="font-bold">{count}</span>
+                          </button>
+                        ));
+                      })()}
                     </div>
                   </div>
                 </div>
