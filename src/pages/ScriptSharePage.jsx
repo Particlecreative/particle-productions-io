@@ -131,7 +131,7 @@ export default function ScriptSharePage() {
     if (playingSceneId === sceneId) { setPlayingSceneId(null); return; }
     setPlayingSceneId(sceneId);
     try {
-      const res = await fetch(`${API}/api/scripts/${script.id}/tts`, {
+      const res = await fetch(`${API}/api/scripts/share/${token}/tts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ scene_id: sceneId }),
@@ -155,7 +155,7 @@ export default function ScriptSharePage() {
     if (downloadingVO) return;
     setDownloadingVO(true);
     try {
-      const res = await fetch(`${API}/api/scripts/${script.id}/tts-full`, {
+      const res = await fetch(`${API}/api/scripts/share/${token}/tts-full`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),

@@ -1526,92 +1526,30 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
           </div>
         </div>
 
-        {/* ── Commercial timing bar (segmented per scene) ── */}
+        {/* ── Compact timing bar ── */}
         {totalVoSeconds > 0 && (
           <div className="flex items-center gap-2 mb-2 scripts-no-print">
-            <Clock size={11} className="text-gray-400 shrink-0" />
-            {/* Segmented progress bar */}
-            <div className="flex-1 bg-gray-100 rounded-full h-2 relative overflow-hidden flex" title={`${scenes.length} scenes, ${totalVoSeconds}s total`}>
+            <div className="flex-1 bg-gray-100 rounded-full h-1.5 relative overflow-hidden flex">
               {scenes.map((s, i) => {
                 const dur = sceneTimecodes[s.id]?.end - sceneTimecodes[s.id]?.start || 0;
                 const pct = targetSeconds > 0 ? (dur / targetSeconds) * 100 : 0;
                 const sceneColors = ['bg-indigo-400', 'bg-purple-400', 'bg-blue-400', 'bg-teal-400', 'bg-pink-400', 'bg-amber-400'];
-                return (
-                  <div
-                    key={s.id}
-                    className={`h-full ${sceneColors[i % sceneColors.length]} transition-all relative group`}
-                    style={{ width: `${Math.min(pct, 100 - (i > 0 ? 0.5 : 0))}%`, marginLeft: i > 0 ? '1px' : 0 }}
-                    title={`Scene ${i + 1}: ${fmtSeconds(dur)}`}
-                  >
-                    <div className="absolute -top-7 left-1/2 -translate-x-1/2 hidden group-hover:block bg-gray-900 text-white text-[9px] px-1.5 py-0.5 rounded whitespace-nowrap z-20">
-                      Sc {i + 1}: {fmtSeconds(dur)}
-                    </div>
-                  </div>
-                );
+                return <div key={s.id} className={`h-full ${sceneColors[i % sceneColors.length]}`} style={{ width: `${Math.min(pct, 100)}%`, marginLeft: i > 0 ? '1px' : 0 }} title={`Sc ${i + 1}: ${fmtSeconds(dur)}`} />;
               })}
-              {/* Overflow indicator */}
-              {timingRatio > 1 && <div className="absolute right-0 top-0 h-full w-1 bg-red-500" />}
             </div>
-            <span className={`text-[11px] font-mono font-semibold shrink-0 ${timingColor}`}>
-              {fmtSeconds(totalVoSeconds)}
-            </span>
-            <span className="text-[11px] text-gray-400 shrink-0">/</span>
-            <button
-              onClick={() => { setShowVoicePicker(true); setVoicePreviewError(null); loadAccountVoices(); }}
-              className="shrink-0 flex items-center gap-1 text-[10px] px-2 py-1 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-600 hover:bg-indigo-100 transition-colors font-semibold"
-              title="Voice settings — speed, stability"
-            >
-              <Volume2 size={10} />
-              {accountVoices.find(v => v.voice_id === voiceId)?.name || 'Voice'}
-              {voiceSpeed !== 1.0 && <span className="text-[9px] opacity-70">{voiceSpeed}x</span>}
-            </button>
-            {/* Full VO player */}
-            {fullVOUrl ? (
-              <div className="shrink-0 flex items-center gap-1.5 bg-indigo-100 rounded-lg px-2 py-1">
-                <button onClick={handlePlayFullVO} className="text-indigo-600 hover:text-indigo-800">
-                  {fullVOPlaying ? <Pause size={12} /> : <Play size={12} />}
-                </button>
-                <div className="w-20 h-1.5 bg-indigo-200 rounded-full cursor-pointer relative" onClick={handleSeekFullVO}>
-                  <div className="h-full bg-indigo-600 rounded-full transition-all" style={{ width: `${fullVODuration > 0 ? (fullVOProgress / fullVODuration) * 100 : 0}%` }} />
-                </div>
-                <span className="text-[9px] font-mono text-indigo-600">{Math.floor(fullVOProgress)}s/{Math.floor(fullVODuration)}s</span>
-                <button onClick={handleStopFullVO} className="text-indigo-400 hover:text-red-500"><X size={10} /></button>
-              </div>
-            ) : (
-              <button
-                onClick={handlePlayFullVO}
-                disabled={downloadingFullVO}
-                className="shrink-0 flex items-center gap-1 text-[10px] px-2 py-1 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors font-semibold"
-                title="Play full script voiceover"
-              >
-                {downloadingFullVO ? <Loader2 size={10} className="animate-spin" /> : <Play size={10} />}
-                {downloadingFullVO ? 'Generating...' : 'Full VO'}
-              </button>
-            )}
-            <div className="flex items-center gap-0.5 bg-gray-100 rounded-md p-0.5 shrink-0">
-              {['15', '30', '60'].map(t => (
-                <button
-                  key={t}
-                  onClick={() => { setCommercialTarget(t); localStorage.setItem(`script_target_${scriptId}`, t); }}
-                  className={`text-[10px] px-1.5 py-0.5 rounded font-semibold transition-colors ${commercialTarget === t ? 'bg-white shadow-sm text-gray-800' : 'text-gray-400 hover:text-gray-600'}`}
-                >
-                  {t}s
-                </button>
+            <span className={`text-[10px] font-mono font-semibold ${timingColor}`}>{fmtSeconds(totalVoSeconds)}/{targetSeconds}s</span>
+            <div className="flex items-center gap-0.5 bg-gray-100 rounded p-0.5">
+              {['30', '60'].map(t => (
+                <button key={t} onClick={() => { setCommercialTarget(t); localStorage.setItem(`script_target_${scriptId}`, t); }}
+                  className={`text-[9px] px-1.5 py-0.5 rounded font-semibold ${commercialTarget === t ? 'bg-white shadow-sm text-gray-800' : 'text-gray-400'}`}>{t}s</button>
               ))}
-              <input
-                type="number"
-                value={commercialTarget}
-                onChange={e => { setCommercialTarget(e.target.value); localStorage.setItem(`script_target_${scriptId}`, e.target.value); }}
-                className="w-10 text-[10px] text-center border border-gray-200 rounded px-1 py-0.5 outline-none focus:border-indigo-300"
-                min={5} max={600}
-                title="Custom target (seconds)"
-              />
             </div>
           </div>
         )}
 
+        {/* ── Toolbar — single clean row ── */}
         <div className="flex items-center gap-1.5 flex-wrap scripts-no-print">
-          {/* View toggle */}
+          {/* Views */}
           <div className="flex items-center gap-0.5 bg-gray-100 rounded-lg p-0.5">
             {[{ id: 'table', icon: Table2, label: 'Table' }, { id: 'vo', icon: Volume2, label: 'VO' }, { id: 'storyboard', icon: Layout, label: 'Visual' }].map(v => (
               <button key={v.id} onClick={() => { setActiveView(v.id); localStorage.setItem(`script_view_${scriptId}`, v.id); }}
@@ -1646,70 +1584,63 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
             </div>
           )}
 
+          {/* VO controls — voice + play */}
+          <button onClick={() => { setShowVoicePicker(true); setVoicePreviewError(null); loadAccountVoices(); }}
+            className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-md bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors font-medium"
+            title="Voice settings">
+            <Volume2 size={10} />
+            {accountVoices.find(v => v.voice_id === voiceId)?.name || 'Voice'}
+            {voiceSpeed !== 1.0 && <span className="opacity-60">{voiceSpeed}x</span>}
+          </button>
+          {fullVOUrl ? (
+            <div className="flex items-center gap-1 bg-indigo-100 rounded-lg px-2 py-1">
+              <button onClick={handlePlayFullVO} className="text-indigo-600"><Play size={11} /></button>
+              <div className="w-16 h-1 bg-indigo-200 rounded-full cursor-pointer" onClick={handleSeekFullVO}>
+                <div className="h-full bg-indigo-600 rounded-full" style={{ width: `${fullVODuration > 0 ? (fullVOProgress / fullVODuration) * 100 : 0}%` }} />
+              </div>
+              <span className="text-[8px] font-mono text-indigo-600">{Math.floor(fullVOProgress)}s</span>
+              <button onClick={handleStopFullVO} className="text-indigo-400 hover:text-red-500"><X size={9} /></button>
+            </div>
+          ) : (
+            <button onClick={handlePlayFullVO} disabled={downloadingFullVO}
+              className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 font-medium">
+              {downloadingFullVO ? <Loader2 size={10} className="animate-spin" /> : <Play size={10} />}
+              {downloadingFullVO ? 'Gen...' : 'Play All'}
+            </button>
+          )}
+
           <div className="flex-1" />
 
-          {/* Action buttons */}
+          {/* Actions */}
           {!readOnly && (
             <>
-              <button onClick={() => setShowBlocks(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-indigo-200 text-indigo-600 hover:bg-indigo-50 transition-colors"
-                title="Insert reusable scene blocks">
-                <Package size={12} /> Blocks
+              <button onClick={() => setShowBlocks(true)} className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-gray-600 hover:bg-gray-100 border border-gray-200 transition-colors">
+                <Package size={11} /> Blocks
               </button>
               <button onClick={() => { setShowAIChat(true); setAiChatSelectedText(''); setAiChatSceneId(null); }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-purple-600 text-white hover:bg-purple-700 transition-colors"
-                title="AI Script Assistant — chat about your script">
-                <Sparkles size={12} /> AI Chat
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-purple-600 text-white hover:bg-purple-700 transition-colors">
+                <Sparkles size={11} /> AI
               </button>
               {scenes.some(s => !s.images || s.images.length === 0) && (
                 <button onClick={() => handleGenerateAll()} disabled={generatingAll}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 transition-colors">
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 transition-colors">
                   {generatingAll
-                    ? <><Loader2 size={12} className="animate-spin" /> {generateAllProgress.current}/{generateAllProgress.total}</>
-                    : <><ImageIcon size={12} /> Generate All ({scenes.filter(s => !s.images || s.images.length === 0).length})</>
+                    ? <><Loader2 size={11} className="animate-spin" /> {generateAllProgress.current}/{generateAllProgress.total}</>
+                    : <><ImageIcon size={11} /> Images ({scenes.filter(s => !s.images || s.images.length === 0).length})</>
                   }
                 </button>
               )}
-              {localStorage.getItem(`script_wizard_${scriptId}`) && (
-                <button onClick={handleOpenImageSetup}
-                  className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs border border-purple-200 text-purple-600 hover:bg-purple-50 transition-colors"
-                  title="Edit AI image settings (characters, product, style)">
-                  <Settings size={11} /> Image Setup
-                </button>
-              )}
               <button onClick={() => { setShowComments(true); loadComments(); }}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${openCommentCount > 0 ? 'border-amber-300 bg-amber-50 text-amber-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-                <MessageSquare size={12} /> {openCommentCount > 0 ? openCommentCount : 'Comments'}
+                className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs border transition-colors ${openCommentCount > 0 ? 'border-amber-300 bg-amber-50 text-amber-700 font-semibold' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+                <MessageSquare size={11} /> {openCommentCount > 0 ? openCommentCount : ''}
               </button>
-              <button onClick={() => { setShowVersions(true); loadVersions(); }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">
-                <History size={12} /> History
+              <button onClick={() => setShowShare(true)} className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors">
+                <Share2 size={11} />
               </button>
-              <button onClick={() => setShowShare(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">
-                <Share2 size={12} /> Share
-              </button>
-              {script.status !== 'approved' && (
-                <button onClick={handleApprove} disabled={approvingLoading}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 transition-colors">
-                  {approvingLoading ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle size={12} />} Approve
-                </button>
-              )}
-              {script.drive_url && (
-                <a href={script.drive_url} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs text-green-600 hover:bg-green-50 transition-colors border border-green-200">
-                  <ExternalLink size={11} /> Drive
-                </a>
-              )}
             </>
           )}
-          <button onClick={() => setPresentMode(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">
-            <Play size={12} /> Present
-          </button>
-          <button onClick={() => window.print()}
-            className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors scripts-no-print">
-            <Download size={12} />
+          <button onClick={() => setPresentMode(true)} className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors">
+            <Play size={11} />
           </button>
           {/* ⋯ More menu */}
           {!readOnly && (

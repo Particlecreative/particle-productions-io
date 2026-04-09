@@ -354,6 +354,48 @@ router.put('/share/:token', async (req, res) => {
   }
 });
 
+// ── PUBLIC TTS for shared scripts (no auth, validates share token) ────────────
+router.post('/share/:token/tts', async (req, res) => {
+  try {
+    const { scene_id, voice_id, speed, stability } = req.body;
+    const { rows } = await db.query('SELECT id, scenes, share_token, share_mode FROM scripts WHERE share_token = $1', [req.params.token]);
+    if (!rows[0]) return res.status(404).json({ error: 'Script not found' });
+    const scene = (rows[0].scenes || []).find(s => s.id === scene_id);
+    if (!scene) return res.status(404).json({ error: 'Scene not found' });
+    const rawText = scene.what_we_hear || '';
+    if (!rawText.trim()) return res.status(400).json({ error: 'No VO text' });
+    const audioBase64 = await elevenLabsTTS(rawText, voice_id || undefined, { speed: speed || 1.0, stability: stability || 0.5 });
+    res.json({ audio_base64: audioBase64, mime_type: 'audio/mpeg' });
+  } catch (err) {
+    console.error('POST /scripts/share/:token/tts error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/share/:token/tts-full', async (req, res) => {
+  try {
+    const { rows } = await db.query('SELECT id, scenes, title, share_token FROM scripts WHERE share_token = $1', [req.params.token]);
+    if (!rows[0]) return res.status(404).json({ error: 'Script not found' });
+    const scenes = rows[0].scenes || [];
+    const parts = scenes.map(s => {
+      return (s.what_we_hear || '')
+        .replace(/<span[^>]*(?:data-muted|class="vo-muted")[^>]*>[\s\S]*?<\/span>/gi, '')
+        .replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ')
+        .replace(/\[[^\]]*\]/g, ' ').replace(/\([^)]*\)/g, ' ')
+        .replace(/\s+/g, ' ').trim();
+    }).filter(Boolean);
+    if (parts.length === 0) return res.status(400).json({ error: 'No VO text' });
+    const fullText = parts.join('\n\n').substring(0, 5000);
+    const audioBase64 = await elevenLabsTTS(fullText, undefined, {});
+    const buf = Buffer.from(audioBase64, 'base64');
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.send(buf);
+  } catch (err) {
+    console.error('POST /scripts/share/:token/tts-full error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── PROTECTED routes below ────────────────────────────────────────────────────
 router.use(verifyJWT);
 
