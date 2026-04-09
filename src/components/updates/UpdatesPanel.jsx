@@ -148,15 +148,16 @@ function LinkAttachPicker({ productionId, onAttach, onClose }) {
     if (!newUrl.trim()) return;
     const title = newLabel.trim() || newUrl;
     if (saveToTree) {
-      await Promise.resolve(createLink({
-        id: generateId('lnk'),
-        production_id: productionId,
-        url: newUrl,
-        label: title,
-        category,
-        order: 0,
-        created_at: nowISOString(),
-      }));
+      try {
+        await Promise.resolve(createLink({
+          production_id: productionId,
+          url: newUrl,
+          title,
+          category,
+        }));
+      } catch (err) {
+        console.warn('Failed to save link to tree:', err);
+      }
     }
     onAttach({ url: newUrl, title });
   }
