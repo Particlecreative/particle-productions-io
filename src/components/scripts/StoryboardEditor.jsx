@@ -767,7 +767,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
     if (scene) setSplitScene(scene);
   };
 
-  const handleApplySplit = async (segments, generateImages) => {
+  const handleApplySplit = async (segments, generateImages, blockOpts) => {
     if (!splitScene) return;
     const sceneIndex = scenes.findIndex(s => s.id === splitScene.id);
     if (sceneIndex === -1) return;
@@ -797,6 +797,23 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
     });
     onUpdated?.({ id: scriptId });
     setSplitScene(null);
+
+    // Save as Universal Block if requested
+    if (blockOpts?.saveAsBlock && blockOpts?.blockName) {
+      try {
+        await fetch(`${API}/api/scripts/blocks`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
+          body: JSON.stringify({
+            brand_id: script.brand_id || brand?.id,
+            name: blockOpts.blockName,
+            category: 'general',
+            scenes: newScenes.map(s => ({ location: s.location, what_we_see: s.what_we_see, what_we_hear: s.what_we_hear, duration: s.duration })),
+          }),
+        });
+        toast.success(`Block "${blockOpts.blockName}" saved`);
+      } catch { toast.error('Failed to save block'); }
+    }
 
     // Optionally generate images for new scenes (skip first if it inherited images)
     if (generateImages) {

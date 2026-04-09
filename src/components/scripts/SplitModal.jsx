@@ -20,6 +20,8 @@ export default function SplitModal({ scene, scriptId, onClose, onApply }) {
   ]);
   const [loading, setLoading] = useState(false);
   const [generateImages, setGenerateImages] = useState(false);
+  const [saveAsBlock, setSaveAsBlock] = useState(false);
+  const [blockName, setBlockName] = useState('');
 
   const addBreakAfter = (index) => {
     setSegments(prev => {
@@ -184,7 +186,7 @@ Return ONLY a JSON array of strings — one visual description per shot. Match t
   const handleApply = () => {
     const validSegments = segments.filter(s => s.whatWeSee.trim() || s.whatWeHear.trim());
     if (validSegments.length === 0) return;
-    onApply(validSegments, generateImages);
+    onApply(validSegments, generateImages, { saveAsBlock, blockName: blockName.trim() });
     onClose();
   };
 
@@ -283,17 +285,28 @@ Return ONLY a JSON array of strings — one visual description per shot. Match t
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-100 flex items-center gap-3 shrink-0">
-          <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={generateImages}
-              onChange={e => setGenerateImages(e.target.checked)}
-              className="accent-purple-600"
-            />
-            Generate AI images for each shot
-          </label>
-          <div className="flex-1" />
+        <div className="px-6 py-4 border-t border-gray-100 shrink-0">
+          <div className="flex items-center gap-4 mb-3">
+            <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+              <input type="checkbox" checked={generateImages} onChange={e => setGenerateImages(e.target.checked)} className="accent-purple-600" />
+              Generate AI images
+            </label>
+            <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+              <input type="checkbox" checked={saveAsBlock} onChange={e => setSaveAsBlock(e.target.checked)} className="accent-indigo-600" />
+              Save as Universal Block
+            </label>
+            {saveAsBlock && (
+              <input
+                value={blockName}
+                onChange={e => setBlockName(e.target.value)}
+                placeholder="Block name..."
+                className="border border-gray-200 rounded-lg px-2.5 py-1 text-xs outline-none focus:border-indigo-300 w-40"
+                autoFocus
+              />
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex-1" />
           <button onClick={onClose} className="px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">
             Cancel
           </button>
@@ -304,6 +317,7 @@ Return ONLY a JSON array of strings — one visual description per shot. Match t
           >
             <Scissors size={13} /> Apply Split ({segments.filter(s => s.whatWeSee.trim() || s.whatWeHear.trim()).length} shots)
           </button>
+          </div>
         </div>
       </div>
     </div>
