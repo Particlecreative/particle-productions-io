@@ -127,22 +127,74 @@ export default function AIChatPanel({ scriptId, script, scenes, selectedText, se
         if (onDuplicate) onDuplicate(action.new_title || `${script?.title || 'Script'} (Copy)`);
         break;
       }
+      case 'reorder_scene': {
+        const fromIdx = (action.scene_number || 1) - 1;
+        const toIdx = (action.move_to_position || 1) - 1;
+        if (fromIdx >= 0 && fromIdx < scenes.length && toIdx >= 0 && toIdx < scenes.length) {
+          const updated = [...scenes];
+          const [moved] = updated.splice(fromIdx, 1);
+          updated.splice(toIdx, 0, moved);
+          updated.forEach((s, i) => s.order = i);
+          onScriptUpdate(updated);
+          toast.success(`Scene ${action.scene_number} moved to position ${action.move_to_position}`);
+        }
+        break;
+      }
+      case 'merge_scenes': {
+        const nums = action.scene_numbers || [];
+        if (nums.length >= 2) {
+          const indices = nums.map(n => n - 1).filter(i => i >= 0 && i < scenes.length).sort((a, b) => a - b);
+          if (indices.length >= 2) {
+            const merged = {
+              ...scenes[indices[0]],
+              what_we_see: indices.map(i => scenes[i].what_we_see).filter(Boolean).join(' '),
+              what_we_hear: indices.map(i => scenes[i].what_we_hear).filter(Boolean).join(' '),
+            };
+            const updated = scenes.filter((_, i) => !indices.slice(1).includes(i));
+            updated[indices[0]] = merged;
+            updated.forEach((s, i) => s.order = i);
+            onScriptUpdate(updated);
+            toast.success(`Scenes ${nums.join(' + ')} merged`);
+          }
+        }
+        break;
+      }
+      case 'batch_edit': {
+        const edits = action.edits || [];
+        const updated = [...scenes];
+        let editCount = 0;
+        edits.forEach(edit => {
+          const idx = (edit.scene_number || 1) - 1;
+          if (idx >= 0 && idx < updated.length && edit.field && edit.value !== undefined) {
+            updated[idx] = { ...updated[idx], [edit.field]: edit.value };
+            editCount++;
+          }
+        });
+        onScriptUpdate(updated);
+        toast.success(`Batch edit: ${editCount} scene${editCount !== 1 ? 's' : ''} updated`);
+        break;
+      }
     }
   };
 
   const quickPrompts = [
-    { label: 'Rewrite scene emotionally', icon: Pencil },
-    { label: 'Shorten the VO text', icon: ArrowRight },
-    { label: 'Suggest a stronger CTA', icon: Sparkles },
-    { label: 'Add a new intro scene', icon: Plus },
-    { label: 'Find & replace a word', icon: Search },
+    { label: 'Rate this script (1-10)', icon: Sparkles },
+    { label: 'Rewrite scene 1 emotionally', icon: Pencil },
+    { label: 'Optimize for 30 seconds', icon: ArrowRight },
+    { label: 'Make all VO present tense', icon: Search },
+    { label: 'Add a product close-up scene', icon: Plus },
+    { label: 'Merge scenes 1 and 2', icon: ArrowRight },
+    { label: 'Generate shot list', icon: Sparkles },
   ];
 
   const ACTION_LABELS = {
     edit_scene: { icon: '✏️', label: 'Edit Scene' },
     delete_scene: { icon: '🗑️', label: 'Delete Scene' },
     add_scene: { icon: '➕', label: 'Add Scene' },
+    reorder_scene: { icon: '↕️', label: 'Move Scene' },
+    merge_scenes: { icon: '🔗', label: 'Merge Scenes' },
     find_replace: { icon: '🔄', label: 'Find & Replace' },
+    batch_edit: { icon: '📝', label: 'Batch Edit' },
     duplicate_script: { icon: '📋', label: 'Duplicate Script' },
   };
 
@@ -213,11 +265,14 @@ export default function AIChatPanel({ scriptId, script, scenes, selectedText, se
                       <button key={ai} onClick={() => executeAction(action)}
                         className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs font-semibold transition-colors text-left">
                         <span>{meta.icon}</span>
-                        <span className="flex-1">{meta.label}
-                          {action.scene_number && ` — Scene ${action.scene_number}`}
+                        <span className="flex-1 truncate">{meta.label}
+                          {action.scene_number && !action.scene_numbers && ` — Scene ${action.scene_number}`}
+                          {action.scene_numbers && ` — Scenes ${action.scene_numbers.join(' + ')}`}
+                          {action.move_to_position && ` → position ${action.move_to_position}`}
                           {action.field && ` (${action.field.replace(/_/g, ' ')})`}
                           {action.find && ` "${action.find}" → "${action.replace}"`}
                           {action.new_title && ` "${action.new_title}"`}
+                          {action.edits && ` (${action.edits.length} changes)`}
                         </span>
                         <Play size={10} />
                       </button>
