@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { useBrand } from '../../context/BrandContext';
 import { getSettings } from '../../lib/dataService';
 
@@ -7,8 +8,22 @@ const DEFAULT_LOGOS = {
 
 export default function BrandLogo({ compact = false, dark = false }) {
   const { brand, brandId } = useBrand();
-  const settings = getSettings(brandId);
-  const logoUrl = settings?.logo_url || DEFAULT_LOGOS[brandId] || null;
+  const [logoUrl, setLogoUrl] = useState(DEFAULT_LOGOS[brandId] || null);
+
+  // Load logo_url from settings (async in production)
+  useEffect(() => {
+    const result = getSettings(brandId);
+    if (result && typeof result.then === 'function') {
+      result.then(s => {
+        if (s?.logo_url) setLogoUrl(s.logo_url);
+        else setLogoUrl(DEFAULT_LOGOS[brandId] || null);
+      }).catch(() => {});
+    } else if (result?.logo_url) {
+      setLogoUrl(result.logo_url);
+    } else {
+      setLogoUrl(DEFAULT_LOGOS[brandId] || null);
+    }
+  }, [brandId]);
 
   if (compact) {
     if (logoUrl) {
@@ -26,7 +41,7 @@ export default function BrandLogo({ compact = false, dark = false }) {
         className="flex items-center justify-center w-8 h-8 rounded font-black text-sm flex-shrink-0"
         style={{ background: 'var(--brand-accent)', color: 'white' }}
       >
-        {brandId === 'particle' ? 'P' : 'B'}
+        {brand.name?.[0] || '?'}
       </div>
     );
   }
@@ -48,24 +63,16 @@ export default function BrandLogo({ compact = false, dark = false }) {
         className="flex items-center justify-center w-8 h-8 rounded font-black text-sm flex-shrink-0"
         style={{ background: 'var(--brand-accent)', color: 'white' }}
       >
-        {brandId === 'particle' ? 'P' : 'B'}
+        {brand.name?.[0] || '?'}
       </div>
       <div className="min-w-0">
         <div
-          className={`font-black text-base leading-tight truncate brand-title`}
-          style={{
-            color: dark ? 'var(--brand-primary)' : 'white',
-            fontFamily: brandId === 'particle'
-              ? "'Sofia Sans Extra Condensed', sans-serif"
-              : "'Avenir Next Condensed', Impact, sans-serif",
-            fontWeight: 800,
-            textTransform: brandId === 'blurr' ? 'uppercase' : 'none',
-            letterSpacing: brandId === 'blurr' ? '0.05em' : 'normal',
-          }}
+          className="font-black text-base leading-tight truncate brand-title"
+          style={{ color: dark ? 'var(--brand-primary)' : 'white' }}
         >
           {brand.name}
         </div>
-        {!compact && brand.tagline && (
+        {brand.tagline && (
           <div className="text-white/40 text-[9px] uppercase tracking-widest leading-tight">
             {brand.tagline}
           </div>

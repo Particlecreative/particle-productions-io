@@ -897,7 +897,14 @@ export default function Settings() {
                           if (data.fileId) {
                             // Use Drive thumbnail URL for direct image access
                             const logoUrl = `https://drive.google.com/thumbnail?id=${data.fileId}&sz=w400`;
-                            setSettings(s => ({ ...s, logo_url: logoUrl }));
+                            setSettings(s => {
+                              const updated = { ...s, logo_url: logoUrl };
+                              // Auto-save so logo persists immediately
+                              updateSettings(brandId, updated);
+                              return updated;
+                            });
+                            setSaved(true);
+                            setTimeout(() => setSaved(false), 2000);
                           } else {
                             setSettings(s => ({ ...s, logo_url: '' }));
                             alert(data.error || 'Upload failed');
