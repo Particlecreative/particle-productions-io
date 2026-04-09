@@ -806,7 +806,7 @@ export default function Settings() {
   ];
 
   const FONT_OPTIONS = [
-    'Sofia Sans Extra Condensed', 'Sofia Sans', 'Neue Haas Grotesk',
+    'Epilogue', 'Sofia Sans Extra Condensed', 'Sofia Sans', 'Neue Haas Grotesk',
     'Helvetica Neue', 'Avenir Next Condensed', 'Proxima Nova ExtraBold',
     'Avenir', 'Inter', 'Arial',
   ];
