@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, FileText, CheckCircle, Clock, Archive, Eye, ExternalLink, MessageSquare, Film, Scroll } from 'lucide-react';
+import { Plus, FileText, CheckCircle, Clock, Archive, Eye, ExternalLink, MessageSquare, Film, Scroll, Share2, Link2, Check, Loader2 } from 'lucide-react';
+import { toast } from '../../lib/toast';
 import NewScriptModal from '../scripts/NewScriptModal';
 import clsx from 'clsx';
 
@@ -37,6 +38,8 @@ export default function ScriptsTab({ productionId, production }) {
   const [scripts, setScripts] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [sharing, setSharing] = useState(null); // script id being shared
+  const [copied, setCopied] = useState(null); // script id just copied
   const navigate = useNavigate();
   const brandId = production?.brand_id;
 
@@ -63,6 +66,27 @@ export default function ScriptsTab({ productionId, production }) {
 
   function openScript(scriptId) {
     navigate(`/scripts?script_id=${scriptId}`);
+  }
+
+  async function handleQuickShare(e, scriptId, mode) {
+    e.stopPropagation();
+    setSharing(scriptId);
+    try {
+      const res = await fetch(`${API}/api/scripts/${scriptId}/share`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
+        body: JSON.stringify({ share_mode: mode }),
+      });
+      const data = await res.json();
+      if (data.share_token) {
+        const url = `${window.location.origin}/script/${data.share_token}`;
+        await navigator.clipboard.writeText(url);
+        setCopied(scriptId);
+        toast.success(`${mode === 'edit' ? 'Edit' : mode === 'comment' ? 'Comment' : 'View'} link copied!`);
+        setTimeout(() => setCopied(null), 2000);
+      }
+    } catch { toast.error('Failed to generate share link'); }
+    setSharing(null);
   }
 
   if (loading) {
@@ -164,6 +188,30 @@ export default function ScriptsTab({ productionId, production }) {
                         <span className="truncate">by {script.created_by_name}</span>
                       )}
                     </div>
+                  </div>
+
+                  {/* Quick share buttons */}
+                  <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
+                    {sharing === script.id ? (
+                      <Loader2 size={13} className="animate-spin text-gray-400" />
+                    ) : copied === script.id ? (
+                      <span className="flex items-center gap-1 text-[10px] text-green-600 font-semibold"><Check size={12} /> Copied</span>
+                    ) : (
+                      <>
+                        <button onClick={e => handleQuickShare(e, script.id, 'view')} title="Copy view-only link"
+                          className="p-1.5 rounded-lg text-gray-300 hover:text-blue-500 hover:bg-blue-50 transition-colors opacity-0 group-hover:opacity-100">
+                          <Eye size={13} />
+                        </button>
+                        <button onClick={e => handleQuickShare(e, script.id, 'comment')} title="Copy comment link"
+                          className="p-1.5 rounded-lg text-gray-300 hover:text-amber-500 hover:bg-amber-50 transition-colors opacity-0 group-hover:opacity-100">
+                          <MessageSquare size={13} />
+                        </button>
+                        <button onClick={e => handleQuickShare(e, script.id, 'edit')} title="Copy edit link"
+                          className="p-1.5 rounded-lg text-gray-300 hover:text-green-500 hover:bg-green-50 transition-colors opacity-0 group-hover:opacity-100">
+                          <Share2 size={13} />
+                        </button>
+                      </>
+                    )}
                   </div>
 
                   {/* Open arrow */}
