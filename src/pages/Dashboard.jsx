@@ -404,7 +404,8 @@ export default function Dashboard() {
 
   const totalBudget = productions.reduce((s, p) => s + (parseFloat(p.planned_budget_2026) || 0), 0);
   const totalSpent = productions.reduce((s, p) => s + (parseFloat(p.actual_spent) || 0), 0);
-  const yearlyBudget = Number(localStorage.getItem(`cp_yearly_budget_${brandId}_${selectedYear}`)) || 0;
+  // Read yearly budget — same key as Financial page, same default
+  const yearlyBudget = Number(localStorage.getItem(`cp_yearly_budget_${brandId}_${selectedYear}`)) || 600000;
   const canSaveForAll = isAdmin || isEditor;
 
   // Compact number formatter: $50,000 → $50K, $1,200,000 → $1.2M
