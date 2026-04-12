@@ -980,7 +980,7 @@ export default function Dashboard() {
       {/* Weekly Tab */}
       {/* Updates Tab */}
       {activeTab === 'updates' && (
-        <GlobalUpdatesTab brandId={brandId} />
+        <GlobalUpdatesTab brandId={brandId} productions={productions} />
       )}
 
       {activeTab === 'weekly' && (
