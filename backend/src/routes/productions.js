@@ -12,7 +12,11 @@ router.get('/', async (req, res) => {
     const vals  = [];
     const where = [];
     if (brand_id) { where.push(`brand_id = $${vals.push(brand_id)}`); }
-    if (year)     { where.push(`EXTRACT(YEAR FROM planned_start) = $${vals.push(parseInt(year, 10))}`); }
+    if (year) {
+      const y = parseInt(year, 10);
+      // Match by production_year column, OR planned_start year, OR ID prefix (PRD26- → 2026)
+      where.push(`(production_year = $${vals.push(y)} OR EXTRACT(YEAR FROM planned_start) = $${vals.push(y)} OR id LIKE $${vals.push(`PRD${String(y).slice(2)}-%`)})`);
+    }
     const clause = where.length ? ` WHERE ${where.join(' AND ')}` : '';
     const { rows } = await db.query(
       `SELECT * FROM productions${clause} ORDER BY planned_start ASC NULLS LAST, id ASC`,
@@ -44,12 +48,17 @@ router.post('/', requireAdmin, async (req, res) => {
     estimated_budget, actual_spent, payment_date,
     stage, production_type, production_category,
     timeline_sync, shoot_dates, delivery_date, air_date,
-    custom_columns, custom_fields,
+    custom_columns, custom_fields, production_year,
   } = req.body;
 
   if (!id || !brand_id || !project_name) {
     return res.status(400).json({ error: 'id, brand_id, project_name required' });
   }
+
+  // Derive year from explicit field, or from ID prefix (PRD26- → 2026), or from planned_start
+  const derivedYear = production_year
+    || (id.match(/^PRD(\d{2})-/) ? 2000 + parseInt(id.match(/^PRD(\d{2})-/)[1], 10) : null)
+    || (planned_start ? new Date(planned_start).getFullYear() : null);
 
   try {
     const { rows } = await db.query(
@@ -58,8 +67,8 @@ router.post('/', requireAdmin, async (req, res) => {
          planned_start, planned_end, planned_budget_2026, estimated_budget, actual_spent,
          payment_date, stage, production_type, production_category,
          timeline_sync, shoot_dates, delivery_date, air_date,
-         custom_columns, custom_fields)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+         custom_columns, custom_fields, production_year)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
        RETURNING *`,
       [
         id, brand_id, project_name,
@@ -75,6 +84,7 @@ router.post('/', requireAdmin, async (req, res) => {
         delivery_date || null, air_date || null,
         JSON.stringify(custom_columns || []),
         JSON.stringify(custom_fields || {}),
+        derivedYear,
       ]
     );
     res.status(201).json(rows[0]);
@@ -118,6 +128,7 @@ router.patch('/:id', requireEditor, async (req, res) => {
     'planned_budget_2026','estimated_budget','actual_spent','payment_date',
     'stage','production_type','production_category','timeline_sync',
     'shoot_dates','delivery_date','air_date','custom_columns','custom_fields',
+    'production_year',
   ];
 
   const updates = Object.entries(req.body)

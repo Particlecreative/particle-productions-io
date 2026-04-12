@@ -12,7 +12,7 @@ import {
   Columns3, Table2, Layout, Volume2, ChevronLeft, ChevronRight as ChevronRightIcon,
   Loader2, RefreshCw, ExternalLink, Film, Maximize2, ArrowLeft, MoreHorizontal,
   Image as ImageIcon, Wand2, CheckCircle, Clock, Settings, VolumeX, Package,
-  Scissors,
+  Scissors, Palette,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useBrand } from '../../context/BrandContext';
@@ -225,13 +225,29 @@ function FormatToolbar({ style, onDismiss }) {
   );
 }
 
+// ── Highlight colors for scenes ──────────────────────────────────────────────
+const HIGHLIGHT_COLORS = [
+  { name: 'None',    value: null },
+  { name: 'Red',     value: '#EF4444' },
+  { name: 'Orange',  value: '#F97316' },
+  { name: 'Yellow',  value: '#EAB308' },
+  { name: 'Green',   value: '#22C55E' },
+  { name: 'Teal',    value: '#14B8A6' },
+  { name: 'Blue',    value: '#3B82F6' },
+  { name: 'Indigo',  value: '#6366F1' },
+  { name: 'Purple',  value: '#A855F7' },
+  { name: 'Pink',    value: '#EC4899' },
+];
+
 // ── SortableSceneRow ──────────────────────────────────────────────────────────
 const SortableSceneRow = memo(function SortableSceneRow({ scene, index, visibleCols, onUpdate, onDelete, onDuplicate, onAddScene, commentCount, onCommentClick, onImageUpload, onImageDelete, onImageGenerate, onRegenImage, onRequestAIImage, onLightbox, readOnly, isLastRow, onPlayTTS, isPlaying, onSmartSplit, suggestingShots, generatingSceneId }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: scene.id });
-  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
+  const highlightBg = scene.highlight_color ? `${scene.highlight_color}1A` : null; // 1A = ~10% opacity hex
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1, ...(highlightBg ? { backgroundColor: highlightBg } : {}) };
 
   const [collapsed, setCollapsed] = useState(scene.collapsed || false);
   const [generatingImg, setGeneratingImg] = useState(false);
+  const [showColorPicker, setShowColorPicker] = useState(false);
   const fileRef = useRef();
 
   // Text selection comment handler
@@ -246,7 +262,7 @@ const SortableSceneRow = memo(function SortableSceneRow({ scene, index, visibleC
 
 
   return (
-    <tr ref={setNodeRef} style={style} className="border-b border-gray-100 hover:bg-gray-50/50 group align-top">
+    <tr ref={setNodeRef} style={style} className={`border-b border-gray-100 group align-top ${scene.highlight_color ? '' : 'hover:bg-gray-50/50'}`}>
       {/* Drag handle */}
       <td className="w-6 px-1 pt-3">
         {!readOnly && (
@@ -466,6 +482,24 @@ const SortableSceneRow = memo(function SortableSceneRow({ scene, index, visibleC
           )}
           {!readOnly && (
             <>
+              <div className="relative">
+                <button onClick={() => setShowColorPicker(p => !p)} title="Highlight color" className={`p-1 rounded transition-colors ${scene.highlight_color ? 'text-current' : 'text-gray-400 hover:text-purple-500'}`} style={scene.highlight_color ? { color: scene.highlight_color } : {}}>
+                  <Palette size={12} />
+                </button>
+                {showColorPicker && (
+                  <div className="absolute right-0 top-full mt-1 z-50 bg-white rounded-lg shadow-lg border border-gray-200 p-1.5 flex flex-wrap gap-1 w-[120px]" onMouseLeave={() => setShowColorPicker(false)}>
+                    {HIGHLIGHT_COLORS.map(c => (
+                      <button
+                        key={c.name}
+                        onClick={() => { onUpdate(scene.id, 'highlight_color', c.value); setShowColorPicker(false); }}
+                        title={c.name}
+                        className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-125 ${scene.highlight_color === c.value ? 'border-gray-800 ring-1 ring-gray-400' : 'border-gray-200'}`}
+                        style={{ backgroundColor: c.value || '#f3f4f6', ...(c.value === null ? { background: 'linear-gradient(135deg, #fff 45%, #ef4444 50%, #fff 55%)' } : {}) }}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
               <button onClick={() => onDuplicate(scene)} title="Duplicate" className="p-1 text-gray-400 hover:text-blue-500 rounded transition-colors"><Copy size={12} /></button>
               <button onClick={() => onDelete(scene.id)} title="Delete" className="p-1 text-gray-400 hover:text-red-500 rounded transition-colors"><Trash2 size={12} /></button>
             </>
@@ -651,7 +685,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
       await fetch(`${API}/api/scripts/${scriptId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
-        body: JSON.stringify({ scenes: updatedScript.scenes, title: updatedScript.title }),
+        body: JSON.stringify({ scenes: updatedScript.scenes, title: updatedScript.title, description: updatedScript.description }),
       });
       setSaving(false);
       setSaved(true);
@@ -1521,13 +1555,22 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
               <ArrowLeft size={16} />
             </button>
           )}
-          <input
-            value={script.title}
-            onChange={e => { setScript(p => ({ ...p, title: e.target.value })); debounceSave({ ...script, title: e.target.value }); }}
-            readOnly={readOnly}
-            className="flex-1 text-lg font-black text-gray-900 bg-transparent border-0 outline-none"
-            placeholder="Untitled Script"
-          />
+          <div className="flex-1 min-w-0">
+            <input
+              value={script.title}
+              onChange={e => { setScript(p => ({ ...p, title: e.target.value })); debounceSave({ ...script, title: e.target.value }); }}
+              readOnly={readOnly}
+              className="w-full text-lg font-black text-gray-900 bg-transparent border-0 outline-none"
+              placeholder="Untitled Script"
+            />
+            <input
+              value={script.description || ''}
+              onChange={e => { setScript(p => ({ ...p, description: e.target.value })); debounceSave({ ...script, description: e.target.value }); }}
+              readOnly={readOnly}
+              className="w-full text-xs text-gray-400 bg-transparent border-0 outline-none mt-0.5 placeholder:text-gray-300"
+              placeholder="Add a short description…"
+            />
+          </div>
           <div className="flex items-center gap-1.5 ml-auto">
             {/* Status */}
             <select

@@ -2029,7 +2029,7 @@ router.patch('/:id/comments/:cId', async (req, res) => {
 // PUT /api/scripts/:id — update script
 router.put('/:id', async (req, res) => {
   try {
-    const { scenes, title, status, production_id } = req.body;
+    const { scenes, title, description, status, production_id } = req.body;
     const brand_id = req.user?.brand_id || null;
 
     // Fetch current status before update (for change detection)
@@ -2044,15 +2044,17 @@ router.put('/:id', async (req, res) => {
       `UPDATE scripts SET
         scenes        = COALESCE($1, scenes),
         title         = COALESCE($2, title),
-        status        = COALESCE($3, status),
-        production_id = COALESCE($4, production_id),
+        description   = COALESCE($3, description),
+        status        = COALESCE($4, status),
+        production_id = COALESCE($5, production_id),
         updated_at    = NOW()
-       WHERE id = $5 AND ($6::text IS NULL OR brand_id = $6)
+       WHERE id = $6 AND ($7::text IS NULL OR brand_id = $7)
        RETURNING *,
          jsonb_array_length(COALESCE(scenes, '[]'::jsonb)) AS scene_count`,
       [
         scenes !== undefined ? JSON.stringify(scenes) : null,
         title || null,
+        description !== undefined ? (description || null) : null,
         status || null,
         production_id !== undefined ? (production_id || null) : null,
         req.params.id,
