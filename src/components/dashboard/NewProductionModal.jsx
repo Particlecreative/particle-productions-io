@@ -98,7 +98,7 @@ export default function NewProductionModal({ brandId, onClose, onCreate, existin
     else setUseTemplate(false);
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
     if (!isEditor) return;
 
@@ -111,11 +111,12 @@ export default function NewProductionModal({ brandId, onClose, onCreate, existin
     if (Object.keys(errs).length > 0) { setErrors(errs); return; }
     setErrors({});
 
-    const prod = onCreate({
+    const prod = await onCreate({
       ...form,
       planned_budget_2026: parseFloat(form.planned_budget_2026) || 0,
       estimated_budget: parseFloat(form.estimated_budget) || parseFloat(form.planned_budget_2026) || 0,
     });
+    if (!prod?.id) return; // creation failed, error shown by parent
 
     // Bulk-create template line items if toggled and we have a production back
     if (useTemplate && form.production_type && prod?.id) {

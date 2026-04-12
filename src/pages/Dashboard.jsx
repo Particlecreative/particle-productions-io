@@ -335,15 +335,23 @@ export default function Dashboard() {
     setDeleting(false);
   }
 
-  function handleCreate(data) {
-    const prod = createProduction(data);
-    setShowNewModal(false);
-    refresh();
-    // If timeline is in the past, prompt for auto-complete
-    if (prod?.planned_end && new Date(prod.planned_end) < new Date()) {
-      setPastProdDialog(prod);
+  async function handleCreate(data) {
+    try {
+      const prod = await createProduction(data);
+      if (!prod || prod.error) {
+        alert(prod?.error || 'Failed to create production');
+        return null;
+      }
+      setShowNewModal(false);
+      await refresh();
+      if (prod?.planned_end && new Date(prod.planned_end) < new Date()) {
+        setPastProdDialog(prod);
+      }
+      return prod;
+    } catch (err) {
+      alert('Failed to create production: ' + (err.message || 'Server error'));
+      return null;
     }
-    return prod;
   }
 
   function handleDragStart(e, id) {
