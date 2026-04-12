@@ -18,6 +18,43 @@ function RichTextDisplay({ html, className }) {
   return <span className={className} dangerouslySetInnerHTML={{ __html: clean }} />;
 }
 
+// Editable rich text cell for share page edit mode — renders HTML instead of showing raw tags
+function EditableRichText({ html, onChange, className, placeholder }) {
+  const ref = useRef(null);
+  const lastHtml = useRef(html);
+
+  useEffect(() => {
+    if (ref.current && html !== lastHtml.current) {
+      ref.current.innerHTML = DOMPurify.sanitize(html || '', PURIFY_CONFIG);
+      lastHtml.current = html;
+    }
+  }, [html]);
+
+  // Set initial HTML
+  useEffect(() => {
+    if (ref.current) {
+      ref.current.innerHTML = DOMPurify.sanitize(html || '', PURIFY_CONFIG);
+    }
+  }, []); // eslint-disable-line
+
+  function handleInput() {
+    const newHtml = ref.current?.innerHTML || '';
+    lastHtml.current = newHtml;
+    onChange(newHtml);
+  }
+
+  return (
+    <div
+      ref={ref}
+      contentEditable
+      suppressContentEditableWarning
+      onInput={handleInput}
+      className={`${className} outline-none min-h-[60px] whitespace-pre-wrap`}
+      data-placeholder={placeholder}
+    />
+  );
+}
+
 const API = import.meta.env.VITE_API_URL || '';
 
 const STATUS_COLORS = {
@@ -296,27 +333,62 @@ export default function ScriptSharePage() {
           </div>
 
           {scene && (
-            <div className="flex-1 flex flex-col items-center justify-center px-16 gap-8">
-              <div className="text-white/40 text-sm font-mono uppercase tracking-widest">
-                {scene.location || 'No location'}
+            <div className="flex-1 flex items-center justify-center px-6 py-4 overflow-hidden">
+              <div className="w-full max-w-6xl flex gap-6 items-stretch" style={{ maxHeight: 'calc(100vh - 160px)' }}>
+                {/* Image — large, dominant */}
+                <div className="flex-1 min-w-0 flex items-center justify-center rounded-2xl overflow-hidden bg-white/5">
+                  {scene.images?.length > 0 ? (
+                    <img
+                      src={scene.images[0].url} alt=""
+                      className="w-full h-full object-contain rounded-2xl cursor-pointer transition-transform hover:scale-[1.02]"
+                      style={{ maxHeight: 'calc(100vh - 180px)' }}
+                      onClick={() => setLightbox({ url: scene.images[0].url, name: scene.images[0].prompt || '' })}
+                    />
+                  ) : (
+                    <div className="w-full aspect-video flex items-center justify-center text-white/20 text-lg">No visual</div>
+                  )}
+                </div>
+
+                {/* Text panel — right side */}
+                <div className="w-[340px] flex-shrink-0 flex flex-col justify-center gap-5">
+                  <div className="text-white/30 text-[10px] font-mono uppercase tracking-[0.2em]">
+                    {scene.location || 'No location'}
+                  </div>
+
+                  <div>
+                    <div className="text-white/40 text-[10px] uppercase tracking-widest mb-2 font-semibold flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-white/40" /> What We See
+                    </div>
+                    <RichTextDisplay html={scene.what_we_see} className="text-white/90 text-base leading-relaxed block" />
+                  </div>
+
+                  <div className="bg-white/5 rounded-xl px-4 py-3">
+                    <div className="text-indigo-400 text-[10px] uppercase tracking-widest mb-2 font-semibold flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" /> What We Hear
+                    </div>
+                    <RichTextDisplay html={scene.what_we_hear} className="text-indigo-200 text-base leading-relaxed italic block" />
+                    {scene.what_we_hear?.trim() && (
+                      <button onClick={(e) => { e.stopPropagation(); handlePlayScene(scene.id); }}
+                        className={clsx('mt-2 flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full transition-colors',
+                          playingSceneId === scene.id ? 'bg-indigo-500/30 text-indigo-200' : 'text-indigo-400 hover:text-indigo-200 hover:bg-indigo-500/20')}>
+                        {playingSceneId === scene.id ? <><Loader2 size={11} className="animate-spin" /> Playing…</> : <><Play size={11} /> Play VO</>}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Thumbnail strip for multi-image scenes */}
+                  {scene.images?.length > 1 && (
+                    <div className="flex gap-2 overflow-x-auto pt-1">
+                      {scene.images.map((img, imgIdx) => (
+                        <img key={img.id} src={img.url} alt=""
+                          className={clsx('h-12 w-16 object-cover rounded-lg shrink-0 cursor-pointer transition-all border-2',
+                            imgIdx === 0 ? 'border-white/40' : 'border-transparent hover:border-white/30')}
+                          onClick={() => setLightbox({ url: img.url, name: img.prompt || '' })} />
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="grid grid-cols-2 gap-16 w-full max-w-5xl">
-                <div>
-                  <div className="text-white/40 text-xs uppercase tracking-widest mb-3 font-semibold">What We See</div>
-                  <p className="text-white text-xl leading-relaxed">{scene.what_we_see || '—'}</p>
-                </div>
-                <div>
-                  <div className="text-indigo-400 text-xs uppercase tracking-widest mb-3 font-semibold">What We Hear</div>
-                  <RichTextDisplay html={scene.what_we_hear} className="text-indigo-200 text-xl leading-relaxed italic block" />
-                </div>
-              </div>
-              {scene.images?.length > 0 && (
-                <div className="flex gap-3 overflow-x-auto max-w-full pb-2">
-                  {scene.images.map(img => (
-                    <img key={img.id} src={img.url} alt="" className="h-28 w-auto rounded-xl object-cover shrink-0 cursor-pointer hover:scale-105 transition-transform" onClick={() => setLightbox({ url: img.url, name: img.prompt || '' })} />
-                  ))}
-                </div>
-              )}
             </div>
           )}
 
@@ -525,16 +597,16 @@ export default function ScriptSharePage() {
                         {readOnly ? (
                           <RichTextDisplay html={scene.what_we_see} className="text-sm text-gray-700 whitespace-pre-wrap select-text block" />
                         ) : (
-                          <textarea value={scene.what_we_see || ''} onChange={e => handleCellChange(scene.id, 'what_we_see', e.target.value)}
-                            className="w-full resize-none border-0 outline-none bg-transparent text-sm text-gray-700 min-h-[80px]" rows={4} />
+                          <EditableRichText html={scene.what_we_see || ''} onChange={v => handleCellChange(scene.id, 'what_we_see', v)}
+                            className="w-full text-sm text-gray-700" placeholder="What we see…" />
                         )}
                       </td>
                       <td className="px-3 py-3" onMouseUp={() => handleTextMouseUp(scene.id, 'what_we_hear')}>
                         {readOnly ? (
                           <RichTextDisplay html={scene.what_we_hear} className="text-sm text-indigo-700 italic whitespace-pre-wrap select-text block" />
                         ) : (
-                          <textarea value={scene.what_we_hear || ''} onChange={e => handleCellChange(scene.id, 'what_we_hear', e.target.value)}
-                            className="w-full resize-none border-0 outline-none bg-transparent text-sm text-indigo-700 italic min-h-[80px]" rows={4} />
+                          <EditableRichText html={scene.what_we_hear || ''} onChange={v => handleCellChange(scene.id, 'what_we_hear', v)}
+                            className="w-full text-sm text-indigo-700 italic" placeholder="What we hear…" />
                         )}
                         {scene.what_we_hear?.trim() && (
                           <button onClick={(e) => { e.stopPropagation(); handlePlayScene(scene.id); }}
@@ -609,8 +681,8 @@ export default function ScriptSharePage() {
                         {readOnly ? (
                           <RichTextDisplay html={scene.what_we_hear} className="text-base text-indigo-800 italic leading-relaxed whitespace-pre-wrap select-text block" />
                         ) : (
-                          <textarea value={scene.what_we_hear || ''} onChange={e => handleCellChange(scene.id, 'what_we_hear', e.target.value)}
-                            className="w-full resize-none border-0 outline-none bg-transparent text-base text-indigo-800 italic min-h-[80px] leading-relaxed" rows={3} />
+                          <EditableRichText html={scene.what_we_hear || ''} onChange={v => handleCellChange(scene.id, 'what_we_hear', v)}
+                            className="w-full text-base text-indigo-800 italic leading-relaxed" placeholder="What we hear…" />
                         )}
                         {scene.what_we_hear?.trim() && (
                           <button
@@ -658,11 +730,16 @@ export default function ScriptSharePage() {
                       <div className="w-full h-full flex items-center justify-center text-gray-300 text-xs font-medium">No image</div>
                     )}
                   </div>
-                  <div className="p-3">
-                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <div className="p-3 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 min-w-0">
                         <span className="text-[10px] font-bold text-gray-400 bg-gray-100 rounded-full px-1.5 py-0.5 shrink-0">{idx + 1}</span>
-                        <span className="text-[10px] font-mono text-gray-500 truncate">{scene.location || '—'}</span>
+                        {readOnly ? (
+                          <span className="text-[10px] font-mono text-gray-500 truncate">{scene.location || '—'}</span>
+                        ) : (
+                          <input value={scene.location || ''} onChange={e => handleCellChange(scene.id, 'location', e.target.value)}
+                            className="text-[10px] font-mono text-gray-500 bg-transparent border-0 outline-none w-full truncate" placeholder="INT. LOCATION — DAY" />
+                        )}
                       </div>
                       {canComment && (
                         <button onClick={() => openCommentPanel({ scene_id: scene.id, cell: null, selected_text: null })}
@@ -674,19 +751,47 @@ export default function ScriptSharePage() {
                         </button>
                       )}
                     </div>
-                    {scene.what_we_see && (
-                      <p className="text-xs text-gray-700 line-clamp-2 leading-relaxed">{scene.what_we_see}</p>
-                    )}
-                    {scene.what_we_hear && (
-                      <button className="text-left w-full mt-1" onClick={() => setExpandedAudio(prev => ({ ...prev, [scene.id]: !prev[scene.id] }))}>
-                        <RichTextDisplay html={scene.what_we_hear} className={clsx('text-xs text-indigo-600 italic block', expandedAudio[scene.id] ? '' : 'line-clamp-2')} />
-                        {scene.what_we_hear.length > 80 && (
-                          <span className="text-[10px] text-indigo-400">{expandedAudio[scene.id] ? 'less ▲' : 'more ▼'}</span>
-                        )}
-                      </button>
-                    )}
+
+                    {/* What We See — labeled */}
+                    <div>
+                      <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-0.5 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-gray-400 inline-block" /> What We See
+                      </div>
+                      {readOnly ? (
+                        <RichTextDisplay html={scene.what_we_see} className="text-xs text-gray-700 leading-relaxed block line-clamp-3" />
+                      ) : (
+                        <EditableRichText html={scene.what_we_see || ''} onChange={v => handleCellChange(scene.id, 'what_we_see', v)}
+                          className="text-xs text-gray-700 leading-relaxed min-h-[40px]" placeholder="What we see…" />
+                      )}
+                    </div>
+
+                    {/* What We Hear — labeled, distinct color */}
+                    <div className="bg-indigo-50/60 rounded-lg px-2 py-1.5 -mx-0.5">
+                      <div className="text-[9px] font-bold text-indigo-400 uppercase tracking-wider mb-0.5 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 inline-block" /> What We Hear
+                      </div>
+                      {readOnly ? (
+                        <div onClick={() => setExpandedAudio(prev => ({ ...prev, [scene.id]: !prev[scene.id] }))}>
+                          <RichTextDisplay html={scene.what_we_hear} className={clsx('text-xs text-indigo-700 italic block cursor-pointer', expandedAudio[scene.id] ? '' : 'line-clamp-2')} />
+                          {(scene.what_we_hear || '').length > 80 && (
+                            <span className="text-[10px] text-indigo-400">{expandedAudio[scene.id] ? 'less ▲' : 'more ▼'}</span>
+                          )}
+                        </div>
+                      ) : (
+                        <EditableRichText html={scene.what_we_hear || ''} onChange={v => handleCellChange(scene.id, 'what_we_hear', v)}
+                          className="text-xs text-indigo-700 italic min-h-[40px]" placeholder="What we hear…" />
+                      )}
+                      {scene.what_we_hear?.trim() && (
+                        <button onClick={(e) => { e.stopPropagation(); handlePlayScene(scene.id); }}
+                          className={clsx('mt-1 flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-full transition-colors',
+                            playingSceneId === scene.id ? 'bg-indigo-100 text-indigo-600' : 'text-indigo-300 hover:text-indigo-600 hover:bg-indigo-50')}>
+                          {playingSceneId === scene.id ? <><Loader2 size={8} className="animate-spin" /> Playing</> : <><Play size={8} /> Play</>}
+                        </button>
+                      )}
+                    </div>
+
                     {scene.images?.length > 1 && (
-                      <div className="flex gap-1 mt-2 overflow-x-auto">
+                      <div className="flex gap-1 mt-1 overflow-x-auto">
                         {scene.images.slice(1).map(img => (
                           <img key={img.id} src={img.url} alt="" className="h-8 w-10 object-cover rounded flex-shrink-0" />
                         ))}

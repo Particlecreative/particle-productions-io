@@ -272,7 +272,7 @@ const SortableSceneRow = memo(function SortableSceneRow({ scene, index, visibleC
         )}
       </td>
 
-      {/* Scene # + collapse */}
+      {/* Scene # + collapse + highlight color */}
       <td className="w-12 px-2 pt-3 text-center">
         <div className="flex flex-col items-center gap-1">
           <button onClick={() => setCollapsed(c => { const v = !c; onUpdate(scene.id, 'collapsed', v); return v; })}
@@ -280,6 +280,28 @@ const SortableSceneRow = memo(function SortableSceneRow({ scene, index, visibleC
             {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
           </button>
           <span className="text-xs font-bold text-gray-500">{index}</span>
+          {!readOnly && (
+            <div className="relative">
+              <button onClick={() => setShowColorPicker(p => !p)} title="Highlight color"
+                className={`p-0.5 rounded transition-colors ${scene.highlight_color ? '' : 'text-gray-300 hover:text-purple-500 opacity-0 group-hover:opacity-100'}`}
+                style={scene.highlight_color ? { color: scene.highlight_color } : {}}>
+                <Palette size={11} />
+              </button>
+              {showColorPicker && (
+                <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1 z-50 bg-white rounded-lg shadow-lg border border-gray-200 p-1.5 flex flex-wrap gap-1 w-[120px]" onMouseLeave={() => setShowColorPicker(false)}>
+                  {HIGHLIGHT_COLORS.map(c => (
+                    <button
+                      key={c.name}
+                      onClick={() => { onUpdate(scene.id, 'highlight_color', c.value); setShowColorPicker(false); }}
+                      title={c.name}
+                      className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-125 ${scene.highlight_color === c.value ? 'border-gray-800 ring-1 ring-gray-400' : 'border-gray-200'}`}
+                      style={{ backgroundColor: c.value || '#f3f4f6', ...(c.value === null ? { background: 'linear-gradient(135deg, #fff 45%, #ef4444 50%, #fff 55%)' } : {}) }}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </td>
 
@@ -482,24 +504,6 @@ const SortableSceneRow = memo(function SortableSceneRow({ scene, index, visibleC
           )}
           {!readOnly && (
             <>
-              <div className="relative">
-                <button onClick={() => setShowColorPicker(p => !p)} title="Highlight color" className={`p-1 rounded transition-colors ${scene.highlight_color ? 'text-current' : 'text-gray-400 hover:text-purple-500'}`} style={scene.highlight_color ? { color: scene.highlight_color } : {}}>
-                  <Palette size={12} />
-                </button>
-                {showColorPicker && (
-                  <div className="absolute right-0 top-full mt-1 z-50 bg-white rounded-lg shadow-lg border border-gray-200 p-1.5 flex flex-wrap gap-1 w-[120px]" onMouseLeave={() => setShowColorPicker(false)}>
-                    {HIGHLIGHT_COLORS.map(c => (
-                      <button
-                        key={c.name}
-                        onClick={() => { onUpdate(scene.id, 'highlight_color', c.value); setShowColorPicker(false); }}
-                        title={c.name}
-                        className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-125 ${scene.highlight_color === c.value ? 'border-gray-800 ring-1 ring-gray-400' : 'border-gray-200'}`}
-                        style={{ backgroundColor: c.value || '#f3f4f6', ...(c.value === null ? { background: 'linear-gradient(135deg, #fff 45%, #ef4444 50%, #fff 55%)' } : {}) }}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
               <button onClick={() => onDuplicate(scene)} title="Duplicate" className="p-1 text-gray-400 hover:text-blue-500 rounded transition-colors"><Copy size={12} /></button>
               <button onClick={() => onDelete(scene.id)} title="Delete" className="p-1 text-gray-400 hover:text-red-500 rounded transition-colors"><Trash2 size={12} /></button>
             </>

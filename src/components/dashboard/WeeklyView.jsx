@@ -217,13 +217,14 @@ function StatusDropdown({ value, onChange }) {
 // ProductionEntry (edit mode)
 // ============================================================================
 
-function ProductionEntry({ entry, prod, links, onUpdate, onRemove, isEditor }) {
+function ProductionEntry({ entry, prod, links, scripts = [], onUpdate, onRemove, isEditor }) {
   const [showLinks, setShowLinks] = useState(false);
   const [addLinkMode, setAddLinkMode] = useState(null);
   const [customLink, setCustomLink] = useState({ title: '', url: '' });
   const [collapsed, setCollapsed] = useState(false);
   const [editingBulletLink, setEditingBulletLink] = useState(null);
   const [bulletLinkDraft, setBulletLinkDraft] = useState('');
+  const [generatingScriptLink, setGeneratingScriptLink] = useState(null);
   const bulletRef = useRef(null);
 
   if (!prod) return null;
@@ -270,11 +271,40 @@ function ProductionEntry({ entry, prod, links, onUpdate, onRemove, isEditor }) {
     setCustomLink({ title: '', url: '' });
     setAddLinkMode(null);
   }
+  async function addScriptLink(script) {
+    setGeneratingScriptLink(script.id);
+    try {
+      const API = import.meta.env.VITE_API_URL || '';
+      const jwt = localStorage.getItem('cp_auth_token');
+      // Auto-generate edit share link
+      const res = await fetch(`${API}/api/scripts/${script.id}/share`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
+        body: JSON.stringify({ share_mode: 'edit' }),
+      });
+      const data = await res.json();
+      if (!data.share_token) throw new Error('Failed to generate share link');
+      const url = `${window.location.origin}/script/${data.share_token}`;
+      onUpdate({
+        weekly_links: [...(entry.weekly_links || []), {
+          id: generateId('wl'), type: 'script', link_id: script.id,
+          title: `📝 ${script.title || 'Untitled Script'}`, url, approved: false,
+        }],
+      });
+      setAddLinkMode(null);
+    } catch (err) {
+      console.error('Failed to generate script share link:', err);
+      alert('Failed to generate script link. Please try again.');
+    }
+    setGeneratingScriptLink(null);
+  }
+
   function removeLink(wlId) {
     onUpdate({ weekly_links: (entry.weekly_links || []).filter(l => l.id !== wlId) });
   }
 
   const availableLinks = links.filter(l => !(entry.weekly_links || []).some(wl => wl.link_id === l.id));
+  const availableScripts = scripts.filter(s => !(entry.weekly_links || []).some(wl => wl.type === 'script' && wl.link_id === s.id));
 
   return (
     <div className="rounded-2xl border-l-4 bg-white shadow-sm border-gray-200">
@@ -391,10 +421,10 @@ function ProductionEntry({ entry, prod, links, onUpdate, onRemove, isEditor }) {
             {showLinks && (
               <div className="mt-2 space-y-1.5">
                 {(entry.weekly_links || []).map(wl => (
-                  <div key={wl.id} className="flex items-center gap-2 px-2.5 py-1.5 bg-gray-50 rounded-lg border border-gray-200">
+                  <div key={wl.id} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border ${wl.type === 'script' ? 'bg-purple-50 border-purple-200' : 'bg-gray-50 border-gray-200'}`}>
                     <a href={wl.url} target="_blank" rel="noopener noreferrer"
-                      className="flex-1 text-xs text-blue-600 hover:underline truncate flex items-center gap-1">
-                      <ExternalLink size={9} className="flex-shrink-0" />
+                      className={`flex-1 text-xs hover:underline truncate flex items-center gap-1 ${wl.type === 'script' ? 'text-purple-600' : 'text-blue-600'}`}>
+                      {wl.type === 'script' ? <FileText size={9} className="flex-shrink-0" /> : <ExternalLink size={9} className="flex-shrink-0" />}
                       {wl.title || wl.url}
                     </a>
                     {isEditor && (
@@ -406,10 +436,14 @@ function ProductionEntry({ entry, prod, links, onUpdate, onRemove, isEditor }) {
                 ))}
 
                 {addLinkMode === null && isEditor && (
-                  <div className="flex gap-2 pt-1">
+                  <div className="flex gap-2 pt-1 flex-wrap">
                     <button onClick={() => setAddLinkMode('production')} disabled={availableLinks.length === 0}
                       className="text-[11px] px-2.5 py-1 rounded-lg border border-dashed border-gray-300 text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-all disabled:opacity-40">
                       + From production
+                    </button>
+                    <button onClick={() => setAddLinkMode('script')} disabled={availableScripts.length === 0}
+                      className="text-[11px] px-2.5 py-1 rounded-lg border border-dashed border-gray-300 text-gray-400 hover:border-purple-400 hover:text-purple-500 transition-all disabled:opacity-40">
+                      + Script
                     </button>
                     <button onClick={() => setAddLinkMode('custom')}
                       className="text-[11px] px-2.5 py-1 rounded-lg border border-dashed border-gray-300 text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-all">
@@ -427,6 +461,24 @@ function ProductionEntry({ entry, prod, links, onUpdate, onRemove, isEditor }) {
                         <span className="truncate text-blue-700">{l.title || l.url}</span>
                       </button>
                     ))}
+                    <button onClick={() => setAddLinkMode(null)} className="text-[11px] text-gray-400 hover:text-gray-600 mt-1">Cancel</button>
+                  </div>
+                )}
+
+                {addLinkMode === 'script' && (
+                  <div className="space-y-1 pt-1">
+                    {availableScripts.map(s => (
+                      <button key={s.id} onClick={() => addScriptLink(s)} disabled={generatingScriptLink === s.id}
+                        className="w-full flex items-center gap-2 text-left text-xs px-2.5 py-1.5 rounded-lg bg-purple-50 border border-purple-200 hover:bg-purple-100 transition-colors disabled:opacity-60">
+                        <FileText size={10} className="text-purple-500 flex-shrink-0" />
+                        <span className="truncate text-purple-700">{s.title || 'Untitled Script'}</span>
+                        <span className="ml-auto text-[9px] text-purple-400 flex-shrink-0">{s.scene_count || 0} scenes</span>
+                        {generatingScriptLink === s.id && <span className="text-[9px] text-purple-400 animate-pulse">generating…</span>}
+                      </button>
+                    ))}
+                    {availableScripts.length === 0 && (
+                      <p className="text-[11px] text-gray-400 py-1">No scripts for this production</p>
+                    )}
                     <button onClick={() => setAddLinkMode(null)} className="text-[11px] text-gray-400 hover:text-gray-600 mt-1">Cancel</button>
                   </div>
                 )}
@@ -1191,6 +1243,7 @@ function WeeklyReportsTab({ productions, brandId, selectedYear }) {
   const [dirty, setDirty] = useState(false);
   const [commentsByProd, setCommentsByProd] = useState({});
   const [linksByProd, setLinksByProd] = useState({});
+  const [scriptsByProd, setScriptsByProd] = useState({});
   const [showAddProd, setShowAddProd] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
@@ -1235,6 +1288,24 @@ function WeeklyReportsTab({ productions, brandId, selectedYear }) {
       setDirty(false);
       const allReports = await Promise.resolve(getWeeklyReports(brandId));
       setHistory(Array.isArray(allReports) ? allReports : []);
+
+      // Fetch all scripts for the brand
+      try {
+        const API = import.meta.env.VITE_API_URL || '';
+        const jwt = localStorage.getItem('cp_auth_token');
+        const scriptsRes = await fetch(`${API}/api/scripts`, { headers: { Authorization: `Bearer ${jwt}` } });
+        if (scriptsRes.ok) {
+          const allScripts = await scriptsRes.json();
+          const sByP = {};
+          (Array.isArray(allScripts) ? allScripts : []).forEach(s => {
+            if (s.production_id) {
+              if (!sByP[s.production_id]) sByP[s.production_id] = [];
+              sByP[s.production_id].push(s);
+            }
+          });
+          setScriptsByProd(sByP);
+        }
+      } catch { /* silent */ }
 
       if (loaded) {
         const cByP = {}, lByP = {};
@@ -1539,6 +1610,7 @@ function WeeklyReportsTab({ productions, brandId, selectedYear }) {
                   entry={entry}
                   prod={prod}
                   links={linksByProd[entry.production_id] || []}
+                  scripts={scriptsByProd[entry.production_id] || []}
                   onUpdate={patch => updateEntry(entry.production_id, patch)}
                   onRemove={() => removeEntry(entry.production_id)}
                   isEditor={isEditor}
