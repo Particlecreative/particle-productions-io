@@ -13,20 +13,34 @@ export default function NewProductionModal({ brandId, onClose, onCreate, existin
   const { lists } = useLists();
   const { isEditor } = useAuth();
 
-  // Find the highest existing ID number for a given year prefix
-  function getNextId(year) {
+  // Find gaps and next available ID for a given year
+  function getIdInfo(year) {
     const prefix = `PRD${String(year).slice(2)}-`;
+    const usedNums = new Set();
     let maxNum = 0;
     (existingProductions || []).forEach(p => {
       if (p.id?.startsWith(prefix)) {
         const num = parseInt(p.id.replace(prefix, ''), 10);
-        if (!isNaN(num) && num > maxNum) maxNum = num;
+        if (!isNaN(num)) {
+          usedNums.add(num);
+          if (num > maxNum) maxNum = num;
+        }
       }
     });
-    // Fallback to existingCount if no IDs match the pattern
     if (maxNum === 0 && existingCount) maxNum = existingCount;
-    const suffix = String(maxNum + 1).padStart(2, '0');
-    return `${prefix}${suffix}`;
+    // Find gaps (missing numbers in sequence)
+    const gaps = [];
+    for (let i = 1; i <= maxNum; i++) {
+      if (!usedNums.has(i)) gaps.push(i);
+    }
+    const nextNum = maxNum + 1;
+    const nextId = `${prefix}${String(nextNum).padStart(2, '0')}`;
+    const gapIds = gaps.map(n => `${prefix}${String(n).padStart(2, '0')}`);
+    return { nextId, gapIds, prefix };
+  }
+
+  function getNextId(year) {
+    return getIdInfo(year).nextId;
   }
 
   const [form, setForm] = useState({
@@ -155,6 +169,24 @@ export default function NewProductionModal({ brandId, onClose, onCreate, existin
             <div>
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">ID</label>
               <input className="brand-input font-mono" value={form.id} onChange={e => set('id', e.target.value)} required />
+              {(() => {
+                const { gapIds } = getIdInfo(form.production_year || selectedYear);
+                if (gapIds.length === 0) return null;
+                return (
+                  <div className="mt-1.5">
+                    <p className="text-[9px] text-amber-600 font-semibold mb-1">Missing numbers you can fill:</p>
+                    <div className="flex flex-wrap gap-1">
+                      {gapIds.slice(0, 8).map(gId => (
+                        <button key={gId} type="button" onClick={() => set('id', gId)}
+                          className={`text-[10px] font-mono px-2 py-0.5 rounded-md border transition-colors ${form.id === gId ? 'border-amber-400 bg-amber-50 text-amber-700 font-bold' : 'border-gray-200 text-gray-500 hover:border-amber-300 hover:bg-amber-50'}`}>
+                          {gId}
+                        </button>
+                      ))}
+                      {gapIds.length > 8 && <span className="text-[9px] text-gray-400">+{gapIds.length - 8} more</span>}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Stage</label>
