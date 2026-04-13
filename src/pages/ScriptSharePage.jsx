@@ -94,6 +94,18 @@ export default function ScriptSharePage() {
   const saveTimer = useRef(null);
   const touchStartX = useRef(null);
 
+  // ── Voice picker state ─────────────────────────────────────────────────────
+  const [voiceId, setVoiceId] = useState(null); // loaded from script.voice_settings
+  const [voiceSpeed, setVoiceSpeed] = useState(1.0);
+  const [voiceStability, setVoiceStability] = useState(0.5);
+  const [showVoicePicker, setShowVoicePicker] = useState(false);
+  const [accountVoices, setAccountVoices] = useState([]);
+  const [loadingVoices, setLoadingVoices] = useState(false);
+  const [voiceSearch, setVoiceSearch] = useState('');
+  const [genderFilter, setGenderFilter] = useState('');
+  const [previewingVoice, setPreviewingVoice] = useState(null);
+  const previewAudioRef = useRef(null);
+
   // ── Comments state ────────────────────────────────────────────────────────
   const [comments, setComments] = useState([]);
   const [showComments, setShowComments] = useState(false);
@@ -117,6 +129,12 @@ export default function ScriptSharePage() {
         const data = await res.json();
         setScript(data);
         setScenes(Array.isArray(data.scenes) ? data.scenes : []);
+        // Load voice settings from script
+        if (data.voice_settings) {
+          if (data.voice_settings.voice_id) setVoiceId(data.voice_settings.voice_id);
+          if (data.voice_settings.speed) setVoiceSpeed(data.voice_settings.speed);
+          if (data.voice_settings.stability) setVoiceStability(data.voice_settings.stability);
+        }
         const savedView = localStorage.getItem(`script_view_${data.id}`);
         if (savedView) setView(savedView);
         // Load comments if mode allows
@@ -128,6 +146,11 @@ export default function ScriptSharePage() {
         setError('Failed to load script.');
       }
       setLoading(false);
+      // Auto-print if ?print=1 query param
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('print') === '1') {
+        setTimeout(() => window.print(), 600);
+      }
     })();
   }, [token]);
 
@@ -162,6 +185,48 @@ export default function ScriptSharePage() {
     debounceSave(updated);
   }
 
+  // ── Voice functions ──
+  async function loadVoices() {
+    if (accountVoices.length > 0) return;
+    setLoadingVoices(true);
+    try {
+      const res = await fetch(`${API}/api/scripts/share/${token}/voices`);
+      const data = await res.json();
+      if (data.voices) setAccountVoices(data.voices);
+    } catch (e) { console.error('Failed to load voices:', e); }
+    setLoadingVoices(false);
+  }
+
+  async function saveVoiceSettings(vid, spd, stab) {
+    try {
+      await fetch(`${API}/api/scripts/share/${token}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scenes, voice_settings: { voice_id: vid, speed: spd, stability: stab } }),
+      });
+    } catch (e) { console.error('Failed to save voice settings:', e); }
+  }
+
+  async function handlePreviewVoice(vid) {
+    if (previewAudioRef.current) { previewAudioRef.current.pause(); previewAudioRef.current = null; }
+    if (previewingVoice === vid) { setPreviewingVoice(null); return; }
+    setPreviewingVoice(vid);
+    try {
+      const res = await fetch(`${API}/api/scripts/share/${token}/tts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scene_id: scenes[0]?.id, voice_id: vid, speed: voiceSpeed, stability: voiceStability }),
+      });
+      const data = await res.json();
+      if (data.audio_base64) {
+        const audio = new Audio(`data:${data.mime_type};base64,${data.audio_base64}`);
+        previewAudioRef.current = audio;
+        audio.onended = () => { setPreviewingVoice(null); previewAudioRef.current = null; };
+        audio.play();
+      } else { setPreviewingVoice(null); }
+    } catch { setPreviewingVoice(null); }
+  }
+
   // ── TTS Playback (share page) ──
   async function handlePlayScene(sceneId) {
     if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
@@ -171,7 +236,7 @@ export default function ScriptSharePage() {
       const res = await fetch(`${API}/api/scripts/share/${token}/tts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scene_id: sceneId }),
+        body: JSON.stringify({ scene_id: sceneId, voice_id: voiceId || undefined, speed: voiceSpeed, stability: voiceStability }),
       });
       const data = await res.json();
       if (!data.audio_base64) { setPlayingSceneId(null); return; }
@@ -195,7 +260,7 @@ export default function ScriptSharePage() {
       const res = await fetch(`${API}/api/scripts/share/${token}/tts-full`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ voice_id: voiceId || undefined, speed: voiceSpeed, stability: voiceStability }),
       });
       if (!res.ok) { setDownloadingVO(false); return; }
       const blob = await res.blob();
@@ -463,6 +528,16 @@ export default function ScriptSharePage() {
             </div>
 
             <div className="flex items-center gap-2">
+              {/* Voice picker — edit mode only */}
+              {!readOnly && (
+                <button onClick={() => { setShowVoicePicker(true); loadVoices(); }}
+                  className="flex items-center gap-1 text-[10px] px-2.5 py-1.5 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-600 hover:bg-indigo-100 transition-colors font-semibold"
+                  title="Voice settings">
+                  <Volume2 size={11} />
+                  {accountVoices.find(v => v.voice_id === voiceId)?.name || 'Voice'}
+                </button>
+              )}
+
               {/* Save indicator */}
               {!readOnly && (
                 <span className="text-xs text-gray-400 min-w-[44px]">
@@ -970,6 +1045,81 @@ export default function ScriptSharePage() {
       )}
 
       {/* Print CSS */}
+      {/* ── Voice Picker Modal ── */}
+      {showVoicePicker && (
+        <div className="fixed inset-0 z-[60] bg-black/50 flex items-end sm:items-center justify-center animate-fade-in" onClick={() => setShowVoicePicker(false)}>
+          <div className="bg-white w-full max-w-sm rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 pt-4 pb-2">
+              <h3 className="font-black text-gray-900 text-sm">Voice Settings</h3>
+              <button onClick={() => setShowVoicePicker(false)}><X size={16} className="text-gray-400" /></button>
+            </div>
+            {/* Search + filter */}
+            <div className="px-4 pb-2 flex gap-2">
+              <input autoFocus value={voiceSearch} onChange={e => setVoiceSearch(e.target.value)}
+                placeholder="Search voices…" className="flex-1 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-indigo-300" />
+              <select value={genderFilter} onChange={e => setGenderFilter(e.target.value)}
+                className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none">
+                <option value="">All</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+              </select>
+            </div>
+            {/* Voice list */}
+            <div className="flex-1 overflow-y-auto px-4 pb-2 space-y-1.5" style={{ maxHeight: '40vh' }}>
+              {loadingVoices ? (
+                <div className="py-8 text-center text-gray-400 text-sm flex items-center justify-center gap-2"><Loader2 size={16} className="animate-spin" /> Loading voices…</div>
+              ) : accountVoices
+                  .filter(v => (!voiceSearch || v.name.toLowerCase().includes(voiceSearch.toLowerCase())))
+                  .filter(v => (!genderFilter || v.gender === genderFilter))
+                  .map(v => (
+                <div key={v.voice_id}
+                  className={`flex items-center gap-3 p-2.5 rounded-xl border-2 transition-all cursor-pointer ${voiceId === v.voice_id ? 'border-indigo-400 bg-indigo-50' : 'border-gray-100 hover:border-gray-200'}`}
+                  onClick={() => setVoiceId(v.voice_id)}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${voiceId === v.voice_id ? 'bg-indigo-600 text-white' : v.gender === 'male' ? 'bg-blue-100 text-blue-700' : v.gender === 'female' ? 'bg-pink-100 text-pink-700' : 'bg-gray-100 text-gray-600'}`}>
+                    {v.name?.[0]?.toUpperCase() || '?'}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-bold truncate ${voiceId === v.voice_id ? 'text-indigo-800' : 'text-gray-800'}`}>{v.name}</p>
+                    <p className="text-[10px] text-gray-400">{[v.gender, v.accent].filter(Boolean).join(' · ')}</p>
+                  </div>
+                  <button onClick={e => { e.stopPropagation(); handlePreviewVoice(v.voice_id); }}
+                    className="w-7 h-7 flex items-center justify-center rounded-full bg-gray-100 hover:bg-indigo-100 transition-colors shrink-0">
+                    {previewingVoice === v.voice_id ? <Loader2 size={12} className="animate-spin text-indigo-500" /> : <Play size={11} className="text-gray-500" />}
+                  </button>
+                </div>
+              ))}
+            </div>
+            {/* Speed + Stability */}
+            <div className="px-4 py-3 border-t border-gray-100 space-y-3">
+              <div>
+                <div className="flex justify-between text-[10px] text-gray-500 mb-1">
+                  <span>Speed</span><span className="font-mono font-bold">{voiceSpeed.toFixed(1)}x</span>
+                </div>
+                <input type="range" min={0.5} max={2.0} step={0.1} value={voiceSpeed} onChange={e => setVoiceSpeed(parseFloat(e.target.value))}
+                  className="w-full accent-indigo-600 h-1.5" />
+              </div>
+              <div>
+                <div className="flex justify-between text-[10px] text-gray-500 mb-1">
+                  <span>Stability</span><span className="font-mono font-bold">{voiceStability.toFixed(1)}</span>
+                </div>
+                <input type="range" min={0} max={1} step={0.1} value={voiceStability} onChange={e => setVoiceStability(parseFloat(e.target.value))}
+                  className="w-full accent-indigo-600 h-1.5" />
+              </div>
+            </div>
+            <div className="px-4 pb-4 pt-1">
+              <button
+                onClick={() => {
+                  saveVoiceSettings(voiceId, voiceSpeed, voiceStability);
+                  setShowVoicePicker(false);
+                }}
+                className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-colors">
+                Save — {accountVoices.find(v => v.voice_id === voiceId)?.name || 'this voice'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style>{`
         @media print {
           .scripts-no-print { display: none !important; }

@@ -434,12 +434,17 @@ router.post('/share/:token/comments', async (req, res) => {
 // ── PUBLIC: update script via share token (edit mode) ────────────────────────
 router.put('/share/:token', async (req, res) => {
   try {
-    const { scenes, title } = req.body;
+    const { scenes, title, voice_settings } = req.body;
+    const sets = ['scenes = $1', 'title = COALESCE($2, title)', 'updated_at = NOW()'];
+    const vals = [JSON.stringify(scenes || []), title];
+    if (voice_settings !== undefined) {
+      vals.push(JSON.stringify(voice_settings));
+      sets.push(`voice_settings = $${vals.length}`);
+    }
+    vals.push(req.params.token);
     const { rows } = await db.query(
-      `UPDATE scripts SET scenes = $1, title = COALESCE($2, title), updated_at = NOW()
-       WHERE share_token = $3 AND share_mode = 'edit'
-       RETURNING *`,
-      [JSON.stringify(scenes || []), title, req.params.token]
+      `UPDATE scripts SET ${sets.join(', ')} WHERE share_token = $${vals.length} AND share_mode = 'edit' RETURNING *`,
+      vals
     );
     if (!rows[0]) return res.status(404).json({ error: 'Script not found or not in edit mode' });
     res.json(rows[0]);
@@ -469,6 +474,7 @@ router.post('/share/:token/tts', async (req, res) => {
 
 router.post('/share/:token/tts-full', async (req, res) => {
   try {
+    const { voice_id, speed, stability } = req.body || {};
     const { rows } = await db.query('SELECT id, scenes, title, share_token FROM scripts WHERE share_token = $1', [req.params.token]);
     if (!rows[0]) return res.status(404).json({ error: 'Script not found' });
     const scenes = rows[0].scenes || [];
@@ -481,12 +487,28 @@ router.post('/share/:token/tts-full', async (req, res) => {
     }).filter(Boolean);
     if (parts.length === 0) return res.status(400).json({ error: 'No VO text' });
     const fullText = parts.join('\n\n').substring(0, 5000);
-    const audioBase64 = await elevenLabsTTS(fullText, undefined, {});
+    const audioBase64 = await elevenLabsTTS(fullText, voice_id || undefined, { speed: speed || 1.0, stability: stability || 0.5 });
     const buf = Buffer.from(audioBase64, 'base64');
     res.setHeader('Content-Type', 'audio/mpeg');
     res.send(buf);
   } catch (err) {
     console.error('POST /scripts/share/:token/tts-full error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── PUBLIC: list voices for share page (validates share token) ────────────────
+router.get('/share/:token/voices', async (req, res) => {
+  try {
+    const { rows } = await db.query('SELECT id FROM scripts WHERE share_token = $1 AND share_mode = \'edit\'', [req.params.token]);
+    if (!rows[0]) return res.status(404).json({ error: 'Script not found or not in edit mode' });
+    const apiKey = process.env.ELEVENLABS_API_KEY;
+    if (!apiKey) return res.status(500).json({ error: 'ElevenLabs not configured' });
+    const elRes = await fetch('https://api.elevenlabs.io/v1/voices', { headers: { 'xi-api-key': apiKey } });
+    const data = await elRes.json();
+    res.json({ voices: (data.voices || []).map(v => ({ voice_id: v.voice_id, name: v.name, gender: v.labels?.gender, accent: v.labels?.accent, category: v.category })) });
+  } catch (err) {
+    console.error('GET /scripts/share/:token/voices error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -2029,7 +2051,7 @@ router.patch('/:id/comments/:cId', async (req, res) => {
 // PUT /api/scripts/:id — update script
 router.put('/:id', async (req, res) => {
   try {
-    const { scenes, title, description, status, production_id } = req.body;
+    const { scenes, title, description, status, production_id, voice_settings } = req.body;
     const brand_id = req.user?.brand_id || null;
 
     // Fetch current status before update (for change detection)
@@ -2047,6 +2069,7 @@ router.put('/:id', async (req, res) => {
         description   = COALESCE($3, description),
         status        = COALESCE($4, status),
         production_id = COALESCE($5, production_id),
+        voice_settings = COALESCE($8, voice_settings),
         updated_at    = NOW()
        WHERE id = $6 AND ($7::text IS NULL OR brand_id = $7)
        RETURNING *,
@@ -2059,6 +2082,7 @@ router.put('/:id', async (req, res) => {
         production_id !== undefined ? (production_id || null) : null,
         req.params.id,
         brand_id,
+        voice_settings !== undefined ? JSON.stringify(voice_settings) : null,
       ]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });

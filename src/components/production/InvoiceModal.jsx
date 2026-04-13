@@ -506,7 +506,7 @@ function PrintInvoiceModal({ item, production, productionId, brandName, onClose 
           <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Invoice Request Document</span>
           <div style={{ display: 'flex', gap: 8 }}>
             <button
-              onClick={() => window.print()}
+              onClick={() => { document.body.classList.add('printing-invoice'); window.print(); document.body.classList.remove('printing-invoice'); }}
               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', background: 'var(--brand-accent, #0808f8)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
             >
               <Printer size={14} /> Print / Save as PDF

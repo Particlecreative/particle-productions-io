@@ -858,10 +858,10 @@ html.dark .skeleton {
   border-bottom-color: transparent;
 }
 
-/* === PRINT INVOICE === */
+/* === PRINT INVOICE (scoped — only applies when .print-invoice-root is present) === */
 @media print {
-  body > * { display: none !important; }
-  .print-invoice-root { display: block !important; position: static !important; background: none !important; }
+  body.printing-invoice > * { display: none !important; }
+  body.printing-invoice .print-invoice-root { display: block !important; position: static !important; background: none !important; }
   .print-invoice-root > div {
     box-shadow: none !important;
     border-radius: 0 !important;

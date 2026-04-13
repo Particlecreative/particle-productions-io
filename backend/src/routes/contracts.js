@@ -239,7 +239,8 @@ router.post('/sign/:id/:token', signLimiter, async (req, res) => {
       `SELECT cs.*, c.events, c.status AS contract_status, c.production_id,
               c.provider_name, c.provider_email,
               c.fee_amount, c.currency, c.require_hocp_signature,
-              p.project_name, p.producer
+              c.contract_type, c.pdf_url, c.drive_url,
+              p.project_name, p.producer, p.brand_id
        FROM contract_signatures cs
        JOIN contracts c ON cs.contract_id = c.id
        LEFT JOIN productions p ON p.id = split_part(c.production_id, '_li_', 1)
@@ -361,6 +362,27 @@ router.post('/sign/:id/:token', signLimiter, async (req, res) => {
         [now, JSON.stringify(events), id]
       );
       console.log(`Contract ${id} fully signed — frontend will auto-upload PDF + send email`);
+
+      // ── Auto-connect to casting record if this is a cast contract ──
+      try {
+        const castProdId = sig.production_id ? sig.production_id.split('_li_')[0] : null;
+        if (castProdId && sig.provider_name) {
+          // Find matching casting record by production + provider name
+          const { rows: castMatch } = await db.query(
+            `UPDATE casting SET contract_status = 'Running',
+               signed_contract_url = COALESCE($3, signed_contract_url),
+               notes = COALESCE(notes, '') || CASE WHEN COALESCE(notes, '') = '' THEN '' ELSE E'\n' END || 'Contract signed ' || $4
+             WHERE production_id = $1 AND LOWER(TRIM(name)) = LOWER(TRIM($2))
+             RETURNING id, name`,
+            [castProdId, sig.provider_name, sig.drive_url || sig.pdf_url || null, now.slice(0, 10)]
+          );
+          if (castMatch.length > 0) {
+            console.log(`[CASTING] Auto-linked signed contract to casting record: ${castMatch[0].name} (${castMatch[0].id})`);
+          }
+        }
+      } catch (castErr) {
+        console.error('[CASTING] Failed to auto-link contract to casting:', castErr.message);
+      }
 
       // PDF generation + Drive upload + email now handled by frontend auto-upload
       // (POST /api/contracts/:id/upload-signed-pdf endpoint)
@@ -869,6 +891,20 @@ router.post('/:id/upload-signed-pdf', async (req, res) => {
 
     sendEmail({ to: contract.provider_email, subject, htmlBody: body, skipDefaultCc: false }).catch(() => {});
 
+    // ── Update casting record with the Drive URL of signed contract ──
+    if (driveUrl && contract.provider_name && contract.production_id) {
+      try {
+        const castProdId = (contract.prd_short || contract.production_id || '').split('_li_')[0];
+        await db.query(
+          `UPDATE casting SET signed_contract_url = $1, contract_status = 'Running'
+           WHERE production_id = $2 AND LOWER(TRIM(name)) = LOWER(TRIM($3))`,
+          [driveUrl, castProdId, contract.provider_name]
+        );
+      } catch (castErr) {
+        console.error('[CASTING] Failed to update casting with signed PDF URL:', castErr.message);
+      }
+    }
+
     res.json({ success: true, drive_url: driveUrl });
   } catch (err) {
     console.error('POST /:id/upload-signed-pdf error:', err);
@@ -1061,6 +1097,20 @@ router.post('/:production_id/generate', async (req, res) => {
        VALUES ($1, 'hocp', $2, $3, $4)`,
       [contract.id, hocp_name || process.env.CONTRACTS_APPROVER_NAME || 'Tomer Wilf Lezmy', hocp_email || process.env.CONTRACTS_APPROVER_EMAIL || 'tomer@particleformen.com', hocpToken]
     );
+
+    // ── Mark matching casting record as "Not Signed" (contract pending) ──
+    try {
+      const castProdId = prodId ? prodId.split('_li_')[0] : null;
+      if (castProdId && provider_name && contract.status !== 'signed') {
+        await db.query(
+          `UPDATE casting SET contract_status = 'Not Signed'
+           WHERE production_id = $1 AND LOWER(TRIM(name)) = LOWER(TRIM($2)) AND contract_status != 'Running'`,
+          [castProdId, provider_name]
+        );
+      }
+    } catch (castErr) {
+      console.error('[CASTING] Failed to mark casting as Not Signed:', castErr.message);
+    }
 
     // Build signing URLs
     const baseUrl = process.env.APP_URL || req.headers.origin || 'http://localhost:5173';

@@ -11,7 +11,7 @@ import {
   createLink,
   generateId,
 } from '../../lib/dataService';
-import { SAMPLE_USERS } from '../../lib/mockData';
+import { apiGet } from '../../lib/apiClient';
 import { formatIST, nowISOString } from '../../lib/timezone';
 import clsx from 'clsx';
 
@@ -280,6 +280,8 @@ export default function UpdatesPanel({ productionId, onClose, inline = false }) 
   const [editingId, setEditingId] = useState(null);
   const [editBody, setEditBody] = useState('');
   const [showMentions, setShowMentions] = useState(false);
+  const [mentionSearch, setMentionSearch] = useState('');
+  const [allUsers, setAllUsers] = useState([]);
   const [showLinks, setShowLinks] = useState(false);
   const [attachedLinks, setAttachedLinks] = useState([]);
   const editorRef = useRef(null);
@@ -288,6 +290,8 @@ export default function UpdatesPanel({ productionId, onClose, inline = false }) 
 
   useEffect(() => {
     Promise.resolve(getComments(productionId)).then(r => setComments(Array.isArray(r) ? r : []));
+    // Fetch real users for @mentions
+    apiGet('/users').then(u => setAllUsers(Array.isArray(u) ? u.filter(x => x.active !== false) : [])).catch(() => {});
   }, [productionId]);
 
   useEffect(() => {
@@ -316,10 +320,9 @@ export default function UpdatesPanel({ productionId, onClose, inline = false }) 
     const rawHTML = getEditorHTML().trim();
     if (!rawHTML && !attachedLinks.length) return;
 
-    // Extract @mentions from text content
-    const textContent = editorRef.current?.textContent || '';
-    const mentionMatches = textContent.match(/@([\w\s]+?)(?=\s|$|@)/g) || [];
-    const mentions = mentionMatches.map(m => m.slice(1).trim());
+    // Extract @mentions from data-mention attributes (reliable, no regex issues)
+    const mentionEls = editorRef.current?.querySelectorAll('[data-mention]') || [];
+    const mentions = [...mentionEls].map(el => el.getAttribute('data-mention')).filter(Boolean);
 
     const body = rawHTML + buildLinksHTML(attachedLinks);
 
@@ -335,7 +338,7 @@ export default function UpdatesPanel({ productionId, onClose, inline = false }) 
     createComment(comment);
 
     mentions.forEach(name => {
-      const mentioned = SAMPLE_USERS.find(u => u.name.toLowerCase().includes(name.toLowerCase()));
+      const mentioned = allUsers.find(u => u.name?.toLowerCase() === name.toLowerCase());
       if (mentioned && mentioned.id !== user?.id) {
         addNotification('mention', `${user?.name} mentioned you in a comment`, productionId);
       }
@@ -374,10 +377,11 @@ export default function UpdatesPanel({ productionId, onClose, inline = false }) 
 
   function insertMention(name) {
     if (editorRef.current) {
-      document.execCommand('insertHTML', false, `<span style="color:#3b82f6;font-weight:500;">@${name}</span>&nbsp;`);
+      document.execCommand('insertHTML', false, `<span class="mention-tag" data-mention="${name}" style="color:#3b82f6;font-weight:600;background:#eff6ff;padding:1px 4px;border-radius:4px;" contenteditable="false">@${name}</span>&nbsp;`);
       editorRef.current.focus();
     }
     setShowMentions(false);
+    setMentionSearch('');
   }
 
   function handleAttachLink(link) {
@@ -396,6 +400,7 @@ export default function UpdatesPanel({ productionId, onClose, inline = false }) 
     }
     if (e.key === '@') {
       setShowMentions(true);
+      setMentionSearch('');
     }
     // Ctrl/Cmd+B for bold
     if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
@@ -543,9 +548,17 @@ export default function UpdatesPanel({ productionId, onClose, inline = false }) 
 
               {/* Mention Dropdown */}
               {showMentions && (
-                <div className="absolute bottom-full left-0 mb-1 bg-white dark:bg-gray-800 border rounded-xl shadow-xl overflow-hidden z-10 w-48"
+                <div className="absolute bottom-full left-0 mb-1 bg-white dark:bg-gray-800 border rounded-xl shadow-xl overflow-hidden z-10 w-56"
                   style={{ borderColor: 'var(--brand-border)' }}>
-                  {SAMPLE_USERS.map(u => (
+                  <div className="px-2 py-1.5 border-b" style={{ borderColor: 'var(--brand-border)' }}>
+                    <input autoFocus value={mentionSearch} onChange={e => setMentionSearch(e.target.value)}
+                      placeholder="Search people…" className="w-full text-xs border-0 outline-none bg-transparent text-gray-700 placeholder:text-gray-400"
+                      onKeyDown={e => { if (e.key === 'Escape') { setShowMentions(false); setMentionSearch(''); } }} />
+                  </div>
+                  <div className="max-h-40 overflow-y-auto">
+                  {allUsers
+                    .filter(u => !mentionSearch || u.name?.toLowerCase().includes(mentionSearch.toLowerCase()))
+                    .map(u => (
                     <button
                       key={u.id}
                       type="button"
@@ -553,17 +566,20 @@ export default function UpdatesPanel({ productionId, onClose, inline = false }) 
                       className="flex items-center gap-2 w-full px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-left"
                     >
                       <div
-                        className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold"
+                        className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold shrink-0"
                         style={{ background: 'var(--brand-accent)' }}
                       >
-                        {u.name[0]}
+                        {u.name?.[0]?.toUpperCase() || '?'}
                       </div>
-                      {u.name}
+                      <span className="truncate">{u.name}</span>
+                      <span className="text-[9px] text-gray-400 ml-auto shrink-0">{u.role}</span>
                     </button>
                   ))}
+                  {allUsers.length === 0 && <div className="px-3 py-2 text-xs text-gray-400">Loading…</div>}
+                  </div>
                   <button
                     type="button"
-                    onClick={() => setShowMentions(false)}
+                    onClick={() => { setShowMentions(false); setMentionSearch(''); }}
                     className="w-full px-3 py-1.5 text-xs text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 border-t"
                     style={{ borderColor: 'var(--brand-border)' }}
                   >

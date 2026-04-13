@@ -524,12 +524,16 @@ export default function Dashboard() {
                       <div className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest">
                         {stageFilter ? stageFilter : 'By Stage'}
                       </div>
-                      {stageFilter && (
-                        <button onClick={() => { setStageFilter(''); localStorage.setItem('cp_dash_filters', JSON.stringify({ ...JSON.parse(localStorage.getItem('cp_dash_filters') || '{}'), stageFilter: '' })); }}
-                          className="text-[9px] font-semibold text-red-500 hover:text-red-700 flex items-center gap-0.5 transition-colors">
-                          <X size={9} /> Clear
-                        </button>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {stageFilter && (
+                          <button onClick={() => { setStageFilter(''); localStorage.setItem('cp_dash_filters', JSON.stringify({ ...JSON.parse(localStorage.getItem('cp_dash_filters') || '{}'), stageFilter: '' })); }}
+                            className="text-[9px] font-semibold text-red-500 hover:text-red-700 flex items-center gap-0.5 transition-colors">
+                            <X size={9} /> Clear
+                          </button>
+                        )}
+                        <span className="text-sm font-black text-gray-800">{productions.length}</span>
+                        <span className="text-[9px] text-gray-400">total</span>
+                      </div>
                     </div>
                     {/* Stacked bar */}
                     <div className="flex h-3 rounded-full overflow-hidden mb-2 cursor-pointer">

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Save, Upload, Palette, Type, Globe, List, Plus, X, Check, ChevronUp, ChevronDown, RotateCcw, Clock, Wrench, Trash2, Building2, Pencil, ServerCog, Mail, Link2, CheckCircle, AlertCircle, Grid3x3 } from 'lucide-react';
+import { Save, Upload, Palette, Type, Globe, List, Plus, X, Check, ChevronUp, ChevronDown, RotateCcw, Clock, Wrench, Trash2, Building2, Pencil, ServerCog, Mail, Link2, CheckCircle, AlertCircle, Grid3x3, Sparkles, Send, User } from 'lucide-react';
 import { useBrand } from '../context/BrandContext';
 const API = import.meta.env.VITE_API_URL || '';
 import { useLists } from '../context/ListsContext';
@@ -1074,88 +1074,103 @@ export default function Settings() {
         <div className="max-w-3xl space-y-6">
 
           {/* Submit form */}
-          <section className="brand-card">
-            <div className="flex items-center gap-2 mb-4">
-              <Wrench size={16} style={{ color: 'var(--brand-primary)' }} />
-              <h2 className="font-bold" style={{ color: 'var(--brand-primary)' }}>Submit a Request</h2>
-            </div>
-            <form onSubmit={handleSubmitTicket} className="space-y-3">
-              <div>
-                <label className="field-label">Title *</label>
-                <input
-                  className="brand-input"
-                  placeholder="Short summary of the improvement or issue"
-                  value={ticketForm.title}
-                  onChange={e => setTicketForm(f => ({ ...f, title: e.target.value }))}
-                  required
-                />
-              </div>
-              <div>
-                <label className="field-label">Description</label>
-                <textarea
-                  className="brand-input"
-                  rows={3}
-                  placeholder="Detailed description, steps to reproduce, expected behavior…"
-                  value={ticketForm.description}
-                  onChange={e => setTicketForm(f => ({ ...f, description: e.target.value }))}
-                />
-              </div>
-              <div className="flex gap-3">
-                <div className="flex-1">
-                  <label className="field-label">Category</label>
-                  <select className="brand-input" value={ticketForm.category} onChange={e => setTicketForm(f => ({ ...f, category: e.target.value }))}>
-                    <option value="improvement">Improvement</option>
-                    <option value="bug">Bug Fix</option>
-                    <option value="upgrade">Upgrade</option>
-                    <option value="other">Other</option>
-                  </select>
+          <section className="brand-card overflow-hidden">
+            {ticketSubmitted ? (
+              <div className="py-12 text-center">
+                <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-4">
+                  <Check size={28} className="text-emerald-500" />
                 </div>
-                <div className="flex-1">
-                  <label className="field-label">Priority</label>
-                  <select className="brand-input" value={ticketForm.priority} onChange={e => setTicketForm(f => ({ ...f, priority: e.target.value }))}>
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                  </select>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 pt-1">
-                <button type="submit" className="btn-primary text-sm px-4 py-1.5">
-                  Submit Request
+                <h3 className="text-lg font-black text-gray-900 mb-1">Request Submitted!</h3>
+                <p className="text-sm text-gray-400 mb-4">Your ticket has been created and assigned.</p>
+                <button onClick={() => setTicketSubmitted(false)}
+                  className="text-sm text-[var(--brand-accent)] font-semibold hover:underline">
+                  Submit another
                 </button>
-                {ticketSubmitted && (
-                  <>
-                    <span className="text-sm text-emerald-600 flex items-center gap-1">
-                      <Check size={13} /> Submitted!
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const cat = CATEGORY_LABELS[ticketForm.category] || ticketForm.category;
-                        const pri = ticketForm.priority ? ticketForm.priority.charAt(0).toUpperCase() + ticketForm.priority.slice(1) : 'Medium';
-                        const subj = encodeURIComponent(`CP Panel Ticket: ${ticketForm.title || 'New Request'}`);
-                        const body = encodeURIComponent(
-                          `Hi Tomer,\n\nA new improvement ticket has been submitted:\n\n` +
-                          `Title: ${ticketForm.title || '(no title)'}\n` +
-                          `Category: ${cat}\n` +
-                          `Priority: ${pri}\n` +
-                          `Description: ${ticketForm.description || '(no description)'}\n` +
-                          `Submitted by: ${user?.name || 'Unknown'}\n\n` +
-                          `Please review at your earliest convenience.\n\nThank you.`
-                        );
-                        window.open(`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent('tomer@particleformen.com')}&su=${subj}&body=${body}`, '_blank');
-                      }}
-                      className="flex items-center gap-1 text-sm px-3 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors font-semibold"
-                    >
-                      <Mail size={13} /> Notify Tomer
-                    </button>
-                  </>
-                )}
-                <span className="text-xs text-gray-400 ml-auto">
-                  Assigned to: <span className="font-medium text-gray-600">Tomer Wilf Lezmy</span>
-                </span>
               </div>
-            </form>
+            ) : (
+              <>
+                <div className="bg-gradient-to-r from-[var(--brand-primary)] to-[var(--brand-accent)] px-6 py-5 text-white">
+                  <h2 className="text-lg font-black flex items-center gap-2">
+                    <Sparkles size={18} /> New Request
+                  </h2>
+                  <p className="text-white/70 text-xs mt-0.5">Report a bug, suggest an improvement, or request an upgrade</p>
+                </div>
+                <form onSubmit={handleSubmitTicket} className="p-6 space-y-5">
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1.5">What do you need?</label>
+                    <input
+                      className="w-full text-sm font-semibold text-gray-900 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:border-[var(--brand-accent)] focus:ring-2 focus:ring-[var(--brand-accent)]/10 transition-all placeholder:text-gray-300 placeholder:font-normal"
+                      placeholder="e.g. Add dark mode to dashboard"
+                      value={ticketForm.title}
+                      onChange={e => setTicketForm(f => ({ ...f, title: e.target.value }))}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1.5">Details <span className="font-normal text-gray-300">(optional)</span></label>
+                    <textarea
+                      className="w-full text-sm text-gray-700 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:border-[var(--brand-accent)] focus:ring-2 focus:ring-[var(--brand-accent)]/10 transition-all resize-none placeholder:text-gray-300"
+                      rows={3}
+                      placeholder="Steps to reproduce, expected behavior, screenshots..."
+                      value={ticketForm.description}
+                      onChange={e => setTicketForm(f => ({ ...f, description: e.target.value }))}
+                    />
+                  </div>
+                  {/* Category pills */}
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2">Category</label>
+                    <div className="flex gap-2">
+                      {[
+                        { value: 'improvement', label: 'Improvement', emoji: '\u{1F4A1}', color: 'indigo' },
+                        { value: 'bug', label: 'Bug Fix', emoji: '\u{1F41B}', color: 'red' },
+                        { value: 'upgrade', label: 'Upgrade', emoji: '\u{1F680}', color: 'purple' },
+                        { value: 'other', label: 'Other', emoji: '\u{1F4AC}', color: 'gray' },
+                      ].map(c => (
+                        <button key={c.value} type="button" onClick={() => setTicketForm(f => ({ ...f, category: c.value }))}
+                          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border-2 transition-all ${
+                            ticketForm.category === c.value
+                              ? `border-${c.color}-400 bg-${c.color}-50 text-${c.color}-700 shadow-sm`
+                              : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                          }`}
+                          style={ticketForm.category === c.value ? { borderColor: `var(--brand-accent)`, background: `color-mix(in srgb, var(--brand-accent) 8%, white)` } : {}}>
+                          <span className="text-sm">{c.emoji}</span> {c.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Priority pills */}
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-2">Priority</label>
+                    <div className="flex gap-2">
+                      {[
+                        { value: 'low', label: 'Low', color: '#22c55e' },
+                        { value: 'medium', label: 'Medium', color: '#f59e0b' },
+                        { value: 'high', label: 'High', color: '#ef4444' },
+                      ].map(p => (
+                        <button key={p.value} type="button" onClick={() => setTicketForm(f => ({ ...f, priority: p.value }))}
+                          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border-2 transition-all ${
+                            ticketForm.priority === p.value ? 'shadow-sm' : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                          }`}
+                          style={ticketForm.priority === p.value ? { borderColor: p.color, background: `${p.color}10`, color: p.color } : {}}>
+                          <div className="w-2 h-2 rounded-full" style={{ background: p.color }} />
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                    <button type="submit"
+                      className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold text-white transition-all hover:opacity-90 shadow-sm"
+                      style={{ background: 'var(--brand-accent)' }}>
+                      <Send size={14} /> Submit Request
+                    </button>
+                    <span className="text-[10px] text-gray-400 flex items-center gap-1">
+                      <User size={10} /> Assigned to <span className="font-semibold text-gray-600">Tomer Wilf Lezmy</span>
+                    </span>
+                  </div>
+                </form>
+              </>
+            )}
           </section>
 
           {/* Ticket list */}

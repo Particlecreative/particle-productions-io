@@ -655,6 +655,19 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
       setScript(data);
       setShareMode(data.share_mode || 'none');
       setShareToken(data.share_token || '');
+      // Load voice settings from script if saved
+      if (data.voice_settings?.voice_id) {
+        setVoiceId(data.voice_settings.voice_id);
+        localStorage.setItem('cp_voice_id', data.voice_settings.voice_id);
+      }
+      if (data.voice_settings?.speed) {
+        setVoiceSpeed(data.voice_settings.speed);
+        localStorage.setItem('cp_voice_speed', data.voice_settings.speed.toString());
+      }
+      if (data.voice_settings?.stability !== undefined) {
+        setVoiceStability(data.voice_settings.stability);
+        localStorage.setItem('cp_voice_stability', data.voice_settings.stability.toString());
+      }
     } catch { setScript(null); }
     setLoading(false);
   };
@@ -1756,10 +1769,32 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                     <Download size={12} className="text-indigo-500" />
                     {downloadingFullVO ? 'Generating VO...' : 'Download Full VO (MP3)'}
                   </button>
-                  <button onClick={() => { setShowMoreMenu(false); window.print(); }}
+                  <button onClick={async () => {
+                    setShowMoreMenu(false);
+                    try {
+                      // Ensure a share link exists (view mode is fine for PDF)
+                      let token = script.share_token;
+                      if (!token) {
+                        const res = await fetch(`${API}/api/scripts/${scriptId}/share`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
+                          body: JSON.stringify({ share_mode: script.share_mode || 'view' }),
+                        });
+                        const data = await res.json();
+                        token = data.share_token;
+                        if (token) setScript(prev => ({ ...prev, share_token: token, share_mode: data.share_mode }));
+                      }
+                      if (token) {
+                        window.open(`${window.location.origin}/script/${token}?print=1`, '_blank');
+                      } else {
+                        // Fallback to browser print
+                        window.print();
+                      }
+                    } catch { window.print(); }
+                  }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50">
                     <Download size={12} className="text-green-500" />
-                    Export PDF (Print)
+                    Export PDF
                   </button>
                   <button onClick={() => { setShowMoreMenu(false); handleOpenImageSetup(); }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50">
@@ -2545,10 +2580,18 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
             </div>
             <div className="px-4 pb-4 pt-2">
               <button
-                onClick={() => {
+                onClick={async () => {
                   localStorage.setItem('cp_voice_id', voiceId);
                   localStorage.setItem('cp_voice_speed', voiceSpeed.toString());
                   localStorage.setItem('cp_voice_stability', voiceStability.toString());
+                  // Also save to script record
+                  try {
+                    await fetch(`${API}/api/scripts/${scriptId}`, {
+                      method: 'PUT',
+                      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
+                      body: JSON.stringify({ scenes: script.scenes, voice_settings: { voice_id: voiceId, speed: voiceSpeed, stability: voiceStability } }),
+                    });
+                  } catch {}
                   setShowVoicePicker(false);
                 }}
                 className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700"

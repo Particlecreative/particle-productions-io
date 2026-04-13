@@ -17,6 +17,7 @@ export default function WeeklySharePage() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [lightbox, setLightbox] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -67,7 +68,6 @@ export default function WeeklySharePage() {
   const generalUpdates = report.general_updates || [];
   const creativeLink = report.creative_link;
   const hasOverview = generalUpdates.length > 0 || creativeLink?.url;
-  const [lightbox, setLightbox] = useState(null);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-white">
