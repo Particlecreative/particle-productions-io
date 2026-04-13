@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import clsx from 'clsx';
+import { CommentSidebar, NameModal } from '../components/scripts/CommentPanel';
 
 // Sanitize and render rich text (muted spans, bold, italic, colors)
 const PURIFY_CONFIG = {
@@ -109,14 +110,10 @@ export default function ScriptSharePage() {
   // ── Comments state ────────────────────────────────────────────────────────
   const [comments, setComments] = useState([]);
   const [showComments, setShowComments] = useState(false);
-  const [pendingComment, setPendingComment] = useState(null); // {scene_id, cell, selected_text}
-  const [newCommentText, setNewCommentText] = useState('');
+  const [pendingComment, setPendingComment] = useState(null);
   const [commenterName, setCommenterName] = useState(() => localStorage.getItem('cp_commenter_name') || '');
-  const [showNamePrompt, setShowNamePrompt] = useState(false);
-  const [submittingComment, setSubmittingComment] = useState(false);
-  const [commentSubmitted, setCommentSubmitted] = useState(false);
-  const [selectionBtn, setSelectionBtn] = useState(null); // {scene_id, cell, selected_text, rect}
-  const commentInputRef = useRef(null);
+  const [showNameModal, setShowNameModal] = useState(false);
+  const [selectionBtn, setSelectionBtn] = useState(null);
 
   const readOnly = script?.share_mode !== 'edit';
   const canComment = ['comment', 'edit'].includes(script?.share_mode);
@@ -306,42 +303,51 @@ export default function ScriptSharePage() {
 
   function openCommentPanel(info) {
     setPendingComment(info);
-    setNewCommentText('');
-    setCommentSubmitted(false);
     setShowComments(true);
-    // Check if name is needed
-    if (!commenterName.trim()) setShowNamePrompt(true);
-    setTimeout(() => commentInputRef.current?.focus(), 100);
+    // Show name modal if no name set — don't steal focus
+    if (!commenterName.trim()) setShowNameModal(true);
   }
 
-  async function submitComment() {
-    if (!newCommentText.trim()) return;
-    if (!commenterName.trim()) { setShowNamePrompt(true); return; }
-    setSubmittingComment(true);
+  async function handleSubmitComment(data) {
+    if (!data.text?.trim()) return;
+    if (!commenterName.trim()) { setShowNameModal(true); return; }
     try {
-      const res = await fetch(`${API}/api/scripts/share/${token}/comments`, {
+      await fetch(`${API}/api/scripts/share/${token}/comments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...pendingComment,
-          text: newCommentText.trim(),
-          author_name: commenterName.trim(),
-        }),
+        body: JSON.stringify({ ...data, author_name: commenterName.trim() }),
       });
-      if (res.ok) {
-        localStorage.setItem('cp_commenter_name', commenterName.trim());
-        setNewCommentText('');
-        setPendingComment(null);
-        setCommentSubmitted(true);
-        await loadComments();
-        setTimeout(() => setCommentSubmitted(false), 2000);
-      }
+      setPendingComment(null);
+      await loadComments();
     } catch (e) { console.error(e); }
-    setSubmittingComment(false);
+  }
+
+  async function handleReplyComment(parentId, text) {
+    if (!text.trim() || !commenterName.trim()) return;
+    const parent = comments.find(c => c.id === parentId);
+    try {
+      await fetch(`${API}/api/scripts/share/${token}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scene_id: parent?.scene_id, text, author_name: commenterName.trim(), parent_comment_id: parentId }),
+      });
+      await loadComments();
+    } catch (e) { console.error(e); }
+  }
+
+  async function handleResolveComment(commentId, status) {
+    try {
+      await fetch(`${API}/api/scripts/share/${token}/comments/${commentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, resolved_by_name: commenterName.trim() || 'Anonymous' }),
+      });
+      await loadComments();
+    } catch (e) { console.error(e); }
   }
 
   function getSceneCommentCount(sceneId) {
-    return comments.filter(c => c.scene_id === sceneId && c.status !== 'resolved').length;
+    return comments.filter(c => c.scene_id === sceneId && !c.parent_comment_id && c.status !== 'resolved').length;
   }
 
   // Present mode keyboard nav
@@ -927,144 +933,26 @@ export default function ScriptSharePage() {
         </div>
       )}
 
-      {/* ── Comments Sidebar ── */}
-      {showComments && canComment && (
-        <div className="fixed inset-y-0 right-0 z-40 w-96 bg-white border-l border-gray-100 shadow-2xl flex flex-col scripts-no-print">
-          {/* Header */}
-          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 bg-gray-50">
-            <div>
-              <h3 className="font-black text-gray-900 text-base flex items-center gap-2">
-                <MessageSquare size={16} className="text-amber-500" /> Feedback
-              </h3>
-              <p className="text-[11px] text-gray-400 mt-0.5">
-                {comments.filter(c => c.status !== 'resolved').length} open · {comments.filter(c => c.status === 'resolved').length} resolved
-              </p>
-            </div>
-            <button onClick={() => setShowComments(false)} className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-200 hover:text-gray-600 transition-colors"><X size={16} /></button>
-          </div>
+      {/* ── Comments Sidebar (shared component) ── */}
+      <CommentSidebar
+        isOpen={showComments && canComment}
+        comments={comments}
+        scenes={scenes}
+        pendingComment={pendingComment}
+        commenterName={commenterName}
+        onSubmitComment={handleSubmitComment}
+        onResolve={handleResolveComment}
+        onReply={handleReplyComment}
+        onClose={() => { setShowComments(false); setPendingComment(null); }}
+        onChangeName={() => setShowNameModal(true)}
+      />
 
-          {/* Name setup — inline, not blocking */}
-          {!commenterName.trim() && (
-            <div className="px-5 py-3 bg-amber-50 border-b border-amber-100">
-              <p className="text-xs font-semibold text-amber-800 mb-2">👋 What's your name? (shown with your comments)</p>
-              <div className="flex gap-2">
-                <input
-                  autoFocus
-                  value={commenterName}
-                  onChange={e => setCommenterName(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter' && commenterName.trim()) { localStorage.setItem('cp_commenter_name', commenterName.trim()); setShowNamePrompt(false); commentInputRef.current?.focus(); } }}
-                  placeholder="Your name"
-                  className="flex-1 border border-amber-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-amber-400 bg-white"
-                />
-                <button
-                  onClick={() => { if (commenterName.trim()) { localStorage.setItem('cp_commenter_name', commenterName.trim()); setShowNamePrompt(false); } }}
-                  className="bg-amber-500 text-white text-sm px-4 py-2 rounded-lg font-semibold hover:bg-amber-600 transition-colors"
-                >Save</button>
-              </div>
-            </div>
-          )}
-
-          {/* Pending comment context — what you're commenting on */}
-          {pendingComment && (
-            <div className="px-5 py-3 bg-indigo-50 border-b border-indigo-100">
-              <div className="flex items-start gap-2">
-                <div className="flex-1">
-                  <p className="text-[11px] font-bold text-indigo-500 uppercase tracking-wider mb-1">
-                    {pendingComment.selected_text ? '💬 Commenting on selected text' : `💬 Commenting on Scene ${(scenes.findIndex(s => s.id === pendingComment.scene_id) + 1)} · ${scenes.find(s => s.id === pendingComment.scene_id)?.location || ''}`}
-                  </p>
-                  {pendingComment.selected_text && (
-                    <p className="text-xs text-indigo-800 italic bg-white/60 rounded-lg px-2 py-1 border border-indigo-100 line-clamp-3">"{pendingComment.selected_text}"</p>
-                  )}
-                </div>
-                <button onClick={() => setPendingComment(null)} className="text-indigo-300 hover:text-indigo-500 shrink-0"><X size={14} /></button>
-              </div>
-            </div>
-          )}
-
-          {/* Comment input */}
-          <div className="px-5 py-4 border-b border-gray-100">
-            {!pendingComment && (
-              <p className="text-xs text-gray-400 mb-2">Select text in the script or click 💬 on a row to target your comment, or leave general feedback below.</p>
-            )}
-            <textarea
-              ref={commentInputRef}
-              value={newCommentText}
-              onChange={e => setNewCommentText(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && e.metaKey) submitComment(); }}
-              placeholder={pendingComment ? "Write your feedback..." : "General feedback on this script..."}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none resize-none h-24 focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all"
-            />
-            <div className="flex items-center justify-between mt-2.5">
-              <span className="text-xs text-gray-400 flex items-center gap-1">
-                {commenterName ? <><span className="w-5 h-5 rounded-full bg-amber-100 text-amber-600 text-[9px] font-bold inline-flex items-center justify-center">{commenterName.charAt(0).toUpperCase()}</span> {commenterName}</> : 'Anonymous'}
-              </span>
-              <button
-                onClick={submitComment}
-                disabled={submittingComment || !newCommentText.trim() || !commenterName.trim()}
-                className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-40 text-white text-sm font-bold px-4 py-2 rounded-xl transition-colors"
-              >
-                {commentSubmitted ? <><Check size={13} /> Sent!</> : submittingComment ? <Loader2 size={13} className="animate-spin" /> : <><Send size={13} /> Send</>}
-              </button>
-            </div>
-          </div>
-
-          {/* Comments list */}
-          <div className="flex-1 overflow-y-auto">
-            {comments.filter(c => c.status !== 'resolved').length === 0 && comments.filter(c => c.status === 'resolved').length === 0 ? (
-              <div className="px-5 py-12 text-center">
-                <MessageSquare size={28} className="mx-auto mb-3 text-gray-200" />
-                <p className="text-sm font-semibold text-gray-400">No feedback yet</p>
-                <p className="text-xs text-gray-300 mt-1">Be the first to leave a comment</p>
-              </div>
-            ) : (
-              <div className="divide-y divide-gray-50">
-                {comments.filter(c => c.status !== 'resolved').map(c => {
-                  const commentScene = scenes.find(s => s.id === c.scene_id);
-                  const cellLabel = { what_we_see: 'What We See', what_we_hear: 'What We Hear', location: 'Location' }[c.cell] || '';
-                  return (
-                    <div key={c.id} className="px-5 py-4 hover:bg-gray-50/50 transition-colors">
-                      <div className="flex items-start gap-3">
-                        <div className="w-7 h-7 rounded-full bg-amber-100 text-amber-600 text-xs font-black flex items-center justify-center shrink-0 mt-0.5">
-                          {(c.author_name || 'A').charAt(0).toUpperCase()}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-2 mb-1">
-                            <span className="text-sm font-bold text-gray-900">{c.author_name || 'Anonymous'}</span>
-                            <span className="text-[10px] text-gray-400 shrink-0">{new Date(c.created_at).toLocaleDateString()}</span>
-                          </div>
-                          {(commentScene || cellLabel) && (
-                            <div className="flex items-center gap-1 mb-1.5 flex-wrap">
-                              {commentScene && <span className="text-[10px] bg-gray-100 text-gray-500 rounded-md px-1.5 py-0.5 font-medium">Scene {scenes.indexOf(commentScene) + 1}{commentScene.location ? ` · ${commentScene.location}` : ''}</span>}
-                              {cellLabel && <span className="text-[10px] bg-indigo-50 text-indigo-500 rounded-md px-1.5 py-0.5 font-medium">{cellLabel}</span>}
-                            </div>
-                          )}
-                          {c.selected_text && (
-                            <p className="text-[11px] text-gray-400 italic bg-gray-50 rounded-lg px-2 py-1 mb-1.5 border-l-2 border-gray-200 line-clamp-2">"{c.selected_text}"</p>
-                          )}
-                          <p className="text-sm text-gray-700 leading-relaxed">{c.text}</p>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-                {comments.filter(c => c.status === 'resolved').length > 0 && (
-                  <div className="px-5 py-3 bg-gray-50">
-                    <p className="text-[11px] text-gray-400 font-semibold uppercase tracking-wide">{comments.filter(c => c.status === 'resolved').length} Resolved</p>
-                  </div>
-                )}
-                {comments.filter(c => c.status === 'resolved').map(c => (
-                  <div key={c.id} className="px-5 py-3 opacity-50 hover:opacity-70 transition-opacity">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-gray-500">{c.author_name}</span>
-                      <span className="text-[10px] text-gray-400">{c.text}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      {/* ── Name Modal ── */}
+      <NameModal
+        isOpen={showNameModal}
+        initialName={commenterName}
+        onSave={(name) => { setCommenterName(name); setShowNameModal(false); }}
+      />
 
       {/* Print CSS */}
       {/* ── Voice Picker Modal ── */}

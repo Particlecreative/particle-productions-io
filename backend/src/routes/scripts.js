@@ -395,7 +395,7 @@ router.get('/share/:token/comments', async (req, res) => {
 // ── PUBLIC: post comment via share token (comment/edit mode) ──────────────────
 router.post('/share/:token/comments', async (req, res) => {
   try {
-    const { scene_id, cell, selected_text, text, author_name } = req.body;
+    const { scene_id, cell, selected_text, text, author_name, parent_comment_id } = req.body;
     if (!text?.trim()) return res.status(400).json({ error: 'text is required' });
     const { rows: s } = await db.query(
       `SELECT s.id, s.title, s.scenes, s.production_id, p.project_name, s.share_mode
@@ -407,9 +407,9 @@ router.post('/share/:token/comments', async (req, res) => {
     if (!['comment', 'edit'].includes(s[0].share_mode)) return res.status(403).json({ error: 'Comments not allowed on this link' });
     const authorName = author_name?.trim() || 'Anonymous';
     const { rows } = await db.query(
-      `INSERT INTO script_comments (id, script_id, scene_id, cell, selected_text, text, author_name)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-      [crypto.randomUUID(), s[0].id, scene_id || null, cell || null, selected_text || null, text.trim(), authorName]
+      `INSERT INTO script_comments (id, script_id, scene_id, cell, selected_text, text, author_name, parent_comment_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [crypto.randomUUID(), s[0].id, scene_id || null, cell || null, selected_text || null, text.trim(), authorName, parent_comment_id || null]
     );
     // Slack notification
     const sceneRow = scene_id ? (s[0].scenes || []).find(sc => sc.id === scene_id) : null;
@@ -427,6 +427,27 @@ router.post('/share/:token/comments', async (req, res) => {
     res.json(rows[0]);
   } catch (err) {
     console.error('POST /scripts/share/:token/comments error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ── PUBLIC: resolve/unresolve comment via share token ────────────────────────
+router.patch('/share/:token/comments/:cId', async (req, res) => {
+  try {
+    const { status, resolved_by_name } = req.body;
+    const { rows: s } = await db.query(
+      `SELECT id, share_mode FROM scripts WHERE share_token = $1`, [req.params.token]
+    );
+    if (!s[0]) return res.status(404).json({ error: 'Not found' });
+    if (!['comment', 'edit'].includes(s[0].share_mode)) return res.status(403).json({ error: 'Not allowed' });
+    const { rows } = await db.query(
+      `UPDATE script_comments SET status = $1, resolved_at = CASE WHEN $1 != 'open' THEN NOW() ELSE NULL END, resolved_by_name = CASE WHEN $1 != 'open' THEN $2 ELSE NULL END WHERE id = $3 AND script_id = $4 RETURNING *`,
+      [status || 'open', resolved_by_name || 'Anonymous', req.params.cId, s[0].id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Comment not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('PATCH /scripts/share/:token/comments/:cId error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -1995,12 +2016,12 @@ router.post('/:id/approve', async (req, res) => {
 // POST /api/scripts/:id/comments — add comment (author_name accepted from body for public/anonymous users)
 router.post('/:id/comments', async (req, res) => {
   try {
-    const { scene_id, cell, selected_text, text, author_name } = req.body;
+    const { scene_id, cell, selected_text, text, author_name, parent_comment_id } = req.body;
     if (!text) return res.status(400).json({ error: 'text is required' });
     const authorName = req.user?.name || req.user?.email || author_name || 'Anonymous';
     const { rows } = await db.query(
-      'INSERT INTO script_comments (id, script_id, scene_id, cell, selected_text, text, author_name) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
-      [crypto.randomUUID(), req.params.id, scene_id || null, cell || null, selected_text || null, text, authorName]
+      'INSERT INTO script_comments (id, script_id, scene_id, cell, selected_text, text, author_name, parent_comment_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
+      [crypto.randomUUID(), req.params.id, scene_id || null, cell || null, selected_text || null, text, authorName, parent_comment_id || null]
     );
     // Fetch script + production for Slack
     const { rows: s } = await db.query(

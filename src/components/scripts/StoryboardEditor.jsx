@@ -24,6 +24,7 @@ import UniversalBlocks from './UniversalBlocks';
 import AIChatPanel from './AIChatPanel';
 import VideoMatchModal from './VideoMatchModal';
 import ImageGalleryModal from './ImageGalleryModal';
+import { CommentSidebar, NameModal } from './CommentPanel';
 
 const API = import.meta.env.VITE_API_URL || '';
 
@@ -582,8 +583,8 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
   const [versions, setVersions] = useState([]);
   const [lightbox, setLightbox] = useState(null);
   const [pendingComment, setPendingComment] = useState(null);
-  const [newCommentText, setNewCommentText] = useState('');
   const [commenterName, setCommenterName] = useState(() => localStorage.getItem('cp_commenter_name') || '');
+  const [showNameModal, setShowNameModal] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
 
   // ── ElevenLabs TTS ──
@@ -939,22 +940,29 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
     loadComments();
   };
 
-  const submitComment = async () => {
-    if (!newCommentText.trim()) return;
-    // If no auth token and no name entered, prompt for name
+  const handleSubmitComment = async (data) => {
+    if (!data.text?.trim()) return;
     const token = jwt();
-    if (!token && !commenterName.trim()) {
-      toast.warning('Please enter your name before commenting');
-      return;
-    }
-    if (commenterName.trim()) localStorage.setItem('cp_commenter_name', commenterName.trim());
+    const authorName = user?.name || commenterName.trim() || 'Anonymous';
     await fetch(`${API}/api/scripts/${scriptId}/comments`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      body: JSON.stringify({ ...pendingComment, text: newCommentText, author_name: commenterName.trim() || undefined }),
+      body: JSON.stringify({ ...data, author_name: authorName }),
     });
-    setNewCommentText('');
     setPendingComment(null);
+    loadComments();
+  };
+
+  const handleReplyComment = async (parentId, text) => {
+    if (!text.trim()) return;
+    const token = jwt();
+    const parent = comments.find(c => c.id === parentId);
+    const authorName = user?.name || commenterName.trim() || 'Anonymous';
+    await fetch(`${API}/api/scripts/${scriptId}/comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ scene_id: parent?.scene_id, text, author_name: authorName, parent_comment_id: parentId }),
+    });
     loadComments();
   };
 
@@ -2287,67 +2295,24 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
         </div>
       )}
 
-      {/* Comments Panel */}
-      {showComments && (
-        <div className="fixed inset-y-0 right-0 z-40 w-80 bg-white border-l border-gray-200 shadow-xl flex flex-col">
-          <div className="flex items-center justify-between px-4 py-3 border-b">
-            <h3 className="font-bold text-gray-800">Comments</h3>
-            <button onClick={() => setShowComments(false)}><X size={16} className="text-gray-400" /></button>
-          </div>
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {pendingComment && (
-              <div className="border border-amber-200 rounded-xl p-3 bg-amber-50">
-                {pendingComment.selected_text && <p className="text-xs text-amber-700 italic mb-2">"{pendingComment.selected_text}"</p>}
-                {!jwt() && (
-                  <input
-                    value={commenterName}
-                    onChange={e => setCommenterName(e.target.value)}
-                    placeholder="Your name *"
-                    className="w-full text-sm border border-amber-200 rounded-lg px-2 py-1.5 outline-none mb-2 bg-white"
-                  />
-                )}
-                <textarea value={newCommentText} onChange={e => setNewCommentText(e.target.value)} placeholder="Add comment..." className="w-full text-sm border border-amber-200 rounded-lg p-2 outline-none resize-none h-20" />
-                <div className="flex gap-2 mt-2">
-                  <button onClick={submitComment} className="flex-1 py-1.5 bg-amber-500 text-white rounded-lg text-xs font-bold">Submit</button>
-                  <button onClick={() => setPendingComment(null)} className="py-1.5 px-3 border rounded-lg text-xs text-gray-500">Cancel</button>
-                </div>
-              </div>
-            )}
-            {comments.length === 0 && !pendingComment && (
-              <p className="text-center text-sm text-gray-400 py-8">No comments yet</p>
-            )}
-            {scenes.map(scene => {
-              const sceneComments = comments.filter(c => c.scene_id === scene.id && c.status === 'open');
-              if (!sceneComments.length) return null;
-              return (
-                <div key={scene.id}>
-                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">{scene.location || `Scene ${scenes.indexOf(scene) + 1}`}</p>
-                  {sceneComments.map(c => (
-                    <div key={c.id} className="border border-gray-100 rounded-xl p-3 mb-2">
-                      {c.selected_text && <p className="text-xs text-amber-700 italic border-l-2 border-amber-300 pl-2 mb-2">{c.selected_text}</p>}
-                      <p className="text-sm text-gray-700">{c.text}</p>
-                      <div className="flex items-center justify-between mt-2">
-                        <span className="text-xs text-gray-400">{c.author_name} · {new Date(c.created_at).toLocaleDateString()}</span>
-                        <div className="flex gap-1">
-                          <button onClick={() => resolveComment(c.id, 'resolved')} className="text-xs text-green-600 hover:underline">Resolve</button>
-                          <button onClick={() => resolveComment(c.id, 'ignored')} className="text-xs text-gray-400 hover:underline ml-1">Ignore</button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              );
-            })}
-          </div>
-          {!pendingComment && !readOnly && (
-            <div className="p-4 border-t">
-              <button onClick={() => setPendingComment({ scene_id: null })} className="w-full py-2 text-sm text-indigo-600 border border-indigo-200 rounded-xl hover:bg-indigo-50">
-                + Add general comment
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+      {/* Comments Panel (shared component) */}
+      <CommentSidebar
+        isOpen={showComments}
+        comments={comments}
+        scenes={scenes}
+        pendingComment={pendingComment}
+        commenterName={user?.name || commenterName}
+        onSubmitComment={handleSubmitComment}
+        onResolve={resolveComment}
+        onReply={handleReplyComment}
+        onClose={() => { setShowComments(false); setPendingComment(null); }}
+        onChangeName={() => setShowNameModal(true)}
+      />
+      <NameModal
+        isOpen={showNameModal}
+        initialName={commenterName}
+        onSave={(name) => { setCommenterName(name); setShowNameModal(false); }}
+      />
 
       {/* Version History Panel */}
       {showVersions && (
