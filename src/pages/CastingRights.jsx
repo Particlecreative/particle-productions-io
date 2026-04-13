@@ -11,6 +11,15 @@ const ROLES   = ['Model', 'Actor', 'Actress', 'Extra'];
 const PERIODS = ['Perpetually', '1 Year', '6 Months', '3 Months'];
 const USAGE_OPTIONS = ['Any Use', 'Digital', 'TV', 'Stills', 'OOH'];
 
+// Format date string — handles both "2026-04-30" and "2026-04-30T00:00:00.000Z"
+function fmtDate(d) {
+  if (!d) return null;
+  const s = String(d).slice(0, 10); // take YYYY-MM-DD only
+  const [y, m, day] = s.split('-').map(Number);
+  if (!y || !m || !day) return null;
+  return new Date(y, m - 1, day).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
 // Rights restrictiveness order: Stills most restricted → Any Use least restricted
 const RIGHTS_RESTRICTIVENESS = ['Stills', 'OOH', 'TV', 'Digital', 'Any Use'];
 
@@ -263,17 +272,17 @@ export default function CastingRights() {
           <span className="text-xs font-medium text-gray-600 bg-gray-100 px-2 py-0.5 rounded">{m.role}</span>
         </td>
         <td className="text-sm text-gray-600">{m.period}</td>
-        <td className="text-xs text-gray-500">{m.start_date || '—'}</td>
+        <td className="text-xs text-gray-500">{fmtDate(m.start_date) || '—'}</td>
         <td className="text-xs">
           {m.end_date ? (
             <span className={clsx('font-medium', m._expired ? 'text-red-600' : m._expiresWithin30 ? 'text-orange-600' : 'text-gray-500')}>
-              {m._expired ? '⚠️ ' : m._expiresWithin30 ? '🔔 ' : ''}{m.end_date}
+              {m._expired ? '⚠️ ' : m._expiresWithin30 ? '🔔 ' : ''}{fmtDate(m.end_date)}
             </span>
           ) : <span className="text-gray-300">Ongoing</span>}
         </td>
         <td className="text-xs">
           {m.warning_date ? (
-            <span className="text-orange-600 font-medium">⚠️ {new Date(m.warning_date + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
+            <span className="text-orange-600 font-medium">⚠️ {fmtDate(m.warning_date)}</span>
           ) : <span className="text-gray-300">—</span>}
         </td>
         {showStatus && (
@@ -631,7 +640,12 @@ function EmptyState({ hasFilters, padded }) {
 
 // ─── Casting Modal (global version — includes production picker, photo upload, auto-dates) ──────────────
 function CastingModal({ initial, productions, onSave, onClose }) {
-  const [form, setForm] = useState({ ...initial });
+  // Normalize date fields to YYYY-MM-DD for <input type="date">
+  const norm = { ...initial };
+  ['start_date', 'end_date', 'warning_date'].forEach(k => {
+    if (norm[k] && String(norm[k]).length > 10) norm[k] = String(norm[k]).slice(0, 10);
+  });
+  const [form, setForm] = useState(norm);
   const [photoPreview, setPhotoPreview] = useState(initial.photo_url || '');
   const fileInputRef = useRef(null);
 
@@ -788,7 +802,7 @@ function CastingModal({ initial, productions, onSave, onClose }) {
           {form.end_date && (
             <div className="flex items-center gap-2 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
               <span className="text-xs font-semibold text-orange-700">⚠️ Warning Date</span>
-              <span className="text-xs text-orange-600 font-mono">{form.warning_date ? new Date(form.warning_date + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}</span>
+              <span className="text-xs text-orange-600 font-mono">{fmtDate(form.warning_date) || '—'}</span>
               <span className="text-[10px] text-orange-400 ml-auto">1 month before end · Gantt event added on save</span>
             </div>
           )}

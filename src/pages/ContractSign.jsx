@@ -675,7 +675,7 @@ export default function ContractSign() {
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                <PartyCard label="The Company" name="{COMPANY_NAME}" subtitle={contractData?.hocp_signature?.signer_name || contractData?.signer_name || 'Authorized Signatory'} role="Company" />
+                <PartyCard label="The Company" name={COMPANY_NAME} subtitle={contractData?.hocp_signature?.signer_name || contractData?.signer_name || 'Authorized Signatory'} role="Company" />
                 <PartyCard label="Service Provider" name={d.provider_name || '—'} role="Provider" />
               </div>
             </div>
@@ -845,7 +845,7 @@ export default function ContractSign() {
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-            <PartyCard label="The Company" name="{COMPANY_NAME}" subtitle={contractData?.hocp_signature?.signer_name || contractData?.signer_name || 'Authorized Signatory'} role="Company" />
+            <PartyCard label="The Company" name={COMPANY_NAME} subtitle={contractData?.hocp_signature?.signer_name || contractData?.signer_name || 'Authorized Signatory'} role="Company" />
             <PartyCard label="Service Provider" name={d.provider_name || '\u2014'} role={d.signer_role === 'hocp' ? 'HOCP' : 'Provider'} />
           </div>
         </div>

@@ -240,7 +240,7 @@ const HIGHLIGHT_COLORS = [
 ];
 
 // ── SortableSceneRow ──────────────────────────────────────────────────────────
-const SortableSceneRow = memo(function SortableSceneRow({ scene, index, visibleCols, onUpdate, onDelete, onDuplicate, onAddScene, commentCount, onCommentClick, onImageUpload, onImageDelete, onImageGenerate, onRegenImage, onRequestAIImage, onLightbox, readOnly, isLastRow, onPlayTTS, isPlaying, onSmartSplit, suggestingShots, generatingSceneId }) {
+const SortableSceneRow = memo(function SortableSceneRow({ scene, index, visibleCols, onUpdate, onDelete, onDuplicate, onAddScene, commentCount, onCommentClick, onImageUpload, onImageDelete, onImageGenerate, onRegenImage, onRequestAIImage, onLightbox, onOpenGallery, density = {}, readOnly, isLastRow, onPlayTTS, isPlaying, onSmartSplit, suggestingShots, generatingSceneId }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: scene.id });
   const highlightBg = scene.highlight_color ? `${scene.highlight_color}1A` : null; // 1A = ~10% opacity hex
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1, ...(highlightBg ? { backgroundColor: highlightBg } : {}) };
@@ -248,6 +248,7 @@ const SortableSceneRow = memo(function SortableSceneRow({ scene, index, visibleC
   const [collapsed, setCollapsed] = useState(scene.collapsed || false);
   const [generatingImg, setGeneratingImg] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const [showImageMenu, setShowImageMenu] = useState(false);
   const fileRef = useRef();
 
   // Text selection comment handler
@@ -274,32 +275,39 @@ const SortableSceneRow = memo(function SortableSceneRow({ scene, index, visibleC
 
       {/* Scene # + collapse + highlight color */}
       <td className="w-12 px-2 pt-3 text-center">
-        <div className="flex flex-col items-center gap-1">
+        <div className="flex flex-col items-center gap-1 relative">
           <button onClick={() => setCollapsed(c => { const v = !c; onUpdate(scene.id, 'collapsed', v); return v; })}
             className="text-gray-400 hover:text-gray-600">
             {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
           </button>
-          <span className="text-xs font-bold text-gray-500">{index}</span>
-          {!readOnly && (
-            <div className="relative">
-              <button onClick={() => setShowColorPicker(p => !p)} title="Highlight color"
-                className={`p-0.5 rounded transition-colors ${scene.highlight_color ? '' : 'text-gray-300 hover:text-purple-500 opacity-0 group-hover:opacity-100'}`}
-                style={scene.highlight_color ? { color: scene.highlight_color } : {}}>
-                <Palette size={11} />
-              </button>
-              {showColorPicker && (
-                <div className="absolute left-1/2 -translate-x-1/2 top-full mt-1 z-50 bg-white rounded-lg shadow-lg border border-gray-200 p-1.5 flex flex-wrap gap-1 w-[120px]" onMouseLeave={() => setShowColorPicker(false)}>
-                  {HIGHLIGHT_COLORS.map(c => (
-                    <button
-                      key={c.name}
-                      onClick={() => { onUpdate(scene.id, 'highlight_color', c.value); setShowColorPicker(false); }}
-                      title={c.name}
-                      className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-125 ${scene.highlight_color === c.value ? 'border-gray-800 ring-1 ring-gray-400' : 'border-gray-200'}`}
-                      style={{ backgroundColor: c.value || '#f3f4f6', ...(c.value === null ? { background: 'linear-gradient(135deg, #fff 45%, #ef4444 50%, #fff 55%)' } : {}) }}
-                    />
-                  ))}
-                </div>
-              )}
+          {/* Scene number — click to toggle color picker, right-click too */}
+          <button
+            onClick={!readOnly ? () => setShowColorPicker(p => !p) : undefined}
+            onContextMenu={!readOnly ? (e) => { e.preventDefault(); setShowColorPicker(p => !p); } : undefined}
+            title={!readOnly ? 'Click to highlight' : undefined}
+            className={`text-xs font-bold px-1.5 py-0.5 rounded-md transition-all cursor-pointer ${
+              scene.highlight_color
+                ? 'text-white shadow-sm'
+                : 'text-gray-500 hover:bg-gray-100'
+            }`}
+            style={scene.highlight_color ? { backgroundColor: scene.highlight_color } : {}}
+          >
+            {index}
+          </button>
+          {/* Color picker dropdown */}
+          {showColorPicker && (
+            <div className="absolute left-1/2 -translate-x-1/2 top-full mt-0.5 z-50 bg-white rounded-xl shadow-xl border border-gray-200 p-2 flex flex-wrap gap-1.5 w-[140px]"
+              onMouseLeave={() => setShowColorPicker(false)}>
+              <div className="w-full text-[8px] font-bold text-gray-400 uppercase tracking-wider mb-0.5 px-0.5">Highlight</div>
+              {HIGHLIGHT_COLORS.map(c => (
+                <button
+                  key={c.name}
+                  onClick={() => { onUpdate(scene.id, 'highlight_color', c.value); setShowColorPicker(false); }}
+                  title={c.name}
+                  className={`w-6 h-6 rounded-full border-2 transition-all hover:scale-110 ${scene.highlight_color === c.value ? 'border-gray-800 ring-2 ring-gray-300 scale-110' : 'border-gray-200 hover:border-gray-400'}`}
+                  style={{ backgroundColor: c.value || '#f3f4f6', ...(c.value === null ? { background: 'linear-gradient(135deg, #fff 40%, #ef4444 50%, #fff 60%)' } : {}) }}
+                />
+              ))}
             </div>
           )}
         </div>
@@ -307,7 +315,7 @@ const SortableSceneRow = memo(function SortableSceneRow({ scene, index, visibleC
 
       {/* Location */}
       {visibleCols.location && (
-        <td className="w-40 px-2 py-2 align-top">
+        <td className={`w-40 px-2 ${density.rowPy || 'py-2'} align-top`}>
           {collapsed ? (
             <span className="text-xs text-gray-500 truncate block">{stripHtml(scene.location) || '—'}</span>
           ) : (
@@ -325,7 +333,7 @@ const SortableSceneRow = memo(function SortableSceneRow({ scene, index, visibleC
 
       {/* What We See */}
       {visibleCols.what_we_see && (
-        <td className="px-2 py-2 align-top">
+        <td className={`px-2 ${density.rowPy || 'py-2'} align-top`}>
           {collapsed ? (
             <span className="text-xs text-gray-600 line-clamp-1">{stripHtml(scene.what_we_see) || '—'}</span>
           ) : (
@@ -352,7 +360,7 @@ const SortableSceneRow = memo(function SortableSceneRow({ scene, index, visibleC
 
       {/* What We Hear */}
       {visibleCols.what_we_hear && (
-        <td className="px-2 py-2 align-top">
+        <td className={`px-2 ${density.rowPy || 'py-2'} align-top`}>
           {collapsed ? (
             <span className="text-xs text-indigo-700 line-clamp-1">{stripHtml(scene.what_we_hear) || '—'}</span>
           ) : (
@@ -408,7 +416,7 @@ const SortableSceneRow = memo(function SortableSceneRow({ scene, index, visibleC
 
       {/* Visuals — supports clipboard paste (Ctrl+V) */}
       {visibleCols.visuals && (
-        <td className="w-56 px-2 py-2 align-top" tabIndex={0} onPaste={(e) => {
+        <td className={`${density.visualsW || 'w-56'} px-2 ${density.rowPy || 'py-2'} align-top`} tabIndex={0} onPaste={(e) => {
           if (readOnly) return;
           const items = Array.from(e.clipboardData?.items || []);
           const imageItem = items.find(i => i.type.startsWith('image/'));
@@ -432,7 +440,7 @@ const SortableSceneRow = memo(function SortableSceneRow({ scene, index, visibleC
                 <img
                   src={img.url}
                   alt={img.prompt || 'Visual'}
-                  className="h-16 w-24 object-cover rounded-md border border-gray-200 cursor-pointer"
+                  className={`${density.imgH || 'h-16'} ${density.imgW || 'w-24'} object-cover rounded-md border border-gray-200 cursor-pointer`}
                   onClick={() => onLightbox(img)}
                 />
                 {!readOnly && (
@@ -456,39 +464,64 @@ const SortableSceneRow = memo(function SortableSceneRow({ scene, index, visibleC
                 )}
               </div>
             ))}
-            {!readOnly && !collapsed && (
-              <div className="flex flex-col gap-1">
-                <button
-                  onClick={() => fileRef.current?.click()}
-                  className="h-16 w-24 rounded-md border-2 border-dashed border-gray-200 flex flex-col items-center justify-center gap-1 text-gray-400 hover:border-indigo-300 hover:text-indigo-500 transition-colors text-xs"
-                >
-                  <Upload size={14} />
-                  Upload
-                </button>
-                <div className="relative flex items-center gap-0.5">
-                  <button
-                    onClick={() => onRequestAIImage(scene.id)}
-                    disabled={generatingImg || suggestingShots === scene.id || generatingSceneId === scene.id}
-                    className="flex items-center gap-1 text-[10px] text-purple-500 hover:text-purple-700 px-1 disabled:opacity-50"
-                    title="Generate one AI storyboard image"
-                  >
-                    {(generatingImg || suggestingShots === scene.id || generatingSceneId === scene.id) ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
-                    {suggestingShots === scene.id ? 'Splitting...' : (generatingImg || generatingSceneId === scene.id) ? 'Generating...' : (scene.images || []).length > 0 ? '+ Shot' : '✨ AI'}
-                  </button>
-                  <button
-                    onClick={() => onSmartSplit(scene.id)}
-                    disabled={generatingImg || !!suggestingShots}
-                    className="flex items-center gap-0.5 text-[9px] text-purple-400 hover:text-purple-600 px-1 disabled:opacity-50 border-l border-purple-100"
-                    title="Smart split: AI breaks scene into multiple shots automatically"
-                  >
-                    <Film size={9} /> Split
-                  </button>
+            {!readOnly && !collapsed && (() => {
+              const isGenerating = generatingImg || suggestingShots === scene.id || generatingSceneId === scene.id;
+              const hasImages = (scene.images || []).length > 0;
+              return (
+                <div className="relative">
+                  {/* Add image button — compact when images exist, larger when empty */}
+                  {hasImages ? (
+                    <button onClick={() => setShowImageMenu(p => !p)}
+                      className={`${density.imgH || 'h-16'} w-10 rounded-md border border-dashed border-gray-200 flex flex-col items-center justify-center text-gray-400 hover:border-purple-300 hover:text-purple-500 transition-colors`}>
+                      <Plus size={14} />
+                    </button>
+                  ) : (
+                    <button onClick={() => setShowImageMenu(p => !p)}
+                      className={`${density.imgH || 'h-16'} ${density.imgW || 'w-24'} rounded-md border-2 border-dashed border-gray-200 flex flex-col items-center justify-center gap-1 text-gray-400 hover:border-purple-300 hover:text-purple-500 transition-colors`}>
+                      <ImageIcon size={16} />
+                      <span className="text-[10px] font-medium">Add Visual</span>
+                    </button>
+                  )}
+                  {/* Generating indicator */}
+                  {isGenerating && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-white/80 rounded-md">
+                      <Loader2 size={14} className="animate-spin text-purple-500" />
+                    </div>
+                  )}
+                  {/* Image actions dropdown */}
+                  {showImageMenu && (
+                    <div className="absolute left-0 top-full mt-1 z-50 bg-white rounded-xl shadow-xl border border-gray-200 py-1 w-44"
+                      onMouseLeave={() => setShowImageMenu(false)}>
+                      <button onClick={() => { setShowImageMenu(false); onRequestAIImage(scene.id); }}
+                        disabled={isGenerating}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors disabled:opacity-40">
+                        <Sparkles size={13} className="text-purple-500" /> AI Generate
+                      </button>
+                      <button onClick={() => { setShowImageMenu(false); fileRef.current?.click(); }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 transition-colors">
+                        <Upload size={13} className="text-blue-500" /> Upload Image
+                      </button>
+                      <button onClick={() => { setShowImageMenu(false); onOpenGallery(scene.id); }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 transition-colors">
+                        <ImageIcon size={13} className="text-teal-500" /> From Library
+                      </button>
+                      <div className="border-t border-gray-100 my-1" />
+                      <button onClick={() => { setShowImageMenu(false); onSmartSplit(scene.id); }}
+                        disabled={isGenerating || !!suggestingShots}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-40">
+                        <Film size={13} className="text-amber-500" /> AI Multi-Shot
+                      </button>
+                      <div className="px-3 py-1.5 text-[9px] text-gray-400 border-t border-gray-100">
+                        Tip: Ctrl+V to paste from clipboard
+                      </div>
+                    </div>
+                  )}
+                  {hasImages && (
+                    <span className="text-[9px] font-mono text-gray-400 mt-0.5 block text-center">{(scene.images || []).length}</span>
+                  )}
                 </div>
-                {(scene.images || []).length > 1 && (
-                  <span className="text-[9px] font-mono text-gray-400 px-1">{(scene.images || []).length} shots</span>
-                )}
-              </div>
-            )}
+              );
+            })()}
           </div>
           <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e => { if (e.target.files[0]) onImageUpload(scene.id, e.target.files[0]); e.target.value = ''; }} />
         </td>
@@ -531,6 +564,14 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
     catch { return DEFAULT_COLS; }
   });
   const [showColMenu, setShowColMenu] = useState(false);
+  // Row density: 'compact' | 'default' | 'spacious'
+  const [rowDensity, setRowDensity] = useState(() => localStorage.getItem(`script_density_${scriptId}`) || 'default');
+  const DENSITY_CFG = {
+    compact:  { imgH: 'h-12', imgW: 'w-20', visualsW: 'w-44', rowPy: 'py-1.5', textSize: 'text-xs' },
+    default:  { imgH: 'h-16', imgW: 'w-24', visualsW: 'w-56', rowPy: 'py-2', textSize: 'text-sm' },
+    spacious: { imgH: 'h-24', imgW: 'w-36', visualsW: 'w-72', rowPy: 'py-3', textSize: 'text-sm' },
+  };
+  const density = DENSITY_CFG[rowDensity] || DENSITY_CFG.default;
   const [presentMode, setPresentMode] = useState(false);
   const [presentIdx, setPresentIdx] = useState(0);
   const [showAI, setShowAI] = useState(false);
@@ -1626,10 +1667,17 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
             </div>
             <span className={`text-[10px] font-mono font-semibold ${timingColor}`}>{fmtSeconds(totalVoSeconds)}/{targetSeconds}s</span>
             <div className="flex items-center gap-0.5 bg-gray-100 rounded p-0.5">
-              {['30', '60'].map(t => (
+              {['15', '30', '60', '90', '120'].map(t => (
                 <button key={t} onClick={() => { setCommercialTarget(t); localStorage.setItem(`script_target_${scriptId}`, t); }}
-                  className={`text-[9px] px-1.5 py-0.5 rounded font-semibold ${commercialTarget === t ? 'bg-white shadow-sm text-gray-800' : 'text-gray-400'}`}>{t}s</button>
+                  className={`text-[9px] px-1.5 py-0.5 rounded font-semibold transition-colors ${commercialTarget === t ? 'bg-white shadow-sm text-gray-800' : 'text-gray-400 hover:text-gray-600'}`}>{t}s</button>
               ))}
+              <input
+                type="number" min="5" max="600" step="5"
+                value={commercialTarget}
+                onChange={e => { const v = e.target.value; setCommercialTarget(v); localStorage.setItem(`script_target_${scriptId}`, v); }}
+                className="w-10 text-[9px] font-mono font-semibold text-center bg-transparent border-0 outline-none text-gray-500 appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                title="Custom target duration (seconds)"
+              />
             </div>
           </div>
         )}
@@ -1668,6 +1716,23 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                   ))}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Row density toggle */}
+          {activeView === 'table' && (
+            <div className="flex items-center gap-0.5 bg-gray-100 rounded-lg p-0.5">
+              {[
+                { key: 'compact', label: 'S', title: 'Compact rows' },
+                { key: 'default', label: 'M', title: 'Default rows' },
+                { key: 'spacious', label: 'L', title: 'Spacious rows + large images' },
+              ].map(d => (
+                <button key={d.key} title={d.title}
+                  onClick={() => { setRowDensity(d.key); localStorage.setItem(`script_density_${scriptId}`, d.key); }}
+                  className={`text-[9px] font-bold px-1.5 py-0.5 rounded transition-colors ${rowDensity === d.key ? 'bg-white shadow-sm text-gray-800' : 'text-gray-400 hover:text-gray-600'}`}>
+                  {d.label}
+                </button>
+              ))}
             </div>
           )}
 
@@ -1806,6 +1871,19 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                     <History size={12} />
                     Version History
                   </button>
+                  <div className="px-3 py-2 border-t border-gray-100">
+                    <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Target Duration</div>
+                    <div className="flex items-center gap-1 flex-wrap">
+                      {['15', '30', '60', '90', '120'].map(t => (
+                        <button key={t} onClick={() => { setCommercialTarget(t); localStorage.setItem(`script_target_${scriptId}`, t); }}
+                          className={`text-[10px] px-2 py-1 rounded-md font-semibold transition-colors ${commercialTarget === t ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>{t}s</button>
+                      ))}
+                      <input type="number" min="5" max="600" step="5" value={commercialTarget}
+                        onChange={e => { setCommercialTarget(e.target.value); localStorage.setItem(`script_target_${scriptId}`, e.target.value); }}
+                        className="w-12 text-[10px] font-mono text-center border border-gray-200 rounded-md px-1 py-1 outline-none focus:border-indigo-300"
+                        title="Custom seconds" />
+                    </div>
+                  </div>
                   {script.status !== 'approved' && (
                     <button onClick={() => { setShowMoreMenu(false); handleApprove(); }} disabled={approvingLoading}
                       className="w-full flex items-center gap-2 px-3 py-2 text-xs text-green-600 hover:bg-green-50">
@@ -1888,7 +1966,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                   {visibleCols.what_we_see && <th className="px-2 py-2 text-left">What We See</th>}
                   {visibleCols.what_we_hear && <th className="px-2 py-2 text-left">What We Hear</th>}
                   {visibleCols.duration && <th className="w-20 px-2 py-2 text-left">Duration</th>}
-                  {visibleCols.visuals && <th className="w-56 px-2 py-2 text-left">Visuals</th>}
+                  {visibleCols.visuals && <th className={`${density.visualsW} px-2 py-2 text-left`}>Visuals</th>}
                   <th className="w-16" />
                 </tr>
               </thead>
@@ -1914,6 +1992,8 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                         onRegenImage={handleRegenImage}
                         onRequestAIImage={handleRequestAIImage}
                         onLightbox={setLightbox}
+                        onOpenGallery={(sceneId) => setGalleryTarget({ sceneId, imageId: null })}
+                        density={density}
                         readOnly={readOnly}
                         onPlayTTS={handlePlayTTS}
                         isPlaying={playingSceneId === scene.id}
@@ -2734,9 +2814,22 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
           targetSceneId={galleryTarget.sceneId}
           onClose={() => setGalleryTarget(null)}
           onSelect={(img) => {
-            handleGalleryReplace(galleryTarget.sceneId, galleryTarget.imageId, img);
+            if (galleryTarget.imageId) {
+              handleGalleryReplace(galleryTarget.sceneId, galleryTarget.imageId, img);
+              toast.success('Image replaced');
+            } else {
+              // Add image to scene (not replace)
+              setScript(prev => {
+                const updated = { ...prev, scenes: prev.scenes.map(s => {
+                  if (s.id !== galleryTarget.sceneId) return s;
+                  return { ...s, images: [...(s.images || []), { id: crypto.randomUUID(), url: img.url, prompt: img.prompt || '', source: img.type || 'gallery' }] };
+                })};
+                debounceSave(updated);
+                return updated;
+              });
+              toast.success('Image added');
+            }
             setGalleryTarget(null);
-            toast.success('Image replaced');
           }}
         />
       )}
