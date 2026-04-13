@@ -391,7 +391,10 @@ export default function ScriptSharePage() {
         >
           <div className="flex items-center justify-between px-8 py-4 text-white/50 text-sm">
             <span className="font-bold text-white text-base">{script.title}</span>
-            <span>Scene {presentIndex + 1} / {scenes.length}</span>
+            <span className="flex items-center gap-2">
+              {scene?.highlight_color && <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: scene.highlight_color }} />}
+              Scene {presentIndex + 1} / {scenes.length}
+            </span>
             <button onClick={() => setPresentMode(false)} className="text-white/60 hover:text-white">
               <X size={20} />
             </button>
@@ -471,7 +474,8 @@ export default function ScriptSharePage() {
                 <button
                   key={i}
                   onClick={() => setPresentIndex(i)}
-                  className={clsx('w-2.5 h-2.5 rounded-full transition-all', i === presentIndex ? 'bg-white scale-125' : 'bg-white/30')}
+                  className={clsx('w-2.5 h-2.5 rounded-full transition-all', i === presentIndex ? 'scale-125' : 'opacity-40')}
+                  style={{ backgroundColor: scenes[i]?.highlight_color || 'white' }}
                 />
               ))}
             </div>
@@ -490,14 +494,16 @@ export default function ScriptSharePage() {
       <div className="min-h-screen bg-gray-50 scripts-share-page">
         {/* Image Lightbox */}
         {lightbox && (
-          <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4 animate-fade-in" onClick={() => setLightbox(null)}>
-            <div className="relative max-w-4xl max-h-[90vh]">
-              <img src={lightbox.url} alt={lightbox.name || 'Visual'} className="max-w-full max-h-[85vh] rounded-xl shadow-2xl object-contain" onClick={e => e.stopPropagation()} />
-              <button onClick={() => setLightbox(null)} className="absolute -top-3 -right-3 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-lg text-gray-500 hover:text-gray-800 transition-colors">
+          <div className="fixed inset-0 z-[100] bg-black/85 flex flex-col items-center justify-center p-6 animate-fade-in" onClick={() => setLightbox(null)}>
+            <div className="relative max-w-5xl w-full flex flex-col items-center" onClick={e => e.stopPropagation()}>
+              <img src={lightbox.url} alt={lightbox.name || 'Visual'} className="max-w-full max-h-[80vh] rounded-xl shadow-2xl object-contain" />
+              <button onClick={() => setLightbox(null)} className="absolute -top-2 -right-2 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-lg text-gray-500 hover:text-gray-800 transition-colors z-10">
                 <X size={16} />
               </button>
-              {lightbox.name && lightbox.name !== 'Visual' && (
-                <p className="absolute bottom-4 left-4 right-4 text-white/80 text-xs bg-black/50 rounded-lg px-3 py-2 line-clamp-2">{lightbox.name}</p>
+              {lightbox.name && (
+                <div className="mt-3 max-w-lg text-center">
+                  <p className="text-white/70 text-xs leading-relaxed">{lightbox.name}</p>
+                </div>
               )}
             </div>
           </div>
@@ -655,10 +661,12 @@ export default function ScriptSharePage() {
                 <tbody>
                   {scenes.map((scene, idx) => {
                     const sceneComments = getSceneCommentCount(scene.id);
+                    const hlBg = scene.highlight_color ? `${scene.highlight_color}1A` : null;
                     return (
-                    <tr key={scene.id} className="border-t border-gray-100 align-top hover:bg-gray-50/50 group">
+                    <tr key={scene.id} className={`border-t border-gray-100 align-top group ${scene.highlight_color ? '' : 'hover:bg-gray-50/50'}`} style={hlBg ? { backgroundColor: hlBg } : {}}>
                       <td className="px-3 py-3 text-center">
-                        <span className="text-xs font-bold text-gray-400">{idx + 1}</span>
+                        <span className={`text-xs font-bold px-1.5 py-0.5 rounded-md ${scene.highlight_color ? 'text-white' : 'text-gray-400'}`}
+                          style={scene.highlight_color ? { backgroundColor: scene.highlight_color } : {}}>{idx + 1}</span>
                       </td>
                       <td className="w-40 px-3 py-3" onMouseUp={() => handleTextMouseUp(scene.id, 'location')}>
                         {readOnly ? (
@@ -692,12 +700,22 @@ export default function ScriptSharePage() {
                         )}
                       </td>
                       <td className="px-3 py-3">
-                        <div className="flex flex-wrap gap-1">
+                        <div className="flex flex-wrap gap-1.5">
                           {(scene.images || []).map(img => (
-                            <img key={img.id} src={img.url} alt=""
-                              className="w-16 h-12 object-cover rounded-lg cursor-pointer hover:scale-105 transition-transform scripts-visuals"
-                              loading="lazy"
-                              onClick={(e) => { e.stopPropagation(); setLightbox({ url: img.url, name: img.prompt || 'Visual' }); }} />
+                            <div key={img.id} className="relative group/img">
+                              {/* Hover preview */}
+                              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 pointer-events-none opacity-0 group-hover/img:opacity-100 transition-opacity duration-200 delay-300">
+                                <div className="bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden" style={{width: 280}}>
+                                  <img src={img.url} alt="" loading="lazy" className="w-full object-cover" style={{maxHeight: 200}} />
+                                  {img.prompt && <p className="text-[10px] text-gray-500 px-2 py-1.5 leading-snug line-clamp-2">{img.prompt}</p>}
+                                </div>
+                                <div className="w-3 h-3 bg-white border-b border-r border-gray-200 rotate-45 mx-auto -mt-1.5 shadow-sm" />
+                              </div>
+                              <img src={img.url} alt=""
+                                className="w-16 h-12 object-cover rounded-lg cursor-pointer hover:ring-2 hover:ring-indigo-300 transition-all scripts-visuals"
+                                loading="lazy"
+                                onClick={(e) => { e.stopPropagation(); setLightbox({ url: img.url, name: img.prompt || '' }); }} />
+                            </div>
                           ))}
                         </div>
                       </td>
@@ -744,10 +762,12 @@ export default function ScriptSharePage() {
                 <tbody>
                   {scenes.map((scene, idx) => {
                     const sceneComments = getSceneCommentCount(scene.id);
+                    const hlBg2 = scene.highlight_color ? `${scene.highlight_color}1A` : null;
                     return (
-                    <tr key={scene.id} className="border-t border-gray-100 align-top hover:bg-gray-50/50 group">
+                    <tr key={scene.id} className={`border-t border-gray-100 align-top group ${scene.highlight_color ? '' : 'hover:bg-gray-50/50'}`} style={hlBg2 ? { backgroundColor: hlBg2 } : {}}>
                       <td className="px-4 py-4 text-center">
-                        <span className="text-xs font-bold text-gray-400">{idx + 1}</span>
+                        <span className={`text-xs font-bold px-1.5 py-0.5 rounded-md ${scene.highlight_color ? 'text-white' : 'text-gray-400'}`}
+                          style={scene.highlight_color ? { backgroundColor: scene.highlight_color } : {}}>{idx + 1}</span>
                       </td>
                       <td className="px-4 py-4">
                         <span className="text-xs font-mono text-gray-500">{scene.location || '—'}</span>
@@ -797,7 +817,8 @@ export default function ScriptSharePage() {
               {scenes.map((scene, idx) => {
                 const sceneComments = getSceneCommentCount(scene.id);
                 return (
-                <div key={scene.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden group relative">
+                <div key={scene.id} className="bg-white rounded-2xl shadow-sm overflow-hidden group relative"
+                  style={{ borderWidth: 2, borderStyle: 'solid', borderColor: scene.highlight_color || '#f3f4f6' }}>
                   <div className="bg-gray-100 aspect-video overflow-hidden">
                     {scene.images?.length > 0 ? (
                       <img src={scene.images[0].url} alt="" className="w-full h-full object-cover" />
@@ -808,7 +829,8 @@ export default function ScriptSharePage() {
                   <div className="p-3 space-y-2">
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-[10px] font-bold text-gray-400 bg-gray-100 rounded-full px-1.5 py-0.5 shrink-0">{idx + 1}</span>
+                        <span className={`text-[10px] font-bold rounded-full px-1.5 py-0.5 shrink-0 ${scene.highlight_color ? 'text-white' : 'text-gray-400 bg-gray-100'}`}
+                          style={scene.highlight_color ? { backgroundColor: scene.highlight_color } : {}}>{idx + 1}</span>
                         {readOnly ? (
                           <span className="text-[10px] font-mono text-gray-500 truncate">{scene.location || '—'}</span>
                         ) : (
