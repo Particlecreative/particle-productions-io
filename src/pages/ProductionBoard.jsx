@@ -86,19 +86,23 @@ export default function ProductionBoard() {
   // Build tab list based on production type
   const isShootType = production && SHOOT_TYPES.includes(production.production_type);
   const isRemoteShoot = production?.production_type === 'Remote Shoot';
-  const studioTab = brandId === 'particle' ? ['Studio'] : [];
   const deliveryTab = isRemoteShoot ? ['Product Delivery'] : [];
   const defaultTabs = isShootType
-    ? ['Budget Table', 'People on Set', 'Credit Card', 'Cast', ...deliveryTab, 'Accounting', 'Financial', 'Links', 'Scripts', ...studioTab, 'Updates', 'History', 'Gantt', 'Call Sheet']
-    : ['Budget Table', 'Credit Card', 'Accounting', 'Financial', 'Links', 'Scripts', ...studioTab, 'Updates', 'History', 'Gantt'];
+    ? ['Budget Table', 'People on Set', 'Credit Card', 'Cast', ...deliveryTab, 'Accounting', 'Financial', 'Links', 'Scripts', 'Updates', 'History', 'Gantt', 'Call Sheet']
+    : ['Budget Table', 'Credit Card', 'Accounting', 'Financial', 'Links', 'Scripts', 'Updates', 'History', 'Gantt'];
 
-  const [tabConfig, setTabConfig] = useState(() =>
-    getTabOrder(user?.id || 'anon', production?.id, defaultTabs)
-  );
+  const [tabConfig, setTabConfig] = useState(() => {
+    const saved = getTabOrder(user?.id || 'anon', production?.id, defaultTabs);
+    // Inject any new default tabs not in saved config (e.g. Product Delivery added after first visit)
+    const savedIds = new Set(saved.map(t => t.id));
+    const missing = defaultTabs.filter(t => !savedIds.has(t));
+    return missing.length > 0 ? [...saved, ...missing.map(t => ({ id: t, visible: true }))] : saved;
+  });
   const [showTabModal, setShowTabModal] = useState(false);
   const [tabModalScope, setTabModalScope] = useState({ who: 'me', where: 'all' });
 
-  const visibleTabs = tabConfig.filter(t => t.visible).map(t => t.id);
+  // Filter out Studio tab and tabs not in defaults (removed tabs)
+  const visibleTabs = tabConfig.filter(t => t.visible && t.id !== 'Studio' && defaultTabs.includes(t.id)).map(t => t.id);
 
   useEffect(() => {
     async function load() {
@@ -371,7 +375,7 @@ export default function ProductionBoard() {
             <Settings2 size={14} />
           </button>
         )}
-        {isShootType && (
+        {isShootType && !isRemoteShoot && (
           <button
             onClick={async () => {
               const [p, items, c] = await Promise.all([
