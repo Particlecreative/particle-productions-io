@@ -87,7 +87,7 @@ router.get('/sign/:id/:token', async (req, res) => {
               c.exhibit_a, c.exhibit_b, c.fee_amount, c.payment_terms,
               c.provider_id_number, c.provider_address,
               c.currency, c.contract_type, c.effective_date,
-              p.project_name, p.producer
+              p.project_name, p.producer, p.production_type
        FROM contract_signatures cs
        JOIN contracts c ON cs.contract_id = c.id
        LEFT JOIN productions p ON p.id = split_part(c.production_id, '_li_', 1)
@@ -741,7 +741,14 @@ router.post('/sign/:id/:token', signLimiter, async (req, res) => {
       }, 3 * 60 * 1000); // 3 minutes
     }
 
-    res.json({ success: true, all_signed: allSigned });
+    // Check if delivery info is needed (Remote Shoot + provider signing)
+    const needsDelivery = sig.signer_role === 'provider' && sig.production_type === 'Remote Shoot';
+    res.json({
+      success: true,
+      all_signed: allSigned,
+      needs_delivery_info: needsDelivery,
+      production_id: sig.production_id ? sig.production_id.split('_li_')[0] : null,
+    });
   } catch (err) {
     console.error('POST /sign/:id/:token error:', err);
     res.status(500).json({ error: 'Server error' });

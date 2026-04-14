@@ -26,6 +26,7 @@ import ImportModal from '../components/production/ImportModal';
 import CCPaymentsTab from '../components/production/CCPaymentsTab';
 import ImportAccountingModal from '../components/production/ImportAccountingModal';
 import CastTab from '../components/production/CastTab';
+import ProductDeliveryTab from '../components/production/ProductDeliveryTab';
 import CallSheetTab from '../components/production/CallSheetTab';
 import TaxiWizard from '../components/production/TaxiWizard';
 import ScriptsTab from '../components/production/ScriptsTab';
@@ -84,9 +85,11 @@ export default function ProductionBoard() {
 
   // Build tab list based on production type
   const isShootType = production && SHOOT_TYPES.includes(production.production_type);
+  const isRemoteShoot = production?.production_type === 'Remote Shoot';
   const studioTab = brandId === 'particle' ? ['Studio'] : [];
+  const deliveryTab = isRemoteShoot ? ['Product Delivery'] : [];
   const defaultTabs = isShootType
-    ? ['Budget Table', 'People on Set', 'Credit Card', 'Cast', 'Accounting', 'Financial', 'Links', 'Scripts', ...studioTab, 'Updates', 'History', 'Gantt', 'Call Sheet']
+    ? ['Budget Table', 'People on Set', 'Credit Card', 'Cast', ...deliveryTab, 'Accounting', 'Financial', 'Links', 'Scripts', ...studioTab, 'Updates', 'History', 'Gantt', 'Call Sheet']
     : ['Budget Table', 'Credit Card', 'Accounting', 'Financial', 'Links', 'Scripts', ...studioTab, 'Updates', 'History', 'Gantt'];
 
   const [tabConfig, setTabConfig] = useState(() =>
@@ -409,6 +412,9 @@ export default function ProductionBoard() {
       )}
       {activeTab === 'Cast' && (
         <CastTab productionId={id} production={production} />
+      )}
+      {activeTab === 'Product Delivery' && (
+        <ProductDeliveryTab productionId={id} production={production} />
       )}
       {activeTab === 'Links' && (
         <LinksTab productionId={id} />

@@ -1077,6 +1077,20 @@ export function deleteCallSheet(id) {
 export function bulkCreateLineItems(items) { items.forEach(createLineItem); }
 export function bulkCreateCastMembers(members) { members.forEach(createCastMember); }
 
+// ========== PRODUCT DELIVERIES ==========
+export function getProductDeliveries(productionId) {
+  return apiGet(`/product-deliveries?production_id=${encodeURIComponent(productionId)}`);
+}
+export function createProductDelivery(data) {
+  return apiPost('/product-deliveries', data);
+}
+export function updateProductDelivery(id, updates) {
+  return apiPatch(`/product-deliveries/${encodeURIComponent(id)}`, updates);
+}
+export function deleteProductDelivery(id) {
+  return apiDelete(`/product-deliveries/${encodeURIComponent(id)}`);
+}
+
 // ========== WEEKLY REPORTS ==========
 export function getWeeklyReports(brandId) {
   if (IS_DEV) {

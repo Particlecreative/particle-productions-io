@@ -84,6 +84,7 @@ app.use('/api/tickets',       require('./routes/improvementTickets'));
 app.use('/api/people-on-set', require('./routes/peopleOnSet'));
 app.use('/api/form-configs',  require('./routes/formConfigs'));
 app.use('/api/casting',        require('./routes/casting'));
+app.use('/api/product-deliveries', require('./routes/productDeliveries'));
 app.use('/api/call-sheets',    require('./routes/callSheets'));
 app.use('/api/cc-purchases',   require('./routes/ccPurchases'));
 app.use('/api/weekly-reports', require('./routes/weeklyReports'));

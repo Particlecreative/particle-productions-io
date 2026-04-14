@@ -8,6 +8,7 @@ import {
   CheckCircle, RotateCcw, Undo2, PenTool, FileText,
   DollarSign, Shield, AlertTriangle, RefreshCw, Clock,
   User, Calendar, Hash, ChevronDown, Download,
+  Package, Check, Loader2,
 } from 'lucide-react';
 // PDF libs loaded on-demand only when user clicks "Save as PDF" — NOT on page load
 // This avoids Vite minification TDZ errors that crash the signing canvas
@@ -68,6 +69,16 @@ export default function ContractSign() {
   const [signDate] = useState(
     new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
   );
+
+  // Product delivery form (shown after signing for Remote Shoot)
+  const [showDeliveryForm, setShowDeliveryForm] = useState(false);
+  const [deliveryProductionId, setDeliveryProductionId] = useState(null);
+  const [deliveryForm, setDeliveryForm] = useState({
+    phone: '', phoneCode: '+1',
+    street: '', apt: '', city: '', state: '', zip: '', country: 'US',
+  });
+  const [deliverySubmitting, setDeliverySubmitting] = useState(false);
+  const [deliveryDone, setDeliveryDone] = useState(false);
 
   // Scroll tracking for "scroll to sign" prompt
   const signSectionRef = useRef(null);
@@ -230,6 +241,13 @@ export default function ContractSign() {
         setSubmitting(false);
         return;
       }
+      // Check if delivery form needed before showing success
+      if (data.needs_delivery_info) {
+        setDeliveryProductionId(data.production_id);
+        setShowDeliveryForm(true);
+        setSubmitting(false);
+        return;
+      }
       setSubmitted(true);
       // If all parties signed, fetch completion data (both signatures + events)
       if (data.all_signed) {
@@ -359,7 +377,151 @@ export default function ContractSign() {
     }
   }, [allSigned, completedData, submitted, pdfUploaded]);
 
+  async function handleDeliverySubmit() {
+    setDeliverySubmitting(true);
+    try {
+      await fetch(`${API}/api/product-deliveries/from-contract`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          production_id: deliveryProductionId,
+          recipient_name: signerName.trim(),
+          recipient_email: contractData?.signer_email || contractData?.provider_email || '',
+          recipient_phone: deliveryForm.phone,
+          phone_country_code: deliveryForm.phoneCode,
+          address_street: deliveryForm.street,
+          address_apt: deliveryForm.apt,
+          address_city: deliveryForm.city,
+          address_state: deliveryForm.state,
+          address_zip: deliveryForm.zip,
+          address_country: deliveryForm.country,
+          contract_token: token,
+        }),
+      });
+      setDeliveryDone(true);
+      // Now show the normal success view
+      setTimeout(() => {
+        setShowDeliveryForm(false);
+        setSubmitted(true);
+      }, 1500);
+    } catch (e) { console.error('Delivery submit failed:', e); }
+    setDeliverySubmitting(false);
+  }
+
   /* ─────────── Render states ─────────── */
+
+  // Product delivery form (after signing, for Remote Shoot)
+  if (showDeliveryForm && !deliveryDone) {
+    const df = deliveryForm;
+    const setDF = (k, v) => setDeliveryForm(p => ({ ...p, [k]: v }));
+    const defaultCountry = typeof navigator !== 'undefined' ? (navigator.language?.split('-')[1]?.toUpperCase() || 'US') : 'US';
+    if (!df.country) setDF('country', defaultCountry);
+    return (
+      <Shell status="delivery">
+        <div className="max-w-lg mx-auto py-10 px-4">
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center mx-auto mb-4">
+              <Package size={28} className="text-blue-600" />
+            </div>
+            <h1 className="text-2xl font-black text-gray-900 mb-2">Product Delivery</h1>
+            <p className="text-sm text-gray-500">Where should we ship the product?</p>
+            <p className="text-xs text-gray-400 mt-1">Please provide a residential address where someone can receive the package</p>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-4">
+            {/* Name (pre-filled, read-only) */}
+            <div>
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Recipient</label>
+              <input value={signerName} readOnly className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm bg-gray-50 text-gray-600" />
+            </div>
+
+            {/* Phone */}
+            <div>
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Phone Number *</label>
+              <div className="flex gap-2">
+                <select value={df.phoneCode} onChange={e => setDF('phoneCode', e.target.value)}
+                  className="w-28 border border-gray-200 rounded-xl px-2 py-2.5 text-sm outline-none">
+                  {['+1','+44','+972','+61','+49','+33','+39','+34','+81','+86','+91','+55','+52','+7','+82'].map(c =>
+                    <option key={c} value={c}>{c}</option>
+                  )}
+                </select>
+                <input value={df.phone} onChange={e => setDF('phone', e.target.value)}
+                  placeholder="Phone number" className="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-blue-400" />
+              </div>
+            </div>
+
+            {/* Street */}
+            <div>
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Street Address *</label>
+              <input value={df.street} onChange={e => setDF('street', e.target.value)}
+                placeholder="123 Main Street" className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-blue-400" />
+            </div>
+
+            {/* Apt */}
+            <div>
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Apt / Suite / Unit</label>
+              <input value={df.apt} onChange={e => setDF('apt', e.target.value)}
+                placeholder="Apt 4B" className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-blue-400" />
+            </div>
+
+            {/* City + State */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">City *</label>
+                <input value={df.city} onChange={e => setDF('city', e.target.value)}
+                  placeholder="New York" className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-blue-400" />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">State / Province</label>
+                <input value={df.state} onChange={e => setDF('state', e.target.value)}
+                  placeholder="NY" className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-blue-400" />
+              </div>
+            </div>
+
+            {/* Zip + Country */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">ZIP / Postal Code *</label>
+                <input value={df.zip} onChange={e => setDF('zip', e.target.value)}
+                  placeholder="10001" className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-blue-400" />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Country *</label>
+                <input value={df.country} onChange={e => setDF('country', e.target.value)}
+                  placeholder="US" className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-blue-400" />
+              </div>
+            </div>
+          </div>
+
+          <button onClick={handleDeliverySubmit}
+            disabled={deliverySubmitting || !df.street.trim() || !df.city.trim() || !df.zip.trim() || !df.phone.trim()}
+            className="w-full mt-6 py-3.5 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 disabled:opacity-40 transition-colors flex items-center justify-center gap-2">
+            {deliverySubmitting ? <><Loader2 size={14} className="animate-spin" /> Submitting...</> : <><Package size={14} /> Submit Delivery Address</>}
+          </button>
+
+          <button onClick={() => { setShowDeliveryForm(false); setSubmitted(true); }}
+            className="w-full mt-2 py-2 text-xs text-gray-400 hover:text-gray-600">
+            Skip for now
+          </button>
+        </div>
+      </Shell>
+    );
+  }
+
+  // Delivery submitted success flash
+  if (showDeliveryForm && deliveryDone) {
+    return (
+      <Shell status="delivery">
+        <div className="max-w-lg mx-auto py-20 px-4 text-center">
+          <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
+            <Check size={28} className="text-green-600" />
+          </div>
+          <h2 className="text-xl font-black text-gray-900 mb-2">Address Saved!</h2>
+          <p className="text-sm text-gray-500">We'll ship your product to the address provided.</p>
+        </div>
+      </Shell>
+    );
+  }
 
   // Loading
   if (loading) {
