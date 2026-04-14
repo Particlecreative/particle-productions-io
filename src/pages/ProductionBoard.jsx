@@ -101,8 +101,22 @@ export default function ProductionBoard() {
   const [showTabModal, setShowTabModal] = useState(false);
   const [tabModalScope, setTabModalScope] = useState({ who: 'me', where: 'all' });
 
-  // Filter out Studio tab and tabs not in defaults (removed tabs)
-  const visibleTabs = tabConfig.filter(t => t.visible && t.id !== 'Studio' && defaultTabs.includes(t.id)).map(t => t.id);
+  // Recalculate tab config when production loads (production_type determines available tabs)
+  useEffect(() => {
+    if (!production) return;
+    const freshDefaults = SHOOT_TYPES.includes(production.production_type)
+      ? ['Budget Table', 'People on Set', 'Credit Card', 'Cast',
+         ...(production.production_type === 'Remote Shoot' ? ['Product Delivery'] : []),
+         'Accounting', 'Financial', 'Links', 'Scripts', 'Updates', 'History', 'Gantt', 'Call Sheet']
+      : ['Budget Table', 'Credit Card', 'Accounting', 'Financial', 'Links', 'Scripts', 'Updates', 'History', 'Gantt'];
+    const saved = getTabOrder(user?.id || 'anon', production.id, freshDefaults);
+    const savedIds = new Set(saved.map(t => t.id));
+    const missing = freshDefaults.filter(t => !savedIds.has(t));
+    setTabConfig(missing.length > 0 ? [...saved, ...missing.map(t => ({ id: t, visible: true }))] : saved);
+  }, [production?.id, production?.production_type]);
+
+  // Filter out Studio tab
+  const visibleTabs = tabConfig.filter(t => t.visible && t.id !== 'Studio').map(t => t.id);
 
   useEffect(() => {
     async function load() {
