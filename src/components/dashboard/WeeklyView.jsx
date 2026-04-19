@@ -885,10 +885,43 @@ function SortableProdRow({ entry, prod, isCollapsed, onToggle }) {
         {/* Stage */}
         <div className="shrink-0"><StageBadge stage={prod.stage} /></div>
 
-        {/* Name + ID */}
-        <div className="min-w-0 flex-1 flex items-center gap-2 flex-wrap">
-          <h3 className="text-base font-black text-gray-900 leading-tight truncate">{prod.project_name}</h3>
-          <span className="font-mono text-[10px] text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded shrink-0">{prod.id}</span>
+        {/* Name + meta */}
+        <div className="min-w-0 flex-1 space-y-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="text-base font-black text-gray-900 leading-tight truncate">{prod.project_name}</h3>
+            <span className="font-mono text-[10px] text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded shrink-0">{prod.id}</span>
+          </div>
+          {/* Production type + timeline */}
+          {(prod.production_type || prod.planned_start || prod.planned_end) && (
+            <div className="flex items-center gap-2 flex-wrap text-[10px]">
+              {prod.production_type && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-600 font-semibold">
+                  {prod.production_type === 'Remote Shoot' ? '📦' : prod.production_type === 'Shoot' ? '🎬' : prod.production_type === 'AI' ? '✨' : '🎯'} {prod.production_type}
+                </span>
+              )}
+              {(prod.planned_start || prod.planned_end) && (
+                <span className="inline-flex items-center gap-1 text-gray-500">
+                  <CalendarIcon size={9} />
+                  {(() => {
+                    const fmt = d => d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+                    const s = fmt(prod.planned_start);
+                    const e = fmt(prod.planned_end);
+                    if (s && e) return `${s} → ${e}`;
+                    return s || e;
+                  })()}
+                  {prod.planned_end && (() => {
+                    const now = new Date();
+                    const end = new Date(prod.planned_end);
+                    const days = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
+                    if (days < 0) return <span className="text-red-500 font-semibold">· {Math.abs(days)}d overdue</span>;
+                    if (days === 0) return <span className="text-amber-600 font-semibold">· today</span>;
+                    if (days <= 7) return <span className="text-amber-600 font-semibold">· {days}d left</span>;
+                    return <span className="text-gray-400">· {days}d</span>;
+                  })()}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Collapsed summary — shown only when collapsed */}

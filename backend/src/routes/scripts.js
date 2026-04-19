@@ -239,11 +239,34 @@ async function generateGeminiImage(prompt, referenceImages = []) {
     throw new Error(`Gemini Image API error: ${resp.statusText} — ${errText.slice(0, 200)}`);
   }
   const data = await resp.json();
-  const imagePart = data.candidates[0].content.parts.find(p => p.inlineData);
-  if (!imagePart) throw new Error('Gemini did not return an image');
+
+  // Defensive parsing — Gemini may return promptFeedback (blocked), empty candidates, or different shape
+  if (data.promptFeedback?.blockReason) {
+    throw new Error(`Gemini blocked the prompt: ${data.promptFeedback.blockReason}${data.promptFeedback.blockReasonMessage ? ' — ' + data.promptFeedback.blockReasonMessage : ''}`);
+  }
+  if (!Array.isArray(data.candidates) || data.candidates.length === 0) {
+    console.error('Gemini response (no candidates):', JSON.stringify(data).slice(0, 500));
+    throw new Error('Gemini did not return any candidates. ' + (data.error?.message || 'The prompt may have been rejected by safety filters.'));
+  }
+  const candidate = data.candidates[0];
+  if (candidate.finishReason && !['STOP', 'MAX_TOKENS'].includes(candidate.finishReason)) {
+    throw new Error(`Gemini stopped: ${candidate.finishReason}${candidate.safetyRatings ? ' (safety filter triggered)' : ''}`);
+  }
+  const respParts = candidate.content?.parts;
+  if (!Array.isArray(respParts) || respParts.length === 0) {
+    console.error('Gemini response (no parts):', JSON.stringify(data).slice(0, 500));
+    throw new Error('Gemini returned no content parts');
+  }
+  // Check both camelCase (inlineData) and snake_case (inline_data) since the API mixes them
+  const imagePart = respParts.find(p => p.inlineData || p.inline_data);
+  if (!imagePart) {
+    const textParts = respParts.filter(p => p.text).map(p => p.text).join(' ').slice(0, 200);
+    throw new Error('Gemini did not return an image' + (textParts ? ' — response: ' + textParts : ''));
+  }
+  const inline = imagePart.inlineData || imagePart.inline_data;
   return {
-    base64: imagePart.inlineData.data,
-    mimeType: imagePart.inlineData.mimeType || 'image/jpeg',
+    base64: inline.data,
+    mimeType: inline.mimeType || inline.mime_type || 'image/jpeg',
   };
 }
 
