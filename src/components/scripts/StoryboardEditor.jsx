@@ -627,9 +627,10 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
   const [aiChatSceneId, setAiChatSceneId] = useState(null);
 
   // ── Voice picker & settings ──
-  const [voiceId, setVoiceId] = useState(() => localStorage.getItem('cp_voice_id') || '21m00Tcm4TlvDq8ikWAM');
-  const [voiceSpeed, setVoiceSpeed] = useState(() => parseFloat(localStorage.getItem('cp_voice_speed') || '1.0'));
-  const [voiceStability, setVoiceStability] = useState(() => parseFloat(localStorage.getItem('cp_voice_stability') || '0.5'));
+  // Voice settings are PER SCRIPT — stored in script.voice_settings (DB) with localStorage fallback scoped by scriptId
+  const [voiceId, setVoiceId] = useState(() => localStorage.getItem(`cp_voice_id_${scriptId}`) || '21m00Tcm4TlvDq8ikWAM');
+  const [voiceSpeed, setVoiceSpeed] = useState(() => parseFloat(localStorage.getItem(`cp_voice_speed_${scriptId}`) || '1.0'));
+  const [voiceStability, setVoiceStability] = useState(() => parseFloat(localStorage.getItem(`cp_voice_stability_${scriptId}`) || '0.5'));
   const [showVoicePicker, setShowVoicePicker] = useState(false);
   const [voiceSearchState, setVoiceSearchState] = useState('');
   const [genderFilterState, setGenderFilterState] = useState('');
@@ -700,15 +701,15 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
       // Load voice settings from script if saved
       if (data.voice_settings?.voice_id) {
         setVoiceId(data.voice_settings.voice_id);
-        localStorage.setItem('cp_voice_id', data.voice_settings.voice_id);
+        localStorage.setItem(`cp_voice_id_${scriptId}`, data.voice_settings.voice_id);
       }
       if (data.voice_settings?.speed) {
         setVoiceSpeed(data.voice_settings.speed);
-        localStorage.setItem('cp_voice_speed', data.voice_settings.speed.toString());
+        localStorage.setItem(`cp_voice_speed_${scriptId}`, data.voice_settings.speed.toString());
       }
       if (data.voice_settings?.stability !== undefined) {
         setVoiceStability(data.voice_settings.stability);
-        localStorage.setItem('cp_voice_stability', data.voice_settings.stability.toString());
+        localStorage.setItem(`cp_voice_stability_${scriptId}`, data.voice_settings.stability.toString());
       }
     } catch { setScript(null); }
     setLoading(false);
@@ -2626,10 +2627,11 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
             <div className="px-4 pb-4 pt-2">
               <button
                 onClick={async () => {
-                  localStorage.setItem('cp_voice_id', voiceId);
-                  localStorage.setItem('cp_voice_speed', voiceSpeed.toString());
-                  localStorage.setItem('cp_voice_stability', voiceStability.toString());
-                  // Also save to script record
+                  // Save per-script (scoped localStorage key)
+                  localStorage.setItem(`cp_voice_id_${scriptId}`, voiceId);
+                  localStorage.setItem(`cp_voice_speed_${scriptId}`, voiceSpeed.toString());
+                  localStorage.setItem(`cp_voice_stability_${scriptId}`, voiceStability.toString());
+                  // Persist to script record in DB — source of truth
                   try {
                     await fetch(`${API}/api/scripts/${scriptId}`, {
                       method: 'PUT',
