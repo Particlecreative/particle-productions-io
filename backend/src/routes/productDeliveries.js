@@ -207,4 +207,68 @@ router.delete('/:id', requireEditor, async (req, res) => {
   }
 });
 
+// POST /api/product-deliveries/sync-contracts — pull contract data into delivery records
+router.post('/sync-contracts', requireEditor, async (req, res) => {
+  try {
+    const { production_id } = req.body;
+    if (!production_id) return res.status(400).json({ error: 'production_id required' });
+
+    // Get all contracts for this production
+    const { rows: contracts } = await db.query(
+      `SELECT provider_name, provider_email, provider_address, status
+       FROM contracts WHERE production_id LIKE $1`,
+      [`${production_id}%`]
+    );
+
+    let updated = 0;
+    for (const c of contracts) {
+      if (!c.provider_name) continue;
+      const name = c.provider_name.trim().toLowerCase();
+
+      // Parse address
+      let addressFields = {};
+      if (c.provider_address) {
+        const parts = c.provider_address.split(',').map(s => s.trim());
+        if (parts.length >= 3) {
+          addressFields.address_street = parts[0] || '';
+          addressFields.address_city = parts[1] || '';
+          if (parts.length >= 5) {
+            addressFields.address_state = parts[2] || '';
+            addressFields.address_country = parts[3] || '';
+            addressFields.address_zip = parts[parts.length - 1] || '';
+          } else {
+            addressFields.address_country = parts[2] || '';
+            addressFields.address_zip = parts[parts.length - 1] || '';
+          }
+        } else {
+          addressFields.address_street = c.provider_address;
+        }
+      }
+
+      // Update delivery records: fill in missing email + address
+      const sets = [];
+      const vals = [];
+      let idx = 1;
+      if (c.provider_email) { sets.push(`recipient_email = CASE WHEN recipient_email = '' OR recipient_email IS NULL THEN $${idx} ELSE recipient_email END`); vals.push(c.provider_email); idx++; }
+      for (const [k, v] of Object.entries(addressFields)) {
+        if (v) { sets.push(`${k} = CASE WHEN ${k} = '' OR ${k} IS NULL THEN $${idx} ELSE ${k} END`); vals.push(v); idx++; }
+      }
+      if (sets.length === 0) continue;
+
+      vals.push(production_id, name);
+      const { rowCount } = await db.query(
+        `UPDATE product_deliveries SET ${sets.join(', ')}, updated_at = NOW()
+         WHERE production_id = $${idx} AND LOWER(TRIM(recipient_name)) = $${idx + 1}`,
+        vals
+      );
+      if (rowCount > 0) updated++;
+    }
+
+    res.json({ synced: updated, total_contracts: contracts.length });
+  } catch (err) {
+    console.error('POST /product-deliveries/sync-contracts error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;

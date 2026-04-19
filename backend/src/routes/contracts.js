@@ -351,9 +351,6 @@ router.post('/sign/:id/:token', signLimiter, async (req, res) => {
     );
     const allSigned = allSigs.every(s => s.signed_at !== null);
 
-    // Slack notification — individual signer (simple, no PDF)
-    notifySlack(`✍️ Contract signed by ${signer_name || sig.signer_name}\nProduction: ${projectLabel}`, `${APP_BASE}/production/${prdShort}?contract=true`);
-
     if (allSigned) {
       // Mark contract as fully signed — PDF generation + email handled by frontend auto-upload
       events.push({ type: 'completed', at: now });
@@ -388,9 +385,9 @@ router.post('/sign/:id/:token', signLimiter, async (req, res) => {
       // (POST /api/contracts/:id/upload-signed-pdf endpoint)
       // Backend only sends Slack notification here — email sent after frontend uploads PDF
 
-      // Slack notification — contract completed (no PDF link yet, frontend will add it)
+      // Slack: single "Contract SIGNED" notification (PDF link added by upload-signed-pdf endpoint)
       notifySlack(
-        `✅ Contract SIGNED\nSupplier: ${sig.provider_name || signer_name} | Production: ${projectLabel}${feeDisplay ? ' | Amount: ' + feeDisplay : ''}`,
+        `✅ Contract SIGNED — all parties signed\nSupplier: ${sig.provider_name || signer_name} | Production: ${projectLabel}${feeDisplay ? ' | Amount: ' + feeDisplay : ''}`,
         `${APP_BASE}/production/${prdShort}?contract=true`
       );
 
@@ -741,6 +738,11 @@ router.post('/sign/:id/:token', signLimiter, async (req, res) => {
       }, 3 * 60 * 1000); // 3 minutes
     }
 
+    // Slack: individual signer notification (only when other party still needs to sign)
+    if (!allSigned) {
+      notifySlack(`✍️ Contract signed by ${signer_name || sig.signer_name}\nProduction: ${projectLabel}`, `${APP_BASE}/production/${prdShort}?contract=true`);
+    }
+
     // Check if delivery info is needed (Remote Shoot + provider signing)
     const needsDelivery = sig.signer_role === 'provider' && sig.production_type === 'Remote Shoot';
     res.json({
@@ -864,13 +866,17 @@ router.post('/:id/upload-signed-pdf', async (req, res) => {
       console.error('PDF upload failed:', uploadErr.message);
     }
 
-    // Send Slack notification — completed
+    // Send Slack notification — only if we have a Drive URL (PDF uploaded), otherwise the SIGNED notification already covered it
     const prdShort = contract.prd_short || contract.production_id;
     const projectLabel = contract.project_name || prdShort;
     const feeDisplay = contract.fee_amount ? `${Number(contract.fee_amount).toLocaleString()} ${contract.currency || 'USD'}` : '';
 
-    const slackMsg = `✅ Contract Completed\nSupplier: ${contract.provider_name} | Production: ${projectLabel}${feeDisplay ? ' | Amount: ' + feeDisplay : ''}${driveUrl ? '\n📄 Signed PDF: ' + driveUrl : ''}`;
-    notifySlack(slackMsg, driveUrl || `${APP_BASE}/production/${prdShort}?contract=true`);
+    if (driveUrl) {
+      notifySlack(
+        `📄 Signed PDF uploaded\nSupplier: ${contract.provider_name} | Production: ${projectLabel}\n${driveUrl}`,
+        driveUrl
+      );
+    }
 
     // Send completion email
     const events = Array.isArray(contract.events) ? contract.events : (typeof contract.events === 'string' ? JSON.parse(contract.events) : []);

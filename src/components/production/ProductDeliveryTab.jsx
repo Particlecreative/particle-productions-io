@@ -64,27 +64,72 @@ export default function ProductDeliveryTab({ productionId, production }) {
 
   useEffect(() => { load(); }, [load]);
 
-  // Auto-populate from casting on first load
+  // Auto-populate from budget line items + contracts on first load
   useEffect(() => {
     if (loading || deliveries.length > 0) return;
     (async () => {
       try {
-        const casting = await apiGet(`/casting?production_id=${productionId}`);
-        if (!Array.isArray(casting) || casting.length === 0) return;
-        // Also try to get contract emails
+        // Get people from budget table (line items with full_name)
+        const lineItems = await apiGet(`/line-items?production_id=${productionId}`).catch(() => []);
+        const people = (Array.isArray(lineItems) ? lineItems : [])
+          .filter(li => li.full_name?.trim() && li.full_name.trim() !== 'TBD')
+          .map(li => ({ name: li.full_name.trim(), item: li.item, id: li.id }));
+
+        // Also check casting table
+        const casting = await apiGet(`/casting?production_id=${productionId}`).catch(() => []);
+        const castPeople = (Array.isArray(casting) ? casting : [])
+          .filter(c => c.name?.trim())
+          .map(c => ({ name: c.name.trim(), item: c.role, id: c.id }));
+
+        // Merge: line items + casting, deduplicate by name
+        const seen = new Set();
+        const allPeople = [...people, ...castPeople].filter(p => {
+          const key = p.name.toLowerCase();
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+
+        if (allPeople.length === 0) return;
+
+        // Get contracts for email + address data
         const contracts = await apiGet(`/contracts?production_id=${productionId}`).catch(() => []);
         const contractMap = {};
         (Array.isArray(contracts) ? contracts : []).forEach(c => {
-          if (c.provider_name && c.provider_email) contractMap[c.provider_name.toLowerCase().trim()] = c.provider_email;
+          if (c.provider_name) {
+            contractMap[c.provider_name.toLowerCase().trim()] = {
+              email: c.provider_email || '',
+              address: c.provider_address || '',
+              status: c.status,
+            };
+          }
         });
-        for (const cast of casting) {
-          const email = contractMap[cast.name?.toLowerCase().trim()] || '';
+
+        // Create delivery records for each person
+        for (const person of allPeople) {
+          const contract = contractMap[person.name.toLowerCase()] || {};
+          // Parse address if it's a comma-separated string
+          let addressFields = {};
+          if (contract.address) {
+            const parts = contract.address.split(',').map(s => s.trim());
+            if (parts.length >= 3) {
+              addressFields = {
+                address_street: parts[0] || '',
+                address_city: parts[1] || '',
+                address_state: parts.length >= 5 ? parts[2] : '',
+                address_country: parts.length >= 5 ? parts[3] : parts[2] || '',
+                address_zip: parts[parts.length - 1] || '',
+              };
+            } else {
+              addressFields = { address_street: contract.address };
+            }
+          }
           await createProductDelivery({
             production_id: productionId,
-            casting_id: cast.id,
-            recipient_name: cast.name,
-            recipient_email: email,
+            recipient_name: person.name,
+            recipient_email: contract.email,
             product_name: production?.project_name || '',
+            ...addressFields,
           });
         }
         load();
@@ -100,6 +145,56 @@ export default function ProductDeliveryTab({ productionId, production }) {
     });
     load();
     setShowAdd(false);
+  }
+
+  const [syncing, setSyncing] = useState(false);
+  async function handleSync() {
+    setSyncing(true);
+    try {
+      const existingNames = new Set(deliveries.map(d => d.recipient_name?.toLowerCase().trim()));
+      // Get from budget + casting + contracts
+      const [lineItems, casting, contracts] = await Promise.all([
+        apiGet(`/line-items?production_id=${productionId}`).catch(() => []),
+        apiGet(`/casting?production_id=${productionId}`).catch(() => []),
+        apiGet(`/contracts?production_id=${productionId}`).catch(() => []),
+      ]);
+      const contractMap = {};
+      (Array.isArray(contracts) ? contracts : []).forEach(c => {
+        if (c.provider_name) contractMap[c.provider_name.toLowerCase().trim()] = { email: c.provider_email || '', address: c.provider_address || '' };
+      });
+      const seen = new Set(existingNames);
+      const newPeople = [];
+      [...(Array.isArray(lineItems) ? lineItems : []).filter(li => li.full_name?.trim() && li.full_name.trim() !== 'TBD').map(li => li.full_name.trim()),
+       ...(Array.isArray(casting) ? casting : []).filter(c => c.name?.trim()).map(c => c.name.trim())
+      ].forEach(name => {
+        const key = name.toLowerCase();
+        if (!seen.has(key)) { seen.add(key); newPeople.push(name); }
+      });
+      let added = 0;
+      for (const name of newPeople) {
+        const contract = contractMap[name.toLowerCase()] || {};
+        await createProductDelivery({
+          production_id: productionId, recipient_name: name,
+          recipient_email: contract.email, product_name: production?.project_name || '',
+        });
+        added++;
+      }
+      // Sync contract data (email + address) into existing delivery records via backend
+      const jwt = localStorage.getItem('cp_auth_token');
+      const syncRes = await fetch(`${API}/api/product-deliveries/sync-contracts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
+        body: JSON.stringify({ production_id: productionId }),
+      }).catch(() => null);
+      const syncData = syncRes ? await syncRes.json().catch(() => ({})) : {};
+      load();
+      const parts = [];
+      if (added > 0) parts.push(`${added} new recipient${added > 1 ? 's' : ''} added`);
+      if (syncData.synced > 0) parts.push(`${syncData.synced} updated from contracts`);
+      if (parts.length > 0) alert(parts.join(', '));
+      else alert('Everything is up to date');
+    } catch (e) { console.error('Sync failed:', e); }
+    setSyncing(false);
   }
 
   async function handleUpdate(id, field, value) {
@@ -194,9 +289,15 @@ export default function ProductDeliveryTab({ productionId, production }) {
           </div>
         )}
         {isEditor && (
-          <button onClick={handleAdd} className="flex items-center gap-1 text-xs px-3 py-2 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700">
-            <Plus size={12} /> Add Recipient
-          </button>
+          <>
+            <button onClick={handleSync} disabled={syncing}
+              className="flex items-center gap-1 text-xs px-3 py-2 border border-indigo-200 text-indigo-600 rounded-xl font-semibold hover:bg-indigo-50 disabled:opacity-50">
+              {syncing ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Sync from Budget
+            </button>
+            <button onClick={handleAdd} className="flex items-center gap-1 text-xs px-3 py-2 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700">
+              <Plus size={12} /> Add Recipient
+            </button>
+          </>
         )}
         <button onClick={load} className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100" title="Refresh">
           <RefreshCw size={13} />

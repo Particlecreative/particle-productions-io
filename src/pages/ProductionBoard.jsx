@@ -115,8 +115,10 @@ export default function ProductionBoard() {
     setTabConfig(missing.length > 0 ? [...saved, ...missing.map(t => ({ id: t, visible: true }))] : saved);
   }, [production?.id, production?.production_type]);
 
-  // Filter out Studio tab
-  const visibleTabs = tabConfig.filter(t => t.visible && t.id !== 'Studio').map(t => t.id);
+  // Filter out Studio tab; force-show tabs that should always appear for this production type
+  const forceVisible = new Set(isShootType ? ['People on Set', 'Cast', 'Call Sheet'] : []);
+  if (isRemoteShoot) forceVisible.add('Product Delivery');
+  const visibleTabs = tabConfig.filter(t => (t.visible || forceVisible.has(t.id)) && t.id !== 'Studio').map(t => t.id);
 
   useEffect(() => {
     async function load() {

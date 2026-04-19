@@ -2,8 +2,11 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   ChevronLeft, ChevronRight, Plus, Trash2, Check, X, Link2,
   ExternalLink, Presentation, Clock, Edit3, ChevronDown,
-  Calendar as CalendarIcon, FileText, Copy, Share2,
+  Calendar as CalendarIcon, FileText, Copy, Share2, GripVertical,
 } from 'lucide-react';
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import {
   getWeeklyReports, getWeeklyReport, saveWeeklyReport, deleteWeeklyReport,
   getComments, getLinks, generateId, getProductions,
@@ -841,14 +844,138 @@ function PresentCard({ entry, prod }) {
 // PresentationMode
 // ============================================================================
 
-function PresentationMode({ report, productions, brand, onClose }) {
+// ── Sortable production row for present mode ──────────────────────────────────
+function SortableProdRow({ entry, prod, isCollapsed, onToggle }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: entry.production_id });
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1, zIndex: isDragging ? 50 : 'auto' };
 
-  const STAGE_SORT = { 'Production': 0, 'Pre Production': 1, 'Post': 2, 'Pending': 3, 'Paused': 4, 'Completed': 5 };
-  const sorted = [...(report.entries || [])].sort((a, b) => {
-    const pa = productions.find(p => p.id === a.production_id);
-    const pb = productions.find(p => p.id === b.production_id);
-    return (STAGE_SORT[pa?.stage] ?? 9) - (STAGE_SORT[pb?.stage] ?? 9);
+  const bullets = entry.bullets || [];
+  const notes = entry.long_text || entry.note || '';
+  const links = entry.weekly_links || [];
+  const hasContent = notes || bullets.length > 0 || links.length > 0;
+
+  if (!prod) return null;
+
+  // Summary text when collapsed: notes first line, or first bullet, or count
+  const summary = (() => {
+    if (notes) return notes.split('\n')[0];
+    if (bullets.length > 0) return bullets[0].text;
+    return 'No updates';
+  })();
+
+  return (
+    <div ref={setNodeRef} style={style}
+      className={clsx('group bg-white rounded-2xl border border-gray-100 shadow-sm transition-all duration-200 overflow-hidden',
+        isDragging && 'shadow-xl ring-2 ring-indigo-200')}>
+      {/* Header — always visible, clickable to toggle */}
+      <button
+        onClick={onToggle}
+        className="w-full text-left flex items-center gap-3 px-6 py-4 hover:bg-gray-50/60 transition-colors"
+      >
+        {/* Drag handle */}
+        <span {...attributes} {...listeners}
+          onClick={e => e.stopPropagation()}
+          className="cursor-grab opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-gray-500 touch-none shrink-0">
+          <GripVertical size={16} />
+        </span>
+
+        {/* Chevron */}
+        <ChevronDown size={14} className={clsx('text-gray-400 transition-transform shrink-0', isCollapsed && '-rotate-90')} />
+
+        {/* Stage */}
+        <div className="shrink-0"><StageBadge stage={prod.stage} /></div>
+
+        {/* Name + ID */}
+        <div className="min-w-0 flex-1 flex items-center gap-2 flex-wrap">
+          <h3 className="text-base font-black text-gray-900 leading-tight truncate">{prod.project_name}</h3>
+          <span className="font-mono text-[10px] text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded shrink-0">{prod.id}</span>
+        </div>
+
+        {/* Collapsed summary — shown only when collapsed */}
+        {isCollapsed && hasContent && (
+          <span className="text-xs text-gray-400 truncate max-w-sm italic hidden sm:inline">{summary}</span>
+        )}
+
+        {/* Count badges when collapsed */}
+        {isCollapsed && (bullets.length > 0 || links.length > 0) && (
+          <div className="flex items-center gap-1.5 shrink-0">
+            {bullets.length > 0 && (
+              <span className="text-[10px] text-gray-500 bg-gray-100 rounded-full px-2 py-0.5 font-semibold">{bullets.length} point{bullets.length !== 1 ? 's' : ''}</span>
+            )}
+            {links.length > 0 && (
+              <span className="text-[10px] text-blue-600 bg-blue-50 rounded-full px-2 py-0.5 font-semibold flex items-center gap-0.5"><Link2 size={9} />{links.length}</span>
+            )}
+          </div>
+        )}
+      </button>
+
+      {/* Expanded content */}
+      {!isCollapsed && (
+        <div className="px-6 pb-5 pl-[72px] space-y-3 border-t border-gray-100 pt-4">
+          {/* Notes */}
+          {notes && (
+            <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{notes}</p>
+          )}
+
+          {/* Bullets */}
+          {bullets.length > 0 && (
+            <div className="space-y-1.5">
+              {bullets.map(b => (
+                <div key={b.id} className="flex items-start gap-2.5">
+                  <div className="w-2 h-2 rounded-full mt-[6px] flex-shrink-0" style={{ background: 'var(--brand-accent)', opacity: 0.6 }} />
+                  <div className="flex-1 min-w-0">
+                    <span className="text-sm text-gray-800 leading-relaxed">{b.text}</span>
+                    {b.link && (
+                      <a href={b.link} target="_blank" rel="noopener noreferrer"
+                        className="ml-2 inline-flex items-center gap-0.5 text-[10px] hover:underline" style={{ color: 'var(--brand-accent)' }}>
+                        <ExternalLink size={9} /> link
+                      </a>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Links */}
+          {links.length > 0 && (
+            <div className="flex flex-wrap gap-2 pt-1">
+              {links.map(wl => (
+                <a key={wl.id} href={wl.url} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-gray-50 border border-gray-200 text-gray-600 hover:border-blue-300 hover:text-blue-600 transition-all font-medium">
+                  <ExternalLink size={10} />
+                  {wl.title || (() => { try { return new URL(wl.url).hostname; } catch { return 'Link'; } })()}
+                </a>
+              ))}
+            </div>
+          )}
+
+          {/* Empty state */}
+          {!notes && bullets.length === 0 && links.length === 0 && (
+            <p className="text-sm text-gray-300 italic">No updates this week</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PresentationMode({ report, productions, brand, onClose, onReorder }) {
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  const entries = report.entries || [];
+
+  // Collapse state — default all collapsed for cleaner initial view
+  const [collapsed, setCollapsed] = useState(() => {
+    const s = {};
+    entries.forEach(e => { s[e.production_id] = true; });
+    return s;
   });
+  const allCollapsed = entries.every(e => collapsed[e.production_id]);
+  const allExpanded = entries.every(e => !collapsed[e.production_id]);
+  function toggleOne(id) { setCollapsed(p => ({ ...p, [id]: !p[id] })); }
+  function expandAll() { const s = {}; entries.forEach(e => { s[e.production_id] = false; }); setCollapsed(s); }
+  function collapseAll() { const s = {}; entries.forEach(e => { s[e.production_id] = true; }); setCollapsed(s); }
 
   const weekDate = (() => {
     try {
@@ -875,13 +1002,13 @@ function PresentationMode({ report, productions, brand, onClose }) {
             <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-gray-400">
               {brand?.name || 'Productions'}
             </div>
-            <h1 className="text-lg font-black text-gray-900 leading-tight">{report.title}</h1>
+            <h1 className="text-xl font-black text-gray-900 leading-tight">{report.title}</h1>
           </div>
         </div>
         <div className="flex items-center gap-4">
           <div className="text-right hidden sm:block">
             <div className="text-xs font-semibold text-gray-500">{weekDate}</div>
-            <div className="text-[10px] text-gray-400">{sorted.length} production{sorted.length !== 1 ? 's' : ''}</div>
+            <div className="text-[10px] text-gray-400">{entries.length} production{entries.length !== 1 ? 's' : ''}</div>
           </div>
           <button
             onClick={onClose}
@@ -893,7 +1020,7 @@ function PresentationMode({ report, productions, brand, onClose }) {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-8 py-8 space-y-8">
+      <div className="max-w-5xl mx-auto px-8 py-8 space-y-6">
 
         {/* Overview section: General Updates + Creative Link side by side */}
         {hasOverview && (
@@ -968,24 +1095,56 @@ function PresentationMode({ report, productions, brand, onClose }) {
         )}
 
         {/* Divider */}
-        {hasOverview && sorted.length > 0 && (
-          <div className="flex items-center gap-4">
+        {entries.length > 0 && (
+          <div className="flex items-center gap-3">
+            {hasOverview && <div className="flex-1 h-px bg-gray-200" />}
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold uppercase tracking-widest text-gray-300">Productions</span>
+              <span className="text-[10px] text-gray-300">·</span>
+              <span className="text-[10px] text-gray-400 font-medium">{entries.length}</span>
+            </div>
             <div className="flex-1 h-px bg-gray-200" />
-            <span className="text-xs font-bold uppercase tracking-widest text-gray-300">Productions</span>
-            <div className="flex-1 h-px bg-gray-200" />
+            <button
+              onClick={allCollapsed ? expandAll : collapseAll}
+              className="text-[11px] font-semibold text-gray-500 hover:text-gray-800 px-2.5 py-1 rounded-lg border border-gray-200 hover:border-gray-300 bg-white transition-all flex items-center gap-1.5"
+            >
+              <ChevronDown size={11} className={clsx('transition-transform', allCollapsed && '-rotate-90')} />
+              {allCollapsed ? 'Expand all' : allExpanded ? 'Collapse all' : 'Expand all'}
+            </button>
           </div>
         )}
 
-        {/* Production cards */}
-        {sorted.length === 0 && !hasOverview ? (
+        {/* Production cards — drag-drop reorderable */}
+        {entries.length === 0 && !hasOverview ? (
           <div className="text-center py-20 text-gray-400">No content in this report</div>
-        ) : sorted.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-5">
-            {sorted.map(entry => {
-              const prod = productions.find(p => p.id === entry.production_id);
-              return <PresentCard key={entry.production_id} entry={entry} prod={prod} />;
-            })}
-          </div>
+        ) : entries.length > 0 && (
+          <DndContext sensors={sensors} collisionDetection={closestCenter}
+            onDragEnd={(event) => {
+              const { active, over } = event;
+              if (!over || active.id === over.id) return;
+              const oldIdx = entries.findIndex(e => e.production_id === active.id);
+              const newIdx = entries.findIndex(e => e.production_id === over.id);
+              if (oldIdx !== -1 && newIdx !== -1 && onReorder) {
+                onReorder(arrayMove(entries, oldIdx, newIdx));
+              }
+            }}>
+            <SortableContext items={entries.map(e => e.production_id)} strategy={verticalListSortingStrategy}>
+              <div className="space-y-3">
+                {entries.map(entry => {
+                  const prod = productions.find(p => p.id === entry.production_id);
+                  return (
+                    <SortableProdRow
+                      key={entry.production_id}
+                      entry={entry}
+                      prod={prod}
+                      isCollapsed={collapsed[entry.production_id] !== false}
+                      onToggle={() => toggleOne(entry.production_id)}
+                    />
+                  );
+                })}
+              </div>
+            </SortableContext>
+          </DndContext>
         )}
       </div>
     </div>
@@ -1444,6 +1603,7 @@ function WeeklyReportsTab({ productions, brandId, selectedYear }) {
         productions={productions}
         brand={brand}
         onClose={() => setMode('edit')}
+        onReorder={(entries) => patchReport({ entries })}
       />
     );
   }

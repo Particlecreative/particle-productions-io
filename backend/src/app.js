@@ -149,6 +149,79 @@ cron.schedule('0 8 * * *', async () => {
   }
 }, { timezone: 'Asia/Jerusalem' });
 
+// ── Contract PDF orphan check (every 10 minutes) ───
+// Catches signed contracts where the frontend didn't upload the PDF (user closed tab too early)
+const db = require('./db');
+cron.schedule('*/10 * * * *', async () => {
+  try {
+    const { rows } = await db.query(
+      `SELECT c.id, c.production_id, c.provider_name, c.provider_email,
+              c.fee_amount, c.currency, c.exhibit_a, c.exhibit_b, c.events,
+              p.project_name
+       FROM contracts c
+       LEFT JOIN productions p ON p.id = split_part(c.production_id, '_li_', 1)
+       WHERE c.status = 'signed' AND c.drive_url IS NULL AND c.signed_at < NOW() - INTERVAL '5 minutes'`
+    );
+    if (rows.length === 0) return;
+    console.log(`[CRON] Found ${rows.length} signed contract(s) missing PDF — generating fallback PDFs...`);
+    for (const c of rows) {
+      try {
+        // Get signatures
+        const { rows: sigs } = await db.query(
+          `SELECT signer_role, signer_name, signer_id_number, signature_data, signed_at
+           FROM contract_signatures WHERE contract_id = $1 ORDER BY signed_at ASC`, [c.id]
+        );
+        if (!sigs.length || !sigs.every(s => s.signed_at)) continue;
+
+        // Generate minimal fallback PDF with pdf-lib
+        const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
+        const pdfDoc = await PDFDocument.create();
+        const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+        const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+        const page = pdfDoc.addPage([612, 792]);
+        let y = 740;
+        const write = (text, size = 10, bold = false) => {
+          if (y < 60) { const np = pdfDoc.addPage([612, 792]); y = 740; }
+          page.drawText(text.substring(0, 90), { x: 50, y, size, font: bold ? boldFont : font, color: rgb(0.1, 0.1, 0.1) });
+          y -= size + 6;
+        };
+        write('SIGNED CONTRACT', 16, true);
+        write(`Production: ${c.project_name || c.production_id}`, 11);
+        write(`Provider: ${c.provider_name}`, 11);
+        write(`Amount: ${c.fee_amount ? Number(c.fee_amount).toLocaleString() + ' ' + (c.currency || 'USD') : 'N/A'}`, 11);
+        y -= 10;
+        for (const sig of sigs) {
+          write(`${sig.signer_role === 'hocp' ? 'Company' : 'Provider'}: ${sig.signer_name} — Signed ${new Date(sig.signed_at).toLocaleDateString()}`, 10);
+        }
+        const pdfBytes = await pdfDoc.save();
+        const pdfBase64 = Buffer.from(pdfBytes).toString('base64');
+
+        // Upload to Drive
+        if (driveRouter.uploadDual) {
+          const prdShort = c.production_id ? c.production_id.split('_li_')[0] : c.production_id;
+          const year = new Date().getFullYear();
+          const result = await driveRouter.uploadDual({
+            fileName: `Contract - ${c.provider_name || 'Signed'} (fallback).pdf`,
+            fileContent: pdfBase64,
+            mimeType: 'application/pdf',
+            subfolder: `${year}/${prdShort} ${c.project_name || ''}`.trim(),
+            category: 'contracts',
+          });
+          const url = result.drive?.viewLink;
+          if (url) {
+            await db.query('UPDATE contracts SET drive_url = $1 WHERE id = $2', [url, c.id]);
+            console.log(`[CRON] Fallback PDF uploaded for ${c.provider_name}: ${url}`);
+          }
+        }
+      } catch (err) {
+        console.error(`[CRON] Fallback PDF failed for ${c.provider_name}:`, err.message);
+      }
+    }
+  } catch (err) {
+    console.error('[CRON] Contract PDF orphan check failed:', err.message);
+  }
+});
+
 // ── Global error handler ─────────────────────────────
 app.use((err, _req, res, _next) => {
   console.error('Unhandled error:', err);
