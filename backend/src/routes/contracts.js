@@ -956,7 +956,7 @@ router.get('/:production_id', async (req, res) => {
 // PUT /api/contracts/:production_id  (upsert)
 router.put('/:production_id', async (req, res) => {
   const {
-    provider_name, provider_email, status, sent_at, signed_at, pdf_url, events,
+    provider_name, provider_email, provider_phone, status, sent_at, signed_at, pdf_url, events,
     drive_url, dropbox_url,
     exhibit_a, exhibit_b, fee_amount, payment_terms,
     provider_id_number, provider_address, contract_pdf_base64,
@@ -965,16 +965,17 @@ router.put('/:production_id', async (req, res) => {
   try {
     const { rows } = await db.query(
       `INSERT INTO contracts (
-         production_id, provider_name, provider_email, status, sent_at, signed_at, pdf_url, events,
+         production_id, provider_name, provider_email, provider_phone, status, sent_at, signed_at, pdf_url, events,
          drive_url, dropbox_url,
          exhibit_a, exhibit_b, fee_amount, payment_terms,
          provider_id_number, provider_address, contract_pdf_base64,
          currency, contract_type, effective_date
        )
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
        ON CONFLICT (production_id) DO UPDATE SET
          provider_name      = COALESCE(EXCLUDED.provider_name,      contracts.provider_name),
          provider_email     = COALESCE(EXCLUDED.provider_email,     contracts.provider_email),
+         provider_phone     = COALESCE(EXCLUDED.provider_phone,     contracts.provider_phone),
          status             = COALESCE(EXCLUDED.status,             contracts.status),
          sent_at            = COALESCE(EXCLUDED.sent_at,            contracts.sent_at),
          signed_at          = COALESCE(EXCLUDED.signed_at,          contracts.signed_at),
@@ -997,6 +998,7 @@ router.put('/:production_id', async (req, res) => {
         req.params.production_id,
         provider_name || null,
         provider_email || null,
+        provider_phone || null,
         status || 'none',
         sent_at || null,
         signed_at || null,

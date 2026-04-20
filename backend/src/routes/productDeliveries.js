@@ -215,7 +215,7 @@ router.post('/sync-contracts', requireEditor, async (req, res) => {
 
     // Get all contracts for this production
     const { rows: contracts } = await db.query(
-      `SELECT provider_name, provider_email, provider_address, status
+      `SELECT provider_name, provider_email, provider_phone, provider_address, status
        FROM contracts WHERE production_id LIKE $1`,
       [`${production_id}%`]
     );
@@ -245,11 +245,12 @@ router.post('/sync-contracts', requireEditor, async (req, res) => {
         }
       }
 
-      // Update delivery records: fill in missing email + address
+      // Update delivery records: fill in missing email, phone + address
       const sets = [];
       const vals = [];
       let idx = 1;
       if (c.provider_email) { sets.push(`recipient_email = CASE WHEN recipient_email = '' OR recipient_email IS NULL THEN $${idx} ELSE recipient_email END`); vals.push(c.provider_email); idx++; }
+      if (c.provider_phone) { sets.push(`recipient_phone = CASE WHEN recipient_phone = '' OR recipient_phone IS NULL THEN $${idx} ELSE recipient_phone END`); vals.push(c.provider_phone); idx++; }
       for (const [k, v] of Object.entries(addressFields)) {
         if (v) { sets.push(`${k} = CASE WHEN ${k} = '' OR ${k} IS NULL THEN $${idx} ELSE ${k} END`); vals.push(v); idx++; }
       }
