@@ -16,6 +16,7 @@ import { getAllGanttEvents, createGanttEvent, DEFAULT_PHASES } from '../../lib/g
 import { useAuth } from '../../context/AuthContext';
 import { useBrand } from '../../context/BrandContext';
 import StageBadge from '../ui/StageBadge';
+import ProductionPicker from '../ui/ProductionPicker';
 import FileUploadButton, { getDriveThumbnail } from '../shared/FileUploadButton';
 import clsx from 'clsx';
 
@@ -1261,44 +1262,19 @@ function HistorySidebar({ history, weekStart, onSelect, onDelete, isEditor }) {
 // ============================================================================
 
 function AddProductionModal({ productions, existingIds, onAdd, onClose }) {
-  const [search, setSearch] = useState('');
-  const available = productions.filter(p =>
-    !existingIds.includes(p.id) &&
-    (p.project_name.toLowerCase().includes(search.toLowerCase()) || p.id.toLowerCase().includes(search.toLowerCase()))
-  );
-
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-panel" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
+      <div className="modal-panel" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-black" style={{ color: 'var(--brand-primary)' }}>Add Production</h2>
           <button onClick={onClose}><X size={18} className="text-gray-400" /></button>
         </div>
-        <input
-          autoFocus
-          type="text"
-          placeholder="Search productions\u2026"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="brand-input w-full mb-3"
+        <ProductionPicker
+          productions={productions}
+          exclude={existingIds}
+          mode="inline"
+          onSelect={p => { onAdd(p); onClose(); }}
         />
-        <div className="max-h-72 overflow-y-auto space-y-1">
-          {available.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-6">All productions already added or no matches</p>
-          ) : available.map(p => (
-            <button
-              key={p.id}
-              onClick={() => { onAdd(p); onClose(); }}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 transition-all text-left border border-transparent hover:border-gray-200"
-            >
-              <StageBadge stage={p.stage} />
-              <div>
-                <div className="text-sm font-semibold text-gray-800">{p.project_name}</div>
-                <div className="font-mono text-[10px] text-gray-400">{p.id}</div>
-              </div>
-            </button>
-          ))}
-        </div>
       </div>
     </div>
   );

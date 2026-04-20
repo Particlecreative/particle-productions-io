@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { X, FileText, Sparkles, Upload, Loader2, ArrowLeft, Link, Package } from 'lucide-react';
 import clsx from 'clsx';
+import ProductionPicker from '../ui/ProductionPicker';
 
 const API = import.meta.env.VITE_API_URL || '';
 function jwt() { return localStorage.getItem('cp_auth_token'); }
@@ -280,16 +281,13 @@ export default function NewScriptModal({ defaultProductionId, defaultBrandId, on
                   Production
                   <span className="normal-case font-normal text-gray-300">(optional)</span>
                 </label>
-                <select
+                <ProductionPicker
+                  productions={productions}
                   value={productionId}
-                  onChange={e => setProductionId(e.target.value)}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-700 bg-white outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400"
-                >
-                  <option value="">No production</option>
-                  {productions.map(p => (
-                    <option key={p.id} value={p.id}>{p.project_name || p.name || p.title}</option>
-                  ))}
-                </select>
+                  onChange={setProductionId}
+                  placeholder="No production (optional)"
+                  mode="dropdown"
+                />
               </div>
 
               <button

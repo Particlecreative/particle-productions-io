@@ -6,6 +6,7 @@ import { useBrand } from '../context/BrandContext';
 import { getAllCasting, getProductions, createCastMember, updateCastMember, deleteCastMember, createGanttEvent, generateId } from '../lib/dataService';
 import { apiPost, apiGet } from '../lib/apiClient';
 import clsx from 'clsx';
+import ProductionPicker from '../components/ui/ProductionPicker';
 
 const ROLES   = ['Model', 'Actor', 'Actress', 'Extra'];
 const PERIODS = ['Perpetually', '1 Year', '6 Months', '3 Months'];
@@ -706,15 +707,15 @@ function CastingModal({ initial, productions, onSave, onClose }) {
           {!isEdit && (
             <div>
               <label className="text-xs font-semibold text-gray-600 block mb-1">Production *</label>
-              <select
-                required
-                className="brand-input w-full"
+              <ProductionPicker
+                productions={productions}
                 value={form.production_id}
-                onChange={e => set('production_id', e.target.value)}
-              >
-                <option value="">— Select production —</option>
-                {productions.map(p => <option key={p.id} value={p.id}>{p.project_name}</option>)}
-              </select>
+                onChange={id => set('production_id', id)}
+                placeholder="— Select production —"
+                mode="dropdown"
+              />
+              {/* Hidden required input so native form validation still fires */}
+              <input type="text" required value={form.production_id} onChange={() => {}} className="sr-only" tabIndex={-1} />
             </div>
           )}
 
