@@ -42,8 +42,13 @@ const COL_MAP_OPTIONS = [
   { key: 'amount', label: 'Amount (Price)' },
   { key: 'invoice_url', label: 'Invoice / Receipt Link' },
   { key: 'payment_status', label: 'Payment Status' },
-  { key: 'payment_method', label: 'Payment Method / Bank' },
+  { key: 'payment_date', label: 'Payment Date' },
+  { key: 'bank_details', label: 'Bank Details' },
+  { key: 'payment_method', label: 'Payment Method' },
 ];
+
+const PAYMENT_METHODS = ['Bank Transfer', 'PayPal', 'Cash', 'Check', 'Credit Card', 'Wire Transfer', 'Bit', 'Other'];
+const SUPPLIER_TYPES  = ['New Supplier', 'Worked with before'];
 
 // Exact matches
 const AUTO_MAP_EXACT = {
@@ -58,9 +63,12 @@ const AUTO_MAP_EXACT = {
   'invoice / receipt': 'invoice_url', 'invoice/receipt link': 'invoice_url',
   'status': 'payment_status',       'payment status': 'payment_status',
   'paid': 'payment_status',
-  'payment method': 'payment_method', 'bank': 'payment_method',
-  'routing': 'payment_method',        'method': 'payment_method',
-  'payment': 'payment_method',
+  'payment date': 'payment_date',   'date paid': 'payment_date',
+  'payment_date': 'payment_date',   'date': 'payment_date',
+  'bank details': 'bank_details',   'bank detail': 'bank_details',
+  'bank': 'bank_details',           'bank info': 'bank_details',
+  'payment method': 'payment_method', 'routing': 'payment_method',
+  'method': 'payment_method',
 };
 
 // Fuzzy auto-detect by keyword presence in column header
@@ -72,11 +80,30 @@ function autoDetectField(header) {
   // Fuzzy keyword rules (order matters — more specific first)
   if (/price|amount|cost|fee|total|budget/.test(h)) return 'amount';
   if (/invoice|receipt|recipt/.test(h)) return 'invoice_url';
-  if (/payment.*method|method.*pay|bank|transfer|wire/.test(h)) return 'payment_method';
+  if (/payment.*date|date.*pay/.test(h)) return 'payment_date';
+  if (/bank.*detail|detail.*bank/.test(h)) return 'bank_details';
+  if (/payment.*method|method.*pay/.test(h)) return 'payment_method';
   if (/payment.*stat|status|paid/.test(h)) return 'payment_status';
   if (/job|role|service|position|description|title/.test(h)) return 'item';
   if (/name|supplier|contact|vendor|talent|model|actor/.test(h)) return 'supplier';
   return '';
+}
+
+// Parse payment date from DD/M/YY or DD/MM/YYYY or similar
+function parsePayDate(val) {
+  if (!val) return null;
+  const str = String(val).trim();
+  const m = str.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
+  if (m) {
+    const day = m[1].padStart(2, '0');
+    const mon = m[2].padStart(2, '0');
+    let yr = parseInt(m[3]);
+    if (yr < 100) yr += 2000;
+    return `${yr}-${mon}-${day}T12:00:00.000Z`;
+  }
+  const d = new Date(str);
+  if (!isNaN(d.getTime())) return d.toISOString();
+  return null;
 }
 
 export default function ImportAccountingModal({ productionId, onClose, onImported }) {
@@ -94,6 +121,8 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
   const [parsedRows, setParsedRows] = useState([]);
   const [selected, setSelected] = useState({});
   const [importing, setImporting] = useState(false);
+  const [importPaymentMethod, setImportPaymentMethod] = useState('Bank Transfer');
+  const [importSupplierType, setImportSupplierType] = useState('New Supplier');
   const fileRef = useRef();
 
   // Escape to close
@@ -228,6 +257,10 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
           const cellText  = String(val || '').trim();
           const isUrl     = /^https?:\/\//.test(cellText);
           obj.invoice_url = hyperlink || (isUrl ? cellText : '');
+        } else if (field === 'payment_date') {
+          obj.payment_date = String(val || '').trim();
+        } else if (field === 'bank_details') {
+          obj.bank_details = String(val || '').trim();
         } else {
           obj[field] = String(val || '').trim();
         }
@@ -282,6 +315,11 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
 
     for (const row of toImport) {
       const isPaid = row.payment_status === 'Paid';
+      const parsedDate = isPaid ? parsePayDate(row.payment_date) : null;
+      const payNote = isPaid
+        ? `Paid by Ortal${row.payment_date ? ' on ' + row.payment_date : ''}`
+        : null;
+
       await Promise.resolve(createLineItem({
         id: generateId('li'),
         production_id: productionId,
@@ -292,7 +330,11 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
         planned_budget: row.amount || 0,
         actual_spent: row.amount || 0,
         payment_status: row.payment_status || 'Not Paid',
-        payment_method: row.payment_method || '',
+        payment_method: row.payment_method || importPaymentMethod,
+        payment_note: payNote,
+        date_paid: parsedDate,
+        bank_details: row.bank_details || '',
+        supplier_type: importSupplierType,
         invoice_url: row.invoice_url || '',
         invoice_status: row.invoice_url ? 'Received' : '',
         currency_code: row.currency || fallbackCurrency,
@@ -551,11 +593,43 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
         {/* Step 3: Preview */}
         {step === 3 && (
           <div>
-            <p className="text-xs text-gray-500 mb-2">
+            <p className="text-xs text-gray-500 mb-3">
               {parsedRows.length} line items found.
               <span className="text-green-600 font-semibold ml-1">{paidCount} paid</span>
               {notPaidCount > 0 && <span className="text-gray-400 ml-1">· {notPaidCount} not paid</span>}
             </p>
+
+            {/* Import Defaults */}
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
+              <p className="text-xs font-semibold text-blue-700 mb-3 uppercase tracking-wide">Import Settings</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs text-gray-500 font-medium mb-1.5">Payment Method</label>
+                  <select
+                    value={importPaymentMethod}
+                    onChange={e => setImportPaymentMethod(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-300"
+                  >
+                    {PAYMENT_METHODS.map(m => <option key={m}>{m}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 font-medium mb-1.5">Supplier Type</label>
+                  <select
+                    value={importSupplierType}
+                    onChange={e => setImportSupplierType(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-300"
+                  >
+                    {SUPPLIER_TYPES.map(t => <option key={t}>{t}</option>)}
+                  </select>
+                </div>
+              </div>
+              {paidCount > 0 && (
+                <p className="text-[11px] text-blue-500 mt-2">
+                  ✓ {paidCount} paid row{paidCount !== 1 ? 's' : ''} will be marked as <strong>paid by Ortal</strong> with payment date & bank details from the sheet.
+                </p>
+              )}
+            </div>
             <div className="overflow-auto max-h-64 rounded-xl border border-gray-200">
               <table className="w-full text-xs">
                 <thead>
@@ -570,7 +644,8 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
                     <th className="px-2 py-2 text-center">Currency</th>
                     <th className="px-2 py-2 text-center">Invoice</th>
                     <th className="px-2 py-2 text-center">Status</th>
-                    <th className="px-2 py-2 text-left">Payment</th>
+                    <th className="px-2 py-2 text-left">Pay Date</th>
+                    <th className="px-2 py-2 text-left">Bank Details</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -604,8 +679,11 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
                             {r.payment_status || 'Not Paid'}
                           </span>
                         </td>
-                        <td className="px-2 py-2 text-gray-400 max-w-[80px] truncate text-[10px]">
-                          {r.payment_method || '—'}
+                        <td className="px-2 py-2 text-gray-500 text-[10px] whitespace-nowrap">
+                          {r.payment_date || '—'}
+                        </td>
+                        <td className="px-2 py-2 text-gray-400 max-w-[120px] truncate text-[10px]">
+                          {r.bank_details || '—'}
                         </td>
                       </tr>
                     );
@@ -614,12 +692,6 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
               </table>
             </div>
 
-            {paidCount > 0 && (
-              <div className="mt-3 flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-xs text-green-700">
-                <Check size={12} />
-                {paidCount} items marked as Paid will import with invoice data and accounting status.
-              </div>
-            )}
 
             <div className="flex gap-3 mt-5">
               <button onClick={() => setStep(2)} className="btn-secondary flex-1">Back</button>

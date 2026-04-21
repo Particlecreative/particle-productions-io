@@ -88,8 +88,8 @@ export default function ProductionBoard() {
   const isRemoteShoot = production?.production_type === 'Remote Shoot';
   const deliveryTab = isRemoteShoot ? ['Product Delivery'] : [];
   const defaultTabs = isShootType
-    ? ['Budget Table', ...(!isRemoteShoot ? ['People on Set'] : []), 'Credit Card', 'Cast', ...deliveryTab, 'Accounting', 'Financial', 'Links', 'Scripts', 'Updates', 'History', 'Gantt', 'Call Sheet']
-    : ['Budget Table', 'Credit Card', 'Accounting', 'Financial', 'Links', 'Scripts', 'Updates', 'History', 'Gantt'];
+    ? ['Budget Table', ...(!isRemoteShoot ? ['People on Set'] : []), 'Credit Card', 'Cast', ...deliveryTab, 'Payments', 'Financial', 'Links', 'Scripts', 'Updates', 'History', 'Gantt', 'Call Sheet']
+    : ['Budget Table', 'Credit Card', 'Payments', 'Financial', 'Links', 'Scripts', 'Updates', 'History', 'Gantt'];
 
   const [tabConfig, setTabConfig] = useState(() => {
     const saved = getTabOrder(user?.id || 'anon', production?.id, defaultTabs);
@@ -109,8 +109,8 @@ export default function ProductionBoard() {
          ...(production.production_type !== 'Remote Shoot' ? ['People on Set'] : []),
          'Credit Card', 'Cast',
          ...(production.production_type === 'Remote Shoot' ? ['Product Delivery'] : []),
-         'Accounting', 'Financial', 'Links', 'Scripts', 'Updates', 'History', 'Gantt', 'Call Sheet']
-      : ['Budget Table', 'Credit Card', 'Accounting', 'Financial', 'Links', 'Scripts', 'Updates', 'History', 'Gantt'];
+         'Payments', 'Financial', 'Links', 'Scripts', 'Updates', 'History', 'Gantt', 'Call Sheet']
+      : ['Budget Table', 'Credit Card', 'Payments', 'Financial', 'Links', 'Scripts', 'Updates', 'History', 'Gantt'];
     const saved = getTabOrder(user?.id || 'anon', production.id, freshDefaults);
     const savedIds = new Set(saved.map(t => t.id));
     const missing = freshDefaults.filter(t => !savedIds.has(t));
@@ -423,7 +423,7 @@ export default function ProductionBoard() {
       {activeTab === 'People on Set' && (
         <PeopleOnSet production={production} />
       )}
-      {activeTab === 'Accounting' && (
+      {activeTab === 'Payments' && (
         <LedgerTab productionId={id} production={production} />
       )}
       {activeTab === 'Financial' && (

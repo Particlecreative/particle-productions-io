@@ -12,6 +12,20 @@ import clsx from 'clsx';
 
 const PAYMENT_STATUS = ['Paid', 'Not Paid', 'Pending'];
 const SUPPLIER_TYPE = ['New Supplier', 'Worked with before'];
+
+function parsePaidBy(note) {
+  if (!note) return null;
+  const m = note.match(/Paid by (.+?) on /);
+  return m ? m[1] : null;
+}
+function fmtPayDate(iso) {
+  if (!iso) return null;
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+      + ' · ' + d.toTimeString().slice(0, 5);
+  } catch { return null; }
+}
 const DEFAULT_PAYERS = ['Arina', 'Ortal', 'Omer', 'Dorin', 'Tomer'];
 
 function getPayers() {
@@ -157,6 +171,7 @@ export default function LedgerTab({ productionId, production }) {
                 <th>Price (USD)</th>
                 <th>Invoice</th>
                 <th>Status</th>
+                <th>Paid By / When</th>
                 <th>Payment Method</th>
                 <th style={{ minWidth: 180 }}>Bank Details</th>
                 <th>Business Type</th>
@@ -166,13 +181,13 @@ export default function LedgerTab({ productionId, production }) {
               </tr>
             </thead>
             <tbody>
-              {items.length === 0 ? (
+              {items.filter(i => (parseFloat(i.actual_spent) || 0) !== 0).length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="text-center py-10 text-gray-400 text-sm">
+                  <td colSpan={12} className="text-center py-10 text-gray-400 text-sm">
                     Add line items in Budget Table to populate the Ledger.
                   </td>
                 </tr>
-              ) : [...items].sort((a, b) => (a.payment_status === 'Paid' ? 1 : 0) - (b.payment_status === 'Paid' ? 1 : 0)).map(item => {
+              ) : [...items].filter(i => (parseFloat(i.actual_spent) || 0) !== 0).sort((a, b) => (a.payment_status === 'Paid' ? 1 : 0) - (b.payment_status === 'Paid' ? 1 : 0)).map(item => {
                 const inv = invoice(item.id);
                 const mismatch = inv && Math.abs((parseFloat(inv.amount) || 0) - (parseFloat(item.actual_spent) || 0)) > 0.01;
                 return (
@@ -195,7 +210,7 @@ export default function LedgerTab({ productionId, production }) {
               <tr style={{ background: 'var(--brand-bg)', borderTop: '2px solid var(--brand-border)' }}>
                 <td colSpan={2} className="font-bold py-3 px-3">Total</td>
                 <td className="font-bold px-3">{fmt(totalUSD)}</td>
-                <td colSpan={8} />
+                <td colSpan={9} />
               </tr>
             </tfoot>
           </table>
@@ -404,27 +419,31 @@ function LedgerRow({ item, invoice, mismatch, fmt, isEditor, onUpdate, onPayment
                 ⚠ Invoice must be received with a link first
               </div>
             )}
-            {item.payment_note && !paymentBlocked && (
-              <div className="text-[10px] text-gray-400 mt-0.5 max-w-[140px] truncate" title={item.payment_note}>
-                {item.payment_note}
-              </div>
+          </div>
+        ) : (
+          <span className={clsx('badge',
+            item.payment_status === 'Paid' ? 'status-done' :
+            item.payment_status === 'Pending' ? 'status-not-started' :
+            'status-working'
+          )}>
+            {item.payment_status || 'Not Paid'}
+          </span>
+        )}
+      </td>
+
+      {/* Paid By / When */}
+      <td>
+        {item.payment_status === 'Paid' ? (
+          <div className="flex flex-col gap-0.5">
+            {parsePaidBy(item.payment_note) && (
+              <span className="text-xs font-semibold text-gray-800">{parsePaidBy(item.payment_note)}</span>
+            )}
+            {(item.date_paid || item.paid_at) && (
+              <span className="text-[10px] text-gray-400">{fmtPayDate(item.date_paid || item.paid_at)}</span>
             )}
           </div>
         ) : (
-          <div>
-            <span className={clsx('badge',
-              item.payment_status === 'Paid' ? 'status-done' :
-              item.payment_status === 'Pending' ? 'status-not-started' :
-              'status-working'
-            )}>
-              {item.payment_status || 'Not Paid'}
-            </span>
-            {item.payment_note && (
-              <div className="text-[10px] text-gray-400 mt-0.5" title={item.payment_note}>
-                {item.payment_note}
-              </div>
-            )}
-          </div>
+          <span className="text-gray-300 text-xs">—</span>
         )}
       </td>
 

@@ -247,8 +247,10 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const sortedItems = useMemo(() => {
-    if (!sortState.col) return items;
-    return [...items].sort((a, b) => {
+    // Hide rows where actual_spent is 0 (or missing)
+    const visible = items.filter(i => (parseFloat(i.actual_spent) || 0) !== 0);
+    if (!sortState.col) return visible;
+    return [...visible].sort((a, b) => {
       const col = sortState.col;
       const av = col === 'difference' ? (a.planned_budget - a.actual_spent) : (a[col] ?? '');
       const bv = col === 'difference' ? (b.planned_budget - b.actual_spent) : (b[col] ?? '');
@@ -341,6 +343,7 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
    * Handle invoice button clicks:
    *  step = 'request' → mark Pending + open modal on send tab
    *  step = 'receive' → open modal on receive tab directly
+   *  step = 'waive'   → mark invoice_status = 'Waived' (no invoice needed)
    */
   async function handleInvoiceAction(itemId, step) {
     if (step === 'request') {
@@ -348,6 +351,9 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
       await Promise.resolve(updateLineItem(itemId, { invoice_status: 'Pending' }));
       await refresh();
       setInvoiceFor({ id: itemId, step: 'send' });
+    } else if (step === 'waive') {
+      await Promise.resolve(updateLineItem(itemId, { invoice_status: 'Waived' }));
+      await refresh();
     } else {
       setInvoiceFor({ id: itemId, step: 'receive' });
     }
@@ -1080,17 +1086,39 @@ function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEd
       );
     }
 
+    if (invStatus === 'Waived') {
+      return isEditor ? (
+        <button
+          onClick={e => { e.stopPropagation(); onInvoice(item.id, 'request'); }}
+          title="No invoice needed — click to change"
+          className="flex items-center gap-1 text-xs px-2 py-0.5 rounded border border-gray-200 text-gray-400 hover:bg-gray-50"
+        >
+          N/A
+        </button>
+      ) : (
+        <span className="text-xs text-gray-400">N/A</span>
+      );
+    }
+
     if (invStatus === 'Pending') {
       return (
         <div className="flex flex-col gap-1">
           <span className="text-xs font-semibold text-orange-500">⏳ Requested</span>
           {isEditor && (
-            <button
-              onClick={e => { e.stopPropagation(); onInvoice(item.id, 'receive'); }}
-              className="flex items-center gap-1 text-xs px-2 py-0.5 rounded border border-green-300 text-green-700 hover:bg-green-50 whitespace-nowrap"
-            >
-              Mark Received
-            </button>
+            <>
+              <button
+                onClick={e => { e.stopPropagation(); onInvoice(item.id, 'receive'); }}
+                className="flex items-center gap-1 text-xs px-2 py-0.5 rounded border border-green-300 text-green-700 hover:bg-green-50 whitespace-nowrap"
+              >
+                Mark Received
+              </button>
+              <button
+                onClick={e => { e.stopPropagation(); onInvoice(item.id, 'waive'); }}
+                className="text-[10px] text-gray-400 hover:text-gray-600 hover:underline whitespace-nowrap"
+              >
+                No invoice needed
+              </button>
+            </>
           )}
         </div>
       );
@@ -1098,12 +1126,20 @@ function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEd
 
     // No invoice yet
     return isEditor ? (
-      <button
-        onClick={e => { e.stopPropagation(); onInvoice(item.id, 'request'); }}
-        className="flex items-center gap-1 text-xs px-2 py-1 rounded border transition-all hover:bg-blue-50 text-blue-600 border-blue-200"
-      >
-        <Mail size={11} /> Request
-      </button>
+      <div className="flex flex-col gap-1">
+        <button
+          onClick={e => { e.stopPropagation(); onInvoice(item.id, 'request'); }}
+          className="flex items-center gap-1 text-xs px-2 py-1 rounded border transition-all hover:bg-blue-50 text-blue-600 border-blue-200"
+        >
+          <Mail size={11} /> Request
+        </button>
+        <button
+          onClick={e => { e.stopPropagation(); onInvoice(item.id, 'waive'); }}
+          className="text-[10px] text-gray-400 hover:text-gray-600 hover:underline whitespace-nowrap"
+        >
+          No invoice needed
+        </button>
+      </div>
     ) : (
       <span className="text-gray-300 text-xs">—</span>
     );

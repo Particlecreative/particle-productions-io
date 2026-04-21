@@ -15,6 +15,20 @@ import clsx from 'clsx';
 
 const PAYMENT_STATUS = ['Paid', 'Not Paid', 'Pending'];
 const INVOICE_STATUS = ['Pending', 'Received'];
+
+function parsePaidBy(note) {
+  if (!note) return null;
+  const m = note.match(/Paid by (.+?) on /);
+  return m ? m[1] : null;
+}
+function fmtPayDate(iso) {
+  if (!iso) return null;
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+      + ' · ' + d.toTimeString().slice(0, 5);
+  } catch { return null; }
+}
 const DEFAULT_PAYERS = ['Arina', 'Ortal', 'Omer', 'Dorin', 'Tomer'];
 
 function getPayers() {
@@ -184,7 +198,7 @@ export default function Accounting() {
 
   // Filtered items
   const filteredItems = useMemo(() => {
-    let list = allItems;
+    let list = allItems.filter(i => (parseFloat(i.actual_spent) || 0) !== 0);
     if (payStatusFilter) list = list.filter(i => (i.payment_status || 'Not Paid') === payStatusFilter);
     if (filter) {
       const q = filter.toLowerCase();
@@ -370,6 +384,7 @@ export default function Accounting() {
                   <th>Inv. Status</th>
                   <th>Payment Due</th>
                   <th>Payment Status</th>
+                  <th>Paid By / When</th>
                   <th>Method</th>
                   <th style={{ minWidth: 160 }}>Notes</th>
                   <th>Business Type</th>
@@ -493,29 +508,47 @@ export default function Accounting() {
 // ─── Collapsible production group ───────────────────────────────────────────
 
 function AccountingProductionGroup({ prodId, data, fmt, isEditor, onUpdate, onPaymentStatusChange, paymentBlockedId, receipts = [], onReceiptUpdate }) {
-  const [expanded, setExpanded] = useState(true);
   const total = data.items.reduce((s, i) => s + (parseFloat(i.actual_spent) || parseFloat(i.planned_budget) || 0), 0);
   const paidTotal = data.items.filter(i => i.payment_status === 'Paid').reduce((s, i) => s + (parseFloat(i.actual_spent) || parseFloat(i.planned_budget) || 0), 0);
   const notPaidTotal = total - paidTotal;
+  const allPaid = data.items.length > 0 && data.items.every(i => i.payment_status === 'Paid');
+
+  // Auto-collapse when fully paid; allow manual toggle
+  const [expanded, setExpanded] = useState(!allPaid);
 
   return (
-    <div className="brand-card">
+    <div className={clsx('brand-card transition-all', allPaid && 'border border-green-200 bg-green-50/40')}>
       <button className="w-full flex items-center justify-between" onClick={() => setExpanded(e => !e)}>
         <div className="flex items-center gap-3">
-          {expanded ? <ChevronDown size={14} className="text-gray-400" /> : <ChevronRight size={14} className="text-gray-400" />}
+          {expanded
+            ? <ChevronDown size={14} className={allPaid ? 'text-green-400' : 'text-gray-400'} />
+            : <ChevronRight size={14} className={allPaid ? 'text-green-400' : 'text-gray-400'} />}
           <span className="font-mono text-xs font-bold" style={{ color: 'var(--brand-secondary)' }}>{prodId}</span>
-          <span className="font-semibold text-gray-800">{data.production?.project_name || ''}</span>
+          <span className={clsx('font-semibold', allPaid ? 'text-green-800' : 'text-gray-800')}>
+            {data.production?.project_name || ''}
+          </span>
           <span className="text-xs text-gray-400">{data.items.length} items</span>
+          {allPaid && (
+            <span className="flex items-center gap-1 text-[11px] font-semibold text-green-700 bg-green-100 border border-green-200 rounded-full px-2.5 py-0.5">
+              ✓ Payments Completed
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-4">
-          <span className="text-xs text-green-600 font-semibold">✓ {fmt(paidTotal)}</span>
-          <span className="text-xs text-orange-600 font-semibold">⊘ {fmt(notPaidTotal)}</span>
-          <span className="font-bold text-sm" style={{ color: 'var(--brand-primary)' }}>{fmt(total)}</span>
+          {allPaid ? (
+            <span className="text-sm font-bold text-green-700">{fmt(total)}</span>
+          ) : (
+            <>
+              <span className="text-xs text-green-600 font-semibold">✓ {fmt(paidTotal)}</span>
+              <span className="text-xs text-orange-600 font-semibold">⊘ {fmt(notPaidTotal)}</span>
+              <span className="font-bold text-sm" style={{ color: 'var(--brand-primary)' }}>{fmt(total)}</span>
+            </>
+          )}
         </div>
       </button>
 
       {expanded && (
-        <div className="mt-3 pt-3 border-t border-gray-100 table-scroll-wrapper">
+        <div className="mt-3 pt-3 border-t border-green-100 table-scroll-wrapper">
           <table className="data-table" style={{ minWidth: 1300 }}>
             <thead>
               <tr>
@@ -527,6 +560,7 @@ function AccountingProductionGroup({ prodId, data, fmt, isEditor, onUpdate, onPa
                 <th>Inv. Status</th>
                 <th>Payment Due</th>
                 <th>Payment Status</th>
+                <th>Paid By / When</th>
                 <th>Method</th>
                 <th style={{ minWidth: 160 }}>Notes</th>
                 <th>Business Type</th>
@@ -735,11 +769,6 @@ function AccountingRow({ item, fmt, isEditor, showProduction, productionName, on
             >
               {PAYMENT_STATUS.map(s => <option key={s}>{s}</option>)}
             </select>
-            {item.payment_note && (
-              <div className="text-[10px] text-gray-400 mt-0.5 max-w-[140px] truncate" title={item.payment_note}>
-                {item.payment_note}
-              </div>
-            )}
             {paymentBlocked && (
               <div className="text-[10px] text-red-600 bg-red-50 border border-red-200 rounded px-1.5 py-1 mt-1 max-w-[160px]">
                 ⚠ Invoice must be received with a link first
@@ -754,6 +783,22 @@ function AccountingRow({ item, fmt, isEditor, showProduction, productionName, on
           )}>
             {item.payment_status || 'Not Paid'}
           </span>
+        )}
+      </td>
+
+      {/* Paid By / When */}
+      <td>
+        {item.payment_status === 'Paid' ? (
+          <div className="flex flex-col gap-0.5">
+            {parsePaidBy(item.payment_note) && (
+              <span className="text-xs font-semibold text-gray-800">{parsePaidBy(item.payment_note)}</span>
+            )}
+            {(item.date_paid || item.paid_at) && (
+              <span className="text-[10px] text-gray-400">{fmtPayDate(item.date_paid || item.paid_at)}</span>
+            )}
+          </div>
+        ) : (
+          <span className="text-gray-300 text-xs">—</span>
         )}
       </td>
 
