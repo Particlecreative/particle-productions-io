@@ -98,10 +98,22 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
   // Shared: process a 2D array of rows into state and advance to step 2
   function processJson(json) {
     if (json.length < 2) return;
+
+    // Score each candidate row: rows whose cells match known field names rank higher
+    // than title/metadata rows. Picks the best header row from the first 6 rows.
     let headerIdx = 0;
-    for (let i = 0; i < Math.min(json.length, 5); i++) {
-      if (json[i].filter(c => c !== '' && c != null).length >= 3) { headerIdx = i; break; }
+    let bestScore = -1;
+    for (let i = 0; i < Math.min(json.length, 6); i++) {
+      const row = json[i];
+      const nonEmpty = row.filter(c => c !== '' && c != null && String(c).trim() !== '');
+      if (nonEmpty.length < 2) continue;
+      // Points: +3 per cell that matches a known field, +1 per short-text cell (≤25 chars)
+      const recognized = nonEmpty.filter(c => autoDetectField(String(c).trim()) !== '').length;
+      const shortText  = nonEmpty.filter(c => String(c).trim().length <= 25).length;
+      const score = recognized * 3 + shortText;
+      if (score > bestScore) { bestScore = score; headerIdx = i; }
     }
+
     const hdrs = json[headerIdx].map(h => String(h).trim());
     const dataRows = json.slice(headerIdx + 1).filter(r => r.some(c => c !== '' && c != null));
     const autoMapping = {};
