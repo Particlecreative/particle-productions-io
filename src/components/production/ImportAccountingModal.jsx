@@ -97,8 +97,9 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
     const hdrs = json[headerIdx].map(h => String(h).trim());
     const dataRows = json.slice(headerIdx + 1).filter(r => r.some(c => c !== '' && c != null));
 
+    // Key by column INDEX (not header name) so duplicate/blank headers don't collide
     const autoMapping = {};
-    hdrs.forEach(h => { autoMapping[h] = AUTO_MAP_PRD[h.toLowerCase().trim()] || ''; });
+    hdrs.forEach((h, hi) => { autoMapping[hi] = AUTO_MAP_PRD[h.toLowerCase().trim()] || ''; });
 
     setHeaders(hdrs);
     setRows(dataRows);
@@ -111,7 +112,7 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
     return rows.map((row, idx) => {
       const obj = { _idx: idx, _include: true };
       headers.forEach((h, hi) => {
-        const field = mapping[h];
+        const field = mapping[hi];
         if (!field) return;
         const val = row[hi];
         if (field === 'amount') {
@@ -267,13 +268,13 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
                 </thead>
                 <tbody>
                   {headers.map((h, hi) => (
-                    <tr key={h} className="border-b border-gray-100 hover:bg-gray-50">
+                    <tr key={hi} className="border-b border-gray-100 hover:bg-gray-50">
                       <td className="px-3 py-2 font-medium">{h}</td>
                       <td className="px-3 py-2 text-gray-400 truncate max-w-[140px]">
                         {String(rows[0]?.[hi] ?? '').slice(0, 30)}
                       </td>
                       <td className="px-3 py-2">
-                        <select value={mapping[h] || ''} onChange={e => setMapping(m => ({ ...m, [h]: e.target.value }))}
+                        <select value={mapping[hi] || ''} onChange={e => setMapping(m => ({ ...m, [hi]: e.target.value }))}
                           className="brand-input py-1 text-xs">
                           {COL_MAP_OPTIONS.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
                         </select>
