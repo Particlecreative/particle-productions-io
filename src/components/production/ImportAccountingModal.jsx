@@ -140,10 +140,30 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
     const dataRows = json.slice(headerIdx + 1).filter(r => r.some(c => c !== '' && c != null));
     const autoMapping = {};
     hdrs.forEach((h, hi) => { autoMapping[hi] = autoDetectField(h); });
+
+    // Re-key fmts/links from sheet-row indices to data-row indices
+    // Sheet data rows start at (headerIdx + 1); dataRows filters blank rows so we
+    // track the original sheet index via json.slice iteration.
+    const dataFmts = {}, dataLinks = {};
+    if (fmts || links) {
+      let dataIdx = 0;
+      for (let sheetIdx = headerIdx + 1; sheetIdx < json.length; sheetIdx++) {
+        const row = json[sheetIdx];
+        if (!row.some(c => c !== '' && c != null)) continue; // skipped blank rows
+        for (let col = 0; col < row.length; col++) {
+          const sk = `${sheetIdx}:${col}`;
+          const dk = `${dataIdx}:${col}`;
+          if (fmts?.[sk])  dataFmts[dk]  = fmts[sk];
+          if (links?.[sk]) dataLinks[dk] = links[sk];
+        }
+        dataIdx++;
+      }
+    }
+
     setHeaders(hdrs);
     setRows(dataRows);
-    setCellFormats(fmts || {});
-    setCellLinks(links || {});
+    setCellFormats(dataFmts);
+    setCellLinks(dataLinks);
     setMapping(autoMapping);
     setStep(2);
   }
