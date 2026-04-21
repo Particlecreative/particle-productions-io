@@ -77,6 +77,7 @@ export default function ContractSign() {
     phone: '', phoneCode: '+1',
     street: '', apt: '', city: '', state: '', zip: '', country: 'US',
   });
+  const deliveryFormPrepopulated = useRef(false);
   const [deliverySubmitting, setDeliverySubmitting] = useState(false);
   const [deliveryDone, setDeliveryDone] = useState(false);
 
@@ -416,6 +417,32 @@ export default function ContractSign() {
     const setDF = (k, v) => setDeliveryForm(p => ({ ...p, [k]: v }));
     const defaultCountry = typeof navigator !== 'undefined' ? (navigator.language?.split('-')[1]?.toUpperCase() || 'US') : 'US';
     if (!df.country) setDF('country', defaultCountry);
+
+    // Pre-populate address from contract data (once)
+    if (!deliveryFormPrepopulated.current && contractData?.provider_address) {
+      deliveryFormPrepopulated.current = true;
+      const raw = contractData.provider_address;
+      // Try to parse "Street, City, State ZIP, Country" format
+      const parts = raw.split(',').map(s => s.trim());
+      if (parts.length >= 2) {
+        setDF('street', parts[0] || '');
+        setDF('city', parts[1] || '');
+        if (parts.length >= 4) {
+          // "Street, City, State ZIP, Country"
+          const stateZip = parts[2] || '';
+          const spaceIdx = stateZip.lastIndexOf(' ');
+          if (spaceIdx > 0) {
+            setDF('state', stateZip.substring(0, spaceIdx).trim());
+            setDF('zip', stateZip.substring(spaceIdx + 1).trim());
+          } else {
+            setDF('state', stateZip);
+          }
+          setDF('country', parts[3] || defaultCountry);
+        } else if (parts.length === 3) {
+          setDF('country', parts[2] || defaultCountry);
+        }
+      }
+    }
     return (
       <Shell status="delivery">
         <div className="max-w-lg mx-auto py-10 px-4">
@@ -499,10 +526,9 @@ export default function ContractSign() {
             {deliverySubmitting ? <><Loader2 size={14} className="animate-spin" /> Submitting...</> : <><Package size={14} /> Submit Delivery Address</>}
           </button>
 
-          <button onClick={() => { setShowDeliveryForm(false); setSubmitted(true); }}
-            className="w-full mt-2 py-2 text-xs text-gray-400 hover:text-gray-600">
-            Skip for now
-          </button>
+          <p className="text-center text-xs text-gray-400 mt-3">
+            📦 Required to receive your product — all fields marked * must be filled
+          </p>
         </div>
       </Shell>
     );
