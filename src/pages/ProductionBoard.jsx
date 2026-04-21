@@ -88,7 +88,7 @@ export default function ProductionBoard() {
   const isRemoteShoot = production?.production_type === 'Remote Shoot';
   const deliveryTab = isRemoteShoot ? ['Product Delivery'] : [];
   const defaultTabs = isShootType
-    ? ['Budget Table', 'People on Set', 'Credit Card', 'Cast', ...deliveryTab, 'Accounting', 'Financial', 'Links', 'Scripts', 'Updates', 'History', 'Gantt', 'Call Sheet']
+    ? ['Budget Table', ...(!isRemoteShoot ? ['People on Set'] : []), 'Credit Card', 'Cast', ...deliveryTab, 'Accounting', 'Financial', 'Links', 'Scripts', 'Updates', 'History', 'Gantt', 'Call Sheet']
     : ['Budget Table', 'Credit Card', 'Accounting', 'Financial', 'Links', 'Scripts', 'Updates', 'History', 'Gantt'];
 
   const [tabConfig, setTabConfig] = useState(() => {
@@ -105,7 +105,9 @@ export default function ProductionBoard() {
   useEffect(() => {
     if (!production) return;
     const freshDefaults = SHOOT_TYPES.includes(production.production_type)
-      ? ['Budget Table', 'People on Set', 'Credit Card', 'Cast',
+      ? ['Budget Table',
+         ...(production.production_type !== 'Remote Shoot' ? ['People on Set'] : []),
+         'Credit Card', 'Cast',
          ...(production.production_type === 'Remote Shoot' ? ['Product Delivery'] : []),
          'Accounting', 'Financial', 'Links', 'Scripts', 'Updates', 'History', 'Gantt', 'Call Sheet']
       : ['Budget Table', 'Credit Card', 'Accounting', 'Financial', 'Links', 'Scripts', 'Updates', 'History', 'Gantt'];
@@ -116,7 +118,7 @@ export default function ProductionBoard() {
   }, [production?.id, production?.production_type]);
 
   // Filter out Studio tab; force-show tabs that should always appear for this production type
-  const forceVisible = new Set(isShootType ? ['People on Set', 'Cast', 'Call Sheet'] : []);
+  const forceVisible = new Set(isShootType ? [...(!isRemoteShoot ? ['People on Set'] : []), 'Cast', 'Call Sheet'] : []);
   if (isRemoteShoot) forceVisible.add('Product Delivery');
   const visibleTabs = tabConfig.filter(t => (t.visible || forceVisible.has(t.id)) && t.id !== 'Studio').map(t => t.id);
 
