@@ -1258,6 +1258,15 @@ function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEd
       {/* Contract */}
       {vis('contract') && <td>
         {contract ? (
+          contract.status === 'waived' ? (
+            <button
+              onClick={onContract}
+              title="No contract needed — click to change"
+              className="flex items-center gap-1 text-xs px-2 py-1 rounded border border-gray-200 text-gray-400 hover:bg-gray-50 transition-all w-fit"
+            >
+              N/A
+            </button>
+          ) : (
           <div className="flex flex-col gap-0.5">
             <button
               onClick={onContract}
@@ -1278,6 +1287,7 @@ function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEd
               <CloudLinks {...detectCloudUrl(contract.drive_url || contract.pdf_url, contract.drive_url, contract.dropbox_url)} />
             )}
           </div>
+          )
         ) : (
           <button
             onClick={onContract}

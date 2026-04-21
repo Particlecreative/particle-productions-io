@@ -31,6 +31,7 @@ function statusBadge(status) {
   if (status === 'signed') return <span className="badge text-xs bg-green-50 text-green-700 border border-green-200">✓ Signed</span>;
   if (status === 'sent')   return <span className="badge text-xs bg-orange-50 text-orange-700 border border-orange-200">⏳ Sent</span>;
   if (status === 'awaiting_hocp') return <span className="badge text-xs bg-amber-50 text-amber-700 border border-amber-200">🖊️ HOCP</span>;
+  if (status === 'waived') return <span className="badge text-xs bg-gray-50 text-gray-400 border border-gray-200">N/A</span>;
   return <span className="badge text-xs bg-gray-100 text-gray-500 border border-gray-200">Pending</span>;
 }
 

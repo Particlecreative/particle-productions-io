@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   X, Download, FileSignature, CheckCircle, Clock, Send,
   MessageCircle, Mail, Copy, Link2, Plus, AlertCircle, Upload, File,
-  FolderOpen, ChevronLeft, ChevronRight, Eye, Edit3, PenTool, Printer,
+  FolderOpen, ChevronLeft, ChevronRight, Eye, Edit3, PenTool, Printer, Ban,
 } from 'lucide-react';
 import {
   upsertContract, getContract, generateContractSignatures,
@@ -1075,6 +1075,21 @@ export default function ContractModal({ production, lineItem, onClose }) {
     setUploadSaving(false);
   }
 
+  // ── Waive contract handler ──
+  async function handleWaive() {
+    try {
+      await upsertContract({
+        production_id: contractKey,
+        provider_name: lineItem?.full_name || '',
+        status: 'waived',
+        contract_type: lineItem?.type && !CREW_TYPES.includes(lineItem.type) ? 'cast' : 'crew',
+      });
+      onClose();
+    } catch (e) {
+      console.error('Waive contract error:', e);
+    }
+  }
+
   // ── Validation for step navigation ──
   const canProceedStep1 = providerName.trim() && providerEmail.trim();
   const canProceedStep2 = exhibitA.trim() && feeAmount;
@@ -1114,33 +1129,47 @@ export default function ContractModal({ production, lineItem, onClose }) {
         {/* ── Mode choice screen (no existing contract) ── */}
         {contractMode === null && contractChecked && (
           <div className="py-4">
-            <p className="text-sm text-gray-500 text-center mb-6">How do you want to add this contract?</p>
-            <div className="grid grid-cols-2 gap-4">
+            <p className="text-sm text-gray-500 text-center mb-6">How do you want to handle this contract?</p>
+            <div className="grid grid-cols-3 gap-3">
               {/* Funnel option */}
               <button
                 onClick={() => setContractMode('funnel')}
-                className="flex flex-col items-center gap-3 p-6 rounded-2xl border-2 border-gray-200 hover:border-purple-400 hover:bg-purple-50 transition-all group"
+                className="flex flex-col items-center gap-3 p-5 rounded-2xl border-2 border-gray-200 hover:border-purple-400 hover:bg-purple-50 transition-all group"
               >
-                <div className="w-14 h-14 rounded-2xl bg-purple-100 group-hover:bg-purple-200 flex items-center justify-center transition-colors">
-                  <FileSignature size={26} className="text-purple-600" />
+                <div className="w-12 h-12 rounded-2xl bg-purple-100 group-hover:bg-purple-200 flex items-center justify-center transition-colors">
+                  <FileSignature size={22} className="text-purple-600" />
                 </div>
                 <div className="text-center">
                   <div className="font-bold text-sm text-gray-800">Create Contract</div>
-                  <div className="text-xs text-gray-400 mt-0.5">Fill details, generate PDF &amp; send for e-signature</div>
+                  <div className="text-xs text-gray-400 mt-0.5">Generate PDF &amp; send for e-signature</div>
                 </div>
               </button>
 
               {/* Upload PDF option */}
               <button
                 onClick={() => setContractMode('upload')}
-                className="flex flex-col items-center gap-3 p-6 rounded-2xl border-2 border-gray-200 hover:border-blue-400 hover:bg-blue-50 transition-all group"
+                className="flex flex-col items-center gap-3 p-5 rounded-2xl border-2 border-gray-200 hover:border-blue-400 hover:bg-blue-50 transition-all group"
               >
-                <div className="w-14 h-14 rounded-2xl bg-blue-100 group-hover:bg-blue-200 flex items-center justify-center transition-colors">
-                  <Upload size={26} className="text-blue-600" />
+                <div className="w-12 h-12 rounded-2xl bg-blue-100 group-hover:bg-blue-200 flex items-center justify-center transition-colors">
+                  <Upload size={22} className="text-blue-600" />
                 </div>
                 <div className="text-center">
                   <div className="font-bold text-sm text-gray-800">Upload Signed PDF</div>
-                  <div className="text-xs text-gray-400 mt-0.5">Already signed? Upload the PDF directly</div>
+                  <div className="text-xs text-gray-400 mt-0.5">Already signed? Upload directly</div>
+                </div>
+              </button>
+
+              {/* No contract needed */}
+              <button
+                onClick={handleWaive}
+                className="flex flex-col items-center gap-3 p-5 rounded-2xl border-2 border-gray-200 hover:border-gray-400 hover:bg-gray-50 transition-all group"
+              >
+                <div className="w-12 h-12 rounded-2xl bg-gray-100 group-hover:bg-gray-200 flex items-center justify-center transition-colors">
+                  <Ban size={22} className="text-gray-400" />
+                </div>
+                <div className="text-center">
+                  <div className="font-bold text-sm text-gray-800">No Contract Needed</div>
+                  <div className="text-xs text-gray-400 mt-0.5">Mark as waived — won't be tracked</div>
                 </div>
               </button>
             </div>
