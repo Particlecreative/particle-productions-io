@@ -243,9 +243,9 @@ export default function Accounting() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
         <h1 className="text-2xl font-black brand-title" style={{ color: 'var(--brand-primary)' }}>
-          Accounting
+          Payments
         </h1>
-        <ExportMenu rows={filteredItems} columns={ACCOUNTING_EXPORT_COLS} filename="accounting" title="Accounting" />
+        <ExportMenu rows={filteredItems} columns={ACCOUNTING_EXPORT_COLS} filename="accounting" title="Payments" />
       </div>
 
       {/* Summary Stats */}

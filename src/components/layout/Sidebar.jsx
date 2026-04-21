@@ -285,7 +285,7 @@ export default function Sidebar({ open, onToggle }) {
         </button>
         <button onClick={() => navigate('/accounting')} className="sidebar-link flex-col">
           <BookOpen size={18} />
-          <span>Accounting</span>
+          <span>Payments</span>
         </button>
         <button onClick={() => navigate('/history')} className="sidebar-link flex-col">
           <History size={18} />
