@@ -118,7 +118,7 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
     const data = await file.arrayBuffer();
     const wb = XLSX.read(data);
     const ws = wb.Sheets[wb.SheetNames[0]];
-    const json = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+    const json = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
     processJson(json);
   }
 
@@ -142,7 +142,7 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
       const XLSX = await import('xlsx');
       const wb = XLSX.read(csv, { type: 'string' });
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const json = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      const json = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
       processJson(json);
     } catch (e) {
       setGsheetError('Failed to load sheet. Check the URL and try again.');
