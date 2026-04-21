@@ -7,11 +7,17 @@ import clsx from 'clsx';
 const API = import.meta.env.VITE_API_URL || '';
 function jwt() { return localStorage.getItem('cp_auth_token'); }
 
-// Auto-detect currency from cell value prefix
-function detectCurrency(val) {
+// Auto-detect currency from cell value (handles prefix, suffix, or embedded symbols)
+function detectCurrency(val, fmt) {
   const str = String(val || '').trim();
-  if (str.startsWith('₪') || str.startsWith('NIS') || str.includes('₪')) return 'ILS';
-  if (str.startsWith('$') || str.startsWith('USD')) return 'USD';
+  // Check displayed value for currency symbols
+  if (str.includes('₪') || str.includes('NIS')) return 'ILS';
+  if (str.includes('$') || str.includes('USD')) return 'USD';
+  // Fall back to Excel format string (e.g. "$#,##0.00" or "[$₪-40D]#,##0.00")
+  if (fmt) {
+    if (fmt.includes('₪') || fmt.includes('ILS') || fmt.toLowerCase().includes('40d')) return 'ILS';
+    if (fmt.includes('$') || fmt.includes('USD')) return 'USD';
+  }
   return null;
 }
 
@@ -82,6 +88,7 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
   const [fallbackCurrency, setFallbackCurrency] = useState('USD');
   const [headers, setHeaders] = useState([]);
   const [rows, setRows] = useState([]);
+  const [cellFormats, setCellFormats] = useState({}); // { "rowIdx:colIdx": "fmtString" }
   const [mapping, setMapping] = useState({});
   const [parsedRows, setParsedRows] = useState([]);
   const [selected, setSelected] = useState({});
@@ -96,7 +103,7 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
   }, [onClose]);
 
   // Shared: process a 2D array of rows into state and advance to step 2
-  function processJson(json) {
+  function processJson(json, fmts) {
     if (json.length < 2) return;
 
     // Score each candidate row: rows whose cells match known field names rank higher
@@ -120,6 +127,7 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
     hdrs.forEach((h, hi) => { autoMapping[hi] = autoDetectField(h); });
     setHeaders(hdrs);
     setRows(dataRows);
+    setCellFormats(fmts || {});
     setMapping(autoMapping);
     setStep(2);
   }
@@ -131,7 +139,18 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
     const wb = XLSX.read(data);
     const ws = wb.Sheets[wb.SheetNames[0]];
     const json = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
-    processJson(json);
+    // Extract format string for every cell so detectCurrency can use them
+    const fmts = {};
+    for (const addr in ws) {
+      if (addr[0] === '!') continue;
+      const cell = ws[addr];
+      if (cell?.z) {
+        // Convert A1 addr to row/col indices
+        const ref = XLSX.utils.decode_cell(addr);
+        fmts[`${ref.r}:${ref.c}`] = cell.z;
+      }
+    }
+    processJson(json, fmts);
   }
 
   async function handleGSheetLoad() {
@@ -172,7 +191,7 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
         const val = row[hi];
         if (field === 'amount') {
           obj.amount = parseAmount(val);
-          obj.currency = detectCurrency(val) || currency;
+          obj.currency = detectCurrency(val, cellFormats[`${idx}:${hi}`]) || currency;
         } else if (field === 'payment_status') {
           obj.payment_status = parseStatus(val);
         } else {
@@ -190,9 +209,11 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
     const amountIdx = Object.entries(mapping).find(([, v]) => v === 'amount')?.[0];
     if (amountIdx == null) return { ils: 0, usd: 0, none: 0 };
     let ils = 0, usd = 0, none = 0;
-    rows.forEach(row => {
+    // headerIdx offset: rows[] starts after the header row, so data row i is sheet row (headerIdx+1+i)
+    rows.forEach((row, i) => {
       const val = String(row[amountIdx] ?? '');
-      const c = detectCurrency(val);
+      const fmt = cellFormats[`${i}:${amountIdx}`]; // format string for this cell
+      const c = detectCurrency(val, fmt);
       if (c === 'ILS') ils++;
       else if (c === 'USD') usd++;
       else none++;
