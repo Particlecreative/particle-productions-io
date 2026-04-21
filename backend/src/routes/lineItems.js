@@ -249,9 +249,10 @@ router.get('/gsheet-csv', verifyJWT, async (req, res) => {
     const gidMatch = url.match(/[#&?]gid=(\d+)/);
     const gid = gidMatch ? gidMatch[1] : '0';
 
-    const csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
+    // Export as XLSX (not CSV) so hyperlinks in cells are preserved
+    const xlsxUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx&gid=${gid}`;
 
-    const response = await fetch(csvUrl, {
+    const response = await fetch(xlsxUrl, {
       headers: { 'User-Agent': 'Mozilla/5.0' },
       redirect: 'follow',
     });
@@ -264,8 +265,8 @@ router.get('/gsheet-csv', verifyJWT, async (req, res) => {
       });
     }
 
-    const csv = await response.text();
-    res.set('Content-Type', 'text/csv').send(csv);
+    const buf = Buffer.from(await response.arrayBuffer());
+    res.set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').send(buf);
   } catch (err) {
     console.error('GET /line-items/gsheet-csv error:', err);
     res.status(500).json({ error: 'Failed to fetch Google Sheet' });

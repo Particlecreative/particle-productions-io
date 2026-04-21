@@ -89,6 +89,7 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
   const [headers, setHeaders] = useState([]);
   const [rows, setRows] = useState([]);
   const [cellFormats, setCellFormats] = useState({}); // { "rowIdx:colIdx": "fmtString" }
+  const [cellLinks, setCellLinks]     = useState({}); // { "rowIdx:colIdx": "https://…" }
   const [mapping, setMapping] = useState({});
   const [parsedRows, setParsedRows] = useState([]);
   const [selected, setSelected] = useState({});
@@ -102,8 +103,22 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
     return () => document.removeEventListener('keydown', handleKey);
   }, [onClose]);
 
+  // Extract cell format strings AND hyperlink URLs from an XLSX worksheet
+  function extractCellMeta(XLSX, ws) {
+    const fmts = {}, links = {};
+    for (const addr in ws) {
+      if (addr[0] === '!') continue;
+      const cell = ws[addr];
+      const ref = XLSX.utils.decode_cell(addr);
+      const key = `${ref.r}:${ref.c}`;
+      if (cell?.z) fmts[key] = cell.z;                  // format string for currency detection
+      if (cell?.l?.Target) links[key] = cell.l.Target;  // hyperlink URL (e.g. invoice link)
+    }
+    return { fmts, links };
+  }
+
   // Shared: process a 2D array of rows into state and advance to step 2
-  function processJson(json, fmts) {
+  function processJson(json, fmts, links) {
     if (json.length < 2) return;
 
     // Score each candidate row: rows whose cells match known field names rank higher
@@ -128,6 +143,7 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
     setHeaders(hdrs);
     setRows(dataRows);
     setCellFormats(fmts || {});
+    setCellLinks(links || {});
     setMapping(autoMapping);
     setStep(2);
   }
@@ -139,18 +155,8 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
     const wb = XLSX.read(data);
     const ws = wb.Sheets[wb.SheetNames[0]];
     const json = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
-    // Extract format string for every cell so detectCurrency can use them
-    const fmts = {};
-    for (const addr in ws) {
-      if (addr[0] === '!') continue;
-      const cell = ws[addr];
-      if (cell?.z) {
-        // Convert A1 addr to row/col indices
-        const ref = XLSX.utils.decode_cell(addr);
-        fmts[`${ref.r}:${ref.c}`] = cell.z;
-      }
-    }
-    processJson(json, fmts);
+    const { fmts, links } = extractCellMeta(XLSX, ws);
+    processJson(json, fmts, links);
   }
 
   async function handleGSheetLoad() {
@@ -169,12 +175,14 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
         setGsheetLoading(false);
         return;
       }
-      const csv = await res.text();
+      // Backend now returns XLSX binary (preserves hyperlinks)
+      const buf = await res.arrayBuffer();
       const XLSX = await import('xlsx');
-      const wb = XLSX.read(csv, { type: 'string' });
+      const wb = XLSX.read(buf, { type: 'array' });
       const ws = wb.Sheets[wb.SheetNames[0]];
       const json = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
-      processJson(json);
+      const { fmts, links } = extractCellMeta(XLSX, ws);
+      processJson(json, fmts, links);
     } catch (e) {
       setGsheetError('Failed to load sheet. Check the URL and try again.');
     }
@@ -194,6 +202,12 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
           obj.currency = detectCurrency(val, cellFormats[`${idx}:${hi}`]) || currency;
         } else if (field === 'payment_status') {
           obj.payment_status = parseStatus(val);
+        } else if (field === 'invoice_url') {
+          // Prefer hyperlink URL embedded in cell; fall back to cell text if it looks like a URL
+          const hyperlink = cellLinks[`${idx}:${hi}`];
+          const cellText  = String(val || '').trim();
+          const isUrl     = /^https?:\/\//.test(cellText);
+          obj.invoice_url = hyperlink || (isUrl ? cellText : '');
         } else {
           obj[field] = String(val || '').trim();
         }
@@ -259,8 +273,8 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
         actual_spent: isPaid ? (row.amount || 0) : 0,
         payment_status: row.payment_status || 'Not Paid',
         payment_method: row.payment_method || '',
-        invoice_url: isPaid ? (row.invoice_url || '') : '',
-        invoice_status: isPaid && row.invoice_url ? 'Received' : '',
+        invoice_url: row.invoice_url || '',
+        invoice_status: row.invoice_url ? 'Received' : '',
         currency_code: row.currency || fallbackCurrency,
         notes: '',
         created_at: nowISOString(),
