@@ -13,6 +13,7 @@ import { formatIST, nowISOString } from '../../lib/timezone';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationsContext';
 import clsx from 'clsx';
+import FileUploadButton, { CloudLinks } from '../shared/FileUploadButton';
 // jsPDF loaded lazily to avoid Vite TDZ errors that crash ContractSign canvas
 
 // ── Constants ────────────────────────────────────────────────────
@@ -519,6 +520,16 @@ export default function ContractModal({ production, lineItem, onClose }) {
 
   const existing = getContract(contractKey);
 
+  // ── Contract mode: null=choose, 'funnel'=full wizard, 'upload'=upload PDF ──
+  const [contractMode, setContractMode] = useState(existing ? 'funnel' : null);
+
+  // ── Upload PDF mode state ──
+  const [uploadName, setUploadName] = useState(lineItem?.full_name || '');
+  const [uploadEmail, setUploadEmail] = useState(lineItem?.supplier_email || '');
+  const [uploadResult, setUploadResult] = useState(null); // { drive, dropbox }
+  const [uploadSaving, setUploadSaving] = useState(false);
+  const [uploadSaved, setUploadSaved] = useState(false);
+
   // Who signs on behalf of Particle
   const [companySigner, setCompanySigner] = useState(
     existing?.company_signer || 'omer' // 'omer' | 'tomer' | 'custom'
@@ -1024,6 +1035,30 @@ export default function ContractModal({ production, lineItem, onClose }) {
 
   const isSigned = status === 'signed';
 
+  // ── Upload PDF save handler ──
+  async function handleUploadSave() {
+    if (!uploadResult || !uploadName.trim()) return;
+    setUploadSaving(true);
+    try {
+      await upsertContract({
+        production_id: contractKey,
+        provider_name: uploadName.trim(),
+        provider_email: uploadEmail.trim() || null,
+        status: 'signed',
+        signed_at: nowISOString(),
+        drive_url: uploadResult.drive?.viewLink || null,
+        dropbox_url: uploadResult.dropbox?.viewLink || null,
+        pdf_url: uploadResult.drive?.viewLink || uploadResult.dropbox?.viewLink || null,
+        contract_type: lineItem?.type && !CREW_TYPES.includes(lineItem.type) ? 'cast' : 'crew',
+      });
+      setUploadSaved(true);
+      setTimeout(() => { onClose(); }, 1200);
+    } catch (e) {
+      console.error('Upload contract save error:', e);
+    }
+    setUploadSaving(false);
+  }
+
   // ── Validation for step navigation ──
   const canProceedStep1 = providerName.trim() && providerEmail.trim();
   const canProceedStep2 = exhibitA.trim() && feeAmount;
@@ -1052,6 +1087,125 @@ export default function ContractModal({ production, lineItem, onClose }) {
           </div>
         )}
 
+        {/* ── Mode choice screen (no existing contract) ── */}
+        {contractMode === null && (
+          <div className="py-4">
+            <p className="text-sm text-gray-500 text-center mb-6">How do you want to add this contract?</p>
+            <div className="grid grid-cols-2 gap-4">
+              {/* Funnel option */}
+              <button
+                onClick={() => setContractMode('funnel')}
+                className="flex flex-col items-center gap-3 p-6 rounded-2xl border-2 border-gray-200 hover:border-purple-400 hover:bg-purple-50 transition-all group"
+              >
+                <div className="w-14 h-14 rounded-2xl bg-purple-100 group-hover:bg-purple-200 flex items-center justify-center transition-colors">
+                  <FileSignature size={26} className="text-purple-600" />
+                </div>
+                <div className="text-center">
+                  <div className="font-bold text-sm text-gray-800">Create Contract</div>
+                  <div className="text-xs text-gray-400 mt-0.5">Fill details, generate PDF &amp; send for e-signature</div>
+                </div>
+              </button>
+
+              {/* Upload PDF option */}
+              <button
+                onClick={() => setContractMode('upload')}
+                className="flex flex-col items-center gap-3 p-6 rounded-2xl border-2 border-gray-200 hover:border-blue-400 hover:bg-blue-50 transition-all group"
+              >
+                <div className="w-14 h-14 rounded-2xl bg-blue-100 group-hover:bg-blue-200 flex items-center justify-center transition-colors">
+                  <Upload size={26} className="text-blue-600" />
+                </div>
+                <div className="text-center">
+                  <div className="font-bold text-sm text-gray-800">Upload Signed PDF</div>
+                  <div className="text-xs text-gray-400 mt-0.5">Already signed? Upload the PDF directly</div>
+                </div>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Upload PDF mode ── */}
+        {contractMode === 'upload' && (
+          <div className="space-y-4 py-2">
+            <button
+              onClick={() => setContractMode(null)}
+              className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 mb-2"
+            >
+              <ChevronLeft size={13} /> Back
+            </button>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-gray-600 block mb-1">Supplier Name *</label>
+                <input
+                  className="brand-input w-full"
+                  placeholder="Full name…"
+                  value={uploadName}
+                  onChange={e => setUploadName(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 block mb-1">Email (optional)</label>
+                <input
+                  type="email"
+                  className="brand-input w-full"
+                  placeholder="email@…"
+                  value={uploadEmail}
+                  onChange={e => setUploadEmail(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-gray-600 block mb-2">Signed Contract PDF *</label>
+              {!uploadResult ? (
+                <FileUploadButton
+                  category="contracts"
+                  subfolder={`${new Date().getFullYear()}/${production.id} ${production.project_name || ''}`.trim()}
+                  fileName={uploadName.trim() ? `Contract - ${uploadName.trim()}.pdf` : 'Contract.pdf'}
+                  accept="application/pdf,.pdf"
+                  label="Upload PDF"
+                  size="md"
+                  onUploaded={data => setUploadResult(data)}
+                />
+              ) : (
+                <div className="flex items-center gap-3 p-3 bg-green-50 border border-green-200 rounded-xl">
+                  <CheckCircle size={16} className="text-green-500 flex-shrink-0" />
+                  <span className="text-sm text-green-700 font-semibold flex-1">PDF uploaded</span>
+                  <CloudLinks
+                    driveUrl={uploadResult.drive?.viewLink}
+                    dropboxUrl={uploadResult.dropbox?.viewLink}
+                    downloadUrl={uploadResult.drive?.downloadLink || uploadResult.dropbox?.viewLink}
+                  />
+                  <button
+                    onClick={() => setUploadResult(null)}
+                    className="text-xs text-gray-400 hover:text-gray-600 underline"
+                  >
+                    re-upload
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {uploadSaved ? (
+              <div className="flex items-center justify-center gap-2 py-3 text-green-600 font-semibold text-sm">
+                <CheckCircle size={16} /> Contract saved as Signed!
+              </div>
+            ) : (
+              <div className="flex justify-end pt-2">
+                <button
+                  onClick={handleUploadSave}
+                  disabled={!uploadResult || !uploadName.trim() || uploadSaving}
+                  className="btn-primary px-6 disabled:opacity-40"
+                >
+                  {uploadSaving ? 'Saving…' : 'Save Contract'}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Step Indicator — only shown in funnel mode */}
+        {contractMode === 'funnel' && <>
 
         {/* Step Indicator */}
         <StepIndicator
@@ -2098,6 +2252,8 @@ export default function ContractModal({ production, lineItem, onClose }) {
             </div>
           </div>
         )}
+
+        </> /* end contractMode === 'funnel' */}
       </div>
     </div>
   );
