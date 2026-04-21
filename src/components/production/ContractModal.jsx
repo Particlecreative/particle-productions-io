@@ -518,10 +518,26 @@ export default function ContractModal({ production, lineItem, onClose }) {
   const fileInputRef = useRef(null);
   const pdfPreviewRef = useRef(null);
 
-  const existing = getContract(contractKey);
+  // ── Load existing contract async (getContract returns Promise in production) ──
+  const [existing, setExisting] = useState(null);
+  const [contractChecked, setContractChecked] = useState(false);
+  useEffect(() => {
+    async function check() {
+      try {
+        const result = await Promise.resolve(getContract(contractKey));
+        setExisting(result || null);
+        setContractMode(result ? 'funnel' : null);
+      } catch {
+        setExisting(null);
+        setContractMode(null);
+      }
+      setContractChecked(true);
+    }
+    check();
+  }, [contractKey]); // eslint-disable-line
 
   // ── Contract mode: null=choose, 'funnel'=full wizard, 'upload'=upload PDF ──
-  const [contractMode, setContractMode] = useState(existing ? 'funnel' : null);
+  const [contractMode, setContractMode] = useState(null);
 
   // ── Upload PDF mode state ──
   const [uploadName, setUploadName] = useState(lineItem?.full_name || '');
@@ -1087,8 +1103,16 @@ export default function ContractModal({ production, lineItem, onClose }) {
           </div>
         )}
 
+        {/* ── Loading while checking for existing contract ── */}
+        {!contractChecked && contractMode === null && (
+          <div className="flex items-center justify-center py-12 text-gray-400 text-sm gap-2">
+            <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+            Loading…
+          </div>
+        )}
+
         {/* ── Mode choice screen (no existing contract) ── */}
-        {contractMode === null && (
+        {contractMode === null && contractChecked && (
           <div className="py-4">
             <p className="text-sm text-gray-500 text-center mb-6">How do you want to add this contract?</p>
             <div className="grid grid-cols-2 gap-4">
@@ -1205,7 +1229,7 @@ export default function ContractModal({ production, lineItem, onClose }) {
         )}
 
         {/* Step Indicator — only shown in funnel mode */}
-        {contractMode === 'funnel' && <>
+        {contractMode === 'funnel' && contractChecked && <>
 
         {/* Step Indicator */}
         <StepIndicator
