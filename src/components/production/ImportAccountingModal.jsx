@@ -1,8 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
-import { X, Upload, FileSpreadsheet, Check, AlertTriangle, ChevronRight } from 'lucide-react';
+import { X, Upload, FileSpreadsheet, Check, AlertTriangle, ChevronRight, Link, Loader2 } from 'lucide-react';
 import { createLineItem, generateId } from '../../lib/dataService';
 import { nowISOString } from '../../lib/timezone';
 import clsx from 'clsx';
+
+const API = import.meta.env.VITE_API_URL || '';
+function jwt() { return localStorage.getItem('cp_auth_token'); }
 
 // Auto-detect currency from cell value prefix
 function detectCurrency(val) {
@@ -72,6 +75,10 @@ function autoDetectField(header) {
 
 export default function ImportAccountingModal({ productionId, onClose, onImported }) {
   const [step, setStep] = useState(1); // 1=upload, 2=map, 2.5=currency, 3=preview
+  const [uploadMode, setUploadMode] = useState('file'); // 'file' | 'gsheet'
+  const [gsheetUrl, setGsheetUrl] = useState('');
+  const [gsheetLoading, setGsheetLoading] = useState(false);
+  const [gsheetError, setGsheetError] = useState('');
   const [fallbackCurrency, setFallbackCurrency] = useState('USD');
   const [headers, setHeaders] = useState([]);
   const [rows, setRows] = useState([]);
@@ -88,6 +95,23 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
     return () => document.removeEventListener('keydown', handleKey);
   }, [onClose]);
 
+  // Shared: process a 2D array of rows into state and advance to step 2
+  function processJson(json) {
+    if (json.length < 2) return;
+    let headerIdx = 0;
+    for (let i = 0; i < Math.min(json.length, 5); i++) {
+      if (json[i].filter(c => c !== '' && c != null).length >= 3) { headerIdx = i; break; }
+    }
+    const hdrs = json[headerIdx].map(h => String(h).trim());
+    const dataRows = json.slice(headerIdx + 1).filter(r => r.some(c => c !== '' && c != null));
+    const autoMapping = {};
+    hdrs.forEach((h, hi) => { autoMapping[hi] = autoDetectField(h); });
+    setHeaders(hdrs);
+    setRows(dataRows);
+    setMapping(autoMapping);
+    setStep(2);
+  }
+
   async function handleFile(file) {
     if (!file) return;
     const XLSX = await import('xlsx');
@@ -95,25 +119,35 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
     const wb = XLSX.read(data);
     const ws = wb.Sheets[wb.SheetNames[0]];
     const json = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-    if (json.length < 2) return;
+    processJson(json);
+  }
 
-    // Find header row
-    let headerIdx = 0;
-    for (let i = 0; i < Math.min(json.length, 5); i++) {
-      if (json[i].filter(c => c !== '' && c != null).length >= 3) { headerIdx = i; break; }
+  async function handleGSheetLoad() {
+    const url = gsheetUrl.trim();
+    if (!url) return;
+    setGsheetError('');
+    setGsheetLoading(true);
+    try {
+      const res = await fetch(
+        `${API}/api/line-items/gsheet-csv?url=${encodeURIComponent(url)}`,
+        { headers: { Authorization: `Bearer ${jwt()}` } }
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setGsheetError(err.error || `Error ${res.status}`);
+        setGsheetLoading(false);
+        return;
+      }
+      const csv = await res.text();
+      const XLSX = await import('xlsx');
+      const wb = XLSX.read(csv, { type: 'string' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const json = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      processJson(json);
+    } catch (e) {
+      setGsheetError('Failed to load sheet. Check the URL and try again.');
     }
-
-    const hdrs = json[headerIdx].map(h => String(h).trim());
-    const dataRows = json.slice(headerIdx + 1).filter(r => r.some(c => c !== '' && c != null));
-
-    // Key by column INDEX (not header name) so duplicate/blank headers don't collide
-    const autoMapping = {};
-    hdrs.forEach((h, hi) => { autoMapping[hi] = autoDetectField(h); });
-
-    setHeaders(hdrs);
-    setRows(dataRows);
-    setMapping(autoMapping);
-    setStep(2);
+    setGsheetLoading(false);
   }
 
   function buildParsedRows(currencyChoice) {
@@ -258,22 +292,84 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
         {/* Step 1: Upload */}
         {step === 1 && (
           <div>
-            <div
-              onDragOver={e => e.preventDefault()}
-              onDrop={e => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}
-              onClick={() => fileRef.current?.click()}
-              className="border-2 border-dashed border-gray-300 rounded-xl p-10 text-center cursor-pointer hover:border-gray-400 hover:bg-gray-50 transition-all"
-            >
-              <FileSpreadsheet size={36} className="mx-auto mb-3 text-gray-300" />
-              <p className="text-sm font-semibold text-gray-600 mb-1">
-                Drop your PRD Google Sheet export (.xlsx)
-              </p>
-              <p className="text-xs text-gray-400">
-                Export from Google Sheets: File → Download → .xlsx
-              </p>
-              <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden"
-                onChange={e => handleFile(e.target.files[0])} />
+            {/* Mode tabs */}
+            <div className="flex gap-2 mb-4">
+              <button
+                onClick={() => { setUploadMode('file'); setGsheetError(''); }}
+                className={clsx(
+                  'flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold border transition-all',
+                  uploadMode === 'file'
+                    ? 'border-blue-500 bg-blue-50 text-blue-700'
+                    : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                )}
+              >
+                <FileSpreadsheet size={13} /> Upload Excel / CSV
+              </button>
+              <button
+                onClick={() => { setUploadMode('gsheet'); setGsheetError(''); }}
+                className={clsx(
+                  'flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold border transition-all',
+                  uploadMode === 'gsheet'
+                    ? 'border-green-500 bg-green-50 text-green-700'
+                    : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                )}
+              >
+                <Link size={13} /> Google Sheet link
+              </button>
             </div>
+
+            {uploadMode === 'file' ? (
+              <div
+                onDragOver={e => e.preventDefault()}
+                onDrop={e => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}
+                onClick={() => fileRef.current?.click()}
+                className="border-2 border-dashed border-gray-300 rounded-xl p-10 text-center cursor-pointer hover:border-gray-400 hover:bg-gray-50 transition-all"
+              >
+                <FileSpreadsheet size={36} className="mx-auto mb-3 text-gray-300" />
+                <p className="text-sm font-semibold text-gray-600 mb-1">
+                  Drop your Excel / CSV file here
+                </p>
+                <p className="text-xs text-gray-400">
+                  Google Sheets: File → Download → .xlsx · or drag & drop
+                </p>
+                <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden"
+                  onChange={e => handleFile(e.target.files[0])} />
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-xs text-green-700 space-y-1">
+                  <p className="font-semibold">How to get your Google Sheet link:</p>
+                  <ol className="list-decimal list-inside space-y-0.5 text-green-600">
+                    <li>Open your PRD sheet in Google Sheets</li>
+                    <li>Click <strong>Share</strong> → set to <strong>"Anyone with the link can view"</strong></li>
+                    <li>Copy the URL from your browser and paste it below</li>
+                  </ol>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    value={gsheetUrl}
+                    onChange={e => { setGsheetUrl(e.target.value); setGsheetError(''); }}
+                    onKeyDown={e => e.key === 'Enter' && handleGSheetLoad()}
+                    placeholder="https://docs.google.com/spreadsheets/d/…"
+                    className="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-green-300 focus:border-green-400"
+                  />
+                  <button
+                    onClick={handleGSheetLoad}
+                    disabled={!gsheetUrl.trim() || gsheetLoading}
+                    className="flex items-center gap-1.5 px-5 py-2.5 bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white rounded-xl text-sm font-semibold transition-all"
+                  >
+                    {gsheetLoading ? <><Loader2 size={14} className="animate-spin" /> Loading…</> : 'Load'}
+                  </button>
+                </div>
+                {gsheetError && (
+                  <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-2.5 text-xs text-red-600">
+                    <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                    {gsheetError}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 

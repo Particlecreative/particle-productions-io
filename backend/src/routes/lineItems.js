@@ -234,4 +234,42 @@ async function syncTotals(productionId) {
   } catch { /* non-critical */ }
 }
 
+// GET /api/line-items/gsheet-csv?url=... — proxy-fetch a public Google Sheet as CSV
+// Needed to avoid CORS when the frontend tries to load a Google Sheets URL directly.
+router.get('/gsheet-csv', verifyJWT, async (req, res) => {
+  try {
+    const { url } = req.query;
+    if (!url) return res.status(400).json({ error: 'url param required' });
+
+    // Extract spreadsheet ID and gid from any Google Sheets URL variant
+    const idMatch = url.match(/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+    if (!idMatch) return res.status(400).json({ error: 'Not a valid Google Sheets URL' });
+    const sheetId = idMatch[1];
+
+    const gidMatch = url.match(/[#&?]gid=(\d+)/);
+    const gid = gidMatch ? gidMatch[1] : '0';
+
+    const csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
+
+    const response = await fetch(csvUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+      redirect: 'follow',
+    });
+
+    if (!response.ok) {
+      return res.status(response.status).json({
+        error: response.status === 401 || response.status === 403
+          ? 'Sheet is not publicly accessible. Please share it as "Anyone with the link can view".'
+          : `Google Sheets returned ${response.status}`,
+      });
+    }
+
+    const csv = await response.text();
+    res.set('Content-Type', 'text/csv').send(csv);
+  } catch (err) {
+    console.error('GET /line-items/gsheet-csv error:', err);
+    res.status(500).json({ error: 'Failed to fetch Google Sheet' });
+  }
+});
+
 module.exports = router;
