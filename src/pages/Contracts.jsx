@@ -69,7 +69,7 @@ export default function Contracts() {
     if (!deleteConfirm) return;
     setDeleting(true);
     try {
-      const token = localStorage.getItem('cp_token');
+      const token = localStorage.getItem('cp_auth_token');
       await fetch(`/api/contracts/${deleteConfirm.id}?deleteDrive=${deleteDrive}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
