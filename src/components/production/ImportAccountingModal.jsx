@@ -270,7 +270,7 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
         type: guessType(row.item),
         status: isPaid ? 'Done' : 'Not Started',
         planned_budget: row.amount || 0,
-        actual_spent: isPaid ? (row.amount || 0) : 0,
+        actual_spent: row.amount || 0,
         payment_status: row.payment_status || 'Not Paid',
         payment_method: row.payment_method || '',
         invoice_url: row.invoice_url || '',
