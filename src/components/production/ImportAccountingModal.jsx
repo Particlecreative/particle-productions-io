@@ -36,30 +36,39 @@ const COL_MAP_OPTIONS = [
   { key: 'payment_method', label: 'Payment Method / Bank' },
 ];
 
-const AUTO_MAP_PRD = {
-  'name': 'supplier',
-  'supplier': 'supplier',
-  'full name': 'supplier',
-  'job': 'item',
-  'role': 'item',
-  'price': 'amount',
-  'amount': 'amount',
-  'price (ils, discluding vat)': 'amount',
-  'price (ils)': 'amount',
-  'price (usd)': 'amount',
-  'invoice': 'invoice_url',
-  'invoice/recipt': 'invoice_url',
-  'invoice/receipt': 'invoice_url',
-  'receipt': 'invoice_url',
-  'invoice / receipt': 'invoice_url',
-  'invoice/receipt link': 'invoice_url',
-  'status': 'payment_status',
-  'payment status': 'payment_status',
-  'payment method': 'payment_method',
-  'bank': 'payment_method',
-  'routing': 'payment_method',
-  'method': 'payment_method',
+// Exact matches
+const AUTO_MAP_EXACT = {
+  'name': 'supplier',        'supplier': 'supplier',    'full name': 'supplier',
+  'first name': 'supplier',  'last name': 'supplier',   'contact': 'supplier',
+  'job': 'item',             'role': 'item',            'description': 'item',
+  'service': 'item',         'title': 'item',           'position': 'item',
+  'price': 'amount',         'amount': 'amount',        'cost': 'amount',
+  'fee': 'amount',           'total': 'amount',         'budget': 'amount',
+  'invoice': 'invoice_url',  'receipt': 'invoice_url',  'link': 'invoice_url',
+  'invoice/recipt': 'invoice_url',  'invoice/receipt': 'invoice_url',
+  'invoice / receipt': 'invoice_url', 'invoice/receipt link': 'invoice_url',
+  'status': 'payment_status',       'payment status': 'payment_status',
+  'paid': 'payment_status',
+  'payment method': 'payment_method', 'bank': 'payment_method',
+  'routing': 'payment_method',        'method': 'payment_method',
+  'payment': 'payment_method',
 };
+
+// Fuzzy auto-detect by keyword presence in column header
+function autoDetectField(header) {
+  const h = header.toLowerCase().trim();
+  if (!h) return '';
+  // Exact lookup first
+  if (AUTO_MAP_EXACT[h]) return AUTO_MAP_EXACT[h];
+  // Fuzzy keyword rules (order matters — more specific first)
+  if (/price|amount|cost|fee|total|budget/.test(h)) return 'amount';
+  if (/invoice|receipt|recipt/.test(h)) return 'invoice_url';
+  if (/payment.*method|method.*pay|bank|transfer|wire/.test(h)) return 'payment_method';
+  if (/payment.*stat|status|paid/.test(h)) return 'payment_status';
+  if (/job|role|service|position|description|title/.test(h)) return 'item';
+  if (/name|supplier|contact|vendor|talent|model|actor/.test(h)) return 'supplier';
+  return '';
+}
 
 export default function ImportAccountingModal({ productionId, onClose, onImported }) {
   const [step, setStep] = useState(1); // 1=upload, 2=map, 2.5=currency, 3=preview
@@ -99,7 +108,7 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
 
     // Key by column INDEX (not header name) so duplicate/blank headers don't collide
     const autoMapping = {};
-    hdrs.forEach((h, hi) => { autoMapping[hi] = AUTO_MAP_PRD[h.toLowerCase().trim()] || ''; });
+    hdrs.forEach((h, hi) => { autoMapping[hi] = autoDetectField(h); });
 
     setHeaders(hdrs);
     setRows(dataRows);
@@ -130,14 +139,31 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
     }).filter(r => r._include);
   }
 
+  // Scan amount column and count per-currency rows
+  function scanCurrencies() {
+    const amountIdx = Object.entries(mapping).find(([, v]) => v === 'amount')?.[0];
+    if (amountIdx == null) return { ils: 0, usd: 0, none: 0 };
+    let ils = 0, usd = 0, none = 0;
+    rows.forEach(row => {
+      const val = String(row[amountIdx] ?? '');
+      const c = detectCurrency(val);
+      if (c === 'ILS') ils++;
+      else if (c === 'USD') usd++;
+      else none++;
+    });
+    return { ils, usd, none };
+  }
+
   function goToCurrencyOrPreview() {
-    // Check if amount column is mapped
     const hasAmount = Object.values(mapping).includes('amount');
-    if (hasAmount) {
-      setStep(2.5);
-    } else {
-      goToPreview('USD');
-    }
+    if (!hasAmount) { goToPreview('USD'); return; }
+    const { ils, usd, none } = scanCurrencies();
+    // If every row has a detectable currency, skip the prompt entirely
+    if (none === 0) { goToPreview('USD'); return; }
+    // If only one currency type detected + some unknowns, auto-select that as fallback
+    if (ils > 0 && usd === 0) setFallbackCurrency('ILS');
+    else if (usd > 0 && ils === 0) setFallbackCurrency('USD');
+    setStep(2.5);
   }
 
   function goToPreview(currencyChoice) {
@@ -292,45 +318,72 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
         )}
 
         {/* Step 2.5: Currency prompt */}
-        {step === 2.5 && (
-          <div>
-            <div className="text-center py-6">
-              <p className="text-sm font-semibold text-gray-700 mb-2">
-                Are budget values in $ or ₪?
-              </p>
-              <p className="text-xs text-gray-400 mb-5">
-                Per-row currency symbols (₪ / $) are auto-detected. This sets the default for rows without a symbol.
-              </p>
-              <div className="flex justify-center gap-4">
-                <button
-                  onClick={() => { setFallbackCurrency('USD'); goToPreview('USD'); }}
-                  className={clsx(
-                    'flex flex-col items-center gap-2 px-8 py-5 rounded-xl border-2 transition-all hover:shadow-md',
-                    fallbackCurrency === 'USD' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300'
+        {step === 2.5 && (() => {
+          const { ils, usd, none } = scanCurrencies();
+          const total = ils + usd + none;
+          return (
+            <div>
+              <div className="text-center py-4">
+                <p className="text-sm font-semibold text-gray-700 mb-1">
+                  Default currency for rows without a symbol
+                </p>
+                <p className="text-xs text-gray-400 mb-4">
+                  Per-row ₪ / $ symbols are auto-detected. This only affects the <strong>{none}</strong> row{none !== 1 ? 's' : ''} without a currency symbol.
+                </p>
+
+                {/* Currency breakdown summary */}
+                <div className="flex justify-center gap-3 mb-5">
+                  {ils > 0 && (
+                    <div className="flex items-center gap-1.5 bg-blue-50 border border-blue-100 rounded-lg px-3 py-1.5 text-xs">
+                      <span className="font-bold text-blue-700">₪ ILS</span>
+                      <span className="text-blue-500">auto-detected in {ils} row{ils !== 1 ? 's' : ''}</span>
+                    </div>
                   )}
-                >
-                  <span className="text-2xl font-black">$</span>
-                  <span className="text-sm font-bold">$ USD</span>
-                  <span className="text-[10px] text-gray-400">US Dollars</span>
-                </button>
-                <button
-                  onClick={() => { setFallbackCurrency('ILS'); goToPreview('ILS'); }}
-                  className={clsx(
-                    'flex flex-col items-center gap-2 px-8 py-5 rounded-xl border-2 transition-all hover:shadow-md',
-                    fallbackCurrency === 'ILS' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300'
+                  {usd > 0 && (
+                    <div className="flex items-center gap-1.5 bg-green-50 border border-green-100 rounded-lg px-3 py-1.5 text-xs">
+                      <span className="font-bold text-green-700">$ USD</span>
+                      <span className="text-green-500">auto-detected in {usd} row{usd !== 1 ? 's' : ''}</span>
+                    </div>
                   )}
-                >
-                  <span className="text-2xl font-black">₪</span>
-                  <span className="text-sm font-bold">₪ ILS</span>
-                  <span className="text-[10px] text-gray-400">Israeli Shekels</span>
-                </button>
+                  {none > 0 && (
+                    <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-xs">
+                      <span className="font-bold text-gray-500">? Unknown</span>
+                      <span className="text-gray-400">{none} row{none !== 1 ? 's' : ''} — needs fallback</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex justify-center gap-4">
+                  <button
+                    onClick={() => { setFallbackCurrency('USD'); goToPreview('USD'); }}
+                    className={clsx(
+                      'flex flex-col items-center gap-2 px-8 py-5 rounded-xl border-2 transition-all hover:shadow-md',
+                      fallbackCurrency === 'USD' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300'
+                    )}
+                  >
+                    <span className="text-2xl font-black">$</span>
+                    <span className="text-sm font-bold">$ USD</span>
+                    <span className="text-[10px] text-gray-400">US Dollars</span>
+                  </button>
+                  <button
+                    onClick={() => { setFallbackCurrency('ILS'); goToPreview('ILS'); }}
+                    className={clsx(
+                      'flex flex-col items-center gap-2 px-8 py-5 rounded-xl border-2 transition-all hover:shadow-md',
+                      fallbackCurrency === 'ILS' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300'
+                    )}
+                  >
+                    <span className="text-2xl font-black">₪</span>
+                    <span className="text-sm font-bold">₪ ILS</span>
+                    <span className="text-[10px] text-gray-400">Israeli Shekels</span>
+                  </button>
+                </div>
+              </div>
+              <div className="flex gap-3 mt-5">
+                <button onClick={() => setStep(2)} className="btn-secondary flex-1">Back</button>
               </div>
             </div>
-            <div className="flex gap-3 mt-5">
-              <button onClick={() => setStep(2)} className="btn-secondary flex-1">Back</button>
-            </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Step 3: Preview */}
         {step === 3 && (
