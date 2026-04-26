@@ -109,9 +109,10 @@ export default function LedgerTab({ productionId, production }) {
 
   async function handlePaymentStatusChange(itemId, newStatus) {
     if (newStatus === 'Paid') {
-      // Invoice guard: must have received invoice with a link
+      // Invoice guard: must have received invoice with a link (skip if waived)
       const item = items.find(i => i.id === itemId);
-      if (item?.invoice_status !== 'Received' || !item?.invoice_url) {
+      const invoiceWaived = item?.invoice_status === 'Waived' || item?.invoice_status === 'No invoice needed';
+      if (!invoiceWaived && (item?.invoice_status !== 'Received' || !item?.invoice_url)) {
         setPaymentBlockedId(itemId);
         setTimeout(() => setPaymentBlockedId(id => id === itemId ? null : id), 4000);
         return;
@@ -444,6 +445,8 @@ function LedgerRow({ item, invoice, mismatch, fmt, fmtRow, isEditor, onUpdate, o
             </span>
           ) : item.invoice_status === 'Received' ? (
             <span className="badge invoice-received text-xs">Received</span>
+          ) : (item.invoice_status === 'Waived' || item.invoice_status === 'No invoice needed') ? (
+            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-400 border border-gray-200">N/A</span>
           ) : (
             <span className="badge invoice-pending text-xs">Pending</span>
           )}
@@ -476,8 +479,8 @@ function LedgerRow({ item, invoice, mismatch, fmt, fmtRow, isEditor, onUpdate, o
             </span>
           )}
 
-          {/* Send / Re-request button */}
-          {isEditor && (
+          {/* Send / Re-request button — hidden when waived */}
+          {isEditor && item.invoice_status !== 'Waived' && item.invoice_status !== 'No invoice needed' && (
             <button
               onClick={onInvoice}
               className="text-xs px-2 py-0.5 rounded border border-gray-200 text-gray-500 hover:border-gray-400 hover:text-gray-700 transition-colors mt-0.5"

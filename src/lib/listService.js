@@ -32,7 +32,7 @@ export const LIST_DEFAULTS = {
     'Body Wash', 'Other',
   ],
   productionTypes:  ['Remote Shoot', 'Shoot', 'AI'],
-  paymentMethods:   ['Bank Transfer', 'Credit Card', 'PayPal', 'Remote', 'Office Card'],
+  paymentMethods:   ['Bank Transfer', 'Credit Card', 'PayPal', 'Remote', 'Office Card', 'Upwork'],
   businessTypes:    ['עוסק פטור', 'עוסק מורשה', 'חברה בע״מ', 'שכר אומנים', 'Company LTD', 'Self Employed'],
 };
 

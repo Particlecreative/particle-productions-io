@@ -47,7 +47,7 @@ const COL_MAP_OPTIONS = [
   { key: 'payment_method', label: 'Payment Method' },
 ];
 
-const PAYMENT_METHODS = ['Bank Transfer', 'PayPal', 'Cash', 'Check', 'Credit Card', 'Wire Transfer', 'Bit', 'Other'];
+const PAYMENT_METHODS = ['Bank Transfer', 'PayPal', 'Cash', 'Check', 'Credit Card', 'Wire Transfer', 'Bit', 'Upwork', 'Other'];
 const SUPPLIER_TYPES  = ['New Supplier', 'Worked with before'];
 
 // Exact matches

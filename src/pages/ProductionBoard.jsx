@@ -78,6 +78,7 @@ export default function ProductionBoard() {
   const [showImport, setShowImport] = useState(false);
   const [showAccountingImport, setShowAccountingImport] = useState(false);
   const [prodRate, setProdRate] = useState(null);
+  const [lineItems, setLineItems] = useState([]);
   const [showTaxiWizard, setShowTaxiWizard] = useState(false);
   const [taxiPeople, setTaxiPeople] = useState([]);
   const [taxiCast, setTaxiCast] = useState([]);
@@ -123,8 +124,23 @@ export default function ProductionBoard() {
 
   useEffect(() => {
     async function load() {
-      const p = await Promise.resolve(getProduction(id));
+      const [p, items] = await Promise.all([
+        Promise.resolve(getProduction(id)),
+        Promise.resolve(getLineItems(id)),
+      ]);
       if (p) { setProduction(p); setNameValue(p.project_name); }
+      const itemsArr = Array.isArray(items) ? items : [];
+      setLineItems(itemsArr);
+
+      // Auto-reset stale DB totals when budget table is empty
+      if (p && itemsArr.length === 0) {
+        const dbSpent  = parseFloat(p.actual_spent)      || 0;
+        const dbEst    = parseFloat(p.estimated_budget)  || 0;
+        if (dbSpent > 0 || dbEst > 0) {
+          // Silently sync DB back to 0
+          updateProduction(id, { actual_spent: 0, estimated_budget: 0 });
+        }
+      }
     }
     load();
   }, [id]);
@@ -145,8 +161,12 @@ export default function ProductionBoard() {
   }, [production?.planned_end]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function refresh() {
-    const p = await Promise.resolve(getProduction(id));
+    const [p, items] = await Promise.all([
+      Promise.resolve(getProduction(id)),
+      Promise.resolve(getLineItems(id)),
+    ]);
     if (p) setProduction(p);
+    setLineItems(Array.isArray(items) ? items : []);
   }
 
   function handleNameSave() {
@@ -177,10 +197,25 @@ export default function ProductionBoard() {
   }
 
   const planned = parseFloat(production.planned_budget_2026) || 0;
-  const estimated = parseFloat(production.estimated_budget) || 0;
-  const spent = parseFloat(production.actual_spent) || 0;
+
+  // Live totals computed directly from line items (never stale)
+  const DEFAULT_ILS_RATE = production?.delivery_date_rate || prodRate || 3.7;
+  const liveSpent = lineItems.reduce((s, i) => {
+    const amt = parseFloat(i.actual_spent) || 0;
+    return s + (i.currency_code === 'ILS' ? amt / DEFAULT_ILS_RATE : amt);
+  }, 0);
+  const liveEstimated = lineItems.reduce((s, i) => {
+    const amt = parseFloat(i.planned_budget) || 0;
+    return s + (i.currency_code === 'ILS' ? amt / DEFAULT_ILS_RATE : amt);
+  }, 0);
+
+  const spent = liveSpent;
   const remaining = planned - spent;
   const pct = planned > 0 ? Math.round((spent / planned) * 100) : 0;
+
+  // Stale detection: DB has non-zero values but line items are empty
+  const dbSpent = parseFloat(production.actual_spent) || 0;
+  const isStale = lineItems.length === 0 && dbSpent > 0;
   const productTypes = Array.isArray(production.product_type) ? production.product_type : [];
   const timeline = production.planned_start && production.planned_end
     ? `${fmtDate(production.planned_start)} → ${fmtDate(production.planned_end)}`
@@ -325,9 +360,19 @@ export default function ProductionBoard() {
 
             {/* Actual Spent */}
             <div className="rounded-2xl px-4 py-3 border border-gray-100 bg-gray-50/80">
-              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Actual Spent</div>
+              <div className="flex items-center gap-2 mb-1.5">
+                <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Actual Spent</div>
+                {isStale && (
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-600 border border-amber-200">
+                    ⚠ Stale — syncing…
+                  </span>
+                )}
+              </div>
               <div className="text-2xl font-black tracking-tight text-gray-800">{fmt(spent)}</div>
-              {planned > 0 && (
+              {lineItems.length === 0 && spent === 0 && (
+                <div className="text-[10px] text-gray-400 mt-1">No line items yet</div>
+              )}
+              {planned > 0 && spent > 0 && (
                 <div className="mt-2 flex items-center gap-2">
                   <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
                     <div className="h-full rounded-full transition-all duration-700"

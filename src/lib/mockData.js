@@ -459,7 +459,7 @@ export const LINE_ITEM_TYPES = ["Crew", "Equipment", "Catering & Transport", "Po
 
 export const LINE_ITEM_STATUSES = ["Working on it", "Done", "Stuck", "Not Started"];
 
-export const PAYMENT_METHODS = ["Bank Transfer", "Credit Card", "PayPal", "Remote", "Office Card"];
+export const PAYMENT_METHODS = ["Bank Transfer", "Credit Card", "PayPal", "Remote", "Office Card", "Upwork"];
 
 export const BUSINESS_TYPES = ["Company (בע\"מ)", "Self-Employed (ע.מ)", "Individual", "Agency"];
 
