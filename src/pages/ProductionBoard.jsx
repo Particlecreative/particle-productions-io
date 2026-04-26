@@ -200,18 +200,18 @@ export default function ProductionBoard() {
 
   // Live totals computed directly from line items (never stale)
   const DEFAULT_ILS_RATE = production?.delivery_date_rate || prodRate || 3.7;
-  const liveSpent = lineItems.reduce((s, i) => {
-    const amt = parseFloat(i.actual_spent) || 0;
-    return s + (i.currency_code === 'ILS' ? amt / DEFAULT_ILS_RATE : amt);
-  }, 0);
-  const liveEstimated = lineItems.reduce((s, i) => {
-    const amt = parseFloat(i.planned_budget) || 0;
-    return s + (i.currency_code === 'ILS' ? amt / DEFAULT_ILS_RATE : amt);
-  }, 0);
 
-  const spent = liveSpent;
-  const remaining = planned - spent;
-  const pct = planned > 0 ? Math.round((spent / planned) * 100) : 0;
+  // Native split totals (for display — no conversion)
+  const liveSpentUSD = lineItems.filter(i => (i.currency_code || 'USD') !== 'ILS').reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0);
+  const liveSpentILS = lineItems.filter(i => i.currency_code === 'ILS').reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0);
+  const liveEstUSD   = lineItems.filter(i => (i.currency_code || 'USD') !== 'ILS').reduce((s, i) => s + (parseFloat(i.planned_budget) || 0), 0);
+  const liveEstILS   = lineItems.filter(i => i.currency_code === 'ILS').reduce((s, i) => s + (parseFloat(i.planned_budget) || 0), 0);
+  const hasMixedCurrency = liveSpentUSD > 0 && liveSpentILS > 0;
+
+  // USD-equivalent total (for progress bar + Budget Left only)
+  const spentUSDEquiv = liveSpentUSD + liveSpentILS / DEFAULT_ILS_RATE;
+  const remaining = planned - spentUSDEquiv;
+  const pct = planned > 0 ? Math.round((spentUSDEquiv / planned) * 100) : 0;
 
   // Stale detection: DB has non-zero values but line items are empty
   const dbSpent = parseFloat(production.actual_spent) || 0;
@@ -368,11 +368,21 @@ export default function ProductionBoard() {
                   </span>
                 )}
               </div>
-              <div className="text-2xl font-black tracking-tight text-gray-800">{fmt(spent)}</div>
-              {lineItems.length === 0 && spent === 0 && (
+              {hasMixedCurrency ? (
+                <div className="flex items-baseline gap-1.5 flex-wrap">
+                  <span className="text-2xl font-black tracking-tight text-gray-800">${liveSpentUSD.toLocaleString()}</span>
+                  <span className="text-sm font-bold text-gray-400">+</span>
+                  <span className="text-2xl font-black tracking-tight text-gray-800">₪{liveSpentILS.toLocaleString()}</span>
+                </div>
+              ) : liveSpentILS > 0 ? (
+                <div className="text-2xl font-black tracking-tight text-gray-800">₪{liveSpentILS.toLocaleString()}</div>
+              ) : (
+                <div className="text-2xl font-black tracking-tight text-gray-800">${liveSpentUSD.toLocaleString()}</div>
+              )}
+              {lineItems.length === 0 && (
                 <div className="text-[10px] text-gray-400 mt-1">No line items yet</div>
               )}
-              {planned > 0 && spent > 0 && (
+              {planned > 0 && spentUSDEquiv > 0 && (
                 <div className="mt-2 flex items-center gap-2">
                   <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
                     <div className="h-full rounded-full transition-all duration-700"
