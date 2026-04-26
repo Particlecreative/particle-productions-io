@@ -121,9 +121,19 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
   const [parsedRows, setParsedRows] = useState([]);
   const [selected, setSelected] = useState({});
   const [importing, setImporting] = useState(false);
-  const [importPaymentMethod, setImportPaymentMethod] = useState('Bank Transfer');
-  const [importSupplierType, setImportSupplierType] = useState('New Supplier');
+  const [rowSettings, setRowSettings] = useState({}); // { [i]: { payment_method, supplier_type } }
   const fileRef = useRef();
+
+  function setRowSetting(i, field, value) {
+    setRowSettings(s => ({ ...s, [i]: { ...s[i], [field]: value } }));
+  }
+  function applyToAll(field, value) {
+    setRowSettings(s => {
+      const next = { ...s };
+      parsedRows.forEach((_, i) => { next[i] = { ...next[i], [field]: value }; });
+      return next;
+    });
+  }
 
   // Escape to close
   useEffect(() => {
@@ -304,16 +314,25 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
     const parsed = buildParsedRows(currencyChoice);
     setParsedRows(parsed);
     const sel = {};
-    parsed.forEach((_, i) => { sel[i] = true; });
+    const settings = {};
+    parsed.forEach((r, i) => {
+      sel[i] = true;
+      settings[i] = {
+        payment_method: r.payment_method || 'Bank Transfer',
+        supplier_type: 'New Supplier',
+      };
+    });
     setSelected(sel);
+    setRowSettings(settings);
     setStep(3);
   }
 
   async function handleImport() {
     setImporting(true);
-    const toImport = parsedRows.filter((_, i) => selected[i]);
+    const toImport = parsedRows.map((r, i) => ({ ...r, _i: i })).filter(r => selected[r._i]);
 
     for (const row of toImport) {
+      const rs = rowSettings[row._i] || {};
       const isPaid = row.payment_status === 'Paid';
       const parsedDate = isPaid ? parsePayDate(row.payment_date) : null;
       const payNote = isPaid
@@ -330,11 +349,12 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
         planned_budget: row.amount || 0,
         actual_spent: row.amount || 0,
         payment_status: row.payment_status || 'Not Paid',
-        payment_method: row.payment_method || importPaymentMethod,
+        payment_method: rs.payment_method || 'Bank Transfer',
         payment_note: payNote,
-        date_paid: parsedDate,
+        paid_at: parsedDate,
+        paid_by: isPaid ? 'Ortal' : null,
         bank_details: row.bank_details || '',
-        supplier_type: importSupplierType,
+        supplier_type: rs.supplier_type || 'New Supplier',
         invoice_url: row.invoice_url || '',
         invoice_status: row.invoice_url ? 'Received' : '',
         currency_code: row.currency || fallbackCurrency,
@@ -599,79 +619,82 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
               {notPaidCount > 0 && <span className="text-gray-400 ml-1">· {notPaidCount} not paid</span>}
             </p>
 
-            {/* Import Defaults */}
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
-              <p className="text-xs font-semibold text-blue-700 mb-3 uppercase tracking-wide">Import Settings</p>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs text-gray-500 font-medium mb-1.5">Payment Method</label>
-                  <select
-                    value={importPaymentMethod}
-                    onChange={e => setImportPaymentMethod(e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-300"
-                  >
-                    {PAYMENT_METHODS.map(m => <option key={m}>{m}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500 font-medium mb-1.5">Supplier Type</label>
-                  <select
-                    value={importSupplierType}
-                    onChange={e => setImportSupplierType(e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-300"
-                  >
-                    {SUPPLIER_TYPES.map(t => <option key={t}>{t}</option>)}
-                  </select>
-                </div>
+            {/* Quick "apply to all" bar */}
+            <div className="flex flex-wrap items-center gap-3 mb-3 p-3 bg-gray-50 rounded-xl border border-gray-200">
+              <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide shrink-0">Apply to all:</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] text-gray-400">Method</span>
+                <select
+                  className="border border-gray-200 rounded-lg px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-blue-300"
+                  defaultValue=""
+                  onChange={e => { if (e.target.value) { applyToAll('payment_method', e.target.value); e.target.value = ''; } }}
+                >
+                  <option value="">— pick —</option>
+                  {PAYMENT_METHODS.map(m => <option key={m}>{m}</option>)}
+                </select>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] text-gray-400">Supplier</span>
+                <select
+                  className="border border-gray-200 rounded-lg px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-blue-300"
+                  defaultValue=""
+                  onChange={e => { if (e.target.value) { applyToAll('supplier_type', e.target.value); e.target.value = ''; } }}
+                >
+                  <option value="">— pick —</option>
+                  {SUPPLIER_TYPES.map(t => <option key={t}>{t}</option>)}
+                </select>
               </div>
               {paidCount > 0 && (
-                <p className="text-[11px] text-blue-500 mt-2">
-                  ✓ {paidCount} paid row{paidCount !== 1 ? 's' : ''} will be marked as <strong>paid by Ortal</strong> with payment date & bank details from the sheet.
-                </p>
+                <span className="text-[11px] text-blue-500 ml-auto">
+                  ✓ {paidCount} paid → <strong>Ortal</strong>, date & bank from sheet
+                </span>
               )}
             </div>
-            <div className="overflow-auto max-h-64 rounded-xl border border-gray-200">
-              <table className="w-full text-xs">
+
+            <div className="overflow-auto max-h-72 rounded-xl border border-gray-200">
+              <table className="w-full text-xs" style={{ minWidth: 820 }}>
                 <thead>
                   <tr className="bg-gray-50 border-b sticky top-0">
-                    <th className="px-2 py-2 w-8"><input type="checkbox"
-                      checked={selectedCount === parsedRows.length}
-                      onChange={e => { const n = {}; parsedRows.forEach((_, i) => { n[i] = e.target.checked; }); setSelected(n); }}
-                      className="rounded" /></th>
+                    <th className="px-2 py-2 w-8">
+                      <input type="checkbox"
+                        checked={selectedCount === parsedRows.length}
+                        onChange={e => { const n = {}; parsedRows.forEach((_, i) => { n[i] = e.target.checked; }); setSelected(n); }}
+                        className="rounded" />
+                    </th>
                     <th className="px-2 py-2 text-left">Name</th>
                     <th className="px-2 py-2 text-left">Job</th>
                     <th className="px-2 py-2 text-right">Amount</th>
-                    <th className="px-2 py-2 text-center">Currency</th>
                     <th className="px-2 py-2 text-center">Invoice</th>
                     <th className="px-2 py-2 text-center">Status</th>
                     <th className="px-2 py-2 text-left">Pay Date</th>
-                    <th className="px-2 py-2 text-left">Bank Details</th>
+                    <th className="px-2 py-2 text-left">Method</th>
+                    <th className="px-2 py-2 text-left">Supplier</th>
                   </tr>
                 </thead>
                 <tbody>
                   {parsedRows.map((r, i) => {
                     const isPaid = r.payment_status === 'Paid';
+                    const rs = rowSettings[i] || {};
                     return (
                       <tr key={i} className={clsx(
                         'border-b border-gray-100',
                         !selected[i] && 'opacity-40',
                         isPaid && selected[i] && 'bg-green-50',
-                        !isPaid && selected[i] && 'bg-gray-50',
+                        !isPaid && selected[i] && 'bg-white',
                       )}>
-                        <td className="px-2 py-2">
+                        <td className="px-2 py-1.5">
                           <input type="checkbox" checked={!!selected[i]}
                             onChange={e => setSelected(s => ({ ...s, [i]: e.target.checked }))} className="rounded" />
                         </td>
-                        <td className="px-2 py-2 font-medium max-w-[110px] truncate">{r.supplier || '—'}</td>
-                        <td className="px-2 py-2 text-gray-500 max-w-[90px] truncate">{r.item || '—'}</td>
-                        <td className="px-2 py-2 text-right font-semibold">
+                        <td className="px-2 py-1.5 font-medium max-w-[100px] truncate">{r.supplier || '—'}</td>
+                        <td className="px-2 py-1.5 text-gray-500 max-w-[80px] truncate">{r.item || '—'}</td>
+                        <td className="px-2 py-1.5 text-right font-semibold whitespace-nowrap">
                           {r.currency === 'ILS' ? '₪' : '$'}{r.amount?.toLocaleString() || '0'}
                         </td>
-                        <td className="px-2 py-2 text-center text-[10px] text-gray-400">{r.currency || '—'}</td>
-                        <td className="px-2 py-2 text-center">
+                        <td className="px-2 py-1.5 text-center">
                           {r.invoice_url ? <span className="text-green-500">✓</span> : <span className="text-gray-300">—</span>}
                         </td>
-                        <td className="px-2 py-2 text-center">
+                        <td className="px-2 py-1.5 text-center">
                           <span className={clsx(
                             'px-1.5 py-0.5 rounded text-[10px] font-bold',
                             isPaid ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-600'
@@ -679,11 +702,31 @@ export default function ImportAccountingModal({ productionId, onClose, onImporte
                             {r.payment_status || 'Not Paid'}
                           </span>
                         </td>
-                        <td className="px-2 py-2 text-gray-500 text-[10px] whitespace-nowrap">
+                        <td className="px-2 py-1.5 text-gray-500 text-[10px] whitespace-nowrap">
                           {r.payment_date || '—'}
                         </td>
-                        <td className="px-2 py-2 text-gray-400 max-w-[120px] truncate text-[10px]">
-                          {r.bank_details || '—'}
+                        <td className="px-2 py-1.5">
+                          <select
+                            value={rs.payment_method || 'Bank Transfer'}
+                            onChange={e => setRowSetting(i, 'payment_method', e.target.value)}
+                            className="border border-gray-200 rounded px-1.5 py-0.5 text-[11px] outline-none focus:ring-1 focus:ring-blue-300 bg-white w-full"
+                          >
+                            {PAYMENT_METHODS.map(m => <option key={m}>{m}</option>)}
+                          </select>
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <select
+                            value={rs.supplier_type || 'New Supplier'}
+                            onChange={e => setRowSetting(i, 'supplier_type', e.target.value)}
+                            className={clsx(
+                              'border rounded px-1.5 py-0.5 text-[11px] outline-none focus:ring-1 focus:ring-blue-300 w-full',
+                              rs.supplier_type === 'Worked with before'
+                                ? 'border-green-200 bg-green-50 text-green-700'
+                                : 'border-gray-200 bg-white text-gray-600'
+                            )}
+                          >
+                            {SUPPLIER_TYPES.map(t => <option key={t}>{t}</option>)}
+                          </select>
                         </td>
                       </tr>
                     );

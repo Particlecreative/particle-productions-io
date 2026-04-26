@@ -199,7 +199,8 @@ export default function ProductionBoard() {
   const planned = parseFloat(production.planned_budget_2026) || 0;
 
   // Live totals computed directly from line items (never stale)
-  const DEFAULT_ILS_RATE = production?.delivery_date_rate || prodRate || 3.7;
+  // Use SAME rate priority as BudgetTable: prodRate (historical for delivery date) → live rate → fallback
+  const DEFAULT_ILS_RATE = prodRate || globalRate || 3.7;
 
   // Native split totals (for display — no conversion)
   const liveSpentUSD = lineItems.filter(i => (i.currency_code || 'USD') !== 'ILS').reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0);
@@ -265,6 +266,28 @@ export default function ProductionBoard() {
 
           {/* Project name + ID + type tags */}
           <div className="mb-4">
+            {/* PRD ID badge — prominent, above the title */}
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
+              <span
+                className="inline-flex items-center gap-1.5 font-mono text-sm font-black px-3 py-1 rounded-lg border"
+                style={{
+                  background: 'rgba(8,8,248,0.06)',
+                  borderColor: 'rgba(8,8,248,0.18)',
+                  color: 'var(--brand-accent)',
+                  letterSpacing: '0.04em',
+                }}
+              >
+                {production.id}
+              </span>
+              {productTypes.map(pt => (
+                <span key={pt} className="px-3 py-1 text-[11px] font-bold rounded-full"
+                  style={{ background: 'rgba(8,8,248,0.08)', color: 'var(--brand-accent)' }}>
+                  {pt}
+                </span>
+              ))}
+            </div>
+
+            {/* Title row */}
             <div className="flex items-center gap-3 flex-wrap">
               {editingName && isEditor ? (
                 <input
@@ -286,15 +309,6 @@ export default function ProductionBoard() {
                   {production.project_name}
                 </h1>
               )}
-              <span className="text-[10px] font-mono text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-full">
-                {production.id}
-              </span>
-              {productTypes.map(pt => (
-                <span key={pt} className="px-3 py-1 text-[11px] font-bold rounded-full"
-                  style={{ background: 'rgba(8,8,248,0.08)', color: 'var(--brand-accent)' }}>
-                  {pt}
-                </span>
-              ))}
             </div>
           </div>
 
@@ -368,16 +382,13 @@ export default function ProductionBoard() {
                   </span>
                 )}
               </div>
-              {hasMixedCurrency ? (
-                <div className="flex items-baseline gap-1.5 flex-wrap">
-                  <span className="text-2xl font-black tracking-tight text-gray-800">${liveSpentUSD.toLocaleString()}</span>
-                  <span className="text-sm font-bold text-gray-400">+</span>
-                  <span className="text-2xl font-black tracking-tight text-gray-800">₪{liveSpentILS.toLocaleString()}</span>
+              {/* Primary: always show converted total matching the currency toggle */}
+              <div className="text-2xl font-black tracking-tight text-gray-800">{fmt(spentUSDEquiv)}</div>
+              {/* Subtitle: breakdown when mixed currencies */}
+              {hasMixedCurrency && (
+                <div className="text-[10px] text-gray-400 mt-0.5">
+                  ${liveSpentUSD.toLocaleString()} + ₪{liveSpentILS.toLocaleString()} · rate ₪{DEFAULT_ILS_RATE.toFixed(2)}
                 </div>
-              ) : liveSpentILS > 0 ? (
-                <div className="text-2xl font-black tracking-tight text-gray-800">₪{liveSpentILS.toLocaleString()}</div>
-              ) : (
-                <div className="text-2xl font-black tracking-tight text-gray-800">${liveSpentUSD.toLocaleString()}</div>
               )}
               {lineItems.length === 0 && (
                 <div className="text-[10px] text-gray-400 mt-1">No line items yet</div>
@@ -401,8 +412,8 @@ export default function ProductionBoard() {
               <div className={clsx('text-2xl font-black tracking-tight', remaining >= 0 ? 'text-green-600' : 'text-red-600')}>
                 {remaining >= 0 ? '' : '-'}{fmt(Math.abs(remaining))}
               </div>
-              {prodRate && (
-                <div className="text-[10px] text-gray-400 mt-1">Rate: ₪{prodRate.toFixed(2)}/$1</div>
+              {hasMixedCurrency && prodRate && (
+                <div className="text-[10px] text-gray-400 mt-1">Rate: ₪{(prodRate || DEFAULT_ILS_RATE).toFixed(2)}/$1</div>
               )}
             </div>
           </div>
