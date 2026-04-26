@@ -78,7 +78,6 @@ export default function ProductionBoard() {
   const [showImport, setShowImport] = useState(false);
   const [showAccountingImport, setShowAccountingImport] = useState(false);
   const [prodRate, setProdRate] = useState(null);
-  const [showBudget, setShowBudget] = useState(false);
   const [showTaxiWizard, setShowTaxiWizard] = useState(false);
   const [taxiPeople, setTaxiPeople] = useState([]);
   const [taxiCast, setTaxiCast] = useState([]);
@@ -315,57 +314,42 @@ export default function ProductionBoard() {
             )}
           </div>
 
-          {/* Budget overview — collapsible */}
-          <button
-            onClick={() => setShowBudget(!showBudget)}
-            className="flex items-center gap-3 w-full text-left px-4 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 transition-all group"
-          >
-            <DollarSign size={14} className="text-gray-400 shrink-0" />
-            <div className="flex items-center gap-4 flex-1 flex-wrap text-sm">
-              <span className="font-black" style={{ color: 'var(--brand-primary)' }}>{fmt(planned)}</span>
-              <span className="text-gray-300">|</span>
-              <span className="text-green-600 font-bold">{fmt(spent)} spent</span>
-              <span className="text-gray-300">|</span>
-              <span className={clsx('font-bold', remaining >= 0 ? 'text-blue-600' : 'text-red-500')}>{fmt(remaining)} left</span>
+          {/* Budget Stats */}
+          <div className="mt-4 grid grid-cols-3 gap-3">
+            {/* Estimated Total */}
+            <div className="rounded-2xl px-4 py-3 border border-gray-100 bg-gray-50/80">
+              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Estimated Total</div>
+              <div className="text-2xl font-black tracking-tight" style={{ color: 'var(--brand-primary)' }}>{fmt(planned)}</div>
+              <div className="text-[10px] text-gray-400 mt-1">Production budget</div>
             </div>
-            <ChevronDown size={14} className={clsx('text-gray-400 transition-transform duration-300 group-hover:text-gray-600', showBudget && 'rotate-180')} />
-          </button>
 
-          {/* Collapsible budget detail */}
-          <div
-            className="overflow-hidden transition-all duration-300 ease-out"
-            style={{ maxHeight: showBudget ? 200 : 0, opacity: showBudget ? 1 : 0 }}
-          >
-            <div className="mt-3 pt-3 border-t grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm" style={{ borderColor: 'rgba(0,0,0,0.06)' }}>
-              <div className="bg-gray-50 dark:bg-gray-800/30 rounded-xl p-3">
-                <div className="text-[9px] text-gray-400 uppercase tracking-wide font-semibold mb-1">Planned</div>
-                <div className="text-lg font-black" style={{ color: 'var(--brand-primary)' }}>{fmt(planned)}</div>
-              </div>
-              <div className="bg-gray-50 dark:bg-gray-800/30 rounded-xl p-3">
-                <div className="text-[9px] text-gray-400 uppercase tracking-wide font-semibold mb-1">Estimated</div>
-                <div className="text-lg font-bold text-gray-700">{fmt(estimated)}</div>
-              </div>
-              <div className="bg-gray-50 dark:bg-gray-800/30 rounded-xl p-3">
-                <div className="text-[9px] text-gray-400 uppercase tracking-wide font-semibold mb-1">Spent</div>
-                <div className="text-lg font-bold text-green-600">{fmt(spent)}</div>
-              </div>
-              <div className="bg-gray-50 dark:bg-gray-800/30 rounded-xl p-3">
-                <div className="text-[9px] text-gray-400 uppercase tracking-wide font-semibold mb-1">Remaining</div>
-                <div className={clsx('text-lg font-black', remaining >= 0 ? 'text-green-600' : 'text-red-500')}>{remaining >= 0 ? '+' : ''}{fmt(remaining)}</div>
-              </div>
-            </div>
-            {planned > 0 && (
-              <div className="mt-3 flex items-center gap-3">
-                <div className="flex-1 h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
-                  <div className="h-full rounded-full transition-all duration-1000 ease-out"
-                    style={{ width: `${Math.min(pct, 100)}%`, background: pct > 100 ? 'linear-gradient(90deg, #ef4444, #dc2626)' : pct > 80 ? 'linear-gradient(90deg, #f59e0b, #d97706)' : 'var(--brand-gradient)' }} />
+            {/* Actual Spent */}
+            <div className="rounded-2xl px-4 py-3 border border-gray-100 bg-gray-50/80">
+              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Actual Spent</div>
+              <div className="text-2xl font-black tracking-tight text-gray-800">{fmt(spent)}</div>
+              {planned > 0 && (
+                <div className="mt-2 flex items-center gap-2">
+                  <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full transition-all duration-700"
+                      style={{ width: `${Math.min(pct, 100)}%`, background: pct > 100 ? '#ef4444' : pct > 80 ? '#f59e0b' : 'var(--brand-accent)' }} />
+                  </div>
+                  <span className="text-[10px] font-bold text-gray-400 shrink-0">{pct}%</span>
                 </div>
-                <span className="text-xs font-bold text-gray-500 w-10">{pct}%</span>
-                {prodRate && (
-                  <span className="text-[10px] text-gray-400 ml-2">Rate: ₪{prodRate.toFixed(2)}/$1</span>
-                )}
+              )}
+            </div>
+
+            {/* Left / Over */}
+            <div className={clsx('rounded-2xl px-4 py-3 border', remaining >= 0 ? 'bg-green-50/80 border-green-100' : 'bg-red-50/80 border-red-100')}>
+              <div className={clsx('text-[10px] font-semibold uppercase tracking-wider mb-1.5', remaining >= 0 ? 'text-green-500' : 'text-red-400')}>
+                {remaining >= 0 ? 'Budget Left ✓' : 'Over Budget ⚠'}
               </div>
-            )}
+              <div className={clsx('text-2xl font-black tracking-tight', remaining >= 0 ? 'text-green-600' : 'text-red-600')}>
+                {remaining >= 0 ? '' : '-'}{fmt(Math.abs(remaining))}
+              </div>
+              {prodRate && (
+                <div className="text-[10px] text-gray-400 mt-1">Rate: ₪{prodRate.toFixed(2)}/$1</div>
+              )}
+            </div>
           </div>
         </div>
       </div>

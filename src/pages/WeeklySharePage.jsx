@@ -1,9 +1,28 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { ExternalLink, FileText, Link2, X, ChevronDown, ChevronUp, ArrowUpDown } from 'lucide-react';
+import { ExternalLink, FileText, Link2, X, ChevronDown, ChevronUp, ArrowUpDown, Calendar as CalendarIcon } from 'lucide-react';
 import { getDriveThumbnail } from '../components/shared/FileUploadButton';
 import StageBadge from '../components/ui/StageBadge';
 import clsx from 'clsx';
+
+function fmtDateShort(d) {
+  if (!d) return '';
+  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function daysLeft(endDate) {
+  if (!endDate) return null;
+  const now = new Date();
+  const end = new Date(endDate);
+  return Math.ceil((end - now) / (1000 * 60 * 60 * 24));
+}
+
+function typeIcon(type) {
+  if (type === 'Remote Shoot') return '📦';
+  if (type === 'Shoot') return '🎬';
+  if (type === 'AI') return '✨';
+  return '🎯';
+}
 
 const API = import.meta.env.VITE_API_URL || '';
 
@@ -48,7 +67,13 @@ export default function WeeklySharePage() {
     </div>
   );
 
-  const { report, productions } = data;
+  const { report, productions, brand } = data;
+
+  // Brand colors — default to Particle's indigo/blue if not provided
+  const brandPrimary = brand?.primary_color || '#030b2e';
+  const brandAccent = brand?.accent_color || '#0808f8';
+  const brandName = brand?.name || 'Productions';
+  const brandLogo = brand?.logo_url || null;
 
   const STAGE_SORT = { 'Production': 0, 'Pre Production': 1, 'Post': 2, 'Pending': 3, 'Paused': 4, 'Completed': 5 };
   const sorted = [...(report.entries || [])].sort((a, b) => {
@@ -71,24 +96,38 @@ export default function WeeklySharePage() {
   const hasOverview = generalUpdates.length > 0 || creativeLink?.url;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-white">
-      {/* Header */}
-      <div className="sticky top-0 z-10 border-b border-gray-200/80 bg-white/90 backdrop-blur-md shadow-sm">
-        <div className="max-w-6xl mx-auto px-6 sm:px-8 py-4 flex items-center justify-between">
-          <div>
-            <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-gray-400">Weekly Report</div>
-            <h1 className="text-lg font-black text-gray-900 leading-tight">{report.title}</h1>
-          </div>
-          <div className="text-right">
-            <div className="text-xs font-semibold text-gray-500">{weekDate}</div>
-            <div className="text-[10px] text-gray-400">
-              {sorted.length} production{sorted.length !== 1 ? 's' : ''}
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-white"
+      style={{ '--brand-primary': brandPrimary, '--brand-accent': brandAccent }}>
+      {/* Hero — large centered logo on gradient */}
+      <div className="relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${brandPrimary} 0%, ${brandAccent} 100%)` }}>
+        <div className="absolute inset-0 opacity-10" style={{ background: 'radial-gradient(circle at 20% 50%, white 0%, transparent 50%), radial-gradient(circle at 80% 30%, white 0%, transparent 40%)' }} />
+        <div className="relative max-w-5xl mx-auto px-6 sm:px-8 py-10 text-center">
+          {/* Logo — no background tile, just the logo on the gradient */}
+          {brandLogo ? (
+            <div className="inline-flex items-center justify-center mb-4">
+              <img src={brandLogo} alt={brandName} className="max-w-[300px] max-h-16 w-auto h-auto object-contain drop-shadow-lg"
+                style={{ filter: 'brightness(0) invert(1)' }} />
             </div>
+          ) : (
+            <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-white/10 backdrop-blur-sm border border-white/20 shadow-xl mb-4">
+              <span className="text-3xl font-black text-white">
+                {brandName.charAt(0).toUpperCase()}
+              </span>
+            </div>
+          )}
+          <div className="text-white/80 text-[11px] font-bold uppercase tracking-[0.2em] mb-1">
+            Creative Weekly Report
+          </div>
+          <h1 className="text-white text-2xl sm:text-3xl font-black leading-tight">{report.title}</h1>
+          <div className="flex items-center justify-center gap-3 mt-3 text-white/80 text-xs">
+            <span className="font-semibold">{weekDate}</span>
+            <span className="w-1 h-1 rounded-full bg-white/50" />
+            <span>{sorted.length} production{sorted.length !== 1 ? 's' : ''}</span>
           </div>
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-6 sm:px-8 py-8 space-y-8">
+      <div className="max-w-5xl mx-auto px-6 sm:px-8 py-8 space-y-8 -mt-4">
 
         {/* Overview: General Updates + Creative Link */}
         {hasOverview && (
@@ -96,21 +135,21 @@ export default function WeeklySharePage() {
             {generalUpdates.length > 0 && (
               <div className={`bg-white rounded-2xl border border-gray-200 p-7 shadow-sm ${creativeLink?.url ? 'lg:col-span-2' : ''}`}>
                 <div className="flex items-center gap-3 mb-5">
-                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'rgba(99,102,241,0.1)' }}>
-                    <FileText size={15} className="text-indigo-500" />
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${brandAccent}1A` }}>
+                    <FileText size={15} style={{ color: brandAccent }} />
                   </div>
                   <h2 className="text-base font-black text-gray-800">General Updates</h2>
                 </div>
                 <div className="space-y-3">
                   {generalUpdates.map(dot => (
                     <div key={dot.id} className="flex items-start gap-3">
-                      <div className="w-2 h-2 rounded-full mt-[7px] flex-shrink-0 bg-indigo-400 opacity-50" />
+                      <div className="w-2 h-2 rounded-full mt-[7px] flex-shrink-0 opacity-60" style={{ background: brandAccent }} />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-gray-700 leading-relaxed">{dot.text}</p>
                         <div className="flex items-center gap-3 mt-1 flex-wrap">
                           {dot.link && (
                             <a href={dot.link} target="_blank" rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 text-xs text-indigo-500 hover:underline">
+                              className="inline-flex items-center gap-1 text-xs hover:underline" style={{ color: brandAccent }}>
                               <ExternalLink size={11} />
                               {(() => { try { return new URL(dot.link).hostname; } catch { return 'Link'; } })()}
                             </a>
@@ -159,127 +198,137 @@ export default function WeeklySharePage() {
         )}
 
         {/* Divider */}
-        {hasOverview && sorted.length > 0 && (
-          <div className="flex items-center gap-4">
-            <div className="flex-1 h-px bg-gray-200" />
-            <span className="text-xs font-bold uppercase tracking-widest text-gray-300">Productions</span>
+        {sorted.length > 0 && (
+          <div className="flex items-center gap-3">
+            {hasOverview && <div className="flex-1 h-px bg-gray-200" />}
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold uppercase tracking-widest text-gray-300">Productions</span>
+              <span className="text-[10px] text-gray-300">·</span>
+              <span className="text-[10px] text-gray-400 font-medium">{sorted.length}</span>
+            </div>
             <div className="flex-1 h-px bg-gray-200" />
           </div>
         )}
 
-        {/* Production table list */}
+        {/* Production cards — clean, spacious */}
         {sorted.length > 0 && (
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-            {/* Table header */}
-            <div className="hidden md:grid grid-cols-[100px_1fr_1.5fr_auto] gap-4 px-5 py-3 bg-gray-50/80 border-b border-gray-200">
-              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Stage</div>
-              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Production</div>
-              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">This Week</div>
-              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest w-24 text-right">Links</div>
-            </div>
-
-            {/* Rows */}
-            {sorted.map((entry, idx) => {
+          <div className="space-y-3">
+            {sorted.map(entry => {
               const prod = productions.find(p => p.id === entry.production_id);
               if (!prod) return null;
               const bullets = entry.bullets || [];
               const notes = entry.long_text || entry.note || '';
               const links = entry.weekly_links || [];
-              const hasContent = bullets.length > 0 || notes;
+              const days = daysLeft(prod.planned_end);
 
               return (
-                <div
-                  key={entry.production_id}
-                  className={clsx(
-                    'group transition-colors border-b border-gray-100 last:border-b-0',
-                    idx % 2 === 1 && 'bg-gray-50/40',
-                    'hover:bg-indigo-50/30'
-                  )}
-                >
-                  {/* Desktop: table row */}
-                  <div className="hidden md:grid grid-cols-[100px_1fr_1.5fr_auto] gap-4 px-5 py-4 items-start">
-                    {/* Stage */}
-                    <div className="pt-0.5">
-                      <StageBadge stage={prod.stage} size="xs" />
+                <div key={entry.production_id}
+                  className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden">
+                  {/* Header — stage + name + ID + meta line */}
+                  <div className="px-6 pt-5 pb-3">
+                    <div className="flex items-start gap-3 flex-wrap mb-2">
+                      <StageBadge stage={prod.stage} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="text-base font-black text-gray-900 leading-tight">{prod.project_name}</h3>
+                          <span className="font-mono text-[10px] text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded shrink-0">{prod.id}</span>
+                        </div>
+                      </div>
                     </div>
 
-                    {/* Production info */}
-                    <div className="min-w-0">
-                      <h3 className="text-sm font-bold text-gray-900 leading-tight">{prod.project_name}</h3>
-                      <span className="font-mono text-[10px] text-gray-400">{prod.id}</span>
+                    {/* Meta line: type + timeline + days left */}
+                    {(prod.production_type || prod.planned_start || prod.planned_end) && (
+                      <div className="flex items-center gap-2 flex-wrap text-[10px]">
+                        {prod.production_type && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-semibold"
+                            style={{ background: `${brandAccent}14`, color: brandAccent }}>
+                            {typeIcon(prod.production_type)} {prod.production_type}
+                          </span>
+                        )}
+                        {(prod.planned_start || prod.planned_end) && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-gray-50 text-gray-500">
+                            <CalendarIcon size={9} />
+                            {(() => {
+                              const s = fmtDateShort(prod.planned_start);
+                              const e = fmtDateShort(prod.planned_end);
+                              if (s && e) return `${s} → ${e}`;
+                              return s || e;
+                            })()}
+                          </span>
+                        )}
+                        {days !== null && (
+                          <span className={clsx(
+                            'inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-semibold',
+                            days < 0 && 'bg-red-50 text-red-600',
+                            days === 0 && 'bg-amber-50 text-amber-700',
+                            days > 0 && days <= 7 && 'bg-amber-50 text-amber-600',
+                            days > 7 && 'bg-gray-50 text-gray-400'
+                          )}>
+                            {days < 0 && `⚠️ ${Math.abs(days)}d overdue`}
+                            {days === 0 && '🔥 Due today'}
+                            {days > 0 && days <= 7 && `${days}d left`}
+                            {days > 7 && `${days}d left`}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Content — description + updates, only if there's something */}
+                  {(notes || bullets.length > 0 || links.length > 0) && (
+                    <div className="px-6 pb-5 pt-2 border-t border-gray-100 space-y-3">
+                      {/* Description (notes) */}
                       {notes && (
-                        <p className="text-xs text-gray-500 mt-1 leading-relaxed line-clamp-2 whitespace-pre-line">{notes}</p>
+                        <div>
+                          <div className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Description</div>
+                          <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{notes}</p>
+                        </div>
                       )}
-                    </div>
 
-                    {/* Key points */}
-                    <div className="min-w-0">
-                      {bullets.length > 0 ? (
-                        <div className="space-y-1">
-                          {bullets.map(b => (
-                            <div key={b.id} className="flex items-start gap-2">
-                              <div className="w-1.5 h-1.5 rounded-full mt-[6px] flex-shrink-0 bg-indigo-400/60" />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-xs text-gray-700 leading-relaxed">{b.text}</p>
-                                {b.link && (
-                                  <a href={b.link} target="_blank" rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1 text-[10px] text-indigo-500 hover:underline mt-0.5">
-                                    <ExternalLink size={8} /> {(() => { try { return new URL(b.link).hostname; } catch { return 'Link'; } })()}
-                                  </a>
-                                )}
+                      {/* Updates / Key points */}
+                      {bullets.length > 0 && (
+                        <div>
+                          <div className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">This Week</div>
+                          <div className="space-y-1.5">
+                            {bullets.map(b => (
+                              <div key={b.id} className="flex items-start gap-2.5">
+                                <div className="w-1.5 h-1.5 rounded-full mt-[7px] flex-shrink-0 opacity-70" style={{ background: brandAccent }} />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm text-gray-800 leading-relaxed">{b.text}</p>
+                                  {b.link && (
+                                    <a href={b.link} target="_blank" rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1 text-[10px] hover:underline mt-0.5" style={{ color: brandAccent }}>
+                                      <ExternalLink size={8} /> {(() => { try { return new URL(b.link).hostname; } catch { return 'Link'; } })()}
+                                    </a>
+                                  )}
+                                </div>
                               </div>
-                            </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Links */}
+                      {links.length > 0 && (
+                        <div className="flex flex-wrap gap-2 pt-1">
+                          {links.map(wl => (
+                            <a key={wl.id} href={wl.url} target="_blank" rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-gray-50 border border-gray-200 text-gray-600 hover:border-blue-300 hover:text-blue-600 hover:bg-blue-50 transition-all font-medium">
+                              <ExternalLink size={10} />
+                              {wl.title || (() => { try { return new URL(wl.url).hostname; } catch { return 'Link'; } })()}
+                            </a>
                           ))}
                         </div>
-                      ) : (
-                        <span className="text-xs text-gray-300 italic">No updates</span>
                       )}
                     </div>
+                  )}
 
-                    {/* Links */}
-                    <div className="w-24 flex flex-wrap gap-1 justify-end">
-                      {links.map(wl => (
-                        <a key={wl.id} href={wl.url} target="_blank" rel="noopener noreferrer"
-                          title={wl.title || wl.url}
-                          className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg border border-gray-200 text-gray-500 hover:border-blue-300 hover:text-blue-600 hover:bg-blue-50 transition-all">
-                          <ExternalLink size={9} />
-                          <span className="max-w-[60px] truncate">{wl.title || 'Link'}</span>
-                        </a>
-                      ))}
+                  {/* Empty state — subtle */}
+                  {!notes && bullets.length === 0 && links.length === 0 && (
+                    <div className="px-6 pb-4 pt-2 border-t border-gray-100">
+                      <p className="text-xs text-gray-300 italic">No updates this week</p>
                     </div>
-                  </div>
-
-                  {/* Mobile: stacked card */}
-                  <div className="md:hidden px-5 py-4 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <StageBadge stage={prod.stage} size="xs" />
-                      <div className="flex-1 min-w-0">
-                        <h3 className="text-sm font-bold text-gray-900 truncate">{prod.project_name}</h3>
-                        <span className="font-mono text-[10px] text-gray-400">{prod.id}</span>
-                      </div>
-                    </div>
-                    {notes && <p className="text-xs text-gray-500 leading-relaxed whitespace-pre-line">{notes}</p>}
-                    {bullets.length > 0 && (
-                      <div className="space-y-1 pl-1">
-                        {bullets.map(b => (
-                          <div key={b.id} className="flex items-start gap-2">
-                            <div className="w-1.5 h-1.5 rounded-full mt-[5px] flex-shrink-0 bg-indigo-400/60" />
-                            <p className="text-xs text-gray-700">{b.text}</p>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {links.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 pt-1">
-                        {links.map(wl => (
-                          <a key={wl.id} href={wl.url} target="_blank" rel="noopener noreferrer"
-                            className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg border border-gray-200 text-gray-500 hover:text-blue-600">
-                            <ExternalLink size={8} /> {wl.title || 'Link'}
-                          </a>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  )}
                 </div>
               );
             })}
@@ -289,6 +338,13 @@ export default function WeeklySharePage() {
         {sorted.length === 0 && !hasOverview && (
           <div className="text-center py-20 text-gray-400">No content in this report</div>
         )}
+
+        {/* Brand footer */}
+        <div className="pt-8 pb-4 flex items-center justify-center gap-2 text-[10px] text-gray-300">
+          <div className="w-1 h-1 rounded-full" style={{ background: brandAccent }} />
+          <span className="font-semibold uppercase tracking-widest">{brandName}</span>
+          <div className="w-1 h-1 rounded-full" style={{ background: brandAccent }} />
+        </div>
       </div>
 
       {/* Image Lightbox */}

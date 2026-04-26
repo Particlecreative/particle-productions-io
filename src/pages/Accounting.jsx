@@ -13,6 +13,12 @@ import { useLists } from '../context/ListsContext';
 import { CloudLinks, detectCloudUrl } from '../components/shared/FileUploadButton';
 import clsx from 'clsx';
 
+// Format amount in its native currency — no conversion
+function fmtNative(amount, code) {
+  const n = parseFloat(amount) || 0;
+  return code === 'ILS' ? `₪${n.toLocaleString()}` : `$${n.toLocaleString()}`;
+}
+
 const PAYMENT_STATUS = ['Paid', 'Not Paid', 'Pending'];
 const INVOICE_STATUS = ['Pending', 'Received'];
 
@@ -43,7 +49,16 @@ function savePayers(list) {
 
 export default function Accounting() {
   const { brandId } = useBrand();
-  const { fmt } = useCurrency();
+  const { fmt, currency, rate } = useCurrency();
+  const effectiveRate = rate || 3.7;
+
+  function toDisplay(amount, code) {
+    const num = parseFloat(amount) || 0;
+    if (code === 'ILS' && currency === 'USD') return num / effectiveRate;
+    if (code === 'USD' && currency === 'ILS') return num * effectiveRate;
+    return num;
+  }
+  const getAmt = (i) => toDisplay(parseFloat(i.actual_spent) || parseFloat(i.planned_budget) || 0, i.currency_code || 'USD');
   const { isEditor, user } = useAuth();
   const { addNotification } = useNotifications();
 
@@ -140,19 +155,18 @@ export default function Accounting() {
     const note = `Paid by ${payerName} on ${payDate} at ${payTime}`;
     const item = allItems.find(i => i.id === pendingPayment.itemId);
     const prod = productions.find(p => p.id === item?.production_id);
-    const paidAt = new Date().toISOString();
-    const updates = { payment_status: 'Paid', payment_note: note, date_paid: paidAt };
+    const paidAtTs = new Date().toISOString();
+    const updates = { payment_status: 'Paid', payment_note: note, paid_by: payerName, paid_at: payDate };
     // Receipt follow-up: when paying a חשבון עסקה, create a receipt record
     if (item?.invoice_type === 'cheshbon_iska') {
       updates.receipt_required = true;
-      updates.paid_at = paidAt;
       createReceipt({
         id: generateId('rcpt'),
         line_item_id: item.id,
         production_id: item.production_id,
         supplier_name: item.full_name || item.item || '',
         amount: parseFloat(item.actual_spent) || parseFloat(item.planned_budget) || 0,
-        paid_at: paidAt,
+        paid_at: paidAtTs,
         receipt_url: null,
         reminder_sent: false,
       });
@@ -191,7 +205,6 @@ export default function Accounting() {
   const paid = useMemo(() => allItems.filter(i => i.payment_status === 'Paid'), [allItems]);
   const notPaid = useMemo(() => allItems.filter(i => !i.payment_status || i.payment_status === 'Not Paid'), [allItems]);
   const pending = useMemo(() => allItems.filter(i => i.payment_status === 'Pending'), [allItems]);
-  const getAmt = (i) => parseFloat(i.actual_spent) || parseFloat(i.planned_budget) || 0;
   const paidTotal = useMemo(() => paid.reduce((s, i) => s + getAmt(i), 0), [paid]);
   const notPaidTotal = useMemo(() => notPaid.reduce((s, i) => s + getAmt(i), 0), [notPaid]);
   const pendingTotal = useMemo(() => pending.reduce((s, i) => s + getAmt(i), 0), [pending]);
@@ -508,9 +521,20 @@ export default function Accounting() {
 // ─── Collapsible production group ───────────────────────────────────────────
 
 function AccountingProductionGroup({ prodId, data, fmt, isEditor, onUpdate, onPaymentStatusChange, paymentBlockedId, receipts = [], onReceiptUpdate }) {
-  const total = data.items.reduce((s, i) => s + (parseFloat(i.actual_spent) || parseFloat(i.planned_budget) || 0), 0);
-  const paidTotal = data.items.filter(i => i.payment_status === 'Paid').reduce((s, i) => s + (parseFloat(i.actual_spent) || parseFloat(i.planned_budget) || 0), 0);
+  const usdItems = data.items.filter(i => (i.currency_code || 'USD') === 'USD');
+  const ilsItems = data.items.filter(i => i.currency_code === 'ILS');
+  const hasMixed = usdItems.length > 0 && ilsItems.length > 0;
+  const usdTotal = usdItems.reduce((s, i) => s + (parseFloat(i.actual_spent) || parseFloat(i.planned_budget) || 0), 0);
+  const ilsTotal = ilsItems.reduce((s, i) => s + (parseFloat(i.actual_spent) || parseFloat(i.planned_budget) || 0), 0);
+  const usdPaid = usdItems.filter(i => i.payment_status === 'Paid').reduce((s, i) => s + (parseFloat(i.actual_spent) || parseFloat(i.planned_budget) || 0), 0);
+  const ilsPaid = ilsItems.filter(i => i.payment_status === 'Paid').reduce((s, i) => s + (parseFloat(i.actual_spent) || parseFloat(i.planned_budget) || 0), 0);
+  const usdUnpaid = usdTotal - usdPaid;
+  const ilsUnpaid = ilsTotal - ilsPaid;
+  // For simple single-currency display
+  const total = hasMixed ? usdTotal : (ilsItems.length > 0 ? ilsTotal : usdTotal);
+  const paidTotal = hasMixed ? usdPaid : (ilsItems.length > 0 ? ilsPaid : usdPaid);
   const notPaidTotal = total - paidTotal;
+  const totalCurrency = ilsItems.length > 0 && usdItems.length === 0 ? 'ILS' : 'USD';
   const allPaid = data.items.length > 0 && data.items.every(i => i.payment_status === 'Paid');
 
   // Auto-collapse when fully paid; allow manual toggle
@@ -535,13 +559,19 @@ function AccountingProductionGroup({ prodId, data, fmt, isEditor, onUpdate, onPa
           )}
         </div>
         <div className="flex items-center gap-4">
-          {allPaid ? (
-            <span className="text-sm font-bold text-green-700">{fmt(total)}</span>
+          {hasMixed ? (
+            <>
+              <span className="text-xs text-green-600 font-semibold">✓ ${usdPaid.toLocaleString()} + ₪{ilsPaid.toLocaleString()}</span>
+              {(usdUnpaid > 0 || ilsUnpaid > 0) && <span className="text-xs text-orange-600 font-semibold">⊘ ${usdUnpaid.toLocaleString()} + ₪{ilsUnpaid.toLocaleString()}</span>}
+              <span className="font-bold text-sm" style={{ color: 'var(--brand-primary)' }}>${usdTotal.toLocaleString()} + ₪{ilsTotal.toLocaleString()}</span>
+            </>
+          ) : allPaid ? (
+            <span className="text-sm font-bold text-green-700">{fmtNative(total, totalCurrency)}</span>
           ) : (
             <>
-              <span className="text-xs text-green-600 font-semibold">✓ {fmt(paidTotal)}</span>
-              <span className="text-xs text-orange-600 font-semibold">⊘ {fmt(notPaidTotal)}</span>
-              <span className="font-bold text-sm" style={{ color: 'var(--brand-primary)' }}>{fmt(total)}</span>
+              <span className="text-xs text-green-600 font-semibold">✓ {fmtNative(paidTotal, totalCurrency)}</span>
+              <span className="text-xs text-orange-600 font-semibold">⊘ {fmtNative(notPaidTotal, totalCurrency)}</span>
+              <span className="font-bold text-sm" style={{ color: 'var(--brand-primary)' }}>{fmtNative(total, totalCurrency)}</span>
             </>
           )}
         </div>
@@ -668,7 +698,7 @@ function AccountingRow({ item, fmt, isEditor, showProduction, productionName, on
       <td className="text-gray-600 text-sm">{item.item || '—'}</td>
 
       {/* Amount */}
-      <td className="font-semibold">{fmt(parseFloat(item.actual_spent) || parseFloat(item.planned_budget) || 0)}</td>
+      <td className="font-semibold">{fmtNative(parseFloat(item.actual_spent) || parseFloat(item.planned_budget) || 0, item.currency_code || 'USD')}</td>
 
       {/* Invoice URL — read-only; set via InvoiceModal on production board */}
       <td>
@@ -790,11 +820,11 @@ function AccountingRow({ item, fmt, isEditor, showProduction, productionName, on
       <td>
         {item.payment_status === 'Paid' ? (
           <div className="flex flex-col gap-0.5">
-            {parsePaidBy(item.payment_note) && (
-              <span className="text-xs font-semibold text-gray-800">{parsePaidBy(item.payment_note)}</span>
+            {(item.paid_by || parsePaidBy(item.payment_note)) && (
+              <span className="text-xs font-semibold text-gray-800">{item.paid_by || parsePaidBy(item.payment_note)}</span>
             )}
-            {(item.date_paid || item.paid_at) && (
-              <span className="text-[10px] text-gray-400">{fmtPayDate(item.date_paid || item.paid_at)}</span>
+            {item.paid_at && (
+              <span className="text-[10px] text-gray-400">{fmtPayDate(item.paid_at)}</span>
             )}
           </div>
         ) : (

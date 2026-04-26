@@ -18,18 +18,42 @@ router.get('/share/:token', async (req, res) => {
 
     const report = rows[0];
 
-    // Also fetch productions referenced in entries
+    // Also fetch productions referenced in entries — include timeline + type
     const prodIds = (report.entries || []).map(e => e.production_id).filter(Boolean);
     let productions = [];
     if (prodIds.length > 0) {
       const { rows: prods } = await db.query(
-        `SELECT id, project_name, stage, brand_id FROM productions WHERE id = ANY($1)`,
+        `SELECT id, project_name, stage, brand_id, production_type, planned_start, planned_end FROM productions WHERE id = ANY($1)`,
         [prodIds]
       );
       productions = prods;
     }
 
-    res.json({ report, productions });
+    // Fetch brand info (logo, colors) for the report
+    let brand = null;
+    if (report.brand_id) {
+      const { rows: brandRows } = await db.query(
+        `SELECT id, name, primary_color, secondary_color, accent_color, logo_url FROM brands WHERE id = $1`,
+        [report.brand_id]
+      );
+      brand = brandRows[0] || null;
+      // Also check settings table for uploaded logo override
+      if (brand) {
+        try {
+          const { rows: sRows } = await db.query(
+            `SELECT logo_url, colors FROM settings WHERE brand_id = $1`,
+            [report.brand_id]
+          );
+          if (sRows[0]?.logo_url) brand.logo_url = sRows[0].logo_url;
+          if (sRows[0]?.colors && typeof sRows[0].colors === 'object') {
+            if (sRows[0].colors.primary) brand.primary_color = sRows[0].colors.primary;
+            if (sRows[0].colors.accent) brand.accent_color = sRows[0].colors.accent;
+          }
+        } catch { /* settings table may not have rows */ }
+      }
+    }
+
+    res.json({ report, productions, brand });
   } catch (err) {
     console.error('GET /weekly-reports/share/:token error:', err);
     res.status(500).json({ error: 'Server error' });

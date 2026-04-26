@@ -39,8 +39,26 @@ function savePayers(list) {
 }
 
 export default function LedgerTab({ productionId, production }) {
-  const { fmt } = useCurrency();
+  const { fmt, currency, rate } = useCurrency();
   const { isEditor, user } = useAuth();
+
+  // Use production delivery-date rate if available, fall back to live rate
+  const effectiveRate = production?.delivery_date_rate || rate || 3.7;
+
+  // Format an amount in its own currency (native display, no conversion)
+  function fmtRow(amount, code) {
+    const n = parseFloat(amount) || 0;
+    return code === 'ILS' ? `₪${n.toLocaleString()}` : `$${n.toLocaleString()}`;
+  }
+
+  // Convert any amount to the display currency for summing
+  function toDisplay(amount, code) {
+    const num = parseFloat(amount) || 0;
+    if (code === 'ILS' && currency === 'ILS') return num;
+    if (code === 'ILS' && currency === 'USD') return num / effectiveRate;
+    if (code === 'USD' && currency === 'ILS') return num * effectiveRate;
+    return num;
+  }
   const { addNotification } = useNotifications();
   const [items, setItems] = useState([]);
   const [invoices, setInvoices] = useState([]);
@@ -117,19 +135,18 @@ export default function LedgerTab({ productionId, production }) {
     if (!pendingPayment) return;
     const note = `Paid by ${payerName} on ${payDate} at ${payTime}`;
     const item = items.find(i => i.id === pendingPayment.itemId);
-    const paidAt = new Date().toISOString();
-    const updates = { payment_status: 'Paid', payment_note: note, date_paid: paidAt };
+    const updates = { payment_status: 'Paid', payment_note: note, paid_by: payerName, paid_at: payDate };
     // Receipt follow-up for חשבון עסקה
+    const paidAtTs = new Date().toISOString();
     if (item?.invoice_type === 'cheshbon_iska') {
       updates.receipt_required = true;
-      updates.paid_at = paidAt;
       await Promise.resolve(createReceipt({
         id: generateId('rcpt'),
         line_item_id: item.id,
         production_id: productionId,
         supplier_name: item.full_name || item.item || '',
         amount: parseFloat(item.actual_spent) || parseFloat(item.planned_budget) || 0,
-        paid_at: paidAt,
+        paid_at: paidAtTs,
         receipt_url: null,
         reminder_sent: false,
       }));
@@ -156,11 +173,76 @@ export default function LedgerTab({ productionId, production }) {
     if (payerName === name) setPayerName(updated[0] || '');
   }
 
-  const totalUSD = items.reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0);
+  const visibleItems = items.filter(i => (parseFloat(i.actual_spent) || 0) !== 0);
+
+  // Split totals by currency
+  const usdItems = visibleItems.filter(i => (i.currency_code || 'USD') === 'USD');
+  const ilsItems = visibleItems.filter(i => i.currency_code === 'ILS');
+  const usdTotal = usdItems.reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0);
+  const ilsTotal = ilsItems.reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0);
+  const hasMixed = usdTotal > 0 && ilsTotal > 0;
+
+  // Paid totals
+  const usdPaid = usdItems.filter(i => i.payment_status === 'Paid').reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0);
+  const ilsPaid = ilsItems.filter(i => i.payment_status === 'Paid').reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0);
+  const usdRemaining = usdTotal - usdPaid;
+  const ilsRemaining = ilsTotal - ilsPaid;
+
+  // Helper: render a currency amount string
+  function fmtTotalLine(usd, ils) {
+    const parts = [];
+    if (usd > 0 || (!hasMixed && ilsTotal === 0)) parts.push(`$${usd.toLocaleString()}`);
+    if (ils > 0) parts.push(`₪${ils.toLocaleString()}`);
+    return parts.join(' + ') || '$0';
+  }
+
+  const allPaid = visibleItems.length > 0 && visibleItems.every(i => i.payment_status === 'Paid');
+
   const invoice = (itemId) => invoices.find(inv => inv.line_item_id === itemId);
 
   return (
     <div>
+      {/* ── Summary totals bar ── */}
+      {visibleItems.length > 0 && (
+        <div className="flex flex-wrap gap-3 mb-4">
+          {/* Total */}
+          <div className="flex-1 min-w-[140px] rounded-2xl border border-gray-100 bg-white px-4 py-3 shadow-sm">
+            <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1">Total</div>
+            <div className="text-xl font-black text-gray-800 leading-none">{fmtTotalLine(usdTotal, ilsTotal)}</div>
+            <div className="text-[10px] text-gray-400 mt-1">{visibleItems.length} line item{visibleItems.length !== 1 ? 's' : ''}</div>
+          </div>
+          {/* Paid */}
+          <div className={`flex-1 min-w-[140px] rounded-2xl border px-4 py-3 shadow-sm ${allPaid ? 'border-green-200 bg-green-50' : 'border-gray-100 bg-white'}`}>
+            <div className={`text-[10px] font-semibold uppercase tracking-widest mb-1 ${allPaid ? 'text-green-600' : 'text-gray-400'}`}>Paid</div>
+            <div className={`text-xl font-black leading-none ${allPaid ? 'text-green-700' : 'text-green-600'}`}>
+              {fmtTotalLine(usdPaid, ilsPaid)}
+            </div>
+            <div className="text-[10px] text-gray-400 mt-1">
+              {visibleItems.filter(i => i.payment_status === 'Paid').length} of {visibleItems.length} paid
+            </div>
+          </div>
+          {/* Remaining */}
+          {!allPaid && (
+            <div className="flex-1 min-w-[140px] rounded-2xl border border-orange-100 bg-orange-50/60 px-4 py-3 shadow-sm">
+              <div className="text-[10px] font-semibold text-orange-500 uppercase tracking-widest mb-1">Remaining</div>
+              <div className="text-xl font-black text-orange-600 leading-none">{fmtTotalLine(usdRemaining, ilsRemaining)}</div>
+              <div className="text-[10px] text-orange-400 mt-1">
+                {visibleItems.filter(i => i.payment_status !== 'Paid').length} unpaid
+              </div>
+            </div>
+          )}
+          {allPaid && (
+            <div className="flex-1 min-w-[140px] rounded-2xl border border-green-200 bg-green-50 px-4 py-3 shadow-sm flex items-center gap-2">
+              <span className="text-2xl">✅</span>
+              <div>
+                <div className="text-sm font-bold text-green-700">All Paid</div>
+                <div className="text-[10px] text-green-500">Payments complete</div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="brand-card p-0 overflow-hidden">
         <div className="table-scroll-wrapper">
           <table className="data-table" style={{ minWidth: 1250 }}>
@@ -197,6 +279,7 @@ export default function LedgerTab({ productionId, production }) {
                     invoice={inv}
                     mismatch={mismatch}
                     fmt={fmt}
+                    fmtRow={fmtRow}
                     isEditor={isEditor}
                     onUpdate={handleUpdate}
                     onPaymentStatusChange={handlePaymentStatusChange}
@@ -209,7 +292,14 @@ export default function LedgerTab({ productionId, production }) {
             <tfoot>
               <tr style={{ background: 'var(--brand-bg)', borderTop: '2px solid var(--brand-border)' }}>
                 <td colSpan={2} className="font-bold py-3 px-3">Total</td>
-                <td className="font-bold px-3">{fmt(totalUSD)}</td>
+                <td className="font-bold px-3">
+                  {hasMixed ? (
+                    <div className="flex flex-col gap-0.5">
+                      <span>${usdTotal.toLocaleString()}</span>
+                      <span className="text-gray-500 text-xs">+ ₪{ilsTotal.toLocaleString()}</span>
+                    </div>
+                  ) : ilsTotal > 0 ? `₪${ilsTotal.toLocaleString()}` : `$${usdTotal.toLocaleString()}`}
+                </td>
                 <td colSpan={9} />
               </tr>
             </tfoot>
@@ -335,14 +425,14 @@ export default function LedgerTab({ productionId, production }) {
   );
 }
 
-function LedgerRow({ item, invoice, mismatch, fmt, isEditor, onUpdate, onPaymentStatusChange, onInvoice, paymentBlocked }) {
+function LedgerRow({ item, invoice, mismatch, fmt, fmtRow, isEditor, onUpdate, onPaymentStatusChange, onInvoice, paymentBlocked }) {
   const { lists } = useLists();
   const [editingScreenshot, setEditingScreenshot] = useState(false);
   return (
     <tr className={clsx(item.payment_status === 'Paid' && 'paid-row')}>
       <td className="font-medium">{item.full_name || '—'}</td>
       <td className="text-gray-600">{item.item || '—'}</td>
-      <td className="font-semibold">{fmt(item.actual_spent)}</td>
+      <td className="font-semibold">{fmtRow(item.actual_spent, item.currency_code || 'USD')}</td>
 
       {/* Invoice */}
       <td>
@@ -350,7 +440,7 @@ function LedgerRow({ item, invoice, mismatch, fmt, isEditor, onUpdate, onPayment
           {/* Status badge */}
           {invoice ? (
             <span className="badge invoice-received text-xs">
-              Received · {fmt(invoice.amount || 0)}
+              Received · {fmtRow(invoice.amount || 0, item.currency_code || 'USD')}
             </span>
           ) : item.invoice_status === 'Received' ? (
             <span className="badge invoice-received text-xs">Received</span>
@@ -380,9 +470,9 @@ function LedgerRow({ item, invoice, mismatch, fmt, isEditor, onUpdate, onPayment
           {mismatch && (
             <span
               className="badge invoice-mismatch text-xs cursor-help"
-              title={`Invoice: ${fmt(invoice.amount)} vs recorded: ${fmt(item.actual_spent)}`}
+              title={`Invoice: ${fmtRow(invoice.amount, item.currency_code || 'USD')} vs recorded: ${fmtRow(item.actual_spent, item.currency_code || 'USD')}`}
             >
-              ⚠ {fmt(Math.abs((parseFloat(invoice?.amount) || 0) - (parseFloat(item.actual_spent) || 0)))} diff
+              ⚠ {fmtRow(Math.abs((parseFloat(invoice?.amount) || 0) - (parseFloat(item.actual_spent) || 0)), item.currency_code || 'USD')} diff
             </span>
           )}
 
@@ -435,11 +525,11 @@ function LedgerRow({ item, invoice, mismatch, fmt, isEditor, onUpdate, onPayment
       <td>
         {item.payment_status === 'Paid' ? (
           <div className="flex flex-col gap-0.5">
-            {parsePaidBy(item.payment_note) && (
-              <span className="text-xs font-semibold text-gray-800">{parsePaidBy(item.payment_note)}</span>
+            {(item.paid_by || parsePaidBy(item.payment_note)) && (
+              <span className="text-xs font-semibold text-gray-800">{item.paid_by || parsePaidBy(item.payment_note)}</span>
             )}
-            {(item.date_paid || item.paid_at) && (
-              <span className="text-[10px] text-gray-400">{fmtPayDate(item.date_paid || item.paid_at)}</span>
+            {item.paid_at && (
+              <span className="text-[10px] text-gray-400">{fmtPayDate(item.paid_at)}</span>
             )}
           </div>
         ) : (

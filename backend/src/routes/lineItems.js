@@ -92,7 +92,7 @@ router.patch('/:id', async (req, res) => {
     'item','full_name','type','status','planned_budget','actual_spent',
     'payment_status','payment_method','bank_details','business_type',
     'supplier_type','invoice_status','invoice_url','invoice_type',
-    'timeline_start','timeline_end','receipt_required','paid_at',
+    'timeline_start','timeline_end','receipt_required','paid_at','payment_note','paid_by',
     'notes','supplier','id_number','currency_code','custom_fields','cc_purchase_id',
     'drive_url','dropbox_url','payment_proof_url','payment_proof_drive_url','payment_proof_dropbox_url',
   ];

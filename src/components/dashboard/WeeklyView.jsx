@@ -269,10 +269,12 @@ function ProductionEntry({ entry, prod, links, scripts = [], onUpdate, onRemove,
   }
   function addCustomLink() {
     if (!customLink.url.trim()) return;
+    const rawUrl = customLink.url.trim();
+    const safeUrl = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
     onUpdate({
       weekly_links: [...(entry.weekly_links || []), {
         id: generateId('wl'), type: 'custom', link_id: null,
-        title: customLink.title.trim() || customLink.url, url: customLink.url.trim(), approved: false,
+        title: customLink.title.trim() || rawUrl, url: safeUrl, approved: false,
       }],
     });
     setCustomLink({ title: '', url: '' });
@@ -429,7 +431,7 @@ function ProductionEntry({ entry, prod, links, scripts = [], onUpdate, onRemove,
               <div className="mt-2 space-y-1.5">
                 {(entry.weekly_links || []).map(wl => (
                   <div key={wl.id} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border ${wl.type === 'script' ? 'bg-purple-50 border-purple-200' : 'bg-gray-50 border-gray-200'}`}>
-                    <a href={wl.url} target="_blank" rel="noopener noreferrer"
+                    <a href={wl.url && /^https?:\/\//i.test(wl.url) ? wl.url : `https://${wl.url}`} target="_blank" rel="noopener noreferrer"
                       className={`flex-1 text-xs hover:underline truncate flex items-center gap-1 ${wl.type === 'script' ? 'text-purple-600' : 'text-blue-600'}`}>
                       {wl.type === 'script' ? <FileText size={9} className="flex-shrink-0" /> : <ExternalLink size={9} className="flex-shrink-0" />}
                       {wl.title || wl.url}
@@ -829,7 +831,7 @@ function PresentCard({ entry, prod }) {
         {(entry.weekly_links || []).length > 0 && (
           <div className="flex flex-wrap gap-1.5 pt-1">
             {entry.weekly_links.map(wl => (
-              <a key={wl.id} href={wl.url} target="_blank" rel="noopener noreferrer"
+              <a key={wl.id} href={wl.url && /^https?:\/\//i.test(wl.url) ? wl.url : `https://${wl.url}`} target="_blank" rel="noopener noreferrer"
                 className="flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full border bg-gray-50 border-gray-200 text-gray-600 hover:border-blue-300 hover:text-blue-600 transition-all font-medium">
                 🔗 {wl.title || wl.url}
               </a>

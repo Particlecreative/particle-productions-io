@@ -247,10 +247,8 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const sortedItems = useMemo(() => {
-    // Hide rows where actual_spent is 0 (or missing)
-    const visible = items.filter(i => (parseFloat(i.actual_spent) || 0) !== 0);
-    if (!sortState.col) return visible;
-    return [...visible].sort((a, b) => {
+    if (!sortState.col) return items;
+    return [...items].sort((a, b) => {
       const col = sortState.col;
       const av = col === 'difference' ? (a.planned_budget - a.actual_spent) : (a[col] ?? '');
       const bv = col === 'difference' ? (b.planned_budget - b.actual_spent) : (b[col] ?? '');
@@ -844,7 +842,6 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
           </div>
         </div>
       </div>
-      )}
 
       {invoiceFor && (
         <InvoiceModal
