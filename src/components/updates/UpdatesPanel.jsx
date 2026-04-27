@@ -14,14 +14,17 @@ import {
 import { apiGet } from '../../lib/apiClient';
 import { formatIST, nowISOString } from '../../lib/timezone';
 import clsx from 'clsx';
+import DOMPurify from 'dompurify';
 
-// ─── Sanitize HTML (strip script tags) ──────────────────────────────────────
+// ─── Sanitize HTML (DOMPurify — safe against XSS) ───────────────────────────
 function sanitizeHTML(html) {
   if (!html) return '';
-  return html
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-    .replace(/on\w+="[^"]*"/gi, '')
-    .replace(/on\w+='[^']*'/gi, '');
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'a', 'p', 'br', 'ul', 'ol', 'li', 'span', 'blockquote', 'code', 'pre'],
+    ALLOWED_ATTR: ['href', 'target', 'rel', 'class', 'style'],
+    ALLOW_DATA_ATTR: false,
+    FORCE_BODY: false,
+  });
 }
 
 // ─── Color picker popover ───────────────────────────────────────────────────

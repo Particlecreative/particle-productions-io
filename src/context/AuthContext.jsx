@@ -27,6 +27,15 @@ export function AuthProvider({ children }) {
     const isPublicPage = publicPaths.some(p => window.location.pathname.startsWith(p));
     const token = localStorage.getItem(TOKEN_KEY);
     if (!token || isPublicPage) { setLoading(false); return; }
+    // Quick client-side expiry check — avoid round-trip for obviously stale tokens
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      if (payload.exp && payload.exp * 1000 < Date.now()) {
+        localStorage.removeItem(TOKEN_KEY);
+        setLoading(false);
+        return;
+      }
+    } catch {} // malformed token — let server validate below
     apiGet('/auth/me')
       .then(u => { if (u) setUser(u); })
       .catch(() => { localStorage.removeItem(TOKEN_KEY); })
