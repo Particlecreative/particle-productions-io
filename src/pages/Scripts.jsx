@@ -290,6 +290,7 @@ export default function Scripts() {
                 scriptId={selectedId}
                 onDeleted={handleScriptDeleted}
                 onUpdated={handleScriptUpdated}
+                productions={productions}
               />
             </div>
           </>

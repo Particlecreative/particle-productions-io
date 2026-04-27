@@ -25,6 +25,7 @@ import AIChatPanel from './AIChatPanel';
 import VideoMatchModal from './VideoMatchModal';
 import ImageGalleryModal from './ImageGalleryModal';
 import { CommentSidebar, NameModal } from './CommentPanel';
+import ProductionPicker from '../ui/ProductionPicker';
 
 const API = import.meta.env.VITE_API_URL || '';
 
@@ -549,7 +550,7 @@ const SortableSceneRow = memo(function SortableSceneRow({ scene, index, visibleC
 });
 
 // ── Main StoryboardEditor ─────────────────────────────────────────────────────
-export default function StoryboardEditor({ scriptId, readOnly = false, onBack, onDeleted, onUpdated, defaultProductionId, defaultBrandId }) {
+export default function StoryboardEditor({ scriptId, readOnly = false, onBack, onDeleted, onUpdated, defaultProductionId, defaultBrandId, productions = [] }) {
   const { user } = useAuth();
   const { brand } = useBrand();
 
@@ -974,6 +975,24 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
       body: JSON.stringify({ status }),
     });
     loadComments();
+  };
+
+  // Reassign production — PATCH production_id without touching scenes
+  const reassignProduction = async (newProductionId) => {
+    const prev = script.production_id;
+    setScript(s => ({ ...s, production_id: newProductionId || null }));
+    try {
+      await fetch(`${API}/api/scripts/${scriptId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
+        body: JSON.stringify({ production_id: newProductionId || null }),
+      });
+      toast.success(newProductionId ? 'Script linked to production' : 'Production link removed');
+      if (onUpdated) onUpdated({ ...script, production_id: newProductionId || null });
+    } catch {
+      setScript(s => ({ ...s, production_id: prev })); // rollback
+      toast.error('Failed to update production link');
+    }
   };
 
   const handleAIGenerate = async () => {
@@ -1637,6 +1656,26 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
               className="w-full text-xs text-gray-400 bg-transparent border-0 outline-none mt-0.5 placeholder:text-gray-300"
               placeholder="Add a short description…"
             />
+            {/* Production link */}
+            {!readOnly && productions.length > 0 && (
+              <div className="mt-1.5">
+                <ProductionPicker
+                  productions={productions}
+                  value={script.production_id || ''}
+                  onChange={reassignProduction}
+                  placeholder="No production — click to assign"
+                  mode="dropdown"
+                />
+              </div>
+            )}
+            {readOnly && script.production_id && (
+              <div className="mt-1 text-[11px] text-gray-400 flex items-center gap-1">
+                <span className="font-mono text-gray-300">{script.production_id}</span>
+                {productions.find(p => p.id === script.production_id)?.project_name && (
+                  <span>· {productions.find(p => p.id === script.production_id).project_name}</span>
+                )}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-1.5 ml-auto">
             {/* Status */}
@@ -2779,6 +2818,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
           scriptId={scriptId}
           scenes={scenes}
           targetSceneId={galleryTarget.sceneId}
+          brandId={script?.brand_id || brand?.id}
           onClose={() => setGalleryTarget(null)}
           onSelect={(img) => {
             if (galleryTarget.imageId) {
