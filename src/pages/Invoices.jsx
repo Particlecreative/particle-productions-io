@@ -43,6 +43,7 @@ export default function Invoices() {
   const [filterPrdId, setFilterPrdId] = useState('');
   const [invModal, setInvModal] = useState(null); // { lineItemId, productionId, step }
   const [bannerExpanded, setBannerExpanded] = useState(false);
+  const [filterAging, setFilterAging] = useState(''); // '' | 'overdue-30' | 'overdue-60'
 
   useEffect(() => { loadData(); }, [brandId]);
 
@@ -123,8 +124,19 @@ export default function Invoices() {
         (productions.find(p => p.id === i.production_id)?.project_name || '').toLowerCase().includes(q)
       );
     }
+    if (filterAging) {
+      const now = Date.now();
+      const threshold = filterAging === 'overdue-60' ? 60 : 30;
+      list = list.filter(i => {
+        if (i.invoice_status === 'Received' || i.invoice_status === 'Waived' || i.invoice_status === 'No invoice needed') return false;
+        const ref = i.created_at || i.updated_at;
+        if (!ref) return false;
+        const daysPending = Math.floor((now - new Date(ref).getTime()) / (24 * 3600 * 1000));
+        return daysPending > threshold;
+      });
+    }
     return list;
-  }, [allItems, filter, filterProd, filterPrdId, productions]);
+  }, [allItems, filter, filterProd, filterPrdId, filterAging, productions]);
 
   // By production groups — Received items sink to bottom within each group
   const byProduction = useMemo(() => {
@@ -149,7 +161,7 @@ export default function Invoices() {
     return Object.entries(map).sort((a, b) => a[0].localeCompare(b[0]));
   }, [filteredItems, productions]);
 
-  const hasFilters = filter || filterProd || filterPrdId;
+  const hasFilters = filter || filterProd || filterPrdId || filterAging;
 
   // 48-hour overdue receipt reminder
   const overdueReceipts = useMemo(() => {
@@ -299,10 +311,23 @@ export default function Invoices() {
               <option value="">All productions</option>
               {productions.map(p => <option key={p.id} value={p.id}>{p.project_name}</option>)}
             </select>
+            {/* Aging filter */}
+            <div className="flex gap-1.5">
+              {[
+                { id: '', label: 'All' },
+                { id: 'overdue-30', label: '30+ days', color: 'text-amber-600 border-amber-200' },
+                { id: 'overdue-60', label: '60+ days', color: 'text-red-600 border-red-200' },
+              ].map(f => (
+                <button key={f.id} onClick={() => setFilterAging(f.id)}
+                  className={`text-xs px-2.5 py-1 rounded-full border font-medium transition-colors ${filterAging === f.id ? 'bg-gray-800 text-white border-gray-800' : `border-gray-200 text-gray-500 hover:border-gray-300 ${f.color || ''}`}`}>
+                  {f.label}
+                </button>
+              ))}
+            </div>
             {hasFilters && (
               <button
                 className="text-xs text-blue-500 hover:underline"
-                onClick={() => { setFilter(''); setFilterProd(''); setFilterPrdId(''); }}
+                onClick={() => { setFilter(''); setFilterProd(''); setFilterPrdId(''); setFilterAging(''); }}
               >
                 Clear filters
               </button>
@@ -313,7 +338,11 @@ export default function Invoices() {
           {/* BY PRODUCTION */}
           <div className="space-y-3">
             {byProduction.length === 0 ? (
-              <div className="brand-card text-center py-16 text-gray-300 text-sm">No items found</div>
+              <div className="brand-card text-center py-16">
+                <div className="text-4xl mb-3">📭</div>
+                <p className="text-sm font-semibold text-gray-400">No items found</p>
+                <p className="text-xs text-gray-300 mt-1">Try adjusting your filters</p>
+              </div>
             ) : byProduction.map(([prodId, data]) => (
               <InvoiceProductionGroup
                 key={prodId}
@@ -403,9 +432,9 @@ function InvoiceProductionGroup({ data, fmt, isEditor, receipts = [], onStatusCh
 // ─── Shared table ─────────────────────────────────────────────────────────────
 
 function InvoiceTable({ items, productions, fmt, isEditor, showProduction, receipts = [], onStatusChange, onInvoiceUrlUpdate, onAction }) {
-  const colCount = showProduction ? 7 : 6;
+  const colCount = showProduction ? 8 : 7;
   return (
-    <table className="data-table" style={{ minWidth: showProduction ? 960 : 800 }}>
+    <table className="data-table" style={{ minWidth: showProduction ? 1020 : 860 }}>
       <thead>
         <tr>
           {showProduction && <th>Production</th>}
@@ -415,6 +444,7 @@ function InvoiceTable({ items, productions, fmt, isEditor, showProduction, recei
           <th style={{ minWidth: 180 }}>Invoice</th>
           <th>Inv. Status</th>
           <th>Payment Due</th>
+          <th>Days</th>
         </tr>
       </thead>
       <tbody>
@@ -800,6 +830,20 @@ function InvoiceRow({ item, productionName, fmt, isEditor, showProduction, recei
         {item.payment_due
           ? <>{isPaymentOverdue && '⚠️ '}{formatDateIST(item.payment_due)}</>
           : '—'}
+      </td>
+
+      {/* Aging */}
+      <td className="text-xs whitespace-nowrap">
+        {(item.invoice_status === 'Received' || item.invoice_status === 'Waived' || item.invoice_status === 'No invoice needed') ? (
+          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-green-100 text-green-700 font-bold text-[10px]">✓</span>
+        ) : (() => {
+          const ref = item.created_at || item.updated_at;
+          if (!ref) return <span className="text-gray-300">—</span>;
+          const daysPending = Math.floor((Date.now() - new Date(ref).getTime()) / (24 * 3600 * 1000));
+          if (daysPending > 60) return <span className="inline-block px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 font-semibold">{daysPending}d</span>;
+          if (daysPending > 30) return <span className="inline-block px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-semibold">{daysPending}d</span>;
+          return <span className="text-gray-400">{daysPending}d</span>;
+        })()}
       </td>
     </tr>
   );

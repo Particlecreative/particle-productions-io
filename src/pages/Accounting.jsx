@@ -78,6 +78,7 @@ export default function Accounting() {
   const [newPayer, setNewPayer] = useState('');
   // Invoice guard warning
   const [paymentBlockedId, setPaymentBlockedId] = useState(null);
+  const [exportingAccountant, setExportingAccountant] = useState(false);
 
   useEffect(() => { load(); }, [brandId]);
 
@@ -201,6 +202,36 @@ export default function Accounting() {
     if (payerName === name) setPayerName(updated[0] || '');
   }
 
+  async function exportAccountant() {
+    setExportingAccountant(true);
+    try {
+      const XLSX = await import('xlsx');
+      const rows = filteredItems.map(i => {
+        const prod = productions.find(p => p.id === i.production_id);
+        const paidDate = i.paid_at ? new Date(i.paid_at).toLocaleDateString('en-GB') : '';
+        return {
+          'Supplier': i.full_name || i.item || '',
+          'Job': i.item || '',
+          'Production': prod?.project_name || i.production_id || '',
+          'Amount (ILS)': (i.currency_code === 'ILS' || !i.currency_code) ? (parseFloat(i.actual_spent) || '') : '',
+          'Amount (USD)': i.currency_code === 'USD' ? (parseFloat(i.actual_spent) || '') : '',
+          'Payment Method': i.payment_method || '',
+          'Payment Date': paidDate,
+          'Invoice URL': i.invoice_url || '',
+          'Business Type': i.business_type || i.supplier_type || '',
+          'Payment Status': i.payment_status || '',
+          'Notes': i.notes || i.payment_note || '',
+        };
+      });
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Payments');
+      XLSX.writeFile(wb, `accountant-export-${new Date().toISOString().slice(0,10)}.xlsx`);
+    } finally {
+      setExportingAccountant(false);
+    }
+  }
+
   // Summary stats
   const paid = useMemo(() => allItems.filter(i => i.payment_status === 'Paid'), [allItems]);
   const notPaid = useMemo(() => allItems.filter(i => !i.payment_status || i.payment_status === 'Not Paid'), [allItems]);
@@ -272,7 +303,13 @@ export default function Accounting() {
         <h1 className="text-2xl font-black brand-title" style={{ color: 'var(--brand-primary)' }}>
           Payments
         </h1>
-        <ExportMenu rows={filteredItems} columns={ACCOUNTING_EXPORT_COLS} filename="accounting" title="Payments" />
+        <div className="flex items-center gap-2">
+          <button onClick={exportAccountant} disabled={exportingAccountant}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm font-semibold text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition-all">
+            {exportingAccountant ? '…' : '📊'} Accountant Export
+          </button>
+          <ExportMenu rows={filteredItems} columns={ACCOUNTING_EXPORT_COLS} filename="accounting" title="Payments" />
+        </div>
       </div>
 
       {/* Summary Stats */}
@@ -347,7 +384,11 @@ export default function Accounting() {
       {tab === 'by-production' && (
         <div className="space-y-3">
           {byProduction.length === 0 ? (
-            <div className="brand-card text-center py-16 text-gray-300 text-sm">No items found</div>
+            <div className="brand-card text-center py-16">
+              <div className="text-4xl mb-3">📭</div>
+              <p className="text-sm font-semibold text-gray-400">No items found</p>
+              <p className="text-xs text-gray-300 mt-1">Try adjusting your filters</p>
+            </div>
           ) : byProduction.map(([prodId, data]) => (
             <AccountingProductionGroup
               key={prodId}
@@ -406,7 +447,7 @@ export default function Accounting() {
               </thead>
               <tbody>
                 {byDate.items.length === 0 ? (
-                  <tr><td colSpan={14} className="text-center py-10 text-gray-400 text-sm">No items found</td></tr>
+                  <tr><td colSpan={14} className="text-center py-10 text-gray-400 text-sm">📭 No items found — try adjusting your filters</td></tr>
                 ) : byDate.items.map(item => {
                   const isOverdue = item.payment_due && new Date(item.payment_due) < byDate.today && item.payment_status !== 'Paid';
                   const isDueSoon = item.payment_due && !isOverdue && item.payment_status !== 'Paid' &&
@@ -648,7 +689,7 @@ function AccountingFullTable({ items, productions, fmt, isEditor, onUpdate, onPa
           </thead>
           <tbody>
             {sorted.length === 0 ? (
-              <tr><td colSpan={13} className="text-center py-10 text-gray-400 text-sm">No items found</td></tr>
+              <tr><td colSpan={13} className="text-center py-10 text-gray-400 text-sm">📭 No items found — try adjusting your filters</td></tr>
             ) : sorted.map(item => (
               <AccountingRow
                 key={item.id}

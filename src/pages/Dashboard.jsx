@@ -855,6 +855,11 @@ export default function Dashboard() {
                     <div className="h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
                       <div className={`h-full rounded-full transition-all ${pctColor}`} style={{ width: `${Math.min(pct, 100)}%` }} />
                     </div>
+                    {pct >= 90 && (
+                      <div className={`mt-1.5 text-[10px] font-semibold px-2 py-0.5 rounded-full w-fit ${pct >= 100 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                        {pct >= 100 ? `⚠ Over budget (${pct}%)` : `⚠ ${pct}% of budget used`}
+                      </div>
+                    )}
                   </div>
                 )}
                 {prod.planned_start && (
@@ -1025,7 +1030,6 @@ export default function Dashboard() {
           onCreate={handleCreate}
           existingProductions={productions}
           selectedYear={selectedYear}
-          productions={productions}
         />
       )}
 
@@ -1549,11 +1553,20 @@ function ProductionRow({
             <span className="text-gray-400 whitespace-nowrap text-sm">{fmtC(prod.estimated_budget)}</span>
           </td>
         );
-        if (key === 'actual_spent') return (
-          <td key={key}>
-            <span className="text-gray-400 whitespace-nowrap text-sm">{fmtC(prod.actual_spent)}</span>
-          </td>
-        );
+        if (key === 'actual_spent') {
+          const spent = parseFloat(prod.actual_spent) || 0;
+          const budget = parseFloat(prod.planned_budget_2026) || 0;
+          const pct = budget > 0 ? (spent / budget) : 0;
+          return (
+            <td key={key}>
+              <span className={`whitespace-nowrap text-sm flex items-center gap-1 ${pct >= 1 ? 'text-red-600 font-semibold' : pct >= 0.9 ? 'text-amber-600 font-semibold' : 'text-gray-400'}`}>
+                {pct >= 1 && <span title="Over budget">🔴</span>}
+                {pct >= 0.9 && pct < 1 && <span title="Near budget limit">🟡</span>}
+                {fmtC(prod.actual_spent)}
+              </span>
+            </td>
+          );
+        }
         if (key === 'stage') {
           const stageColor = colorByStatus && getListItemColor('stages', prod.stage);
           return (

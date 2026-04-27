@@ -487,7 +487,7 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
       )}
 
       {/* Toolbar: Import + Columns */}
-      <div className="flex justify-end gap-2 mb-2">
+      <div className="flex justify-end gap-2 mb-2 flex-wrap overflow-x-auto">
         {isEditor && onImport && (
           <button
             onClick={onImport}
@@ -640,8 +640,14 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
             <tbody>
               {sortedItems.length === 0 ? (
                 <tr>
-                  <td colSpan={totalVisibleCols} className="text-center py-10 text-gray-400 text-sm">
-                    No line items. {isEditor && 'Add one below.'}
+                  <td colSpan={totalVisibleCols} className="text-center py-10">
+                    <div className="text-3xl mb-2">📭</div>
+                    <p className="text-sm font-semibold text-gray-400">No line items</p>
+                    {isEditor && (
+                      <p className="text-xs text-gray-300 mt-1">
+                        Add one below{onAccountingImport && <> or <button onClick={onAccountingImport} className="text-blue-500 hover:underline">Import from PRD Sheet</button></>}
+                      </p>
+                    )}
                   </td>
                 </tr>
               ) : sortedItems.map(item => (
