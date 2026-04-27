@@ -2,14 +2,14 @@ import { useState, useEffect } from 'react';
 import { X, LayoutTemplate } from 'lucide-react';
 import { useLists } from '../../context/ListsContext';
 import { useAuth } from '../../context/AuthContext';
-import { generateId, bulkCreateLineItems } from '../../lib/dataService';
+import { generateId, bulkCreateLineItems, getAllLineItems, createLineItem } from '../../lib/dataService';
 import { TEMPLATES } from '../../lib/productionTemplates';
 import clsx from 'clsx';
 
 const PROD_TYPES = ['Shoot', 'Remote Shoot', 'AI'];
 const YEARS = [2024, 2025, 2026, 2027, 2028];
 
-export default function NewProductionModal({ brandId, onClose, onCreate, existingProductions = [], existingCount, selectedYear = 2026 }) {
+export default function NewProductionModal({ brandId, onClose, onCreate, existingProductions = [], existingCount, selectedYear = 2026, productions = [] }) {
   const { lists } = useLists();
   const { isEditor } = useAuth();
 
@@ -62,6 +62,17 @@ export default function NewProductionModal({ brandId, onClose, onCreate, existin
 
   const [useTemplate, setUseTemplate] = useState(false);
   const [errors, setErrors] = useState({});
+  const [copyFromProductionId, setCopyFromProductionId] = useState('');
+  const [copyItemCount, setCopyItemCount] = useState(0);
+
+  // When copy-from selection changes, fetch item count for preview
+  useEffect(() => {
+    if (!copyFromProductionId) { setCopyItemCount(0); return; }
+    getAllLineItems().then(all => {
+      const items = (Array.isArray(all) ? all : []).filter(li => li.production_id === copyFromProductionId);
+      setCopyItemCount(items.length);
+    });
+  }, [copyFromProductionId]);
 
   // Close on Escape
   useEffect(() => {
@@ -138,6 +149,29 @@ export default function NewProductionModal({ brandId, onClose, onCreate, existin
           invoice_status: '',
         })));
       }
+    }
+
+    // Copy budget structure from existing production if selected
+    if (copyFromProductionId && prod?.id) {
+      const all = await getAllLineItems();
+      const srcItems = (Array.isArray(all) ? all : []).filter(li => li.production_id === copyFromProductionId);
+      srcItems.forEach(li => {
+        createLineItem({
+          id: generateId('li'),
+          production_id: prod.id,
+          item: li.item || '',
+          type: li.type || '',
+          planned_budget: parseFloat(li.planned_budget) || 0,
+          currency_code: li.currency_code || 'ILS',
+          full_name: li.full_name || '',
+          notes: li.notes || '',
+          actual_spent: 0,
+          payment_status: 'Not Paid',
+          status: 'Not Started',
+          invoice_stage: 'pending',
+          invoice_status: '',
+        });
+      });
     }
   }
 
@@ -259,6 +293,34 @@ export default function NewProductionModal({ brandId, onClose, onCreate, existin
               </div>
             )}
           </div>
+
+          {/* Copy budget structure from existing production */}
+          {productions.length > 0 && (
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                Copy Budget Structure From
+              </label>
+              <div className="flex items-center gap-2">
+                <select
+                  className="brand-input flex-1"
+                  value={copyFromProductionId}
+                  onChange={e => setCopyFromProductionId(e.target.value)}
+                >
+                  <option value="">(Optional — start blank)</option>
+                  {productions.map(p => (
+                    <option key={p.id} value={p.id}>
+                      {p.id} — {p.project_name}
+                    </option>
+                  ))}
+                </select>
+                {copyFromProductionId && copyItemCount > 0 && (
+                  <span className="text-xs text-blue-600 font-semibold whitespace-nowrap">
+                    copy {copyItemCount} line items
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Product Types */}
           <div>

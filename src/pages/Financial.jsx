@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from 'recharts';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, LineChart, Line, ReferenceLine } from 'recharts';
 import { AlertTriangle } from 'lucide-react';
 import { useBrand } from '../context/BrandContext';
 import { useCurrency } from '../context/CurrencyContext';
@@ -86,6 +86,38 @@ export default function Financial() {
   const completedProds = useMemo(() =>
     productions.filter(p => p.stage === 'Completed'),
   [productions]);
+
+  // Monthly trend data: actual spend by paid_at month vs pro-rated target
+  const monthlyData = useMemo(() => {
+    const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const currentMonth = new Date().getFullYear() === selectedYear ? new Date().getMonth() : 11; // 0-indexed
+    const monthlyActual = {};
+    lineItems.forEach(li => {
+      if (!li.paid_at) return;
+      const d = li.paid_at.slice(0, 7); // 'YYYY-MM'
+      const [y, m] = d.split('-').map(Number);
+      if (y !== selectedYear) return;
+      const key = m - 1; // 0-indexed month
+      monthlyActual[key] = (monthlyActual[key] || 0) + (parseFloat(li.actual_spent) || 0);
+    });
+    const monthlyTarget = yearlyBudget / 12;
+    let cumActual = 0;
+    let cumTarget = 0;
+    return Array.from({ length: currentMonth + 1 }, (_, i) => {
+      const actual = monthlyActual[i] || 0;
+      cumActual += actual;
+      cumTarget += monthlyTarget;
+      return {
+        month: MONTH_NAMES[i],
+        actual,
+        target: monthlyTarget,
+        cumulativeActual: cumActual,
+        cumulativeTarget: cumTarget,
+      };
+    });
+  }, [lineItems, selectedYear, yearlyBudget]);
+
+  const hasMonthlySpend = monthlyData.some(d => d.actual > 0);
 
   // Upcoming spend: non-completed productions grouped by month
   const upcomingByMonth = useMemo(() => {
@@ -188,6 +220,24 @@ export default function Financial() {
       {/* OVERVIEW */}
       {view === 'overview' && (
         <div>
+          {/* Yearly Budget Warning Banner */}
+          {pctSpent >= 100 && (
+            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-5 flex items-center gap-2">
+              <AlertTriangle size={14} className="text-red-500 shrink-0" />
+              <span className="text-red-700 font-semibold text-sm">
+                ⚠️ Annual budget exceeded — {pctSpent}% spent
+              </span>
+            </div>
+          )}
+          {pctSpent >= 80 && pctSpent < 100 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-5 flex items-center gap-2">
+              <AlertTriangle size={14} className="text-amber-500 shrink-0" />
+              <span className="text-amber-700 font-semibold text-sm">
+                Budget at {pctSpent}% — approaching limit
+              </span>
+            </div>
+          )}
+
           {/* KPI Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-5">
             <KPICard label={`${selectedYear} Planned Budget`} value={fmt(yearlyBudget)} editable
@@ -212,6 +262,56 @@ export default function Financial() {
               </button>
             </div>
           )}
+
+          {/* Monthly Trend Line Chart */}
+          <div className="brand-card mb-6" style={{ padding: '32px' }}>
+            <h3 className="font-bold text-sm mb-4" style={{ color: 'var(--brand-primary)' }}>
+              Monthly Spend vs. Pro-Rated Target
+            </h3>
+            {hasMonthlySpend ? (
+              <ResponsiveContainer width="100%" height={200}>
+                <LineChart data={monthlyData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                  <YAxis
+                    tickFormatter={v => `${currency === 'ILS' ? '₪' : '$'}${(v/1000).toFixed(0)}k`}
+                    tick={{ fontSize: 11 }}
+                    width={48}
+                  />
+                  <Tooltip formatter={v => fmt(v)} />
+                  <Legend />
+                  <ReferenceLine
+                    y={yearlyBudget / 12}
+                    stroke="#cbd5e1"
+                    strokeDasharray="4 2"
+                    strokeWidth={1}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="actual"
+                    name="Actual"
+                    stroke="var(--brand-accent)"
+                    strokeWidth={2}
+                    dot={{ r: 3 }}
+                    activeDot={{ r: 5 }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="target"
+                    name="Target"
+                    stroke="#94a3b8"
+                    strokeDasharray="5 3"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-[200px] flex items-center justify-center text-gray-300 text-sm">
+                No spending data recorded yet
+              </div>
+            )}
+          </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Pie Chart */}

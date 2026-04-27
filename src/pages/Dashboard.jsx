@@ -1025,6 +1025,7 @@ export default function Dashboard() {
           onCreate={handleCreate}
           existingProductions={productions}
           selectedYear={selectedYear}
+          productions={productions}
         />
       )}
 
