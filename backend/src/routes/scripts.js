@@ -634,7 +634,7 @@ router.post('/temp/ai-generate', async (req, res) => {
 // GET /api/scripts
 router.get('/', async (req, res) => {
   try {
-    const { production_id, status } = req.query;
+    const { production_id, status, include_scenes } = req.query;
     // Always enforce brand from JWT — never trust client-supplied brand_id
     const brand_id = req.user?.brand_id || req.query.brand_id;
     const vals = [], where = [];
@@ -642,11 +642,13 @@ router.get('/', async (req, res) => {
     if (production_id) where.push(`s.production_id = $${vals.push(production_id)}`);
     if (status) where.push(`s.status = $${vals.push(status)}`);
     const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    const scenesCol = include_scenes === 'true' ? ', s.scenes' : '';
     const { rows } = await db.query(
       `SELECT s.id, s.title, s.status, s.share_token, s.share_mode, s.drive_url,
-              s.brand_id, s.production_id, s.created_by_name, s.created_at, s.updated_at,
+              s.brand_id, s.production_id, s.created_by_name, s.created_at, s.updated_at${scenesCol},
               jsonb_array_length(COALESCE(s.scenes, '[]'::jsonb)) AS scene_count,
-              p.project_name,
+              p.project_name, p.planned_end,
               (SELECT COUNT(*)::int FROM script_comments sc WHERE sc.script_id = s.id AND sc.status = 'open') AS open_comments
        FROM scripts s LEFT JOIN productions p ON s.production_id = p.id
        ${clause} ORDER BY s.updated_at DESC`,
