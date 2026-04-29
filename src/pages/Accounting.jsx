@@ -19,6 +19,16 @@ function fmtNative(amount, code) {
   return code === 'ILS' ? `₪${n.toLocaleString()}` : `$${n.toLocaleString()}`;
 }
 
+const IL_VAT = 0.18; // Israeli VAT rate (18% as of Jan 2025)
+function VATSub({ ils }) {
+  if (!ils || ils < 1) return null;
+  return (
+    <div className="text-[10px] text-gray-400 mt-1 leading-tight">
+      ₪{Math.round(ils).toLocaleString()} excl. · <span className="font-semibold text-gray-600">₪{Math.round(ils * (1 + IL_VAT)).toLocaleString()} incl. VAT</span>
+    </div>
+  );
+}
+
 const PAYMENT_STATUS = ['Paid', 'Not Paid', 'Pending'];
 const INVOICE_STATUS = ['Pending', 'Received'];
 
@@ -240,6 +250,11 @@ export default function Accounting() {
   const notPaidTotal = useMemo(() => notPaid.reduce((s, i) => s + getAmt(i), 0), [notPaid]);
   const pendingTotal = useMemo(() => pending.reduce((s, i) => s + getAmt(i), 0), [pending]);
 
+  // ILS-only raw amounts for VAT display
+  const paidILS = useMemo(() => paid.filter(i => (i.currency_code || 'USD') === 'ILS').reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0), [paid]);
+  const notPaidILS = useMemo(() => notPaid.filter(i => (i.currency_code || 'USD') === 'ILS').reduce((s, i) => s + (parseFloat(i.actual_spent) || parseFloat(i.planned_budget) || 0), 0), [notPaid]);
+  const pendingILS = useMemo(() => pending.filter(i => (i.currency_code || 'USD') === 'ILS').reduce((s, i) => s + (parseFloat(i.actual_spent) || parseFloat(i.planned_budget) || 0), 0), [pending]);
+
   // Filtered items
   const filteredItems = useMemo(() => {
     let list = allItems.filter(i => (parseFloat(i.actual_spent) || 0) !== 0);
@@ -312,6 +327,12 @@ export default function Accounting() {
         </div>
       </div>
 
+      {/* VAT info strip */}
+      <div className="mb-4 flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-700">
+        <span className="font-bold shrink-0">₪ VAT</span>
+        <span>All ILS (₪) amounts are <strong>excl. VAT</strong>. Israeli VAT = <strong>18%</strong>. Incl. VAT figures shown below each total.</span>
+      </div>
+
       {/* Summary Stats */}
       <div className="grid grid-cols-3 gap-4 mb-6">
         <div
@@ -321,6 +342,7 @@ export default function Accounting() {
           <div className="text-xs text-gray-400 mb-1">Paid</div>
           <div className="text-xl font-black text-green-700">{fmt(paidTotal)}</div>
           <div className="text-xs text-gray-400 mt-1">{paid.length} items</div>
+          <VATSub ils={paidILS} />
         </div>
         <div
           className={clsx('brand-card border-l-4 border-orange-400 cursor-pointer transition-all', payStatusFilter === 'Not Paid' && 'ring-2 ring-orange-400')}
@@ -329,6 +351,7 @@ export default function Accounting() {
           <div className="text-xs text-gray-400 mb-1">Not Paid</div>
           <div className="text-xl font-black text-orange-700">{fmt(notPaidTotal)}</div>
           <div className="text-xs text-gray-400 mt-1">{notPaid.length} items</div>
+          <VATSub ils={notPaidILS} />
         </div>
         <div
           className={clsx('brand-card border-l-4 border-gray-300 cursor-pointer transition-all', payStatusFilter === 'Pending' && 'ring-2 ring-gray-400')}
@@ -337,6 +360,7 @@ export default function Accounting() {
           <div className="text-xs text-gray-400 mb-1">Pending</div>
           <div className="text-xl font-black text-gray-700">{fmt(pendingTotal)}</div>
           <div className="text-xs text-gray-400 mt-1">{pending.length} items</div>
+          <VATSub ils={pendingILS} />
         </div>
       </div>
 

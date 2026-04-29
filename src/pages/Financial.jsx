@@ -16,6 +16,16 @@ import clsx from 'clsx';
 
 const YEARS = [2024, 2025, 2026, 2027, 2028];
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const IL_VAT = 0.18; // Israeli VAT rate (18% as of Jan 2025)
+
+function VATSub({ ils }) {
+  if (!ils || ils < 1) return null;
+  return (
+    <div className="text-[10px] text-gray-400 mt-1 leading-tight">
+      ₪{Math.round(ils).toLocaleString()} excl. · <span className="font-semibold text-gray-500">₪{Math.round(ils * (1 + IL_VAT)).toLocaleString()} incl. VAT</span>
+    </div>
+  );
+}
 
 // ─── Currency helpers (mirrored from Accounting.jsx) ─────────────────────────
 function makeHelpers(currency, rate) {
@@ -251,7 +261,13 @@ function DrillDownPanel({ drillDown, lineItems, productionRows, fmt, getAmt, onC
               <tfoot>
                 <tr style={{ background: 'var(--brand-bg)', borderTop: '2px solid var(--brand-border)' }}>
                   <td colSpan={2} className="font-bold py-2 px-3 text-xs">Total ({items.length} items)</td>
-                  <td className="font-black text-sm px-3">{fmt(totalAmt)}</td>
+                  <td className="font-black text-sm px-3">
+                    {fmt(totalAmt)}
+                    {(() => {
+                      const rawILS = items.filter(li => (li.currency_code || 'USD') === 'ILS').reduce((s, li) => s + (parseFloat(li.actual_spent) || parseFloat(li.planned_budget) || 0), 0);
+                      return rawILS > 0 ? <div className="text-[9px] text-gray-400 font-normal mt-0.5">₪{Math.round(rawILS).toLocaleString()} excl. · ₪{Math.round(rawILS * 1.18).toLocaleString()} incl. VAT</div> : null;
+                    })()}
+                  </td>
                   <td colSpan={5} />
                 </tr>
               </tfoot>
@@ -353,6 +369,20 @@ export default function Financial() {
   [lineItems]);
 
   const variance = yearlyBudget - totalExposure;
+
+  // ILS-denominated amounts (raw ₪, for VAT display — VAT only applies to ILS)
+  const ilsPaid = useMemo(() =>
+    lineItems.filter(li => li.payment_status === 'Paid' && (li.currency_code || 'USD') === 'ILS')
+      .reduce((s, li) => s + (parseFloat(li.actual_spent) || 0), 0),
+  [lineItems]);
+  const ilsCommitted = useMemo(() =>
+    lineItems.filter(li => li.payment_status !== 'Paid' && li.invoice_status === 'Received' && (li.currency_code || 'USD') === 'ILS')
+      .reduce((s, li) => s + (parseFloat(li.actual_spent) || parseFloat(li.planned_budget) || 0), 0),
+  [lineItems]);
+  const ilsExposure = useMemo(() =>
+    lineItems.filter(li => (li.currency_code || 'USD') === 'ILS' && (parseFloat(li.actual_spent) || 0) > 0)
+      .reduce((s, li) => s + (parseFloat(li.actual_spent) || 0), 0),
+  [lineItems]);
 
   // ── Monthly cash flow chart (12 months always shown) ─────────────────────
   const monthlyChartData = useMemo(() => {
@@ -494,6 +524,12 @@ export default function Financial() {
         </div>
       </div>
 
+      {/* ── VAT info strip ── */}
+      <div className="mb-4 flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-700">
+        <span className="font-bold shrink-0">₪ VAT</span>
+        <span>All ILS (₪) amounts are <strong>excl. VAT</strong>. Israeli VAT rate: <strong>18%</strong>. Multiply by 1.18 for gross. Hover KPI cards for incl. VAT figures.</span>
+      </div>
+
       {/* ── Budget confirm strip ── */}
       {pendingBudget && (
         <div className="mb-5 flex items-center gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-sm">
@@ -511,7 +547,7 @@ export default function Financial() {
         <KPICard
           label="Cash Out"
           value={fmt(totalPaid)}
-          sub={`${lineItems.filter(li => li.payment_status === 'Paid').length} paid items`}
+          sub={<><span>{lineItems.filter(li => li.payment_status === 'Paid').length} paid items</span><VATSub ils={ilsPaid} /></>}
           icon={CheckCircle}
           signal="green"
           onClick={() => setDrillDown({ type: 'filter', filter: 'paid' })}
@@ -519,7 +555,7 @@ export default function Financial() {
         <KPICard
           label="Committed"
           value={fmt(totalCommitted)}
-          sub="Invoice received, not paid"
+          sub={<><span>Invoice received, not paid</span><VATSub ils={ilsCommitted} /></>}
           icon={Clock}
           signal={totalCommitted > 0 ? 'amber' : null}
           onClick={() => setDrillDown({ type: 'filter', filter: 'committed' })}
@@ -527,7 +563,7 @@ export default function Financial() {
         <KPICard
           label="Total Exposure"
           value={fmt(totalExposure)}
-          sub="Paid + committed + unpaid"
+          sub={<><span>Paid + committed + unpaid</span><VATSub ils={ilsExposure} /></>}
           icon={DollarSign}
           signal={totalExposure > yearlyBudget ? 'red' : null}
           onClick={() => setDrillDown({ type: 'filter', filter: 'exposure' })}

@@ -13,6 +13,15 @@ import { CloudLinks, detectCloudUrl } from '../components/shared/FileUploadButto
 import clsx from 'clsx';
 
 const INVOICE_STATUS = ['Pending', 'Received'];
+const IL_VAT = 0.18; // Israeli VAT rate (18% as of Jan 2025)
+function VATSub({ ils }) {
+  if (!ils || ils < 1) return null;
+  return (
+    <div className="text-[10px] text-gray-400 mt-1 leading-tight">
+      ₪{Math.round(ils).toLocaleString()} excl. · <span className="font-semibold text-gray-600">₪{Math.round(ils * (1 + IL_VAT)).toLocaleString()} incl. VAT</span>
+    </div>
+  );
+}
 
 const INV_TYPE_LABELS = {
   cheshbon_iska:       'חשבון עסקה',
@@ -112,6 +121,10 @@ export default function Invoices() {
   const getAmount = (i) => parseFloat(i.actual_spent) || parseFloat(i.planned_budget) || 0;
   const pendingTotal  = useMemo(() => pendingItems.reduce((s, i) => s + getAmount(i), 0), [pendingItems]);
   const receivedTotal = useMemo(() => receivedItems.reduce((s, i) => s + getAmount(i), 0), [receivedItems]);
+
+  // ILS-only raw amounts for VAT display
+  const pendingILS  = useMemo(() => pendingItems.filter(i => (i.currency_code || 'USD') === 'ILS').reduce((s, i) => s + getAmount(i), 0), [pendingItems]);
+  const receivedILS = useMemo(() => receivedItems.filter(i => (i.currency_code || 'USD') === 'ILS').reduce((s, i) => s + getAmount(i), 0), [receivedItems]);
 
   // Filtered items
   const filteredItems = useMemo(() => {
@@ -277,17 +290,25 @@ export default function Invoices() {
       {/* ── INVOICES TAB ── */}
       {tab === 'invoices' && (
         <>
+          {/* VAT info strip */}
+          <div className="mb-4 flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-700">
+            <span className="font-bold shrink-0">₪ VAT</span>
+            <span>All ILS (₪) amounts are <strong>excl. VAT</strong>. Israeli VAT = <strong>18%</strong>. Incl. VAT figures shown below each total.</span>
+          </div>
+
           {/* Summary Stats */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
             <div className="brand-card border-l-4 border-orange-400">
               <div className="text-xs text-gray-400 mb-1">Pending</div>
               <div className="text-xl font-black text-orange-700">{fmt(pendingTotal)}</div>
               <div className="text-xs text-gray-400 mt-1">{pendingItems.length} items</div>
+              <VATSub ils={pendingILS} />
             </div>
             <div className="brand-card border-l-4 border-green-400">
               <div className="text-xs text-gray-400 mb-1">Received</div>
               <div className="text-xl font-black text-green-700">{fmt(receivedTotal)}</div>
               <div className="text-xs text-gray-400 mt-1">{receivedItems.length} items</div>
+              <VATSub ils={receivedILS} />
             </div>
           </div>
 
