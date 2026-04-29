@@ -34,7 +34,7 @@ Please send us a formal invoice for services rendered on the following productio
 Production: ${prodName}
 Reference: ${itemId}
 Amount: ${amount ? amount.toLocaleString() : 'as agreed'} ${currency || 'USD'}
-Payment Terms: Net 30 days from invoice date
+Payment Terms: שוטף+30 (end of month + 30 days)
 
 Please send the invoice at your earliest convenience to ensure timely processing.
 
@@ -87,6 +87,7 @@ export default function InvoiceModal({ lineItemId, productionId, initialStep = '
   const [sent, setSent] = useState(false);
   const [showPrint, setShowPrint] = useState(false);
   const [netDays, setNetDays] = useState(30);
+  const [termType, setTermType] = useState('shotef'); // 'shotef' = end-of-month + N | 'net' = today + N
   const [invoiceType, setInvoiceType] = useState('Israeli');
   const [messageText, setMessageText] = useState('');
   const [invoiceLocale, setInvoiceLocale] = useState(() => {
@@ -164,8 +165,23 @@ export default function InvoiceModal({ lineItemId, productionId, initialStep = '
     setSent(true);
   }
 
+  function calcDueDate() {
+    if (termType === 'shotef') {
+      // שוטף+N: last day of current month + N days
+      const now = new Date();
+      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      endOfMonth.setDate(endOfMonth.getDate() + netDays);
+      return endOfMonth;
+    } else {
+      // Net+N: today + N days
+      const d = new Date();
+      d.setDate(d.getDate() + netDays);
+      return d;
+    }
+  }
+
   async function handleReceived() {
-    const dueDate = new Date(); dueDate.setDate(dueDate.getDate() + netDays);
+    const dueDate = calcDueDate();
     const paymentDue = dueDate.toISOString();
     const resolvedType = dealerType === 'osek_patur' ? 'receipt' : invoiceType;
     const invoice = {
@@ -405,16 +421,30 @@ export default function InvoiceModal({ lineItemId, productionId, initialStep = '
                 <div><strong>Amount on record:</strong> ${(parseFloat(item.actual_spent) || parseFloat(item.planned_budget) || 0).toLocaleString()}</div>
               </div>
 
-              {/* Net+ days + Invoice type */}
+              {/* Payment terms + Invoice type */}
               <div className="grid grid-cols-2 gap-3 mt-3">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Net + Days</label>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Payment Terms</label>
+                  {/* Term type toggle */}
+                  <div className="flex rounded-lg overflow-hidden border border-gray-200 mb-1.5">
+                    <button type="button"
+                      onClick={() => setTermType('shotef')}
+                      className={`flex-1 py-1.5 text-xs font-bold transition-colors ${termType === 'shotef' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                      שוטף+
+                    </button>
+                    <button type="button"
+                      onClick={() => setTermType('net')}
+                      className={`flex-1 py-1.5 text-xs font-bold border-l border-gray-200 transition-colors ${termType === 'net' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                      Net+
+                    </button>
+                  </div>
                   <input
                     type="number"
                     min={0}
                     className="brand-input"
                     value={netDays}
                     onChange={e => setNetDays(Math.max(0, +e.target.value))}
+                    placeholder="30"
                   />
                 </div>
                 <div>
@@ -449,11 +479,17 @@ export default function InvoiceModal({ lineItemId, productionId, initialStep = '
                 </p>
               )}
 
-              <div className="text-xs text-gray-400 mt-2">
-                Payment due:{' '}
-                <strong className="text-gray-600">
-                  {(() => { const d = new Date(); d.setDate(d.getDate() + netDays); return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }); })()}
+              <div className="text-xs text-gray-400 mt-2 flex items-center gap-1.5">
+                <span className="font-semibold text-indigo-500">
+                  {termType === 'shotef' ? `שוטף+${netDays}` : `Net+${netDays}`}
+                </span>
+                <span>→ due</span>
+                <strong className="text-gray-700">
+                  {calcDueDate().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
                 </strong>
+                {termType === 'shotef' && (
+                  <span className="text-gray-400">(end of month + {netDays}d)</span>
+                )}
               </div>
 
               <button
