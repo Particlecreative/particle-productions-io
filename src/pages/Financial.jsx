@@ -384,6 +384,30 @@ export default function Financial() {
       .reduce((s, li) => s + (parseFloat(li.actual_spent) || 0), 0),
   [lineItems]);
 
+  // ── Per-month planned spend from production timelines ────────────────────
+  const monthlyTimelinePlanned = useMemo(() => {
+    const arr = Array(12).fill(0);
+    productions.forEach(prod => {
+      const budget = parseFloat(prod.planned_budget_2026) || 0;
+      if (!budget || !prod.planned_start) return;
+      const start = new Date(prod.planned_start);
+      const end   = prod.planned_end ? new Date(prod.planned_end) : start;
+      // collect which months in selectedYear this production spans
+      const months = [];
+      let cur = new Date(start.getFullYear(), start.getMonth(), 1);
+      const endM = new Date(end.getFullYear(), end.getMonth(), 1);
+      while (cur <= endM) {
+        if (cur.getFullYear() === selectedYear) months.push(cur.getMonth());
+        cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+      }
+      if (!months.length) return;
+      const { toDisplay } = makeHelpers(currency, rate);
+      const perMonth = toDisplay(budget / months.length, 'USD'); // planned_budget_2026 is USD
+      months.forEach(m => { arr[m] += perMonth; });
+    });
+    return arr.map(v => Math.round(v));
+  }, [productions, selectedYear, currency, rate]);
+
   // ── Monthly cash flow chart (12 months always shown) ─────────────────────
   const monthlyChartData = useMemo(() => {
     const paid = Array(12).fill(0);
@@ -415,8 +439,9 @@ export default function Financial() {
       paid: Math.round(paid[i]),
       committed: Math.round(committed[i]),
       budgetLine: Math.round(monthlyBudget * (i + 1)), // cumulative budget pacing
+      timelinePlanned: monthlyTimelinePlanned[i],       // per-month estimate from production timelines
     }));
-  }, [lineItems, selectedYear, yearlyBudget, getAmt]);
+  }, [lineItems, selectedYear, yearlyBudget, getAmt, monthlyTimelinePlanned]);
 
   // ── Per-production rows ───────────────────────────────────────────────────
   const productionRows = useMemo(() => {
@@ -622,6 +647,7 @@ export default function Financial() {
                 <Legend />
                 <Bar dataKey="paid" name="Paid" fill="var(--brand-accent, #6366f1)" radius={[3,3,0,0]} stackId="a" cursor="pointer" />
                 <Bar dataKey="committed" name="Committed" fill="#f59e0b" radius={[3,3,0,0]} stackId="a" cursor="pointer" />
+                <Line dataKey="timelinePlanned" name="Est. by Timeline" stroke="#818cf8" strokeDasharray="4 2" strokeWidth={2} dot={{ r: 3, fill: '#818cf8', strokeWidth: 0 }} type="monotone" />
                 <Line dataKey="budgetLine" name="Budget pacing" stroke="#cbd5e1" strokeDasharray="5 3" strokeWidth={1.5} dot={false} type="monotone" />
               </ComposedChart>
             </ResponsiveContainer>
@@ -637,27 +663,40 @@ export default function Financial() {
                 <thead>
                   <tr>
                     <th>Month</th>
+                    <th>Est. by Timeline</th>
                     <th>Paid Out</th>
                     <th>Committed</th>
-                    <th>Total</th>
-                    <th>Budget Pacing</th>
+                    <th>Total Actual</th>
                     <th></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {monthlyChartData.filter(r => r.paid > 0 || r.committed > 0).map(row => (
-                    <tr key={row.month} className="cursor-pointer hover:bg-indigo-50/30"
-                      onClick={() => setDrillDown({ type: 'month', monthIndex: row.monthIndex })}>
-                      <td className="font-semibold">{row.month}</td>
-                      <td className="text-green-700 font-semibold">{row.paid > 0 ? fmt(row.paid) : '—'}</td>
-                      <td className="text-amber-700">{row.committed > 0 ? fmt(row.committed) : '—'}</td>
-                      <td className="font-bold">{fmt(row.paid + row.committed)}</td>
-                      <td className="text-gray-500">{fmt(row.budgetLine)}</td>
-                      <td><ChevronRight size={12} className="text-gray-300" /></td>
-                    </tr>
-                  ))}
-                  {monthlyChartData.every(r => r.paid === 0 && r.committed === 0) && (
-                    <tr><td colSpan={6} className="text-center py-8 text-gray-300 text-sm">No payment data recorded yet</td></tr>
+                  {monthlyChartData.map(row => {
+                    const hasData = row.paid > 0 || row.committed > 0 || row.timelinePlanned > 0;
+                    if (!hasData) return null;
+                    const delta = (row.paid + row.committed) - row.timelinePlanned;
+                    return (
+                      <tr key={row.month}
+                        className="cursor-pointer hover:bg-indigo-50/30"
+                        onClick={() => setDrillDown({ type: 'month', monthIndex: row.monthIndex })}>
+                        <td className="font-semibold">{row.month}</td>
+                        <td className="text-indigo-500 font-medium">{row.timelinePlanned > 0 ? fmt(row.timelinePlanned) : '—'}</td>
+                        <td className="text-green-700 font-semibold">{row.paid > 0 ? fmt(row.paid) : '—'}</td>
+                        <td className="text-amber-700">{row.committed > 0 ? fmt(row.committed) : '—'}</td>
+                        <td>
+                          <span className="font-bold">{fmt(row.paid + row.committed)}</span>
+                          {row.timelinePlanned > 0 && (row.paid + row.committed) > 0 && (
+                            <span className={clsx('ml-1.5 text-[10px] font-semibold', delta > 0 ? 'text-red-500' : 'text-green-600')}>
+                              {delta > 0 ? '+' : ''}{fmt(delta)}
+                            </span>
+                          )}
+                        </td>
+                        <td><ChevronRight size={12} className="text-gray-300" /></td>
+                      </tr>
+                    );
+                  })}
+                  {monthlyChartData.every(r => r.paid === 0 && r.committed === 0 && r.timelinePlanned === 0) && (
+                    <tr><td colSpan={6} className="text-center py-8 text-gray-300 text-sm">No data yet — add production timelines and line items</td></tr>
                   )}
                 </tbody>
               </table>
