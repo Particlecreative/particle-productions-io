@@ -146,6 +146,10 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
   const [ccPurchases, setCcPurchases] = useState([]);
   const [expandedRows, setExpandedRows] = useState(new Set());
 
+  // Bulk selection
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [bulkBudget, setBulkBudget] = useState('');
+
   useEffect(() => {
     async function load() {
       const [items, cc] = await Promise.all([
@@ -296,6 +300,16 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
     setEditingCell(null);
   }
 
+  async function handleBulkUpdate(field, value) {
+    if (!isEditor || selectedIds.size === 0) return;
+    await Promise.all(
+      Array.from(selectedIds).map(id => Promise.resolve(updateLineItem(id, { [field]: value })))
+    );
+    addNotification('edit', `${user?.name || 'Someone'} bulk-updated ${field} for ${selectedIds.size} items in ${production?.project_name || productionId}`, productionId);
+    await refresh();
+    // keep selection intact so user can chain edits
+  }
+
   // Cascade delete state
   const [deleteModal, setDeleteModal] = useState(null); // { id, item }
   const [deleteOpts, setDeleteOpts] = useState({ contract: true, cast: true, driveFiles: false });
@@ -374,7 +388,7 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
   const isOverCap  = capBudget > 0 && totalPlanned > capBudget;
   const overAmount = isOverCap ? totalPlanned - capBudget : 0;
 
-  const totalVisibleCols = 1 + BUDGET_TOGGLE_KEYS.filter(k => vis(k)).length + customCols.length + (isEditor ? 1 : 0);
+  const totalVisibleCols = 2 + BUDGET_TOGGLE_KEYS.filter(k => vis(k)).length + customCols.length + (isEditor ? 1 : 0); // +1 for checkbox col
   const colsBefore   = ['full_name'].filter(k => vis(k)).length + 1; // item always
   const colsMid      = ['type','status','timeline'].filter(k => vis(k)).length;
   const colsTail     = ['invoice','contract'].filter(k => vis(k)).length + customCols.length + (isEditor ? 1 : 0);
@@ -616,11 +630,66 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
         </div>
       </div>
 
+      {/* Bulk action bar */}
+      {isEditor && selectedIds.size > 0 && (
+        <div className="mb-2 flex items-center gap-3 bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-2 text-sm flex-wrap">
+          <span className="font-semibold text-indigo-700 shrink-0">{selectedIds.size} selected</span>
+          <div className="w-px h-4 bg-indigo-200 shrink-0" />
+          <select
+            className="text-xs border border-indigo-200 rounded-lg px-2 py-1.5 bg-white cursor-pointer"
+            value=""
+            onChange={e => { if (e.target.value) handleBulkUpdate('type', e.target.value); }}
+          >
+            <option value="">Set Type…</option>
+            {lists.lineItemTypes.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <select
+            className="text-xs border border-indigo-200 rounded-lg px-2 py-1.5 bg-white cursor-pointer"
+            value=""
+            onChange={e => { if (e.target.value) handleBulkUpdate('status', e.target.value); }}
+          >
+            <option value="">Set Status…</option>
+            {lists.lineItemStatuses.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <div className="flex items-center gap-1">
+            <input
+              type="number"
+              placeholder="Set Budget…"
+              value={bulkBudget}
+              onChange={e => setBulkBudget(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && bulkBudget) { handleBulkUpdate('planned_budget', bulkBudget); setBulkBudget(''); } }}
+              className="text-xs border border-indigo-200 rounded-lg px-2 py-1.5 bg-white w-28"
+            />
+            {bulkBudget && (
+              <button
+                onClick={() => { handleBulkUpdate('planned_budget', bulkBudget); setBulkBudget(''); }}
+                className="text-xs bg-indigo-600 text-white px-2.5 py-1.5 rounded-lg hover:bg-indigo-700 transition-colors"
+              >Apply</button>
+            )}
+          </div>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            className="ml-auto text-indigo-400 hover:text-indigo-700 p-1 rounded transition-colors"
+            title="Clear selection"
+          ><X size={14} /></button>
+        </div>
+      )}
+
       <div className="brand-card p-0 overflow-hidden">
         <div className="table-scroll-wrapper" style={stickyHeader ? { maxHeight: 'calc(100vh - 300px)', overflowY: 'auto' } : undefined}>
           <table className={clsx('data-table', compactMode && 'compact-table')} style={{ minWidth: 1050 }}>
             <thead>
               <tr>
+                <th style={{ width: 40, padding: '0 8px' }}>
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 rounded-sm accent-indigo-600 cursor-pointer"
+                    checked={selectedIds.size === sortedItems.length && sortedItems.length > 0}
+                    ref={el => { if (el) el.indeterminate = selectedIds.size > 0 && selectedIds.size < sortedItems.length; }}
+                    onChange={e => setSelectedIds(e.target.checked ? new Set(sortedItems.map(i => i.id)) : new Set())}
+                    title={selectedIds.size > 0 ? 'Deselect all' : 'Select all'}
+                  />
+                </th>
                 <BudgetTh label="Item"           colKey="item"           sortState={sortState} onSort={handleBudgetSort} minWidth={120} />
                 {vis('full_name') && <BudgetTh label="Full Name"     colKey="full_name"      sortState={sortState} onSort={handleBudgetSort} minWidth={150} />}
                 {vis('planned_budget') && <BudgetTh label="Est. Budget" colKey="planned_budget" sortState={sortState} onSort={handleBudgetSort} />}
@@ -681,6 +750,12 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
                     isNew={newRowId === item.id}
                     showColors={showColors}
                     contractRefreshKey={contractRefreshKey}
+                    isSelected={selectedIds.has(item.id)}
+                    onSelect={id => setSelectedIds(prev => {
+                      const next = new Set(prev);
+                      next.has(id) ? next.delete(id) : next.add(id);
+                      return next;
+                    })}
                   />
                   {expandedRows.has(item.id) && (ccByLineItem[item.id] || []).map(cc => (
                     <CCSubRow key={cc.id} cc={cc} totalCols={totalVisibleCols} />
@@ -1001,7 +1076,7 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
   );
 }
 
-function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEditingCell, onUpdate, onDelete, onInvoice, onContract, lineItemTypes, lineItemStatuses, crewRoles = [], hiddenCols = [], customCols = [], onOpenCastModal, onPhotoFullscreen, ccChildren = [], isExpanded, onToggleExpand, isNew, showColors, contractRefreshKey = 0 }) {
+function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEditingCell, onUpdate, onDelete, onInvoice, onContract, lineItemTypes, lineItemStatuses, crewRoles = [], hiddenCols = [], customCols = [], onOpenCastModal, onPhotoFullscreen, ccChildren = [], isExpanded, onToggleExpand, isNew, showColors, contractRefreshKey = 0, isSelected = false, onSelect }) {
   const vis = key => !hiddenCols.includes(key);
   const diff = (parseFloat(item.planned_budget) || 0) - (parseFloat(item.actual_spent) || 0);
   const isEditing = (field) => editingCell?.itemId === item.id && editingCell?.field === field;
@@ -1150,9 +1225,24 @@ function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEd
 
   return (
     <tr
-      className={isNew ? 'animate-[budget-row-flash_1.5s_ease-out]' : ''}
-      style={isNew ? { background: 'rgba(59,130,246,0.08)' } : undefined}
+      className={clsx(
+        isNew ? 'animate-[budget-row-flash_1.5s_ease-out]' : '',
+        isSelected && 'border-l-2 border-indigo-400',
+      )}
+      style={{
+        ...(isNew ? { background: 'rgba(59,130,246,0.08)' } : {}),
+        ...(isSelected ? { background: 'rgba(99,102,241,0.06)' } : {}),
+      }}
     >
+      {/* Checkbox */}
+      <td style={{ width: 40, padding: '0 8px' }} onClick={e => { e.stopPropagation(); onSelect?.(item.id); }}>
+        <input
+          type="checkbox"
+          className="w-4 h-4 rounded-sm accent-indigo-600 cursor-pointer"
+          checked={isSelected}
+          onChange={() => onSelect?.(item.id)}
+        />
+      </td>
       {cell('item',
         <div className="flex items-center gap-2">
           {ccChildren.length > 0 && (

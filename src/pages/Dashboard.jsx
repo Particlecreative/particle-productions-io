@@ -148,6 +148,9 @@ export default function Dashboard() {
   const [showSaveView, setShowSaveView] = useState(false);
   const [pendingOrder, setPendingOrder] = useState(null);
 
+  // Bulk selection (table view)
+  const [selectedProdIds, setSelectedProdIds] = useState(new Set());
+
   useEffect(() => {
     async function load() {
       setLoading(true);
@@ -177,6 +180,9 @@ export default function Dashboard() {
     setHideCompleted(false);
     try { localStorage.removeItem('cp_dash_filters'); } catch {}
   }, [selectedYear]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Clear bulk selection when filters change
+  useEffect(() => { setSelectedProdIds(new Set()); }, [selectedYear, stageFilter, productTypeFilter, debouncedSearch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Listen for keyboard shortcut to open New Production modal
   useEffect(() => {
@@ -279,6 +285,17 @@ export default function Dashboard() {
     if (productionType === 'Remote Shoot' || productionType === 'Shoot') {
       setCrewConfirm({ prodId, prodName: prod?.project_name, productionType });
     }
+    refresh();
+  }
+
+  // Bulk update for selected productions
+  function handleBulkProdUpdate(field, value) {
+    if (!isEditor || selectedProdIds.size === 0) return;
+    Array.from(selectedProdIds).forEach(id => {
+      const prod = productions.find(p => p.id === id);
+      updateProduction(id, { [field]: value }, user?.id, user?.name);
+      if (prod) addNotification('edit', `${user?.name || 'Someone'} bulk-updated ${field} of ${prod.project_name || id} to "${value}"`, id);
+    });
     refresh();
   }
 
@@ -923,12 +940,45 @@ export default function Dashboard() {
         );
       })()}
 
+      {/* Bulk action bar (table view) */}
+      {activeTab === 'productions' && !loading && prodView === 'table' && isEditor && selectedProdIds.size > 0 && (
+        <div className="mb-2 flex items-center gap-3 bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-2 text-sm flex-wrap">
+          <span className="font-semibold text-indigo-700 shrink-0">{selectedProdIds.size} selected</span>
+          <div className="w-px h-4 bg-indigo-200 shrink-0" />
+          <select
+            className="text-xs border border-indigo-200 rounded-lg px-2 py-1.5 bg-white cursor-pointer"
+            value=""
+            onChange={e => { if (e.target.value) handleBulkProdUpdate('stage', e.target.value); }}
+          >
+            <option value="">Set Stage…</option>
+            {(lists.stages || ['Pending', 'Pre Production', 'In Production', 'Post Production', 'Delivered', 'Paused', 'Completed']).map(s => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+          <button
+            onClick={() => setSelectedProdIds(new Set())}
+            className="ml-auto text-indigo-400 hover:text-indigo-700 p-1 rounded transition-colors"
+            title="Clear selection"
+          >✕</button>
+        </div>
+      )}
+
       {/* Table View */}
       {activeTab === 'productions' && !loading && prodView === 'table' && <div className="brand-card p-0 overflow-hidden">
         <div className="table-scroll-wrapper" style={stickyHeader ? { maxHeight: 'calc(100vh - 260px)', overflowY: 'auto' } : {}}>
           <table className={clsx('data-table', compactMode && 'compact-table')} style={{ minWidth: compactMode ? 700 : 1200 }}>
             <thead>
               <tr>
+                <th style={{ width: 40, padding: '0 8px' }}>
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 rounded-sm accent-indigo-600 cursor-pointer"
+                    checked={selectedProdIds.size === filtered.length && filtered.length > 0}
+                    ref={el => { if (el) el.indeterminate = selectedProdIds.size > 0 && selectedProdIds.size < filtered.length; }}
+                    onChange={e => setSelectedProdIds(e.target.checked ? new Set(filtered.map(p => p.id)) : new Set())}
+                    title={selectedProdIds.size > 0 ? 'Deselect all' : 'Select all'}
+                  />
+                </th>
                 <th style={{ width: 32 }}></th>
                 <Th label="ID" sortKey="id" sortConfig={sortConfig} onSort={handleSort} sticky />
                 <Th label="Project Name" sortKey="project_name" sortConfig={sortConfig} onSort={handleSort} wide />
@@ -955,7 +1005,7 @@ export default function Dashboard() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={4 + orderedCols.length} className="text-center py-16 text-gray-400 text-sm">
+                  <td colSpan={5 + orderedCols.length} className="text-center py-16 text-gray-400 text-sm">
                     {search || stageFilter ? 'No productions match your filters.' : 'No productions yet.'}
                   </td>
                 </tr>
@@ -987,6 +1037,12 @@ export default function Dashboard() {
                   colorByStatus={colorByStatus}
                   orderedCols={orderedCols}
                   compactMode={compactMode}
+                  isSelected={selectedProdIds.has(prod.id)}
+                  onSelect={id => setSelectedProdIds(prev => {
+                    const next = new Set(prev);
+                    next.has(id) ? next.delete(id) : next.add(id);
+                    return next;
+                  })}
                 />
               ))}
             </tbody>
@@ -1178,6 +1234,7 @@ function ProductionRow({
   editingRow, setEditingRow, onSaveRow, onInlineEdit, onLock, onDelete,
   dragId, dragOverId, onDragStart, onDragOver, onDrop, onDragEnd, canDrag,
   hiddenCols = [], colorByStatus = true, orderedCols = [], compactMode = false,
+  isSelected = false, onSelect,
 }) {
   const { lists } = useLists();
   const [pendingEdits, setPendingEdits] = useState({});
@@ -1250,7 +1307,7 @@ function ProductionRow({
     <tr
       className={clsx(
         'group transition-colors',
-        statusBg,
+        isSelected ? 'bg-indigo-50/40 border-l-2 border-indigo-400' : statusBg,
         isDragging && 'opacity-40',
         !isEditingThisRow && !isDragging && 'cursor-pointer',
         isDragOver && 'bg-blue-50 border-t-2 border-blue-400',
@@ -1263,6 +1320,15 @@ function ProductionRow({
       onDragEnd={onDragEnd}
       onClick={() => { if (isEditingThisRow) return; onOpen(); }}
     >
+      {/* Checkbox */}
+      <td style={{ width: 40, padding: '0 8px' }} onClick={e => { e.stopPropagation(); onSelect?.(prod.id); }}>
+        <input
+          type="checkbox"
+          className="w-4 h-4 rounded-sm accent-indigo-600 cursor-pointer"
+          checked={isSelected}
+          onChange={() => onSelect?.(prod.id)}
+        />
+      </td>
       {/* Drag Handle */}
       <td style={{ width: 32, padding: '0 8px' }} onClick={e => e.stopPropagation()}>
         {canDrag && !isEditingThisRow && (
