@@ -76,6 +76,11 @@ export default function Invoices() {
     loadData();
   }
 
+  function handleUpdate(id, field, value) {
+    updateLineItem(id, { [field]: value });
+    loadData();
+  }
+
   function handleInvoiceUrlUpdate(id, url) {
     const item = allItems.find(i => i.id === id);
     updateLineItem(id, {
@@ -353,6 +358,7 @@ export default function Invoices() {
                 onStatusChange={handleStatusChange}
                 onInvoiceUrlUpdate={handleInvoiceUrlUpdate}
                 onAction={handleAction}
+                onUpdate={handleUpdate}
               />
             ))}
           </div>
@@ -386,7 +392,7 @@ export default function Invoices() {
 
 // ─── Production group (collapsible) ──────────────────────────────────────────
 
-function InvoiceProductionGroup({ data, fmt, isEditor, receipts = [], onStatusChange, onInvoiceUrlUpdate, onAction }) {
+function InvoiceProductionGroup({ data, fmt, isEditor, receipts = [], onStatusChange, onInvoiceUrlUpdate, onAction, onUpdate }) {
   const [expanded, setExpanded] = useState(true);
   const total = data.items.reduce((s, i) => s + (parseFloat(i.actual_spent) || parseFloat(i.planned_budget) || 0), 0);
   const invoicedCount = data.items.filter(i => i.invoice_url || i.invoice_status).length;
@@ -422,6 +428,7 @@ function InvoiceProductionGroup({ data, fmt, isEditor, receipts = [], onStatusCh
             onStatusChange={onStatusChange}
             onInvoiceUrlUpdate={onInvoiceUrlUpdate}
             onAction={onAction}
+            onUpdate={onUpdate}
           />
         </div>
       )}
@@ -431,7 +438,7 @@ function InvoiceProductionGroup({ data, fmt, isEditor, receipts = [], onStatusCh
 
 // ─── Shared table ─────────────────────────────────────────────────────────────
 
-function InvoiceTable({ items, productions, fmt, isEditor, showProduction, receipts = [], onStatusChange, onInvoiceUrlUpdate, onAction }) {
+function InvoiceTable({ items, productions, fmt, isEditor, showProduction, receipts = [], onStatusChange, onInvoiceUrlUpdate, onAction, onUpdate }) {
   const colCount = showProduction ? 8 : 7;
   return (
     <table className="data-table" style={{ minWidth: showProduction ? 1020 : 860 }}>
@@ -464,6 +471,7 @@ function InvoiceTable({ items, productions, fmt, isEditor, showProduction, recei
             onStatusChange={onStatusChange}
             onInvoiceUrlUpdate={onInvoiceUrlUpdate}
             onAction={onAction}
+            onUpdate={onUpdate}
           />
         ))}
       </tbody>
@@ -656,8 +664,9 @@ function ReceiptsTab({ receipts, allItems, productions, fmt, isEditor, onReceipt
 
 // ─── Single invoice row ───────────────────────────────────────────────────────
 
-function InvoiceRow({ item, productionName, fmt, isEditor, showProduction, receipt, onStatusChange, onInvoiceUrlUpdate, onAction }) {
+function InvoiceRow({ item, productionName, fmt, isEditor, showProduction, receipt, onStatusChange, onInvoiceUrlUpdate, onAction, onUpdate }) {
   const [editingUrl, setEditingUrl] = useState(false);
+  const [editingDueDate, setEditingDueDate] = useState(false);
   const [urlVal, setUrlVal] = useState(item.invoice_url || '');
 
   function saveUrl() {
@@ -825,11 +834,46 @@ function InvoiceRow({ item, productionName, fmt, isEditor, showProduction, recei
         )}
       </td>
 
-      {/* Payment Due */}
-      <td className={clsx('text-xs whitespace-nowrap', isPaymentOverdue ? 'text-red-600 font-semibold' : 'text-gray-500')}>
-        {item.payment_due
-          ? <>{isPaymentOverdue && '⚠️ '}{formatDateIST(item.payment_due)}</>
-          : '—'}
+      {/* Payment Due — inline editable */}
+      <td className="text-xs whitespace-nowrap">
+        {editingDueDate ? (
+          <input
+            type="date"
+            autoFocus
+            className="text-xs border rounded px-1.5 py-0.5 outline-none"
+            style={{ borderColor: 'var(--brand-accent)', width: 130 }}
+            defaultValue={item.payment_due ? item.payment_due.slice(0, 10) : ''}
+            onBlur={e => {
+              if (onUpdate) {
+                if (e.target.value) onUpdate(item.id, 'payment_due', new Date(e.target.value).toISOString());
+                else onUpdate(item.id, 'payment_due', null);
+              }
+              setEditingDueDate(false);
+            }}
+            onKeyDown={e => {
+              if (e.key === 'Enter') e.target.blur();
+              if (e.key === 'Escape') setEditingDueDate(false);
+            }}
+          />
+        ) : isEditor && onUpdate ? (
+          <button
+            onClick={() => setEditingDueDate(true)}
+            className={clsx(
+              'hover:underline cursor-pointer',
+              isPaymentOverdue ? 'text-red-600 font-semibold' :
+              item.payment_due ? 'text-gray-500' : 'text-gray-300 hover:text-gray-500'
+            )}
+            title="Click to set payment due date"
+          >
+            {item.payment_due
+              ? <>{isPaymentOverdue && '⚠️ '}{formatDateIST(item.payment_due)}</>
+              : '+ Set date'}
+          </button>
+        ) : (
+          <span className={clsx(isPaymentOverdue ? 'text-red-600 font-semibold' : 'text-gray-500')}>
+            {item.payment_due ? <>{isPaymentOverdue && '⚠️ '}{formatDateIST(item.payment_due)}</> : '—'}
+          </span>
+        )}
       </td>
 
       {/* Aging */}

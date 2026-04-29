@@ -718,6 +718,7 @@ function AccountingRow({ item, fmt, isEditor, showProduction, productionName, on
   const { lists } = useLists();
   const [editingScreenshot, setEditingScreenshot] = useState(false);
   const [editingReceiptUrl, setEditingReceiptUrl] = useState(false);
+  const [editingDueDate, setEditingDueDate] = useState(false);
 
   return (
     <tr className={clsx(
@@ -819,9 +820,45 @@ function AccountingRow({ item, fmt, isEditor, showProduction, productionName, on
         )}
       </td>
 
-      {/* Payment Due */}
-      <td className="text-xs text-gray-500 whitespace-nowrap">
-        {item.payment_due ? formatDateIST(item.payment_due) : '—'}
+      {/* Payment Due — inline editable */}
+      <td className="text-xs whitespace-nowrap">
+        {editingDueDate ? (
+          <input
+            type="date"
+            autoFocus
+            className="text-xs border rounded px-1.5 py-0.5 outline-none"
+            style={{ borderColor: 'var(--brand-accent)', width: 130 }}
+            defaultValue={item.payment_due ? item.payment_due.slice(0, 10) : ''}
+            onBlur={e => {
+              if (e.target.value) onUpdate(item.id, 'payment_due', new Date(e.target.value).toISOString());
+              else onUpdate(item.id, 'payment_due', null);
+              setEditingDueDate(false);
+            }}
+            onKeyDown={e => {
+              if (e.key === 'Enter') e.target.blur();
+              if (e.key === 'Escape') setEditingDueDate(false);
+            }}
+          />
+        ) : isEditor ? (
+          <button
+            onClick={() => setEditingDueDate(true)}
+            className={clsx(
+              'hover:underline cursor-pointer',
+              item.payment_due
+                ? new Date(item.payment_due) < new Date() && item.payment_status !== 'Paid'
+                  ? 'text-red-500 font-semibold'
+                  : 'text-gray-500'
+                : 'text-gray-300 hover:text-gray-500'
+            )}
+            title="Click to set payment due date"
+          >
+            {item.payment_due ? formatDateIST(item.payment_due) : '+ Set date'}
+          </button>
+        ) : (
+          <span className={item.payment_due ? 'text-gray-500' : 'text-gray-300'}>
+            {item.payment_due ? formatDateIST(item.payment_due) : '—'}
+          </span>
+        )}
       </td>
 
       {/* Payment Status */}
