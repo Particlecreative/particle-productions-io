@@ -6,6 +6,7 @@ import {
 import {
   AlertTriangle, TrendingUp, TrendingDown, DollarSign, Clock, CheckCircle,
   ChevronUp, ChevronDown, X, ExternalLink, ChevronRight, Search,
+  LayoutList, CalendarDays,
 } from 'lucide-react';
 import { useBrand } from '../context/BrandContext';
 import { useCurrency } from '../context/CurrencyContext';
@@ -315,7 +316,8 @@ export default function Financial() {
   // Drill-down drawer
   const [drillDown, setDrillDown] = useState(null);
 
-  // Productions tab sort + filter
+  // Productions tab sort + filter + view
+  const [prodView, setProdView] = useState('list'); // 'list' | 'month'
   const [sortKey, setSortKey] = useState('_planned');
   const [sortDir, setSortDir] = useState('desc');
   const [prodFilter, setProdFilter] = useState('');
@@ -471,6 +473,47 @@ export default function Financial() {
       return sortDir === 'asc' ? av - bv : bv - av;
     });
   }, [productionRows, prodFilter, stageFilter, sortKey, sortDir]);
+
+  // ── By-month grouping for Productions tab ────────────────────────────────
+  const monthGroups = useMemo(() => {
+    const { toDisplay } = makeHelpers(currency, rate);
+    return MONTH_NAMES.map((monthName, mi) => {
+      const firstDay = new Date(selectedYear, mi, 1);
+      const lastDay  = new Date(selectedYear, mi + 1, 0);
+
+      const prods = sortedProductionRows.filter(prod => {
+        if (!prod.planned_start) return false;
+        const s = new Date(prod.planned_start);
+        const e = prod.planned_end ? new Date(prod.planned_end) : s;
+        return s <= lastDay && e >= firstDay;
+      }).map(prod => {
+        // budget slice: how many months this production spans overall, divide evenly
+        const budget = parseFloat(prod.planned_budget_2026) || prod._planned || 0;
+        const s = new Date(prod.planned_start);
+        const e = prod.planned_end ? new Date(prod.planned_end) : s;
+        let totalMonths = 0;
+        let cur = new Date(s.getFullYear(), s.getMonth(), 1);
+        const endM = new Date(e.getFullYear(), e.getMonth(), 1);
+        while (cur <= endM) { totalMonths++; cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1); }
+        const sliceBudget = totalMonths > 0 ? toDisplay(budget / totalMonths, 'USD') : 0;
+
+        // paid in this month
+        const paidThisMonth = prod._items
+          .filter(li => {
+            if (li.payment_status !== 'Paid') return false;
+            const ds = li.paid_at || li.payment_due;
+            if (!ds) return false;
+            const d = new Date(ds);
+            return d.getFullYear() === selectedYear && d.getMonth() === mi;
+          })
+          .reduce((s2, li) => s2 + getAmt(li), 0);
+
+        return { ...prod, sliceBudget: Math.round(sliceBudget), paidThisMonth: Math.round(paidThisMonth) };
+      });
+
+      return { monthName, monthIndex: mi, prods };
+    }).filter(g => g.prods.length > 0);
+  }, [sortedProductionRows, selectedYear, currency, rate, getAmt]);
 
   // ── Category data ─────────────────────────────────────────────────────────
   const categoryData = useMemo(() => {
@@ -730,9 +773,97 @@ export default function Financial() {
               </button>
             )}
             <span className="text-xs text-gray-400 ml-auto">{sortedProductionRows.length} productions</span>
+            {/* View toggle */}
+            <div className="flex items-center rounded-lg overflow-hidden border" style={{ borderColor: 'var(--brand-border)' }}>
+              <button
+                onClick={() => setProdView('list')}
+                className={clsx('flex items-center gap-1 px-2.5 py-1.5 text-xs transition-colors', prodView === 'list' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50')}
+                title="List view">
+                <LayoutList size={13} /><span>List</span>
+              </button>
+              <button
+                onClick={() => setProdView('month')}
+                className={clsx('flex items-center gap-1 px-2.5 py-1.5 text-xs transition-colors border-l', prodView === 'month' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50')}
+                style={{ borderColor: 'var(--brand-border)' }}
+                title="By month">
+                <CalendarDays size={13} /><span>By Month</span>
+              </button>
+            </div>
           </div>
 
-          <div className="brand-card p-0 overflow-hidden">
+          {/* ── By Month view ── */}
+          {prodView === 'month' && (
+            <div className="space-y-4">
+              {monthGroups.length === 0 ? (
+                <div className="brand-card text-center py-16 text-gray-300 text-sm">
+                  No productions have planned start dates set for {selectedYear}.
+                </div>
+              ) : monthGroups.map(({ monthName, monthIndex, prods }) => (
+                <div key={monthIndex} className="brand-card p-0 overflow-hidden">
+                  {/* Month header */}
+                  <div className="flex items-center justify-between px-4 py-3 border-b"
+                    style={{ borderColor: 'var(--brand-border)', background: 'var(--brand-bg)' }}>
+                    <div className="flex items-center gap-2">
+                      <CalendarDays size={14} className="text-indigo-400" />
+                      <span className="font-bold text-sm" style={{ color: 'var(--brand-primary)' }}>
+                        {monthName} {selectedYear}
+                      </span>
+                      <span className="text-xs text-gray-400 ml-1">{prods.length} production{prods.length !== 1 ? 's' : ''}</span>
+                    </div>
+                    <div className="flex items-center gap-4 text-xs text-gray-500">
+                      <span>Est. spend: <span className="font-semibold text-indigo-600">{fmt(prods.reduce((s, p) => s + p.sliceBudget, 0))}</span></span>
+                      <span>Paid: <span className="font-semibold text-green-600">{fmt(prods.reduce((s, p) => s + p.paidThisMonth, 0))}</span></span>
+                    </div>
+                  </div>
+                  {/* Productions in this month */}
+                  <table className="data-table" style={{ minWidth: 0 }}>
+                    <thead>
+                      <tr>
+                        <th>Project</th>
+                        <th>Stage</th>
+                        <th>Timeline</th>
+                        <th>Est. this month</th>
+                        <th>Paid this month</th>
+                        <th>Total paid</th>
+                        <th>Variance</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {prods.map(prod => (
+                        <tr key={prod.id}
+                          className={clsx('cursor-pointer transition-colors', prod._overdue > 0 ? 'bg-red-50/20' : 'hover:bg-indigo-50/20')}
+                          onClick={() => setDrillDown({ type: 'production', id: prod.id })}>
+                          <td>
+                            <div className="font-semibold text-sm">{prod.project_name}</div>
+                            <div className="text-[10px] font-mono text-gray-400">{prod.id}</div>
+                          </td>
+                          <td>
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{prod.stage || '—'}</span>
+                          </td>
+                          <td className="text-xs text-gray-500">
+                            {prod.planned_start
+                              ? <span>{new Date(prod.planned_start).toLocaleDateString('en-GB', { month: 'short', day: 'numeric' })} → {prod.planned_end ? new Date(prod.planned_end).toLocaleDateString('en-GB', { month: 'short', day: 'numeric' }) : '?'}</span>
+                              : <span className="text-gray-300">—</span>}
+                          </td>
+                          <td className="text-indigo-600 font-semibold">{prod.sliceBudget > 0 ? fmt(prod.sliceBudget) : '—'}</td>
+                          <td className="text-green-700 font-semibold">{prod.paidThisMonth > 0 ? fmt(prod.paidThisMonth) : '—'}</td>
+                          <td className="text-green-700">{prod._paid > 0 ? fmt(prod._paid) : '—'}</td>
+                          <td className={prod._variance >= 0 ? 'diff-positive font-semibold' : 'diff-negative font-semibold'}>
+                            {prod._variance >= 0 ? '+' : ''}{fmt(prod._variance)}
+                          </td>
+                          <td><ChevronRight size={12} className="text-gray-300" /></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* ── List view ── */}
+          {prodView === 'list' && <div className="brand-card p-0 overflow-hidden">
             <div className="table-scroll-wrapper" style={{ maxHeight: 'calc(100vh - 360px)', overflowY: 'auto' }}>
               <table className="data-table" style={{ minWidth: 900 }}>
                 <thead>
@@ -793,7 +924,7 @@ export default function Financial() {
                 </tfoot>
               </table>
             </div>
-          </div>
+          </div>}
         </div>
       )}
 
