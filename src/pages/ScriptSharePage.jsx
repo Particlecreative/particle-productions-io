@@ -94,6 +94,8 @@ export default function ScriptSharePage() {
   const audioRef = useRef(null);
   const saveTimer = useRef(null);
   const touchStartX = useRef(null);
+  const prevScenesRef = useRef(null);
+  const editorChangeTimer = useRef(null);
 
   // ── Voice picker state ─────────────────────────────────────────────────────
   const [voiceId, setVoiceId] = useState(null); // loaded from script.voice_settings
@@ -126,6 +128,7 @@ export default function ScriptSharePage() {
         const data = await res.json();
         setScript(data);
         setScenes(Array.isArray(data.scenes) ? data.scenes : []);
+        prevScenesRef.current = Array.isArray(data.scenes) ? [...data.scenes] : [];
         // Load voice settings from script
         if (data.voice_settings) {
           if (data.voice_settings.voice_id) setVoiceId(data.voice_settings.voice_id);
@@ -138,6 +141,10 @@ export default function ScriptSharePage() {
         if (['comment', 'edit'].includes(data.share_mode)) {
           const cr = await fetch(`${API}/api/scripts/share/${token}/comments`);
           if (cr.ok) setComments(await cr.json());
+        }
+        // Show "who are you?" immediately on load in edit/comment mode
+        if (['edit', 'comment'].includes(data.share_mode) && !localStorage.getItem('cp_commenter_name')) {
+          setShowNameModal(true);
         }
       } catch {
         setError('Failed to load script.');
@@ -156,24 +163,57 @@ export default function ScriptSharePage() {
     if (res.ok) setComments(await res.json());
   }, [token]);
 
+  function stripHtml(html) {
+    return (html || '').replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  function buildChangeSummary(prevScenes, nextScenes) {
+    const fieldLabels = { action: 'Action', what_we_hear: 'VO', notes: 'Notes', scene: 'Scene #', title: 'Title' };
+    const changes = [];
+    nextScenes.forEach((next, i) => {
+      const prev = prevScenes.find(p => p.id === next.id) || prevScenes[i] || {};
+      const sceneLabel = `Scene ${i + 1}`;
+      Object.keys(fieldLabels).forEach(field => {
+        if (stripHtml(next[field]) !== stripHtml(prev[field])) {
+          changes.push(`${sceneLabel} · ${fieldLabels[field]}`);
+        }
+      });
+    });
+    // Added/removed scenes
+    if (nextScenes.length > prevScenes.length) changes.push(`${nextScenes.length - prevScenes.length} scene(s) added`);
+    if (nextScenes.length < prevScenes.length) changes.push(`${prevScenes.length - nextScenes.length} scene(s) removed`);
+    return changes.length > 0 ? changes.slice(0, 4).join(' · ') + (changes.length > 4 ? ` · +${changes.length - 4} more` : '') : 'Minor edit';
+  }
+
   // Auto-save for edit mode
   const debounceSave = useCallback((updatedScenes) => {
     if (readOnly) return;
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
       setSaving(true);
+      const changeSummary = prevScenesRef.current
+        ? buildChangeSummary(prevScenesRef.current, updatedScenes)
+        : 'Edit saved';
+      const editorName = commenterName.trim() || 'Anonymous';
       try {
         await fetch(`${API}/api/scripts/share/${token}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ scenes: updatedScenes }),
+          body: JSON.stringify({
+            scenes: updatedScenes,
+            editor_name: editorName,
+            change_summary: changeSummary,
+          }),
         });
+        prevScenesRef.current = [...updatedScenes]; // update baseline
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
+        // Reload comments to show the auto-comment that the backend posted
+        if (canComment) await loadComments();
       } catch (e) { console.error(e); }
       setSaving(false);
-    }, 800);
-  }, [token, readOnly]);
+    }, 1200);
+  }, [token, readOnly, commenterName, canComment, loadComments]);
 
   function handleCellChange(sceneId, field, value) {
     if (readOnly) return;
@@ -555,6 +595,25 @@ export default function ScriptSharePage() {
                 <span className="text-xs text-gray-400 min-w-[44px]">
                   {saving ? 'Saving...' : saved ? '✓ Saved' : ''}
                 </span>
+              )}
+
+              {/* Editor identity */}
+              {!readOnly && commenterName && (
+                <button onClick={() => setShowNameModal(true)}
+                  className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-2 py-1 bg-white"
+                  title="Change your name">
+                  <span className="w-5 h-5 rounded-full text-white text-[9px] font-bold flex items-center justify-center"
+                    style={{ background: `hsl(${(commenterName.charCodeAt(0) * 37) % 360}, 50%, 55%)` }}>
+                    {commenterName[0].toUpperCase()}
+                  </span>
+                  <span>{commenterName}</span>
+                </button>
+              )}
+              {!readOnly && !commenterName && (
+                <button onClick={() => setShowNameModal(true)}
+                  className="text-xs text-amber-600 border border-amber-200 rounded-lg px-2 py-1 bg-amber-50 font-semibold">
+                  ✏️ Who are you?
+                </button>
               )}
 
               {/* View toggle */}
@@ -951,7 +1010,7 @@ export default function ScriptSharePage() {
       <NameModal
         isOpen={showNameModal}
         initialName={commenterName}
-        onSave={(name) => { setCommenterName(name); setShowNameModal(false); }}
+        onSave={(name) => { localStorage.setItem('cp_commenter_name', name); setCommenterName(name); setShowNameModal(false); }}
       />
 
       {/* Print CSS */}
