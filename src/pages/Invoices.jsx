@@ -9,6 +9,7 @@ import { getDownloadUrl } from '../lib/invoiceUtils';
 import { formatDateIST } from '../lib/timezone';
 import InvoiceModal from '../components/production/InvoiceModal';
 import ExportMenu from '../components/ui/ExportMenu';
+import { exportBrandedReport } from '../lib/exportUtils';
 import { CloudLinks, detectCloudUrl } from '../components/shared/FileUploadButton';
 import clsx from 'clsx';
 
@@ -53,6 +54,7 @@ export default function Invoices() {
   const [invModal, setInvModal] = useState(null); // { lineItemId, productionId, step }
   const [bannerExpanded, setBannerExpanded] = useState(false);
   const [filterAging, setFilterAging] = useState(''); // '' | 'overdue-30' | 'overdue-60'
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => { loadData(); }, [brandId]);
 
@@ -196,6 +198,60 @@ export default function Invoices() {
     });
   }, [receipts, allItems, productions]);
 
+  async function handleExportPDF() {
+    setExporting(true);
+    try {
+      const brandMap = { particle: { name: 'Particle', accent: '#0808f8', primary: '#030b2e' }, biomella: { name: 'Biomella', accent: '#C41E1E', primary: '#8B1515' }, blurr: { name: 'Blurr', accent: '#F86EE6', primary: '#B842A9' } };
+      const brand = brandMap[brandId] || brandMap.particle;
+      const sym = currency === 'ILS' ? '₪' : '$';
+
+      const overdueCount = filteredItems.filter(i => {
+        if (i.payment_status === 'Paid' || !i.payment_due) return false;
+        return new Date(i.payment_due) < new Date();
+      }).length;
+
+      await exportBrandedReport({
+        title: 'Payments & Invoices Report',
+        brand,
+        currency,
+        filename: 'payments-report',
+        kpis: [
+          { label: 'Awaiting Invoice',  value: pendingItems.length,     sub: `${sym}${Math.round(pendingTotal).toLocaleString()} total`, signal: pendingItems.length > 0 ? 'amber' : 'green' },
+          { label: 'Invoice Received',  value: receivedItems.length,    sub: `${sym}${Math.round(receivedTotal).toLocaleString()} total`, signal: null },
+          { label: 'Overdue Payments',  value: overdueCount,            sub: overdueCount > 0 ? 'Requires attention' : 'All on track', signal: overdueCount > 0 ? 'red' : 'green' },
+          { label: 'ILS excl. VAT',     value: `₪${Math.round(pendingILS + receivedILS).toLocaleString()}`, sub: `₪${Math.round((pendingILS + receivedILS) * 1.18).toLocaleString()} incl. VAT`, signal: null },
+        ],
+        sections: [
+          {
+            heading: 'All Invoices',
+            columns: [
+              { key: 'production_id', label: 'Production' },
+              { key: 'full_name', label: 'Supplier' },
+              { key: 'item', label: 'Item' },
+              { key: 'amount', label: 'Amount' },
+              { key: 'invoice_status', label: 'Invoice' },
+              { key: 'invoice_type', label: 'Type' },
+              { key: 'payment_due', label: 'Due Date' },
+              { key: 'payment_status', label: 'Payment' },
+            ],
+            rows: filteredItems.map(i => ({
+              production_id: i.production_id,
+              full_name: i.full_name || '—',
+              item: i.item || '—',
+              amount: i.actual_spent ? `${(i.currency_code || 'USD') === 'ILS' ? '₪' : '$'}${parseFloat(i.actual_spent).toLocaleString()}` : (i.planned_budget ? `${(i.currency_code || 'USD') === 'ILS' ? '₪' : '$'}${parseFloat(i.planned_budget).toLocaleString()}` : '—'),
+              invoice_status: i.invoice_status || 'Pending',
+              invoice_type: i.invoice_type || '—',
+              payment_due: i.payment_due ? new Date(i.payment_due).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—',
+              payment_status: i.payment_status || 'Not Paid',
+            })),
+          },
+        ],
+      });
+    } finally {
+      setExporting(false);
+    }
+  }
+
   const INVOICES_EXPORT_COLS = [
     { key: 'production_id', label: 'Production' },
     { key: 'item', label: 'Item' },
@@ -215,7 +271,18 @@ export default function Invoices() {
         <h1 className="text-2xl font-black brand-title" style={{ color: 'var(--brand-primary)' }}>
           Invoices
         </h1>
-        <ExportMenu rows={filteredItems} columns={INVOICES_EXPORT_COLS} filename="invoices" title="Invoices" />
+        <div className="flex items-center gap-2">
+          <ExportMenu rows={filteredItems} columns={INVOICES_EXPORT_COLS} filename="invoices" title="Invoices" />
+          <button
+            onClick={handleExportPDF}
+            disabled={exporting}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all hover:opacity-80 disabled:opacity-50"
+            style={{ background: 'var(--brand-accent)', color: '#fff' }}
+            title="Export branded PDF report">
+            <Download size={13} />
+            {exporting ? 'Generating…' : 'Save PDF'}
+          </button>
+        </div>
       </div>
 
       {/* Tab switcher */}

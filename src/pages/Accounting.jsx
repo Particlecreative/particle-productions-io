@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { X, Plus, ChevronDown, ChevronRight, ExternalLink, Upload, Download, Trash2 } from 'lucide-react';
 import { useBrand } from '../context/BrandContext';
 import ExportMenu from '../components/ui/ExportMenu';
+import { exportBrandedReport } from '../lib/exportUtils';
 import { useCurrency } from '../context/CurrencyContext';
 import { toast } from '../lib/toast';
 import { useAuth } from '../context/AuthContext';
@@ -89,6 +90,7 @@ export default function Accounting() {
   // Invoice guard warning
   const [paymentBlockedId, setPaymentBlockedId] = useState(null);
   const [exportingAccountant, setExportingAccountant] = useState(false);
+  const [exportingPDF, setExportingPDF] = useState(false);
 
   useEffect(() => { load(); }, [brandId]);
 
@@ -242,6 +244,54 @@ export default function Accounting() {
     }
   }
 
+  async function handleExportPDF() {
+    setExportingPDF(true);
+    try {
+      const brandMap = { particle: { name: 'Particle', accent: '#0808f8', primary: '#030b2e' }, biomella: { name: 'Biomella', accent: '#C41E1E', primary: '#8B1515' }, blurr: { name: 'Blurr', accent: '#F86EE6', primary: '#B842A9' } };
+      const brand = brandMap[brandId] || brandMap.particle;
+      const sym = currency === 'ILS' ? '₪' : '$';
+
+      await exportBrandedReport({
+        title: 'Payments Report',
+        brand,
+        currency,
+        filename: 'payments-report',
+        kpis: [
+          { label: 'Paid',      value: `${sym}${Math.round(paidTotal).toLocaleString()}`,    sub: `${paid.length} items · ₪${Math.round(paidILS).toLocaleString()} ILS`, signal: 'green' },
+          { label: 'Not Paid',  value: `${sym}${Math.round(notPaidTotal).toLocaleString()}`, sub: `${notPaid.length} items · ₪${Math.round(notPaidILS).toLocaleString()} ILS`, signal: notPaidTotal > 0 ? 'amber' : null },
+          { label: 'Pending',   value: `${sym}${Math.round(pendingTotal).toLocaleString()}`, sub: `${pending.length} items · ₪${Math.round(pendingILS).toLocaleString()} ILS`, signal: pendingTotal > 0 ? 'amber' : null },
+        ],
+        sections: [
+          {
+            heading: 'All Payments',
+            columns: [
+              { key: 'production_id', label: 'Production' },
+              { key: 'full_name',     label: 'Supplier' },
+              { key: 'item',          label: 'Item' },
+              { key: 'amount',        label: 'Amount' },
+              { key: 'payment_status',label: 'Status' },
+              { key: 'payment_due',   label: 'Due Date' },
+              { key: 'paid_at',       label: 'Paid At' },
+              { key: 'method',        label: 'Method' },
+            ],
+            rows: filteredItems.map(i => ({
+              production_id: i.production_id,
+              full_name: i.full_name || '—',
+              item: i.item || '—',
+              amount: `${(i.currency_code || 'USD') === 'ILS' ? '₪' : '$'}${(parseFloat(i.actual_spent) || parseFloat(i.planned_budget) || 0).toLocaleString()}`,
+              payment_status: i.payment_status || 'Not Paid',
+              payment_due: i.payment_due ? new Date(i.payment_due).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—',
+              paid_at: i.paid_at ? new Date(i.paid_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—',
+              method: i.payment_method || '—',
+            })),
+          },
+        ],
+      });
+    } finally {
+      setExportingPDF(false);
+    }
+  }
+
   // Summary stats
   const paid = useMemo(() => allItems.filter(i => i.payment_status === 'Paid'), [allItems]);
   const notPaid = useMemo(() => allItems.filter(i => !i.payment_status || i.payment_status === 'Not Paid'), [allItems]);
@@ -324,6 +374,12 @@ export default function Accounting() {
             {exportingAccountant ? '…' : '📊'} Accountant Export
           </button>
           <ExportMenu rows={filteredItems} columns={ACCOUNTING_EXPORT_COLS} filename="accounting" title="Payments" />
+          <button onClick={handleExportPDF} disabled={exportingPDF}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all hover:opacity-80 disabled:opacity-50"
+            style={{ background: 'var(--brand-accent)', color: '#fff' }}>
+            <Download size={13} />
+            {exportingPDF ? 'Generating…' : 'Save PDF'}
+          </button>
         </div>
       </div>
 

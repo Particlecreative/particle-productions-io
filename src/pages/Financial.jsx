@@ -6,8 +6,9 @@ import {
 import {
   AlertTriangle, TrendingUp, TrendingDown, DollarSign, Clock, CheckCircle,
   ChevronUp, ChevronDown, X, ExternalLink, ChevronRight, Search,
-  LayoutList, CalendarDays,
+  LayoutList, CalendarDays, Download,
 } from 'lucide-react';
+import { exportBrandedReport } from '../lib/exportUtils';
 import { useBrand } from '../context/BrandContext';
 import { useCurrency } from '../context/CurrencyContext';
 import { useAuth } from '../context/AuthContext';
@@ -316,6 +317,9 @@ export default function Financial() {
   // Drill-down drawer
   const [drillDown, setDrillDown] = useState(null);
 
+  // PDF export
+  const [exporting, setExporting] = useState(false);
+
   // Productions tab sort + filter + view
   const [prodView, setProdView] = useState('list'); // 'list' | 'month'
   const [sortKey, setSortKey] = useState('_planned');
@@ -532,6 +536,89 @@ export default function Financial() {
       .sort((a, b) => (b.paid + b.committed) - (a.paid + a.committed));
   }, [lineItems, getAmt, getPlanned]);
 
+  async function handleExportPDF() {
+    setExporting(true);
+    try {
+      const brandMap = { particle: { name: 'Particle', accent: '#0808f8', primary: '#030b2e' }, biomella: { name: 'Biomella', accent: '#C41E1E', primary: '#8B1515' }, blurr: { name: 'Blurr', accent: '#F86EE6', primary: '#B842A9' } };
+      const brand = brandMap[brandId] || brandMap.particle;
+      const sym = currency === 'ILS' ? '₪' : '$';
+
+      await exportBrandedReport({
+        title: `Budget Overview — ${selectedYear}`,
+        brand,
+        currency,
+        filename: `budget-overview-${selectedYear}`,
+        kpis: [
+          { label: 'Cash Out',       value: fmt(totalPaid),          sub: `${lineItems.filter(li => li.payment_status === 'Paid').length} paid items`, signal: 'green' },
+          { label: 'Committed',      value: fmt(totalCommitted),     sub: 'Invoice received, not paid', signal: totalCommitted > 0 ? 'amber' : null },
+          { label: 'Total Exposure', value: fmt(totalExposure),      sub: 'Paid + committed + unpaid', signal: totalExposure > yearlyBudget ? 'red' : null },
+          { label: 'Planned Budget', value: fmt(yearlyBudget),       sub: `${selectedYear} annual budget`, signal: null },
+          { label: 'Variance',       value: fmt(variance),           sub: variance >= 0 ? 'Under budget' : 'Over budget', signal: variance >= 0 ? 'green' : 'red' },
+          { label: 'Overdue Items',  value: overdueItems.length,     sub: overdueItems.length > 0 ? 'Requires attention' : 'All on track', signal: overdueItems.length > 0 ? 'red' : 'green' },
+        ],
+        sections: [
+          {
+            heading: 'Monthly Cash Flow',
+            columns: [
+              { key: 'month', label: 'Month' },
+              { key: 'timelinePlanned', label: 'Est. by Timeline' },
+              { key: 'paid', label: 'Paid Out' },
+              { key: 'committed', label: 'Committed' },
+              { key: 'total', label: 'Total Actual' },
+            ],
+            rows: monthlyChartData.map(r => ({
+              month: r.month,
+              timelinePlanned: r.timelinePlanned > 0 ? `${sym}${r.timelinePlanned.toLocaleString()}` : '—',
+              paid: r.paid > 0 ? `${sym}${r.paid.toLocaleString()}` : '—',
+              committed: r.committed > 0 ? `${sym}${r.committed.toLocaleString()}` : '—',
+              total: (r.paid + r.committed) > 0 ? `${sym}${(r.paid + r.committed).toLocaleString()}` : '—',
+            })),
+          },
+          {
+            heading: 'Productions',
+            columns: [
+              { key: 'id', label: 'ID' },
+              { key: 'project_name', label: 'Project' },
+              { key: 'stage', label: 'Stage' },
+              { key: '_planned', label: 'Planned' },
+              { key: '_paid', label: 'Paid' },
+              { key: '_committed', label: 'Committed' },
+              { key: '_variance', label: 'Variance' },
+              { key: '_overdue', label: 'Overdue' },
+            ],
+            rows: sortedProductionRows.map(r => ({
+              id: r.id,
+              project_name: r.project_name,
+              stage: r.stage || '—',
+              _planned: r._planned > 0 ? `${sym}${Math.round(r._planned).toLocaleString()}` : '—',
+              _paid: r._paid > 0 ? `${sym}${Math.round(r._paid).toLocaleString()}` : '—',
+              _committed: r._committed > 0 ? `${sym}${Math.round(r._committed).toLocaleString()}` : '—',
+              _variance: `${r._variance >= 0 ? '+' : ''}${sym}${Math.round(r._variance).toLocaleString()}`,
+              _overdue: r._overdue > 0 ? `${r._overdue} overdue` : '—',
+            })),
+          },
+          {
+            heading: 'Spend by Category',
+            columns: [
+              { key: 'name', label: 'Category' },
+              { key: 'planned', label: 'Planned' },
+              { key: 'paid', label: 'Paid' },
+              { key: 'committed', label: 'Committed' },
+            ],
+            rows: categoryData.map(c => ({
+              name: c.name,
+              planned: c.planned > 0 ? `${sym}${Math.round(c.planned).toLocaleString()}` : '—',
+              paid: c.paid > 0 ? `${sym}${Math.round(c.paid).toLocaleString()}` : '—',
+              committed: c.committed > 0 ? `${sym}${Math.round(c.committed).toLocaleString()}` : '—',
+            })),
+          },
+        ],
+      });
+    } finally {
+      setExporting(false);
+    }
+  }
+
   function handleSort(key) {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
     else { setSortKey(key); setSortDir('desc'); }
@@ -589,6 +676,16 @@ export default function Financial() {
               </button>
             ))}
           </div>
+          {/* Export PDF */}
+          <button
+            onClick={handleExportPDF}
+            disabled={exporting}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all hover:opacity-80 disabled:opacity-50"
+            style={{ background: 'var(--brand-accent)', color: '#fff', borderColor: 'transparent' }}
+            title="Export branded PDF report">
+            <Download size={13} />
+            {exporting ? 'Generating…' : 'Save PDF'}
+          </button>
         </div>
       </div>
 
