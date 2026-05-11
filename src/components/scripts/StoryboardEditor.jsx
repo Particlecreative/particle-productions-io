@@ -2216,11 +2216,15 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
             <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-0">
               <div className="p-8 md:p-12 flex flex-col justify-center border-r border-white/10">
                 <p className="text-xs font-bold uppercase tracking-widest text-white/30 mb-4">What We See</p>
-                <p className="text-xl md:text-2xl text-white leading-relaxed">{scenes[presentIdx]?.what_we_see || '—'}</p>
+                {scenes[presentIdx]?.what_we_see
+                  ? <div className="text-xl md:text-2xl text-white leading-relaxed [&_b]:font-bold [&_strong]:font-bold [&_em]:italic [&_i]:italic [&_u]:underline" dangerouslySetInnerHTML={{ __html: sanitizeHtml(scenes[presentIdx].what_we_see) }} />
+                  : <p className="text-xl md:text-2xl text-white/30 leading-relaxed">—</p>}
               </div>
               <div className="p-8 md:p-12 flex flex-col justify-center bg-indigo-950/50">
                 <p className="text-xs font-bold uppercase tracking-widest text-indigo-300/50 mb-4">What We Hear</p>
-                <p className="text-xl md:text-2xl text-indigo-200 leading-relaxed italic">{scenes[presentIdx]?.what_we_hear || '—'}</p>
+                {scenes[presentIdx]?.what_we_hear
+                  ? <div className="text-xl md:text-2xl text-indigo-200 leading-relaxed italic [&_b]:font-bold [&_strong]:font-bold [&_em]:italic [&_i]:italic [&_u]:underline" dangerouslySetInnerHTML={{ __html: sanitizeHtml(scenes[presentIdx].what_we_hear) }} />
+                  : <p className="text-xl md:text-2xl text-indigo-200/30 leading-relaxed italic">—</p>}
               </div>
             </div>
             {(scenes[presentIdx]?.images || []).length > 0 && (
@@ -2272,8 +2276,8 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                     {aiPreview.map((s, i) => (
                       <div key={s.id} className="border rounded-xl p-3 text-xs">
                         <div className="font-mono text-gray-400 mb-1">{i + 1}. {s.location || 'Location TBD'}</div>
-                        <p className="text-gray-700"><span className="font-semibold">See:</span> {s.what_we_see || '—'}</p>
-                        <p className="text-indigo-600 italic"><span className="font-semibold not-italic text-indigo-700">Hear:</span> {s.what_we_hear || '—'}</p>
+                        <p className="text-gray-700"><span className="font-semibold">See:</span> {s.what_we_see ? <span dangerouslySetInnerHTML={{ __html: sanitizeHtml(s.what_we_see) }} /> : '—'}</p>
+                        <p className="text-indigo-600 italic"><span className="font-semibold not-italic text-indigo-700">Hear:</span> {s.what_we_hear ? <span dangerouslySetInnerHTML={{ __html: sanitizeHtml(s.what_we_hear) }} /> : '—'}</p>
                       </div>
                     ))}
                   </div>
