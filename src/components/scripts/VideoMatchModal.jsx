@@ -28,6 +28,11 @@ export default function VideoMatchModal({ scriptId, sceneCount, onClose, onAppli
     try {
       let res;
       if (videoFile) {
+        if (videoFile.size > 450 * 1024 * 1024) {
+          setError('File is too large (max 450 MB). Please use YouTube URL or Google Drive link instead.');
+          setStep(1);
+          return;
+        }
         const formData = new FormData();
         formData.append('video', videoFile);
         res = await fetch(`${API}/api/scripts/${scriptId}/video-match`, {
@@ -49,6 +54,12 @@ export default function VideoMatchModal({ scriptId, sceneCount, onClose, onAppli
         });
       } else {
         setError('No video source selected');
+        setStep(1);
+        return;
+      }
+      if (!res.ok && res.headers.get('content-type')?.includes('text/html')) {
+        const statusMsg = res.status === 413 ? 'File too large for the server. Use YouTube URL or Google Drive instead.' : `Server error ${res.status}`;
+        setError(statusMsg);
         setStep(1);
         return;
       }
