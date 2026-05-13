@@ -152,7 +152,7 @@ router.patch('/:id', requireEditor, async (req, res) => {
         await db.query(
           `INSERT INTO change_history (production_id, field, new_value, user_id, user_name)
            VALUES ($1, $2, $3, $4, $5)`,
-          [req.params.id, field, String(newVal), req.user.id, req.user.name]
+          [rows[0].id, field, String(newVal), req.user.id, req.user.name]
         );
       }
     }
