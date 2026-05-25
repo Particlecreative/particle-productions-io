@@ -124,7 +124,7 @@ router.patch('/:id', requireEditor, async (req, res) => {
   } catch {}
 
   const allowed = [
-    'project_name','product_type','producer','planned_start','planned_end',
+    'id','project_name','product_type','producer','planned_start','planned_end',
     'planned_budget_2026','estimated_budget','actual_spent','payment_date',
     'stage','production_type','production_category','timeline_sync',
     'shoot_dates','delivery_date','air_date','custom_columns','custom_fields',
