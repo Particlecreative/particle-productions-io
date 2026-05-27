@@ -139,11 +139,48 @@ router.patch('/:id', requireEditor, async (req, res) => {
   const setClause = updates.map(([k], i) => `"${k}" = $${i + 2}`).join(', ');
   const values    = updates.map(([, v]) => v);
 
+  const oldId   = req.params.id;
+  const newId   = req.body.id;
+  const renaming = updates.some(([k]) => k === 'id') && newId && newId !== oldId;
+
+  // Tables that store production_id as plain TEXT (no FK), so ON UPDATE CASCADE
+  // does not reach them. They must be updated explicitly when renaming a PRD code.
+  const NON_FK_TABLES = ['cc_purchases', 'call_sheets', 'casting', 'notifications', 'gantt_phases', 'supplier_submissions'];
+
   try {
-    const { rows } = await db.query(
-      `UPDATE productions SET ${setClause}, updated_at = NOW() WHERE id = $1 RETURNING *`,
-      [req.params.id, ...values]
-    );
+    let rows;
+    if (renaming) {
+      // Renaming the primary key. FK tables cascade automatically; the plain-text
+      // tables above are updated in the same transaction so nothing is orphaned.
+      const client = await db.connect();
+      try {
+        await client.query('BEGIN');
+        const upd = await client.query(
+          `UPDATE productions SET ${setClause}, updated_at = NOW() WHERE id = $1 RETURNING *`,
+          [oldId, ...values]
+        );
+        if (!upd.rows[0]) {
+          await client.query('ROLLBACK');
+          return res.status(404).json({ error: 'Not found' });
+        }
+        for (const t of NON_FK_TABLES) {
+          await client.query(`UPDATE ${t} SET production_id = $1 WHERE production_id = $2`, [newId, oldId]);
+        }
+        await client.query('COMMIT');
+        rows = upd.rows;
+      } catch (e) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw e;
+      } finally {
+        client.release();
+      }
+    } else {
+      const r = await db.query(
+        `UPDATE productions SET ${setClause}, updated_at = NOW() WHERE id = $1 RETURNING *`,
+        [oldId, ...values]
+      );
+      rows = r.rows;
+    }
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
 
     // Log changes to change_history

@@ -145,7 +145,7 @@ ON CONFLICT (id) DO NOTHING;
 -- =============================================
 CREATE TABLE IF NOT EXISTS production_line_items (
   id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  production_id   TEXT REFERENCES productions(id) ON DELETE CASCADE,
+  production_id   TEXT REFERENCES productions(id) ON DELETE CASCADE ON UPDATE CASCADE,
   item            TEXT,                                 -- short label / role
   full_name       TEXT,                                 -- supplier / contractor full name
   type            TEXT DEFAULT 'Crew',                  -- Crew | Equipment | Catering & Transport | Post | Office
@@ -215,7 +215,7 @@ CREATE TABLE IF NOT EXISTS weekly_reports (
 -- =============================================
 CREATE TABLE IF NOT EXISTS contracts (
   id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  production_id       TEXT UNIQUE REFERENCES productions(id) ON DELETE CASCADE,
+  production_id       TEXT UNIQUE REFERENCES productions(id) ON DELETE CASCADE ON UPDATE CASCADE,
   provider_name       TEXT,
   provider_email      TEXT,
   status              TEXT DEFAULT 'none',   -- none | pending | sent | signed
@@ -257,7 +257,7 @@ CREATE TABLE IF NOT EXISTS contract_signatures (
 CREATE TABLE IF NOT EXISTS invoices (
   id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   line_item_id  UUID REFERENCES production_line_items(id) ON DELETE CASCADE,
-  production_id TEXT REFERENCES productions(id) ON DELETE CASCADE,
+  production_id TEXT REFERENCES productions(id) ON DELETE CASCADE ON UPDATE CASCADE,
   file_url      TEXT,
   amount        NUMERIC(12,2),
   date_received TIMESTAMPTZ,
@@ -273,7 +273,7 @@ CREATE TABLE IF NOT EXISTS invoices (
 CREATE TABLE IF NOT EXISTS receipts (
   id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   line_item_id    UUID REFERENCES production_line_items(id) ON DELETE SET NULL,
-  production_id   TEXT REFERENCES productions(id) ON DELETE CASCADE,
+  production_id   TEXT REFERENCES productions(id) ON DELETE CASCADE ON UPDATE CASCADE,
   paid_at         DATE,
   receipt_url     TEXT,
   reminder_sent   BOOLEAN DEFAULT FALSE,
@@ -285,7 +285,7 @@ CREATE TABLE IF NOT EXISTS receipts (
 -- =============================================
 CREATE TABLE IF NOT EXISTS links (
   id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  production_id TEXT REFERENCES productions(id) ON DELETE CASCADE,
+  production_id TEXT REFERENCES productions(id) ON DELETE CASCADE ON UPDATE CASCADE,
   category      TEXT NOT NULL,
   title         TEXT NOT NULL,
   url           TEXT NOT NULL,
@@ -297,7 +297,7 @@ CREATE TABLE IF NOT EXISTS links (
 -- LINK CATEGORIES (per production, JSONB array)
 -- =============================================
 CREATE TABLE IF NOT EXISTS link_categories (
-  production_id TEXT PRIMARY KEY REFERENCES productions(id) ON DELETE CASCADE,
+  production_id TEXT PRIMARY KEY REFERENCES productions(id) ON DELETE CASCADE ON UPDATE CASCADE,
   categories    JSONB DEFAULT '[]'
 );
 
@@ -306,7 +306,7 @@ CREATE TABLE IF NOT EXISTS link_categories (
 -- =============================================
 CREATE TABLE IF NOT EXISTS comments (
   id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  production_id TEXT REFERENCES productions(id) ON DELETE CASCADE,
+  production_id TEXT REFERENCES productions(id) ON DELETE CASCADE ON UPDATE CASCADE,
   user_id       UUID REFERENCES users(id) ON DELETE SET NULL,
   author        TEXT,
   body          TEXT NOT NULL,
@@ -333,7 +333,7 @@ CREATE TABLE IF NOT EXISTS notifications (
 -- =============================================
 CREATE TABLE IF NOT EXISTS change_history (
   id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  production_id TEXT REFERENCES productions(id) ON DELETE CASCADE,
+  production_id TEXT REFERENCES productions(id) ON DELETE CASCADE ON UPDATE CASCADE,
   field         TEXT NOT NULL,
   old_value     TEXT,
   new_value     TEXT,
@@ -367,7 +367,7 @@ ON CONFLICT (id) DO NOTHING;
 -- =============================================
 CREATE TABLE IF NOT EXISTS gantt_events (
   id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  production_id TEXT REFERENCES productions(id) ON DELETE CASCADE,
+  production_id TEXT REFERENCES productions(id) ON DELETE CASCADE ON UPDATE CASCADE,
   phase_id      TEXT REFERENCES gantt_phases(id) ON DELETE SET NULL,
   title         TEXT NOT NULL,
   start_date    DATE NOT NULL,
@@ -419,7 +419,7 @@ CREATE TABLE IF NOT EXISTS supplier_submissions (
 -- =============================================
 CREATE TABLE IF NOT EXISTS people_on_set (
   id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  production_id TEXT REFERENCES productions(id) ON DELETE CASCADE,
+  production_id TEXT REFERENCES productions(id) ON DELETE CASCADE ON UPDATE CASCADE,
   name          TEXT NOT NULL,
   role          TEXT,
   phone         TEXT,
@@ -430,7 +430,7 @@ CREATE TABLE IF NOT EXISTS people_on_set (
 -- FORM CONFIGS (supplier form branding per production)
 -- =============================================
 CREATE TABLE IF NOT EXISTS form_configs (
-  production_id TEXT PRIMARY KEY REFERENCES productions(id) ON DELETE CASCADE,
+  production_id TEXT PRIMARY KEY REFERENCES productions(id) ON DELETE CASCADE ON UPDATE CASCADE,
   config        JSONB DEFAULT '{"logoUrl":"","bgColor":"","bgImageUrl":""}'
 );
 
