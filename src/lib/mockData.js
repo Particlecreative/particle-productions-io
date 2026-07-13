@@ -445,6 +445,17 @@ export const SAMPLE_USERS = [
   { id: "u-004", email: "viewer@particleformen.com",   name: "Roy Mizrahi",      role: "Viewer", brand: "particle", brand_ids: ["particle"],           active: true, super_admin: false },
 ];
 
+export const SAMPLE_TASKS = [
+  { id: "task-001", brand_id: "particle", production_id: "PRD26-01", title: "Approve final cut",          description: "Review the final edit and approve for delivery.", status: "Working on it", priority: "High",   due_date: "2026-06-03", assignee_id: "u-002", assignee_name: "Tomer Wilf Lezmy", created_by: "u-001", order: 0, created_at: "2026-05-20T09:00:00" },
+  { id: "task-002", brand_id: "particle", production_id: null,       title: "Order studio supplies",      description: "Restock gaffer tape, batteries, memory cards.",   status: "Not Started",   priority: "Low",    due_date: "2026-06-10", assignee_id: "u-003", assignee_name: "Dana Levy",        created_by: "u-002", order: 0, created_at: "2026-05-21T10:00:00" },
+  { id: "task-003", brand_id: "particle", production_id: "PRD26-02", title: "Book voiceover artist",      description: "",                                                status: "Stuck",         priority: "Urgent", due_date: "2026-05-25", assignee_id: "u-003", assignee_name: "Dana Levy",        created_by: "u-002", order: 0, created_at: "2026-05-18T12:00:00" },
+  { id: "task-004", brand_id: "particle", production_id: null,       title: "Update equipment insurance", description: "Annual policy renewal.",                          status: "Not Started",   priority: "Medium", due_date: "2026-06-20", assignee_id: null,    assignee_name: null,               created_by: "u-001", order: 1, created_at: "2026-05-22T08:00:00" },
+  { id: "task-005", brand_id: "particle", production_id: "PRD26-03", title: "Send call sheets",           description: "Distribute to all crew before Thursday.",         status: "Done",          priority: "High",   due_date: "2026-05-19", assignee_id: "u-002", assignee_name: "Tomer Wilf Lezmy", created_by: "u-003", order: 0, created_at: "2026-05-15T14:00:00" },
+  { id: "task-006", brand_id: "particle", production_id: "PRD26-01", title: "Collect invoices from crew", description: "",                                                status: "Working on it", priority: "Medium", due_date: "2026-06-05", assignee_id: "u-003", assignee_name: "Dana Levy",        created_by: "u-001", order: 1, created_at: "2026-05-23T11:00:00" },
+  { id: "task-007", brand_id: "particle", production_id: null,       title: "Plan Q3 content calendar",   description: "Draft themes for July-September.",                status: "Not Started",   priority: "Medium", due_date: null,         assignee_id: "u-001", assignee_name: "Omer Barak",       created_by: "u-002", order: 2, created_at: "2026-05-24T09:30:00" },
+  { id: "task-008", brand_id: "particle", production_id: "PRD26-02", title: "Renew music license",        description: "Track expires end of month.",                     status: "Stuck",         priority: "High",   due_date: "2026-05-28", assignee_id: "u-002", assignee_name: "Tomer Wilf Lezmy", created_by: "u-001", order: 1, created_at: "2026-05-19T16:00:00" },
+];
+
 export const PRODUCT_TYPES = [
   "Face Cream", "Sunscreen", "Gravité", "Neoroot", "Hand Cream",
   "Anti-Gray Serum", "Shaving Gel", "Brandformance", "Eye Cream",

@@ -12,6 +12,7 @@ import {
   SAMPLE_USERS,
   SAMPLE_CC_PURCHASES,
   SAMPLE_CASTING,
+  SAMPLE_TASKS,
 } from './mockData';
 import {
   getGanttPhases as _getGanttPhases,
@@ -54,7 +55,7 @@ export const DEFAULT_LINK_CATEGORIES = [
 ];
 
 // ── Initialize from seed data (dev only) ────────────────────────────────────
-const DATA_VERSION = '5'; // bump when new seed tables are added
+const DATA_VERSION = '6'; // bump when new seed tables are added
 export function initializeData() {
   if (!IS_DEV) return;
   if (localStorage.getItem('cp_initialized') === DATA_VERSION) return;
@@ -72,6 +73,8 @@ export function initializeData() {
   write('cp_cc_purchases',   SAMPLE_CC_PURCHASES);
   write('cp_casting',        SAMPLE_CASTING);
   write('cp_call_sheets',    []);
+  write('cp_tasks',          SAMPLE_TASKS);
+  write('cp_task_comments',  []);
   write('cp_settings',       { particle: { colors: {}, fonts: {}, logo_url: null }, blurr: { colors: {}, fonts: {}, logo_url: null } });
   localStorage.setItem('cp_initialized', DATA_VERSION);
 }
@@ -573,6 +576,86 @@ export function deleteImprovementTicket(id) {
     return null;
   }
   return apiDelete(`/tickets/${encodeURIComponent(id)}`);
+}
+
+// ========== TASKS (Monday-style board) ==========
+export function getTasks(brandId) {
+  if (IS_DEV) return read('cp_tasks', []).filter(t => t.brand_id === brandId);
+  return apiGet(`/tasks?brand_id=${encodeURIComponent(brandId)}`);
+}
+
+export function addTask(task) {
+  if (IS_DEV) {
+    const all = read('cp_tasks', []);
+    const sameCol = all.filter(t => t.brand_id === task.brand_id && t.status === (task.status || 'Not Started'));
+    const users = read('cp_users', SAMPLE_USERS);
+    const assignee = users.find(u => u.id === task.assignee_id);
+    const full = {
+      id: generateId('task'), status: 'Not Started', priority: 'Medium', description: '',
+      production_id: null, assignee_id: null, due_date: null,
+      ...task,
+      assignee_name: assignee?.name || null,
+      order: sameCol.length,
+      created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    };
+    all.push(full);
+    write('cp_tasks', all);
+    return full;
+  }
+  return apiPost('/tasks', task);
+}
+
+export function updateTask(id, updates) {
+  if (IS_DEV) {
+    const all = read('cp_tasks', []);
+    const idx = all.findIndex(t => t.id === id);
+    if (idx === -1) return null;
+    if ('assignee_id' in updates) {
+      const users = read('cp_users', SAMPLE_USERS);
+      updates = { ...updates, assignee_name: users.find(u => u.id === updates.assignee_id)?.name || null };
+    }
+    all[idx] = { ...all[idx], ...updates, updated_at: new Date().toISOString() };
+    write('cp_tasks', all);
+    return all[idx];
+  }
+  return apiPatch(`/tasks/${encodeURIComponent(id)}`, updates);
+}
+
+export function deleteTask(id) {
+  if (IS_DEV) {
+    write('cp_tasks', read('cp_tasks', []).filter(t => t.id !== id));
+    return null;
+  }
+  return apiDelete(`/tasks/${encodeURIComponent(id)}`);
+}
+
+export function reorderTasks(orders) {
+  if (IS_DEV) {
+    const all = read('cp_tasks', []);
+    for (const { id, order } of orders) {
+      const idx = all.findIndex(t => t.id === id);
+      if (idx !== -1) all[idx] = { ...all[idx], order };
+    }
+    write('cp_tasks', all);
+    return { success: true };
+  }
+  return apiPost('/tasks/reorder', { orders });
+}
+
+export function getTaskComments(taskId) {
+  if (IS_DEV) return read('cp_task_comments', []).filter(c => c.task_id === taskId);
+  return apiGet(`/tasks/${encodeURIComponent(taskId)}/comments`);
+}
+
+export function addTaskComment(taskId, body, userId, userName) {
+  if (IS_DEV) {
+    const all = read('cp_task_comments', []);
+    const full = { id: generateId('taskc'), task_id: taskId, user_id: userId || null, author: userName || 'Unknown', body, created_at: new Date().toISOString() };
+    all.push(full);
+    write('cp_task_comments', all);
+    return full;
+  }
+  return apiPost(`/tasks/${encodeURIComponent(taskId)}/comments`, { body });
 }
 
 // ========== BUDGET CUSTOM COLUMNS ==========

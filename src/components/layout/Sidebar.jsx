@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, DollarSign, BookOpen, Settings, Users, ChevronLeft, ChevronRight,
   History, FileText, Link, FileSignature, Clapperboard, Users2, GripVertical,
-  GanttChartSquare, Check, Star, Sun, Moon, Grid3x3, X as XIcon, Scroll,
+  GanttChartSquare, Check, Star, Sun, Moon, Grid3x3, X as XIcon, Scroll, CheckSquare,
 } from 'lucide-react';
 import {
   DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors,
@@ -23,6 +23,7 @@ import clsx from 'clsx';
 
 const DEFAULT_NAV_ITEMS = [
   { to: '/',               icon: LayoutDashboard,  label: 'Productions', exact: true, accountingHide: true },
+  { to: '/tasks',          icon: CheckSquare,      label: 'Tasks',       accountingHide: true },
   { to: '/links',          icon: Link,             label: 'Links',       accountingHide: true },
   { to: '/contracts',      icon: FileSignature,    label: 'Contracts',   accountingHide: true, studioHide: true },
   { to: '/suppliers',      icon: Users2,           label: 'Suppliers',   accountingHide: true, studioHide: true },
@@ -316,6 +317,7 @@ export default function Sidebar({ open, onToggle }) {
             </div>
             <div className="grid grid-cols-3 gap-3">
               {[
+                { to: '/tasks',          icon: CheckSquare,      label: 'Tasks' },
                 { to: '/links',          icon: Link,             label: 'Links' },
                 { to: '/gantts',         icon: GanttChartSquare, label: 'Gantts' },
                 { to: '/call-sheets',    icon: FileText,         label: 'Call Sheets' },

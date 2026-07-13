@@ -34,6 +34,7 @@ import ContractSign from './pages/ContractSign';
 import WeeklySharePage from './pages/WeeklySharePage';
 import Scripts from './pages/Scripts';
 import ScriptSharePage from './pages/ScriptSharePage';
+import Tasks from './pages/Tasks';
 
 function ProtectedRoute({ children, adminOnly = false, blockForAccounting = false, blockForStudio = false }) {
   const { user, loading, isAdmin, isAccounting, isStudio } = useAuth();
@@ -112,6 +113,7 @@ function AppRoutes() {
         <Route path="/casting-rights" element={<ProtectedRoute blockForStudio><AppShell><ErrorBoundary><CastingRights /></ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="/call-sheets" element={<ProtectedRoute blockForAccounting blockForStudio><AppShell><ErrorBoundary><CallSheets /></ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="/manual" element={<ProtectedRoute><AppShell><ErrorBoundary><Manual /></ErrorBoundary></AppShell></ProtectedRoute>} />
+        <Route path="/tasks" element={<ProtectedRoute><AppShell><ErrorBoundary><Tasks /></ErrorBoundary></AppShell></ProtectedRoute>} />
         {/* Public forms — no auth required */}
         <Route path="/supplier-form/:productionId" element={<SupplierForm />} />
         <Route path="/cc-payment/:productionId" element={<CCPaymentForm />} />
