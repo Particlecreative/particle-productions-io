@@ -251,17 +251,43 @@ async function generateContractPDF(data) {
     ? `${data.provider_name || '[Please complete]'}, ID/Passport number ${data.provider_id_number || '[Please complete]'}, with a principal place of business at ${data.provider_address || '[Please complete]'} ("Service Provider"),`
     : `${data.provider_name || '[Please complete]'} [ID/Passport number ${data.provider_id_number || '[Please complete]'}], with a principal place of business at ${data.provider_address || '[Please complete]'} ("Service Provider"),`;
 
-  const preamble = `This Services Agreement ("Agreement") is made and entered into on ${data.effective_date || '[Please complete]'} ("Effective Date"), by and between Particle Aesthetic Science Ltd., a company registered in Israel, with a principal place of business at King George 48, Tel Aviv ("Company"), and ${providerIdClause}`;
-  y = drawWrappedText(preamble, margin, y, contentWidth);
-  y += 3;
+  // If the caller supplied edited intro text, render it instead of the hardcoded template.
+  if (data.intro_text && data.intro_text.trim()) {
+    const introParas = data.intro_text.split(/\n\s*\n/);
+    for (const p of introParas) {
+      y = drawWrappedText(p.replace(/\n/g, ' '), margin, y, contentWidth);
+      y += 2;
+    }
+    y += 1;
+  } else {
+    const preamble = `This Services Agreement ("Agreement") is made and entered into on ${data.effective_date || '[Please complete]'} ("Effective Date"), by and between Particle Aesthetic Science Ltd., a company registered in Israel, with a principal place of business at King George 48, Tel Aviv ("Company"), and ${providerIdClause}`;
+    y = drawWrappedText(preamble, margin, y, contentWidth);
+    y += 3;
 
-  y = drawWrappedText('WHEREAS, Service Provider has the skills, resources, know-how and ability required to provide the Services and create the Deliverables (each as defined below); and', margin, y, contentWidth);
-  y += 2;
-  y = drawWrappedText('WHEREAS, based on Service Provider\'s representations hereunder, the parties desire that Service Provider provide the Services as an independent contractor of Company upon the terms and conditions hereinafter specified;', margin, y, contentWidth);
-  y += 2;
-  y = drawWrappedText('NOW, THEREFORE, the parties hereby agree as follows:', margin, y, contentWidth);
-  y += 3;
+    y = drawWrappedText('WHEREAS, Service Provider has the skills, resources, know-how and ability required to provide the Services and create the Deliverables (each as defined below); and', margin, y, contentWidth);
+    y += 2;
+    y = drawWrappedText('WHEREAS, based on Service Provider\'s representations hereunder, the parties desire that Service Provider provide the Services as an independent contractor of Company upon the terms and conditions hereinafter specified;', margin, y, contentWidth);
+    y += 2;
+    y = drawWrappedText('NOW, THEREFORE, the parties hereby agree as follows:', margin, y, contentWidth);
+    y += 3;
+  }
 
+  // If the caller supplied edited body text, render that as the entire agreement body
+  // and skip the hardcoded sections 1-10. Exhibit A/B below still render normally.
+  if (data.body_text && data.body_text.trim()) {
+    const bodyParas = data.body_text.split(/\n\s*\n/);
+    for (const p of bodyParas) {
+      addPageIfNeeded(10);
+      y = drawWrappedText(p.replace(/\n/g, ' '), margin, y, contentWidth);
+      y += 2;
+    }
+    y += 4;
+    // Skip the hardcoded sections by jumping past them via a flag below.
+    data.__skipTemplateBody = true;
+  }
+
+  // Skip the hardcoded body sections if the caller supplied edited body_text above.
+  if (!data.__skipTemplateBody) {
   // ── Section 1: DEFINITIONS ──
   sectionHeading('1', 'DEFINITIONS');
   y = drawWrappedText('For purposes of this Agreement (including any and all amendments made to or incorporated herein now or in the future), the following capitalized terms shall have the following meaning:', margin, y, contentWidth);
@@ -423,6 +449,7 @@ async function generateContractPDF(data) {
   sectionHeading('10', 'IN WITNESS THEREOF');
   y = drawWrappedText('Company and Service Provider have caused this Agreement to be signed and delivered by their duly authorized officers, all as of the last date set forth below.', margin, y, contentWidth);
   y += 6;
+  } // end if (!data.__skipTemplateBody)
 
   // ── Signature Blocks ──
   addPageIfNeeded(60);
@@ -799,8 +826,9 @@ export default function ContractModal({ production, lineItem, onClose }) {
       ? `${providerName || '[Please complete]'}, ID/Passport number ${providerIdNumber || '[Please complete]'}, with a principal place of business at ${providerAddress || '[Please complete]'} ("Service Provider"),`
       : `${providerName || '[Please complete]'} [ID/Passport number ${providerIdNumber || '[Please complete]'}], with a principal place of business at ${providerAddress || '[Please complete]'} ("Service Provider"),`;
 
-    const introText = `This Services Agreement ("Agreement") is made and entered into on ${formattedDate} ("Effective Date"), by and between Particle Aesthetic Science Ltd., a company registered in Israel, with a principal place of business at King George 48, Tel Aviv ("Company"), and ${providerIdClause}\n\nWHEREAS, Service Provider has the skills, resources, know-how and ability required to provide the Services and create the Deliverables (each as defined below); and\n\nWHEREAS, based on Service Provider's representations hereunder, the parties desire that Service Provider provide the Services as an independent contractor of Company upon the terms and conditions hereinafter specified;\n\nNOW, THEREFORE, the parties hereby agree as follows:`;
-    setEditableIntro(introText);
+    const defaultIntroText = `This Services Agreement ("Agreement") is made and entered into on ${formattedDate} ("Effective Date"), by and between Particle Aesthetic Science Ltd., a company registered in Israel, with a principal place of business at King George 48, Tel Aviv ("Company"), and ${providerIdClause}\n\nWHEREAS, Service Provider has the skills, resources, know-how and ability required to provide the Services and create the Deliverables (each as defined below); and\n\nWHEREAS, based on Service Provider's representations hereunder, the parties desire that Service Provider provide the Services as an independent contractor of Company upon the terms and conditions hereinafter specified;\n\nNOW, THEREFORE, the parties hereby agree as follows:`;
+    // Prefer saved (edited) intro from previous session; fall back to template.
+    setEditableIntro(existing?.contract_intro || defaultIntroText);
 
     let bodyText;
     if (isCast) {
@@ -808,7 +836,8 @@ export default function ContractModal({ production, lineItem, onClose }) {
     } else {
       bodyText = `1. DEFINITIONS\n\nFor purposes of this Agreement (including any and all amendments made to or incorporated herein now or in the future), the following capitalized terms shall have the following meaning:\n\n"Deliverables" shall mean all deliverables provided or produced as a result of the work performed under this Agreement or in connection therewith, including, without limitation, any work products, composition, photographs, videos, information, specifications, documentation, content, designs, audio, and any breakdown, definition or partition of video, film or clips, images, sound footage and segments, recorded performance, including as set forth in Exhibit A, all in any media or form whatsoever.\n\n"Intellectual Property Rights" shall mean all worldwide, whether registered or not (i) patents, patent applications and patent rights; (ii) rights associated with works of authorship, including copyrights, copyrights applications, copyrights restrictions; (iii) rights relating to the protection of trade secrets and confidential information; (iv) trademarks, logos, service marks, brands, trade names, domain names, goodwill and the right to publicity; (v) rights analogous to those set forth herein and any other proprietary rights relating to intangible property; (vi) all other intellectual and industrial property rights (of every kind and nature throughout the world and however designated) whether arising by operation of law, contract, license, or otherwise; and (vii) all registrations, initial applications, renewals, extensions, continuations, divisions or reissues thereof now or hereafter in force (including any rights in any of the foregoing).\n\n"Services" shall have the meaning ascribed to it in Section 2 below.\n\n"Specifications" shall mean Company's specifications for the Deliverables attached hereto as Exhibit A or as otherwise provided to Service Provider by Company from time to time.\n\n2. SERVICES\n\nService Provider shall provide Company with the services and deliver the Company the Deliverables all as detailed in Exhibit A, and all in accordance with the milestones and timelines set forth therein and in accordance with Company's instructions and to its full satisfaction ("Services"). Service Provider shall be liable for full compliance with the terms and conditions of this Agreement and for any negligent acts and omissions in connection therewith. Service Provider is and shall remain solely responsible and liable for obtaining, paying for, repairing and maintaining all the equipment, hardware and services required for providing the Services.\n\n3. COMPENSATION\n\n3.1 Consideration. In consideration for the Services provided herein, Company shall pay Service Provider the fees set forth in Exhibit B attached hereto in accordance with the milestones therein. Such payments shall be the full and final consideration of Service Provider and no additional payments shall be made including without limitation payments for overtime or other. Payments shall be made net thirty (30) days after Company's receipt of an undisputed invoice. Company may deduct and withhold from any payments made hereunder all sums which it then may be required to deduct or withhold pursuant to any applicable statute, law, regulation or order of any jurisdiction whatsoever.\n\n3.2 Taxes. The consideration hereunder shall include all taxes, levies and charges however designated and levied by any state, local, or government agency (including sales taxes and VAT). Service Provider shall have sole responsibility for the payment of all of taxes, levies and charges.\n\n3.3 Expenses. Except for expenses pre-approved in writing by Company, which will be paid against an itemized invoice, Service Provider shall bear all of its expenses arising from the performance or obligations under this Agreement.\n\n4. PROPRIETARY RIGHTS\n\nThe Specifications, Deliverables, Company Confidential Information (defined below) and any and all modifications, enhancements and derivatives thereof and all Intellectual Property Rights thereto ("Company IPR") are and shall be owned exclusively by Company upon their creation and shall be deemed works for hire by Service Provider for Company. Without derogating from the foregoing, any and all content or material provided by Company constitutes Company IPR. Service Provider hereby assigns and agrees to assign to Company exclusive ownership and all right, title and interest the Company IPR. Service Provider hereby waives all right, title and interest in and to the Company IPR, including moral rights and any right to compensation or royalties including pursuant to Section 134 to the Israel Patent Law - 1967. Service Provider agrees to assist Company in every proper way to obtain for Company and enforce any Intellectual Property Rights in the Company IPR in any and all countries. Service Provider hereby irrevocably designates and appoints Company and its authorized officers and agents as Service Provider's agent and attorney in fact, coupled with an interest to act for and on Service Providers behalf and in Service Provider's stead to do all lawfully permitted acts to further the prosecution and issuance of Company IPR or any other right or protection relating to any Company IPR, with the same legal force and effect as if executed by Service Provider itself. Service Provider shall ensure that all of its employees and contractors sign terms no less restrictive and no less protective of Company and Company IPR as the terms set forth in this agreement.\n\n5. CONFIDENTIALITY\n\nThis Agreement, the provision of the Services, Company IPR and all data and information related to the Company, its affiliates, its and their shareholders, employees, directors and agents and/or to their business, products and services are confidential information of Company ("Confidential Information"). Service Provider agrees to protect the Confidential Information with the highest degree of care and keep confidential and not disclose, disseminate, allow access to or use any Confidential Information except as required for the provision of the Services and creation of the Deliverables.\n\n6. WARRANTIES AND REPRESENTATIONS\n\nService Provider hereby warrants and represents that: (i) it has the requisite professional qualifications, knowledge, know-how, expertise, skill, talent and experience required in order to perform the Services and provide the Deliverables in a professional and efficient manner and shall perform the Services and provide the Deliverables using highest industry standards; (ii) there are no limitations, obligations or restrictions whatsoever which restrict or prevent Service Provider from fulfilling all of its obligations or grant the rights granted to Company under this Agreement; (iii) it will perform its obligations under this Agreement in compliance with all applicable laws, rules, professional standards, certifications and regulations; (iv) the Services and Deliverables: (a) shall be fit for their intended purpose, (b) do not and will not infringe any right of any third party including Intellectual Property Rights or right to privacy, (c) shall strictly comply with the Specifications; and (v) it has and shall continue to obtain all applicable consents, permits, licenses, certifications and authorizations in connection with the Services and Deliverables.\n\n7. INDEMNIFICATION\n\nService Provider shall indemnify, hold harmless, and at Company's first request, defend Company, its affiliates and their officers, directors, agents and employees, against all claims, liabilities, damages, losses and expenses, including attorneys' fees, arising out of or in any way connected with or based on: (i) Service Provider's breach of any of its representations and warranties herein; and/or (ii) a determination by a competent authority that is contrary to Section 9.3 below.\n\n8. TERM AND TERMINATION\n\n8.1 Term of Agreement. This Agreement shall be effective from the Effective Date and shall remain in effect for the duration of the Services, unless earlier terminated as provided hereunder ("Term"). The Term may be extended by the Company at its sole discretion.\n\n8.2 Termination for Convenience. Company may terminate this Agreement at any time for convenience upon five (5) days written notice to the Service Provider.\n\n8.3 Termination for Cause. Notwithstanding the above, this Agreement may be terminated by either party upon written notice to the other party if such other party breaches a material term or condition of this Agreement and fails to completely cure such breach within fourteen (14) days after receipt of said notice of such breach.\n\n8.4 Consequences. Upon termination or expiration of this Agreement, Service Provider shall promptly Deliver to Company all Deliverables (whether completed or not) and at Company's option, either deliver to Company or delete/destroy all Confidential Information in its possession or under its control, in any media or form whatsoever. The provisions of Sections 1, 4, 5, 6, 7, 8.4 and 9 shall survive termination or expiration of this Agreement and shall remain in full force and effect in perpetuity.\n\n9. MISCELLANEOUS\n\n9.1 Subcontracting. The obligation of Service Provider hereunder may not be subcontracted by Service Provider, in whole or in part without the written consent of Company and any such subcontracting without Company's written approval shall be deemed null and void.\n\n9.2 Assignment. Service Provider may not assign or transfer any of its rights or obligations hereunder to any third party without the prior written consent of Company. Company may assign its rights or obligations hereunder at its sole discretion. Any assignment without Company's prior written consent shall be deemed null and void.\n\n9.3 Independent Contractors. It is hereby clarified that Service Provider is an independent contractor of Company under this Agreement and nothing herein shall be construed to create a joint venture, partnership or an employer/employee relationship. Service Provider may not make any representations, warranties, covenants or undertakings on behalf of Company and may not represent Company. Neither Service Provider nor its employees are entitled to any of the benefits or rights to which employees of Company are entitled, and Service Provider shall be solely responsible for all of its employees and agents and its labor costs and expenses arising in connection therewith.\n\n9.4 No Waiver. All waivers must be in writing. A waiver by either of the parties hereto shall not be construed to be a waiver of any succeeding breach thereof or of any covenant, condition, or agreement herein contained.\n\n9.5 Governing Law. This Agreement shall be exclusively governed by, construed and interpreted in accordance with the laws of the State of Israel. Any action arising out of or in any way connected with this Agreement shall be brought exclusively in the courts of Tel Aviv, Israel.\n\n9.6 Entire Agreement. This Agreement and its Exhibits constitute the entire agreement between the parties.\n\n9.7 Amendment. This Agreement may only be amended by an instrument in writing signed by each of the parties hereto.\n\n9.8 Notices. All notices shall be in writing and shall be deemed duly given upon receipt, if delivered personally, sent by air courier, or sent by electronic transmission.\n\n9.9 Deduction/Set-Off. Company may at any time deduct or set-off any or all amounts which it deems it has already paid to Company.\n\n9.10 No Exclusivity. This Agreement does not prevent Company from receiving services same or similar to the Services from any third party.\n\n9.11 Insurance. The Service Provider shall maintain at its sole expense insurance coverages that sufficiently cover all obligations and liabilities in Service Provider's performance of the Services.`;
     }
-    setEditableBody(bodyText);
+    // Prefer saved (edited) body from previous session; fall back to template.
+    setEditableBody(existing?.contract_body || bodyText);
 
     setEditableExhibitA(exhibitA);
 
@@ -861,6 +890,8 @@ export default function ContractModal({ production, lineItem, onClose }) {
       logoBase64,
       documentHistory: buildDocumentHistory(),
       isCastType: !CREW_TYPES.includes(lineItem?.type),
+      intro_text: editableIntro,
+      body_text: editableBody,
     });
 
     const dataUrl = doc.output('datauristring');
@@ -919,6 +950,9 @@ export default function ContractModal({ production, lineItem, onClose }) {
         company_signer_title: companySignerTitle,
         require_hocp_signature: !signerIsCreator, // true when Tomer/custom signs externally
         creator_signature: creatorSigBase64,
+        // Edited preamble + body so the signing UI / final PDF reflects the edits
+        contract_intro: editableIntro,
+        contract_body: editableBody,
       });
 
       if (result?.signing_links) {
@@ -1045,6 +1079,8 @@ export default function ContractModal({ production, lineItem, onClose }) {
       logoBase64,
       documentHistory: buildDocumentHistory(),
       isCastType: !CREW_TYPES.includes(lineItem?.type),
+      intro_text: editableIntro,
+      body_text: editableBody,
     });
     doc.save(`Contract_${production.project_name}_${providerName}.pdf`);
   }
@@ -1707,7 +1743,10 @@ export default function ContractModal({ production, lineItem, onClose }) {
                     ref={editExhibitBRef}
                     contentEditable={editMode}
                     suppressContentEditableWarning
-                    onBlur={e => setEditableExhibitB(e.currentTarget.innerText)}
+                    onBlur={e => {
+                      setEditableExhibitB(e.currentTarget.innerText);
+                      setExhibitB(e.currentTarget.innerText);
+                    }}
                     className={clsx(
                       'text-sm text-gray-700 whitespace-pre-wrap p-1 rounded outline-none',
                       editMode && 'border-2 border-amber-300 bg-white focus:border-amber-500'

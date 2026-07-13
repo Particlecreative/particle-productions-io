@@ -961,6 +961,7 @@ router.put('/:production_id', async (req, res) => {
     exhibit_a, exhibit_b, fee_amount, payment_terms,
     provider_id_number, provider_address, contract_pdf_base64,
     currency, contract_type, effective_date,
+    contract_intro, contract_body,
   } = req.body;
   try {
     const { rows } = await db.query(
@@ -969,9 +970,10 @@ router.put('/:production_id', async (req, res) => {
          drive_url, dropbox_url,
          exhibit_a, exhibit_b, fee_amount, payment_terms,
          provider_id_number, provider_address, contract_pdf_base64,
-         currency, contract_type, effective_date
+         currency, contract_type, effective_date,
+         contract_intro, contract_body
        )
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
        ON CONFLICT (production_id) DO UPDATE SET
          provider_name      = COALESCE(EXCLUDED.provider_name,      contracts.provider_name),
          provider_email     = COALESCE(EXCLUDED.provider_email,     contracts.provider_email),
@@ -992,7 +994,9 @@ router.put('/:production_id', async (req, res) => {
          contract_pdf_base64= COALESCE(EXCLUDED.contract_pdf_base64,contracts.contract_pdf_base64),
          currency           = COALESCE(EXCLUDED.currency,           contracts.currency),
          contract_type      = COALESCE(EXCLUDED.contract_type,      contracts.contract_type),
-         effective_date     = COALESCE(EXCLUDED.effective_date,     contracts.effective_date)
+         effective_date     = COALESCE(EXCLUDED.effective_date,     contracts.effective_date),
+         contract_intro     = COALESCE(EXCLUDED.contract_intro,     contracts.contract_intro),
+         contract_body      = COALESCE(EXCLUDED.contract_body,      contracts.contract_body)
        RETURNING *`,
       [
         req.params.production_id,
@@ -1016,6 +1020,8 @@ router.put('/:production_id', async (req, res) => {
         currency || null,
         contract_type || null,
         effective_date || null,
+        contract_intro || null,
+        contract_body || null,
       ]
     );
     res.json(rows[0]);
@@ -1032,6 +1038,7 @@ router.post('/:production_id/generate', async (req, res) => {
     exhibit_a, exhibit_b, fee_amount, payment_terms,
     currency, contract_type, effective_date,
     require_hocp_signature, creator_signature,
+    contract_intro, contract_body,
   } = req.body;
   const hocpRequired = require_hocp_signature !== false; // default true
   const prodId = req.params.production_id;
@@ -1057,11 +1064,14 @@ router.post('/:production_id/generate', async (req, res) => {
            payment_terms = COALESCE($8, payment_terms),
            currency = COALESCE($9, currency),
            contract_type = COALESCE($10, contract_type),
-           effective_date = COALESCE($11, effective_date)
+           effective_date = COALESCE($11, effective_date),
+           contract_intro = COALESCE($12, contract_intro),
+           contract_body = COALESCE($13, contract_body)
          WHERE production_id = $1 RETURNING *`,
         [prodId, provider_name, provider_email, newEvent,
          exhibit_a || null, exhibit_b || null, fee_amount || null, payment_terms || null,
-         currency || null, contract_type || null, effective_date || null]
+         currency || null, contract_type || null, effective_date || null,
+         contract_intro || null, contract_body || null]
       );
       contract = rows[0];
     } else {
@@ -1069,8 +1079,9 @@ router.post('/:production_id/generate', async (req, res) => {
       const { rows } = await db.query(
         `INSERT INTO contracts (production_id, provider_name, provider_email, status, events,
                                 exhibit_a, exhibit_b, fee_amount, payment_terms,
-                                currency, contract_type, effective_date, require_hocp_signature)
-         VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                                currency, contract_type, effective_date, require_hocp_signature,
+                                contract_intro, contract_body)
+         VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
          ON CONFLICT (production_id) DO UPDATE SET
            provider_name = EXCLUDED.provider_name,
            provider_email = EXCLUDED.provider_email,
@@ -1082,11 +1093,14 @@ router.post('/:production_id/generate', async (req, res) => {
            currency = COALESCE(EXCLUDED.currency, contracts.currency),
            contract_type = COALESCE(EXCLUDED.contract_type, contracts.contract_type),
            effective_date = COALESCE(EXCLUDED.effective_date, contracts.effective_date),
-           require_hocp_signature = EXCLUDED.require_hocp_signature
+           require_hocp_signature = EXCLUDED.require_hocp_signature,
+           contract_intro = COALESCE(EXCLUDED.contract_intro, contracts.contract_intro),
+           contract_body = COALESCE(EXCLUDED.contract_body, contracts.contract_body)
          RETURNING *`,
         [prodId, provider_name, provider_email, JSON.stringify([{ type: 'created', at: now }]),
          exhibit_a || null, exhibit_b || null, fee_amount || null, payment_terms || null,
-         currency || 'USD', contract_type || 'crew', effective_date || null, hocpRequired]
+         currency || 'USD', contract_type || 'crew', effective_date || null, hocpRequired,
+         contract_intro || null, contract_body || null]
       );
       contract = rows[0];
     }

@@ -1422,6 +1422,22 @@ function FullContractText({ data: d, effectiveDate, liveId, liveAddress, noScrol
   const Sub = ({ children }) => <h5 className="text-xs font-semibold text-gray-700 mt-3 mb-1">{children}</h5>;
   const P = ({ children }) => <p className="text-[13px] text-gray-600 leading-relaxed mb-2">{children}</p>;
 
+  // If the producer edited the contract preamble/body in the Contract Preview,
+  // render the saved (edited) text instead of the hardcoded template so the
+  // provider signs the version that was actually approved.
+  const hasEditedIntro = !!(d.contract_intro && d.contract_intro.trim());
+  const hasEditedBody  = !!(d.contract_body  && d.contract_body.trim());
+  if (hasEditedIntro && hasEditedBody) {
+    const introParas = d.contract_intro.split(/\n\s*\n/);
+    const bodyParas  = d.contract_body.split(/\n\s*\n/);
+    return (
+      <div className={noScroll ? '' : 'max-h-[500px] overflow-y-auto pr-2'} style={noScroll ? {} : { scrollbarWidth: 'thin' }}>
+        {introParas.map((para, i) => <P key={`intro-${i}`}>{para}</P>)}
+        {bodyParas.map((para, i) => <P key={`body-${i}`}>{para}</P>)}
+      </div>
+    );
+  }
+
   return (
     <div className={noScroll ? '' : 'max-h-[500px] overflow-y-auto pr-2'} style={noScroll ? {} : { scrollbarWidth: 'thin' }}>
       {/* Preamble */}
