@@ -18,7 +18,8 @@ async function createNotification(userId, type, message, productionId) {
 }
 
 const TASK_SELECT = `
-  SELECT t.*, u.name AS assignee_name, u.avatar_url AS assignee_avatar, p.project_name
+  SELECT t.*, u.name AS assignee_name, u.avatar_url AS assignee_avatar, p.project_name,
+         (SELECT COUNT(*)::int FROM task_comments c WHERE c.task_id = t.id) AS comment_count
   FROM tasks t
   LEFT JOIN users u ON u.id = t.assignee_id
   LEFT JOIN productions p ON p.id = t.production_id
@@ -167,18 +168,23 @@ router.get('/:id/comments', async (req, res) => {
 });
 
 // POST /api/tasks/:id/comments — any logged-in user can comment
+// body: { body, mentions?: [userId] } — mentioned users get a notification
 router.post('/:id/comments', async (req, res) => {
-  const { body } = req.body;
+  const { body, mentions } = req.body;
   if (!body || !body.trim()) return res.status(400).json({ error: 'body required' });
   try {
     const { rows } = await db.query(
       'INSERT INTO task_comments (task_id, user_id, author, body) VALUES ($1,$2,$3,$4) RETURNING *',
       [req.params.id, req.user?.id || null, req.user?.name || 'Unknown', body.trim()]
     );
-    // Notify the assignee about the new comment (unless they wrote it)
     const { rows: taskRows } = await db.query('SELECT title, assignee_id, production_id FROM tasks WHERE id = $1', [req.params.id]);
     const task = taskRows[0];
-    if (task?.assignee_id && task.assignee_id !== req.user?.id) {
+    const mentionIds = [...new Set((Array.isArray(mentions) ? mentions : []).filter(id => id && id !== req.user?.id))];
+    for (const uid of mentionIds) {
+      createNotification(uid, 'task_mention', `${req.user?.name || 'Someone'} mentioned you in a comment on task "${task?.title || ''}"`, task?.production_id);
+    }
+    // Notify the assignee too (unless they wrote it or were already mentioned)
+    if (task?.assignee_id && task.assignee_id !== req.user?.id && !mentionIds.includes(task.assignee_id)) {
       createNotification(task.assignee_id, 'task_comment', `${req.user?.name || 'Someone'} commented on task "${task.title}"`, task.production_id);
     }
     res.status(201).json(rows[0]);

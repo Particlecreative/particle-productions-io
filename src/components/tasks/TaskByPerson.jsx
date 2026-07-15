@@ -1,6 +1,7 @@
 import { TaskCardInner } from './TaskCard';
+import { Avatar } from './taskUtils';
 
-export default function TaskByPerson({ tasks, users, onCardClick }) {
+export default function TaskByPerson({ tasks, users, statuses, onCardClick, onStatusChange, onCommentsClick, canEdit }) {
   // Group by assignee; Unassigned last
   const groups = [];
   users.forEach(u => {
@@ -21,13 +22,7 @@ export default function TaskByPerson({ tasks, users, onCardClick }) {
         return (
           <div key={group.id || 'unassigned'} className="bg-gray-50 dark:bg-gray-800/30 rounded-xl p-3">
             <div className="flex items-center gap-2 mb-3 px-1">
-              {group.id ? (
-                <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ background: 'var(--brand-accent)' }}>
-                  {group.name[0]}
-                </div>
-              ) : (
-                <div className="w-7 h-7 rounded-full border-2 border-dashed border-gray-300 dark:border-gray-600" />
-              )}
+              <Avatar name={group.id ? group.name : null} size={28} />
               <span className="text-sm font-bold text-gray-700 dark:text-gray-200">{group.name}</span>
               <span className="ml-auto text-[10px] font-mono text-gray-400 bg-gray-200 dark:bg-gray-700 px-1.5 py-0.5 rounded-full">
                 {open} open / {group.tasks.length}
@@ -42,7 +37,13 @@ export default function TaskByPerson({ tasks, users, onCardClick }) {
                 })
                 .map(task => (
                   <div key={task.id} onClick={() => onCardClick?.(task)} className={task.status === 'Done' ? 'opacity-50' : ''}>
-                    <TaskCardInner task={task} />
+                    <TaskCardInner
+                      task={task}
+                      statuses={statuses}
+                      onStatusChange={onStatusChange}
+                      onCommentsClick={onCommentsClick}
+                      canEdit={canEdit}
+                    />
                   </div>
                 ))}
             </div>

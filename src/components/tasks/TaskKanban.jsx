@@ -7,10 +7,10 @@ import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-ki
 import TaskCard, { TaskCardInner } from './TaskCard';
 import { statusColor } from './taskUtils';
 
-function KanbanColumn({ status, taskIds, tasksById, onCardClick, canEdit }) {
+function KanbanColumn({ status, taskIds, tasksById, statuses, onCardClick, onStatusChange, onCommentsClick, canEdit }) {
   const { setNodeRef } = useDroppable({ id: 'col:' + status });
   return (
-    <div className="shrink-0 w-64 bg-gray-50 dark:bg-gray-800/30 rounded-xl border-t-2" style={{ borderTopColor: statusColor(status) }}>
+    <div className="shrink-0 w-[80vw] sm:w-64 snap-start bg-gray-50 dark:bg-gray-800/30 rounded-xl border-t-2" style={{ borderTopColor: statusColor(status) }}>
       <div className="px-3 py-2.5 flex items-center justify-between">
         <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wide">{status}</span>
         <span className="text-[10px] font-mono text-gray-400 bg-gray-200 dark:bg-gray-700 px-1.5 py-0.5 rounded-full">{taskIds.length}</span>
@@ -18,7 +18,15 @@ function KanbanColumn({ status, taskIds, tasksById, onCardClick, canEdit }) {
       <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
         <div ref={setNodeRef} className="px-2 pb-2 space-y-2 min-h-[80px] max-h-[calc(100vh-320px)] overflow-y-auto">
           {taskIds.map(id => tasksById[id] && (
-            <TaskCard key={id} task={tasksById[id]} onClick={onCardClick} disabled={!canEdit} />
+            <TaskCard
+              key={id}
+              task={tasksById[id]}
+              statuses={statuses}
+              onClick={onCardClick}
+              onStatusChange={onStatusChange}
+              onCommentsClick={onCommentsClick}
+              disabled={!canEdit}
+            />
           ))}
           {taskIds.length === 0 && (
             <p className="text-[10px] text-gray-400 text-center py-4 italic">No tasks</p>
@@ -29,7 +37,7 @@ function KanbanColumn({ status, taskIds, tasksById, onCardClick, canEdit }) {
   );
 }
 
-export default function TaskKanban({ tasks, statuses, onCardClick, onTaskMove, canEdit }) {
+export default function TaskKanban({ tasks, statuses, onCardClick, onTaskMove, onStatusChange, onCommentsClick, canEdit }) {
   const [cols, setCols] = useState({});
   const [activeId, setActiveId] = useState(null);
 
@@ -92,14 +100,17 @@ export default function TaskKanban({ tasks, statuses, onCardClick, onTaskMove, c
   }
 
   const board = (
-    <div className="flex gap-4 overflow-x-auto pb-4" style={{ minHeight: 400 }}>
+    <div className="flex gap-4 overflow-x-auto pb-4 snap-x" style={{ minHeight: 400 }}>
       {statuses.map(status => (
         <KanbanColumn
           key={status}
           status={status}
           taskIds={cols[status] || []}
           tasksById={tasksById}
+          statuses={statuses}
           onCardClick={onCardClick}
+          onStatusChange={onStatusChange}
+          onCommentsClick={onCommentsClick}
           canEdit={canEdit}
         />
       ))}

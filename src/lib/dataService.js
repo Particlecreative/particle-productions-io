@@ -580,7 +580,12 @@ export function deleteImprovementTicket(id) {
 
 // ========== TASKS (Monday-style board) ==========
 export function getTasks(brandId) {
-  if (IS_DEV) return read('cp_tasks', []).filter(t => t.brand_id === brandId);
+  if (IS_DEV) {
+    const comments = read('cp_task_comments', []);
+    return read('cp_tasks', [])
+      .filter(t => t.brand_id === brandId)
+      .map(t => ({ ...t, comment_count: comments.filter(c => c.task_id === t.id).length }));
+  }
   return apiGet(`/tasks?brand_id=${encodeURIComponent(brandId)}`);
 }
 
@@ -647,7 +652,7 @@ export function getTaskComments(taskId) {
   return apiGet(`/tasks/${encodeURIComponent(taskId)}/comments`);
 }
 
-export function addTaskComment(taskId, body, userId, userName) {
+export function addTaskComment(taskId, body, userId, userName, mentions = []) {
   if (IS_DEV) {
     const all = read('cp_task_comments', []);
     const full = { id: generateId('taskc'), task_id: taskId, user_id: userId || null, author: userName || 'Unknown', body, created_at: new Date().toISOString() };
@@ -655,7 +660,7 @@ export function addTaskComment(taskId, body, userId, userName) {
     write('cp_task_comments', all);
     return full;
   }
-  return apiPost(`/tasks/${encodeURIComponent(taskId)}/comments`, { body });
+  return apiPost(`/tasks/${encodeURIComponent(taskId)}/comments`, { body, mentions });
 }
 
 // ========== BUDGET CUSTOM COLUMNS ==========

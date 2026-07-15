@@ -1,6 +1,6 @@
 import { Trash2 } from 'lucide-react';
 import clsx from 'clsx';
-import { PRIORITIES, PRIORITY_COLORS, statusColor, isOverdue } from './taskUtils';
+import { PRIORITIES, PRIORITY_COLORS, statusColor, isOverdue, Avatar } from './taskUtils';
 
 export default function TaskTable({ tasks, statuses, users, productions, onUpdate, onDelete, onRowClick, canEdit }) {
   const sorted = [...tasks].sort((a, b) =>
@@ -46,14 +46,17 @@ export default function TaskTable({ tasks, statuses, users, productions, onUpdat
                   )}
                 </td>
                 <td className="px-3 py-2.5">
-                  {canEdit ? (
-                    <select className={selectCls} value={task.assignee_id || ''} onChange={e => onUpdate(task.id, { assignee_id: e.target.value || null })}>
-                      <option value="">Unassigned</option>
-                      {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                    </select>
-                  ) : (
-                    <span className="text-xs text-gray-500">{task.assignee_name || 'Unassigned'}</span>
-                  )}
+                  <div className="flex items-center gap-1.5">
+                    <Avatar name={task.assignee_name} size={20} />
+                    {canEdit ? (
+                      <select className={selectCls} value={task.assignee_id || ''} onChange={e => onUpdate(task.id, { assignee_id: e.target.value || null })}>
+                        <option value="">Unassigned</option>
+                        {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                      </select>
+                    ) : (
+                      <span className="text-xs text-gray-500">{task.assignee_name || 'Unassigned'}</span>
+                    )}
+                  </div>
                 </td>
                 <td className="px-3 py-2.5">
                   {canEdit ? (

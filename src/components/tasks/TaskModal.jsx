@@ -1,10 +1,28 @@
-import { useState, useEffect } from 'react';
-import { X, Trash2, Send } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { X, Trash2, Send, AtSign } from 'lucide-react';
 import clsx from 'clsx';
 import { getTaskComments, addTaskComment } from '../../lib/dataService';
-import { PRIORITIES, PRIORITY_COLORS, statusColor } from './taskUtils';
+import { PRIORITIES, PRIORITY_COLORS, statusColor, Avatar, timeAgo, userColor } from './taskUtils';
 
-export default function TaskModal({ task, statuses, users, productions, currentUser, canEdit, onSave, onDelete, onClose }) {
+// Highlight @mentions of known users inside a comment body
+function CommentBody({ body, users }) {
+  const names = users.map(u => u.name).filter(Boolean).sort((a, b) => b.length - a.length);
+  if (!names.length) return <p className="text-xs text-gray-700 dark:text-gray-200 whitespace-pre-wrap">{body}</p>;
+  const pattern = new RegExp(`@(${names.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'g');
+  // split with a capture group → odd indexes are the matched names
+  const parts = String(body).split(pattern);
+  return (
+    <p className="text-xs text-gray-700 dark:text-gray-200 whitespace-pre-wrap">
+      {parts.map((part, i) =>
+        i % 2 === 1
+          ? <span key={i} className="font-bold" style={{ color: userColor(part) }}>@{part}</span>
+          : part
+      )}
+    </p>
+  );
+}
+
+export default function TaskModal({ task, statuses, users, productions, currentUser, canEdit, focusComments = false, onSave, onDelete, onClose, onCommentPosted }) {
   const isNew = !task?.id;
   const [form, setForm] = useState({
     title: task?.title || '',
@@ -19,6 +37,9 @@ export default function TaskModal({ task, statuses, users, productions, currentU
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState('');
   const [posting, setPosting] = useState(false);
+  const [mentionIds, setMentionIds] = useState([]);
+  const commentInputRef = useRef(null);
+  const commentsRef = useRef(null);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -26,6 +47,28 @@ export default function TaskModal({ task, statuses, users, productions, currentU
     if (isNew) return;
     Promise.resolve(getTaskComments(task.id)).then(c => setComments(Array.isArray(c) ? c : []));
   }, [task?.id, isNew]);
+
+  // When opened from a card's comment icon, jump straight to the thread
+  useEffect(() => {
+    if (focusComments && !isNew) {
+      setTimeout(() => {
+        commentsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        commentInputRef.current?.focus();
+      }, 100);
+    }
+  }, [focusComments, isNew]);
+
+  // ── @mention dropdown state ──
+  const mentionMatch = newComment.match(/@(\w*)$/);
+  const mentionCandidates = mentionMatch
+    ? users.filter(u => u.name?.toLowerCase().includes(mentionMatch[1].toLowerCase())).slice(0, 5)
+    : [];
+
+  function insertMention(u) {
+    setNewComment(prev => prev.replace(/@\w*$/, `@${u.name} `));
+    setMentionIds(prev => prev.includes(u.id) ? prev : [...prev, u.id]);
+    commentInputRef.current?.focus();
+  }
 
   async function handleSave() {
     if (!form.title.trim() || saving) return;
@@ -48,10 +91,17 @@ export default function TaskModal({ task, statuses, users, productions, currentU
     if (!newComment.trim() || posting) return;
     setPosting(true);
     try {
-      await Promise.resolve(addTaskComment(task.id, newComment.trim(), currentUser?.id, currentUser?.name));
+      // Only send mentions whose @Name is still present in the final text
+      const mentions = mentionIds.filter(id => {
+        const u = users.find(x => x.id === id);
+        return u && newComment.includes(`@${u.name}`);
+      });
+      await Promise.resolve(addTaskComment(task.id, newComment.trim(), currentUser?.id, currentUser?.name, mentions));
       setNewComment('');
+      setMentionIds([]);
       const c = await Promise.resolve(getTaskComments(task.id));
       setComments(Array.isArray(c) ? c : []);
+      onCommentPosted?.(task.id);
     } finally {
       setPosting(false);
     }
@@ -61,9 +111,9 @@ export default function TaskModal({ task, statuses, users, productions, currentU
   const labelCls = 'text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1 block';
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-2 sm:p-4" onClick={onClose}>
       <div
-        className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+        className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -144,10 +194,13 @@ export default function TaskModal({ task, statuses, users, productions, currentU
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={labelCls}>Assignee</label>
-              <select className={inputCls} value={form.assignee_id} onChange={e => set('assignee_id', e.target.value)} disabled={!canEdit}>
-                <option value="">Unassigned</option>
-                {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-              </select>
+              <div className="flex items-center gap-2">
+                <Avatar name={users.find(u => u.id === form.assignee_id)?.name} size={26} />
+                <select className={inputCls} value={form.assignee_id} onChange={e => set('assignee_id', e.target.value)} disabled={!canEdit}>
+                  <option value="">Unassigned</option>
+                  {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>
+              </div>
             </div>
             <div>
               <label className={labelCls}>Due Date</label>
@@ -177,43 +230,66 @@ export default function TaskModal({ task, statuses, users, productions, currentU
 
           {/* Comments (existing tasks only) */}
           {!isNew && (
-            <div className="pt-2 border-t border-gray-100 dark:border-gray-800">
-              <label className={labelCls}>Comments</label>
+            <div className="pt-2 border-t border-gray-100 dark:border-gray-800" ref={commentsRef}>
+              <label className={labelCls}>Comments {comments.length > 0 && `(${comments.length})`}</label>
               <div className="space-y-2.5 max-h-52 overflow-y-auto mb-3">
                 {comments.length === 0 && <p className="text-xs text-gray-400 italic py-2">No comments yet</p>}
                 {comments.map(c => (
                   <div key={c.id} className="flex gap-2">
-                    <div className="w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-white text-[10px] font-bold" style={{ background: 'var(--brand-accent)' }}>
-                      {(c.author || '?')[0]}
-                    </div>
+                    <Avatar name={c.author} size={24} />
                     <div className="flex-1 bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-2">
                       <div className="flex items-center justify-between mb-0.5">
-                        <span className="text-[10px] font-bold text-gray-600 dark:text-gray-300">{c.author}</span>
-                        <span className="text-[9px] text-gray-400">
-                          {c.created_at ? new Date(c.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''}
+                        <span className="text-[10px] font-bold" style={{ color: userColor(c.author) }}>{c.author}</span>
+                        <span className="text-[9px] text-gray-400" title={c.created_at ? new Date(c.created_at).toLocaleString() : ''}>
+                          {timeAgo(c.created_at)}
                         </span>
                       </div>
-                      <p className="text-xs text-gray-700 dark:text-gray-200 whitespace-pre-wrap">{c.body}</p>
+                      <CommentBody body={c.body} users={users} />
                     </div>
                   </div>
                 ))}
               </div>
-              <div className="flex gap-2">
-                <input
-                  className={clsx(inputCls, 'flex-1')}
-                  placeholder="Write a comment…"
-                  value={newComment}
-                  onChange={e => setNewComment(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handlePostComment(); } }}
-                />
-                <button
-                  onClick={handlePostComment}
-                  disabled={!newComment.trim() || posting}
-                  className="px-3 rounded-lg bg-[var(--brand-accent)] text-white disabled:opacity-40 transition-opacity"
-                  title="Post comment"
-                >
-                  <Send size={14} />
-                </button>
+              <div className="relative">
+                {/* @mention dropdown */}
+                {mentionCandidates.length > 0 && (
+                  <div className="absolute bottom-full mb-1 left-0 right-12 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-20 overflow-hidden">
+                    {mentionCandidates.map(u => (
+                      <button
+                        key={u.id}
+                        onClick={() => insertMention(u)}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                      >
+                        <Avatar name={u.name} size={20} />
+                        <span className="text-xs font-medium text-gray-700 dark:text-gray-200">{u.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <input
+                    ref={commentInputRef}
+                    className={clsx(inputCls, 'flex-1')}
+                    placeholder="Write a comment… use @ to tag someone"
+                    value={newComment}
+                    onChange={e => setNewComment(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        if (mentionCandidates.length > 0) insertMention(mentionCandidates[0]);
+                        else handlePostComment();
+                      }
+                    }}
+                  />
+                  <button
+                    onClick={handlePostComment}
+                    disabled={!newComment.trim() || posting}
+                    className="px-3 rounded-lg bg-[var(--brand-accent)] text-white disabled:opacity-40 transition-opacity"
+                    title="Post comment"
+                  >
+                    <Send size={14} />
+                  </button>
+                </div>
+                <p className="flex items-center gap-1 text-[9px] text-gray-400 mt-1"><AtSign size={9} /> Tagged people get a notification</p>
               </div>
             </div>
           )}
