@@ -6,7 +6,12 @@ const { verifyJWT, requireEditor } = require('../middleware/auth');
 
 const submitLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, message: { error: 'Too many submissions, please try again later' } });
 
-router.use(verifyJWT);
+// All routes require auth EXCEPT POST /submit — that's the public supplier
+// form (rate-limited); suppliers filling it in have no account or token.
+router.use((req, res, next) => {
+  if (req.method === 'POST' && req.path === '/submit') return next();
+  return verifyJWT(req, res, next);
+});
 
 // GET /api/suppliers
 router.get('/', async (req, res) => {

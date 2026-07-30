@@ -1,26 +1,54 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { CheckCircle, ChevronRight, ChevronLeft } from 'lucide-react';
-import { getProductions, submitSupplierForm, getFormConfig } from '../lib/dataService';
 
-// Find a production by its human-facing production_id (e.g. "PRD26-06") or internal uuid
-function findProduction(prodIdParam) {
-  // Get all productions from both brands
-  const all = [
-    ...getProductions('particle'),
-    ...getProductions('blurr'),
-  ];
-  return all.find(p => p.production_id === prodIdParam || p.id === prodIdParam) || null;
+// This is a PUBLIC page (no auth token) — it must only talk to public
+// endpoints via plain fetch, never the authed dataService/apiClient.
+// getProductions() returns a Promise in production, so the old synchronous
+// findProduction() crashed the page with a blank screen.
+async function publicGet(path) {
+  const res = await fetch(`/api/public${path}`);
+  if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+  return res.json();
+}
+
+async function postJson(path, body) {
+  const res = await fetch(`/api${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+  return res.json();
 }
 
 export default function SupplierForm() {
   const { productionId: prodIdParam } = useParams();
-  const production = useMemo(() => findProduction(prodIdParam), [prodIdParam]);
-  const config     = useMemo(() => production ? getFormConfig(production.id) : {}, [production]);
+  const [production, setProduction] = useState(null);
+  const [config, setConfig] = useState({});
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const prod = await publicGet(`/production/${encodeURIComponent(prodIdParam)}`);
+        setProduction(prod);
+        const cfg = await publicGet(`/form-config/${encodeURIComponent(prod.id)}`).catch(() => ({}));
+        setConfig(cfg && typeof cfg === 'object' ? cfg : {});
+      } catch {
+        setProduction(null);
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, [prodIdParam]);
 
   const [step, setStep] = useState(1);
   const [supplierType, setSupplierType] = useState(''); // 'production' | 'post_production'
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState(false);
 
   // Form fields
   const [form, setForm] = useState({
@@ -34,14 +62,23 @@ export default function SupplierForm() {
     setForm(prev => ({ ...prev, [field]: value }));
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
-    submitSupplierForm({
-      ...form,
-      supplier_type: supplierType,
-      production_id: production?.id || prodIdParam,
-    });
-    setSubmitted(true);
+    if (submitting) return;
+    setSubmitting(true);
+    setSubmitError(false);
+    try {
+      await postJson('/suppliers/submit', {
+        ...form,
+        supplier_type: supplierType,
+        production_id: production?.id || prodIdParam,
+      });
+      setSubmitted(true);
+    } catch {
+      setSubmitError(true);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   // Inline style for branded background
@@ -51,6 +88,14 @@ export default function SupplierForm() {
       ? `url(${config.bgImageUrl}) center/cover no-repeat`
       : (config.bgColor || '#f3f4f6'),
   };
+
+  if (loading) {
+    return (
+      <div style={bgStyle} className="flex items-center justify-center">
+        <div className="text-sm text-gray-400">Loading…</div>
+      </div>
+    );
+  }
 
   if (!production) {
     return (
@@ -90,7 +135,7 @@ export default function SupplierForm() {
             <img src={config.logoUrl} alt="Logo" className="h-10 mb-4 object-contain" />
           )}
           <div className="text-xs text-gray-400 font-mono mb-1">
-            {production.production_id}
+            {production.id}
           </div>
           <h1 className="text-xl font-black text-gray-900">{production.project_name}</h1>
           <div className="text-sm text-gray-500 mt-1">Supplier Sign-up</div>
@@ -286,6 +331,11 @@ export default function SupplierForm() {
               </div>
 
               {/* Actions */}
+              {submitError && (
+                <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                  Something went wrong submitting the form. Please try again.
+                </div>
+              )}
               <div className="flex gap-3 pt-2">
                 <button
                   type="button"
@@ -296,9 +346,10 @@ export default function SupplierForm() {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-3 rounded-xl text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+                  disabled={submitting}
+                  className="flex-1 py-3 rounded-xl text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-60"
                 >
-                  Submit
+                  {submitting ? 'Submitting…' : 'Submit'}
                 </button>
               </div>
             </form>

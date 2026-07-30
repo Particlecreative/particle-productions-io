@@ -20,6 +20,20 @@ router.get('/production/:id', async (req, res) => {
   }
 });
 
+// GET /api/public/form-config/:productionId — branding (logo/background) for public forms
+router.get('/form-config/:productionId', async (req, res) => {
+  try {
+    const { rows } = await db.query(
+      'SELECT config FROM form_configs WHERE production_id = $1',
+      [req.params.productionId]
+    );
+    res.json(rows[0]?.config ?? { logoUrl: '', bgColor: '', bgImageUrl: '' });
+  } catch (err) {
+    console.error('GET /public/form-config error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // GET /api/public/line-items/:productionId — for linking CC purchase to line item
 router.get('/line-items/:productionId', async (req, res) => {
   try {
