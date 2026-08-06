@@ -13,6 +13,7 @@ export function TaskCardInner({ task, statuses = [], onStatusChange, onCommentsC
     <div
       className={clsx(
         'bg-white dark:bg-gray-800 rounded-lg p-3 shadow-sm border border-gray-100 dark:border-gray-700 cursor-pointer hover:shadow-md hover:border-gray-300 transition-all',
+        overdue && 'border-l-[3px] border-l-red-400',
         dragging && 'shadow-lg rotate-1'
       )}
     >

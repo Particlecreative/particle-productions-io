@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Trash2, Send, AtSign } from 'lucide-react';
+import { X, Trash2, Send, AtSign, Link2, Copy, Check } from 'lucide-react';
 import clsx from 'clsx';
 import { getTaskComments, addTaskComment } from '../../lib/dataService';
+import SearchSelect from './SearchSelect';
 import { PRIORITIES, PRIORITY_COLORS, statusColor, Avatar, timeAgo, userColor } from './taskUtils';
 
 // Highlight @mentions of known users inside a comment body
@@ -22,7 +23,8 @@ function CommentBody({ body, users }) {
   );
 }
 
-export default function TaskModal({ task, statuses, users, productions, currentUser, canEdit, focusComments = false, onSave, onDelete, onClose, onCommentPosted }) {
+export default function TaskModal({ task, statuses, users, productions, currentUser, canEdit, focusComments = false, onSave, onDelete, onDuplicate, onClose, onCommentPosted }) {
+  const [linkCopied, setLinkCopied] = useState(false);
   const isNew = !task?.id;
   const [form, setForm] = useState({
     title: task?.title || '',
@@ -120,6 +122,28 @@ export default function TaskModal({ task, statuses, users, productions, currentU
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800 sticky top-0 bg-white dark:bg-gray-900 z-10">
           <h2 className="text-sm font-bold text-gray-800 dark:text-gray-100">{isNew ? 'New Task' : 'Edit Task'}</h2>
           <div className="flex items-center gap-1">
+            {!isNew && (
+              <button
+                onClick={() => {
+                  navigator.clipboard?.writeText(`${window.location.origin}/tasks?task=${task.id}`);
+                  setLinkCopied(true);
+                  setTimeout(() => setLinkCopied(false), 1500);
+                }}
+                className="p-2 rounded-lg text-gray-400 hover:text-[var(--brand-accent)] hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+                title="Copy link to this task"
+              >
+                {linkCopied ? <Check size={15} className="text-green-500" /> : <Link2 size={15} />}
+              </button>
+            )}
+            {!isNew && canEdit && onDuplicate && (
+              <button
+                onClick={() => { onDuplicate(task); onClose(); }}
+                className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                title="Duplicate task"
+              >
+                <Copy size={15} />
+              </button>
+            )}
             {!isNew && canEdit && (
               <button
                 onClick={() => { onDelete(task.id); onClose(); }}
@@ -208,14 +232,29 @@ export default function TaskModal({ task, statuses, users, productions, currentU
             </div>
           </div>
 
-          {/* Production link */}
+          {/* Production link — searchable by PRD code or name */}
           <div>
             <label className={labelCls}>Production</label>
-            <select className={inputCls} value={form.production_id} onChange={e => set('production_id', e.target.value)} disabled={!canEdit}>
-              <option value="">General (no production)</option>
-              {productions.map(p => <option key={p.id} value={p.id}>{p.id} — {p.project_name || 'Untitled'}</option>)}
-            </select>
+            <SearchSelect
+              placeholder="Search by PRD code or name…"
+              disabled={!canEdit}
+              value={form.production_id}
+              onChange={v => set('production_id', v)}
+              buttonClassName="py-2"
+              items={[
+                { value: '', label: 'General', sub: 'no production' },
+                ...productions.map(p => ({ value: p.id, label: p.id, sub: p.project_name || 'Untitled' })),
+              ]}
+            />
           </div>
+
+          {/* Meta */}
+          {!isNew && (task.created_by_name || task.created_at) && (
+            <p className="text-[10px] text-gray-400">
+              Created{task.created_by_name ? <> by <span className="font-semibold" style={{ color: userColor(task.created_by_name) }}>{task.created_by_name}</span></> : ''}
+              {task.created_at ? ` · ${timeAgo(task.created_at)}` : ''}
+            </p>
+          )}
 
           {/* Save */}
           {canEdit && (

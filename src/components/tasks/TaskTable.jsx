@@ -1,5 +1,6 @@
 import { Trash2 } from 'lucide-react';
 import clsx from 'clsx';
+import SearchSelect from './SearchSelect';
 import { PRIORITIES, PRIORITY_COLORS, statusColor, isOverdue, Avatar } from './taskUtils';
 
 export default function TaskTable({ tasks, statuses, users, productions, onUpdate, onDelete, onRowClick, canEdit }) {
@@ -37,10 +38,17 @@ export default function TaskTable({ tasks, statuses, users, productions, onUpdat
                 </td>
                 <td className="px-3 py-2.5">
                   {canEdit ? (
-                    <select className={selectCls} value={task.production_id || ''} onChange={e => onUpdate(task.id, { production_id: e.target.value || null })}>
-                      <option value="">General</option>
-                      {productions.map(p => <option key={p.id} value={p.id}>{p.project_name || p.id}</option>)}
-                    </select>
+                    <SearchSelect
+                      className="w-[170px]"
+                      placeholder="PRD / name…"
+                      value={task.production_id || ''}
+                      onChange={v => onUpdate(task.id, { production_id: v || null })}
+                      buttonClassName="py-1"
+                      items={[
+                        { value: '', label: 'General' },
+                        ...productions.map(p => ({ value: p.id, label: p.id, sub: p.project_name || 'Untitled' })),
+                      ]}
+                    />
                   ) : (
                     <span className="text-xs text-gray-500">{task.project_name || 'General'}</span>
                   )}

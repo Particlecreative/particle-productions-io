@@ -19,9 +19,11 @@ async function createNotification(userId, type, message, productionId) {
 
 const TASK_SELECT = `
   SELECT t.*, u.name AS assignee_name, u.avatar_url AS assignee_avatar, p.project_name,
+         cu.name AS created_by_name,
          (SELECT COUNT(*)::int FROM task_comments c WHERE c.task_id = t.id) AS comment_count
   FROM tasks t
   LEFT JOIN users u ON u.id = t.assignee_id
+  LEFT JOIN users cu ON cu.id = t.created_by
   LEFT JOIN productions p ON p.id = t.production_id
 `;
 

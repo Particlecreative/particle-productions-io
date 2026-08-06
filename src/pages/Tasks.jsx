@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Plus, CheckSquare, Search, AlertTriangle } from 'lucide-react';
 import clsx from 'clsx';
 import { useBrand } from '../context/BrandContext';
@@ -12,6 +13,7 @@ import TaskKanban from '../components/tasks/TaskKanban';
 import TaskTable from '../components/tasks/TaskTable';
 import TaskByPerson from '../components/tasks/TaskByPerson';
 import TaskModal from '../components/tasks/TaskModal';
+import SearchSelect from '../components/tasks/SearchSelect';
 import { getBoardStatuses, isOverdue } from '../components/tasks/taskUtils';
 
 const IS_DEV = import.meta.env.DEV;
@@ -33,8 +35,19 @@ export default function Tasks() {
   const [modalFocusComments, setModalFocusComments] = useState(false);
 
   const statuses = useMemo(() => getBoardStatuses(), []);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   useEffect(() => { load(); }, [brandId]);
+
+  // Deep link: /tasks?task=<id> opens that task's modal (e.g. from a shared link)
+  useEffect(() => {
+    const tid = searchParams.get('task');
+    if (!tid || loading) return;
+    const t = tasks.find(x => String(x.id) === tid);
+    if (t) setModalTask(t);
+    searchParams.delete('task');
+    setSearchParams(searchParams, { replace: true });
+  }, [loading, tasks]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function load() {
     setLoading(true);
@@ -110,6 +123,24 @@ export default function Tasks() {
     try { await Promise.resolve(deleteTask(id)); } catch { refresh(); }
   }
 
+  async function handleDuplicate(task) {
+    await Promise.resolve(addTask({
+      brand_id: brandId,
+      title: `${task.title} (copy)`,
+      description: task.description || '',
+      status: task.status,
+      priority: task.priority,
+      due_date: task.due_date ? String(task.due_date).slice(0, 10) : null,
+      assignee_id: task.assignee_id || null,
+      production_id: task.production_id || null,
+    }));
+    refresh();
+  }
+
+  function clearFilters() {
+    setFilterAssignee(''); setFilterProduction(''); setHideDone(false); setSearch('');
+  }
+
   // Called by the kanban after a drag: cols = { status: [orderedTaskIds] }
   async function handleTaskMove(taskId, newStatus, cols) {
     setTasks(prev => prev.map(t => {
@@ -172,11 +203,17 @@ export default function Tasks() {
             {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
             <option value="unassigned">Unassigned</option>
           </select>
-          <select className={clsx(selectCls, 'max-w-[130px] sm:max-w-[220px]')} value={filterProduction} onChange={e => setFilterProduction(e.target.value)}>
-            <option value="">All productions</option>
-            <option value="general">General only</option>
-            {productions.map(p => <option key={p.id} value={p.id}>{p.id} — {p.project_name || 'Untitled'}</option>)}
-          </select>
+          <SearchSelect
+            className="w-[150px] sm:w-[220px]"
+            placeholder="Production / PRD…"
+            value={filterProduction}
+            onChange={setFilterProduction}
+            items={[
+              { value: '', label: 'All productions' },
+              { value: 'general', label: 'General only' },
+              ...productions.map(p => ({ value: p.id, label: p.id, sub: p.project_name || 'Untitled' })),
+            ]}
+          />
           <button
             onClick={() => setHideDone(v => !v)}
             className={clsx('text-xs px-3 py-1.5 rounded-lg border font-semibold transition-colors',
@@ -215,6 +252,24 @@ export default function Tasks() {
       {/* Content */}
       {loading ? (
         <div className="text-center py-20 text-sm text-gray-400">Loading tasks…</div>
+      ) : filtered.length === 0 && tasks.length === 0 ? (
+        <div className="text-center py-24">
+          <CheckSquare size={40} className="mx-auto text-gray-200 dark:text-gray-700 mb-4" />
+          <p className="text-sm font-semibold text-gray-500 mb-1">No tasks yet</p>
+          <p className="text-xs text-gray-400 mb-5">Create your first task to start tracking work.</p>
+          {isEditor && (
+            <button className="btn-cta text-xs px-5 py-2" onClick={() => setModalTask('new')}>
+              <Plus size={12} className="inline mr-1" /> New Task
+            </button>
+          )}
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="text-center py-24">
+          <p className="text-sm font-semibold text-gray-500 mb-1">No tasks match your filters</p>
+          <button onClick={clearFilters} className="text-xs text-[var(--brand-accent)] font-semibold hover:underline">
+            Clear filters
+          </button>
+        </div>
       ) : view === 'kanban' ? (
         <TaskKanban
           tasks={filtered}
@@ -260,6 +315,7 @@ export default function Tasks() {
           focusComments={modalFocusComments}
           onSave={form => modalTask === 'new' ? handleCreate(form) : handleSaveExisting(modalTask.id, form)}
           onDelete={handleDelete}
+          onDuplicate={handleDuplicate}
           onClose={() => { setModalTask(null); setModalFocusComments(false); }}
           onCommentPosted={() => refresh()}
         />
