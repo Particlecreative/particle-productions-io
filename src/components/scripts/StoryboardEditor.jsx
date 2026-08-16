@@ -2855,14 +2855,16 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
         />
       )}
 
-      {/* ── AI Chat Panel ── */}
-      {showAIChat && (
+      {/* ── AI Chat Panel — always mounted (floating button when closed) so the chat survives ── */}
+      {!readOnly && (
         <AIChatPanel
           scriptId={scriptId}
           script={script}
           scenes={scenes}
           selectedText={aiChatSelectedText}
           selectedSceneId={aiChatSceneId}
+          open={showAIChat}
+          onOpen={() => setShowAIChat(true)}
           onClose={() => setShowAIChat(false)}
           onScriptUpdate={(updatedScenes) => {
             setScript(prev => {

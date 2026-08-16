@@ -1591,3 +1591,34 @@ html.dark [data-brand="blurr"] {
   --brand-gradient:     linear-gradient(135deg, #a33d98 0%, #d468c9 100%) !important;
   --brand-glow:         rgba(212, 104, 201, 0.15) !important;
 }
+
+/* ── AI Assistant (Scripts) animations ── */
+@keyframes aiPanelIn {
+  from { opacity: 0; transform: translateY(24px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.ai-panel-in { animation: aiPanelIn 0.28s cubic-bezier(0.22, 1, 0.36, 1); }
+
+@keyframes aiMsgIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.ai-msg-in { animation: aiMsgIn 0.25s ease-out; }
+
+@keyframes aiChipIn {
+  from { opacity: 0; transform: scale(0.9); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.ai-chip-in { animation: aiChipIn 0.2s ease-out both; }
+
+@keyframes aiDot {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+.ai-dot { animation: aiDot 1s ease-in-out infinite; }
+
+@keyframes aiFabGlow {
+  0%, 100% { box-shadow: 0 8px 24px rgba(147, 51, 234, 0.35); }
+  50% { box-shadow: 0 8px 32px rgba(99, 102, 241, 0.55); }
+}
+.ai-fab { animation: aiFabGlow 2.6s ease-in-out infinite; }

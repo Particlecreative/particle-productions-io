@@ -1648,11 +1648,150 @@ router.post('/:id/share', async (req, res) => {
 });
 
 // POST /api/scripts/:id/chat — AI chat about the script (Claude conversation)
+// ── AI chat: tool definitions ────────────────────────────────────────────────
+// Structured tool_use replaces the old fenced-JSON contract — the model calls
+// typed tools, so edits parse reliably instead of leaking raw JSON into chat.
+const SCENE_FIELD_ENUM = { type: 'string', enum: ['location', 'what_we_see', 'what_we_hear', 'duration'] };
+const CHAT_TOOLS = [
+  {
+    name: 'edit_scene',
+    description: 'Replace the full text of one field on one scene. Always pass the COMPLETE new text for the field, not a diff. Use this for any rewrite, shorten, lengthen, or tone change of a single field.',
+    strict: true,
+    input_schema: {
+      type: 'object',
+      properties: {
+        scene_number: { type: 'integer', description: '1-based scene number as shown to the user' },
+        field: SCENE_FIELD_ENUM,
+        value: { type: 'string', description: 'The complete new text for this field' },
+      },
+      required: ['scene_number', 'field', 'value'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'batch_edit',
+    description: 'Edit multiple scene fields in one call. Use this when rewriting several scenes at once (e.g. "shorten all VOs"). Each edit replaces the complete field text.',
+    strict: true,
+    input_schema: {
+      type: 'object',
+      properties: {
+        edits: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              scene_number: { type: 'integer' },
+              field: SCENE_FIELD_ENUM,
+              value: { type: 'string' },
+            },
+            required: ['scene_number', 'field', 'value'],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ['edits'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'add_scene',
+    description: 'Insert a new scene after the given scene number. Use after_scene_number 0 to insert at the very beginning. Pass empty strings for fields you want left blank.',
+    strict: true,
+    input_schema: {
+      type: 'object',
+      properties: {
+        after_scene_number: { type: 'integer', description: '0 = insert first; N = insert after scene N' },
+        location: { type: 'string' },
+        what_we_see: { type: 'string' },
+        what_we_hear: { type: 'string' },
+        duration: { type: 'string' },
+      },
+      required: ['after_scene_number', 'location', 'what_we_see', 'what_we_hear', 'duration'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'delete_scene',
+    description: 'Delete one scene by its 1-based scene number.',
+    strict: true,
+    input_schema: {
+      type: 'object',
+      properties: { scene_number: { type: 'integer' } },
+      required: ['scene_number'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'reorder_scene',
+    description: 'Move a scene to a different position in the script.',
+    strict: true,
+    input_schema: {
+      type: 'object',
+      properties: {
+        scene_number: { type: 'integer', description: 'Scene to move (1-based)' },
+        move_to_position: { type: 'integer', description: 'Target position (1-based)' },
+      },
+      required: ['scene_number', 'move_to_position'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'merge_scenes',
+    description: 'Merge two or more scenes into the first one listed (visuals and audio are concatenated; the others are removed).',
+    strict: true,
+    input_schema: {
+      type: 'object',
+      properties: { scene_numbers: { type: 'array', items: { type: 'integer' } } },
+      required: ['scene_numbers'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'find_replace',
+    description: 'Find and replace an exact text string across all scenes (visuals, audio and locations).',
+    strict: true,
+    input_schema: {
+      type: 'object',
+      properties: {
+        find: { type: 'string' },
+        replace: { type: 'string' },
+      },
+      required: ['find', 'replace'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'duplicate_script',
+    description: 'Create a copy of the whole script under a new title.',
+    strict: true,
+    input_schema: {
+      type: 'object',
+      properties: { new_title: { type: 'string' } },
+      required: ['new_title'],
+      additionalProperties: false,
+    },
+  },
+];
+
+let _anthropic = null;
+function getAnthropicClient() {
+  if (!_anthropic) {
+    const Anthropic = require('@anthropic-ai/sdk');
+    // nginx cuts the upstream at 120s — keep the SDK below that so the user
+    // gets a real error message instead of a blank 504.
+    _anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: 105000, maxRetries: 1 });
+  }
+  return _anthropic;
+}
+
 router.post('/:id/chat', async (req, res) => {
   try {
     const { messages, selected_text, scene_id, reference_url } = req.body;
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: 'messages array required' });
+    }
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return res.status(500).json({ error: 'AI is not configured on this server (missing API key).' });
     }
 
     // Load script context
@@ -1661,143 +1800,119 @@ router.post('/:id/chat', async (req, res) => {
     const scenes = rows[0].scenes || [];
     const stripHtml = (s) => (s || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 
-    // Build script context for Claude
     const scenesSummary = scenes.map((s, i) => {
       const parts = [`Scene ${i + 1}:`];
       if (s.location) parts.push(`Location: ${s.location}`);
+      if (s.duration) parts.push(`Duration: ${s.duration}`);
       if (s.what_we_see) parts.push(`Visual: ${stripHtml(s.what_we_see)}`);
       if (s.what_we_hear) parts.push(`Audio: ${stripHtml(s.what_we_hear)}`);
       return parts.join(' | ');
     }).join('\n');
 
     let contextNote = '';
-    // Fetch reference URL content if provided
+    // Reference URL content (SSRF-guarded like /temp/ai-generate)
     if (reference_url) {
       try {
-        const urlRes = await fetch(reference_url, { signal: AbortSignal.timeout(8000) });
-        if (urlRes.ok) {
-          const text = await urlRes.text();
-          const cleanText = text.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 5000);
-          contextNote += `\n\nReference URL content (${reference_url}):\n${cleanText}`;
+        const parsedUrl = new URL(reference_url.trim());
+        const isInternal = /^(localhost|127\.|0\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|169\.254\.|::1$|::ffff:127\.|fd|fc)/.test(parsedUrl.hostname);
+        if (!isInternal) {
+          const urlRes = await fetch(reference_url.trim(), { signal: AbortSignal.timeout(8000), headers: { 'User-Agent': 'Mozilla/5.0' } });
+          if (urlRes.ok) {
+            const text = await urlRes.text();
+            const cleanText = text.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 5000);
+            contextNote += `\n\nReference URL content (${reference_url}):\n${cleanText}`;
+          }
         }
       } catch {}
     }
     if (selected_text) {
-      contextNote = `\n\nThe user has selected this specific text from the script:\n"${selected_text}"`;
+      contextNote += `\n\nThe user has selected this specific text from the script:\n"${selected_text}"`;
     }
     if (scene_id) {
       const scene = scenes.find(s => s.id === scene_id);
       if (scene) {
         const idx = scenes.indexOf(scene);
-        contextNote += `\n\nFocusing on Scene ${idx + 1} (${scene.location || 'no location'}):
-Visual: ${stripHtml(scene.what_we_see)}
-Audio: ${stripHtml(scene.what_we_hear)}`;
+        contextNote += `\n\nFocusing on Scene ${idx + 1} (${scene.location || 'no location'}):\nVisual: ${stripHtml(scene.what_we_see)}\nAudio: ${stripHtml(scene.what_we_hear)}`;
       }
     }
 
-    // Load brand voice guidelines if saved
-    let brandVoice = '';
-    try {
-      const { rows: settingsRows } = await db.query('SELECT colors, fonts FROM settings WHERE brand_id = (SELECT brand_id FROM scripts WHERE id = $1)', [req.params.id]);
-      // Check for brand_voice in script metadata or settings
-    } catch {}
+    // System prompt in two cached blocks: stable instructions first, then the
+    // per-script state. Both carry cache_control so multi-turn chats reuse them.
+    const instructionsBlock = `You are the AI script assistant inside Particle's production panel — a friendly, sharp creative partner for short-form video ad scripts. The user is a producer editing a storyboard of scenes; each scene has: location, what_we_see (visuals), what_we_hear (voiceover/audio), duration.
 
-    const systemPrompt = `You are a powerful AI scriptwriting agent for "${rows[0].title}". You can DISCUSS, ANALYZE, and EXECUTE actions on the script.
+HOW TO WORK:
+- To change the script, call the tools. Tool calls are applied to the script AUTOMATICALLY and instantly — never ask permission, never say "click to apply", never print JSON or code blocks describing an edit. Just make the edit and tell them what you did, past tense ("Done — tightened scene 3's VO to 9 words.").
+- edit_scene/batch_edit values must be the COMPLETE new text for the field, ready to use.
+- For rewrites across several scenes, prefer one batch_edit call.
+- Scene numbers are 1-based and refer to the CURRENT script state shown below.
+- If the user is just discussing, analyzing or brainstorming, don't call tools — reply normally.
+- When rating or reviewing (pacing, hook, CTA, arc), be honest, specific and constructive.
+- If the user attaches images, use them as creative/visual reference for the edits they ask for.
 
-Current script (${scenes.length} scenes, ~${scenes.reduce((sum, s) => sum + (stripHtml(s.what_we_hear) || '').split(/\s+/).filter(Boolean).length, 0)} words):
-${scenesSummary}${contextNote}
+VOICE: warm, concise, confident. Short sentences. No corporate filler, no lectures. One emoji max, only when it fits. Answer in the user's language if they don't write in English.`;
 
-ACTIONS — include \`\`\`action JSON blocks to execute changes:
+    const scriptBlock = `CURRENT SCRIPT — "${rows[0].title}" (${scenes.length} scenes, ~${scenes.reduce((sum, s) => sum + (stripHtml(s.what_we_hear) || '').split(/\s+/).filter(Boolean).length, 0)} VO words):
+${scenesSummary || '(script is empty — no scenes yet)'}${contextNote}`;
 
-SCENE EDITING:
-1. Edit scene: \`\`\`action
-{"action":"edit_scene","scene_number":1,"field":"what_we_hear","value":"Full new text"}
-\`\`\`  Fields: "what_we_see", "what_we_hear", "location", "duration"
+    // Build conversation: skip empty messages (an empty assistant turn used to
+    // 400 the whole conversation), attach images as vision blocks.
+    const claudeMessages = [];
+    for (const m of messages) {
+      const role = m.role === 'user' ? 'user' : 'assistant';
+      const blocks = [];
+      if (role === 'user' && Array.isArray(m.images)) {
+        for (const img of m.images.slice(0, 6)) {
+          if (img?.data && img?.media_type) {
+            blocks.push({ type: 'image', source: { type: 'base64', media_type: img.media_type, data: img.data } });
+          }
+        }
+      }
+      const text = typeof m.content === 'string' ? m.content.trim() : '';
+      if (text) blocks.push({ type: 'text', text });
+      if (blocks.length === 0) continue;
+      claudeMessages.push({ role, content: blocks });
+    }
+    while (claudeMessages.length && claudeMessages[0].role !== 'user') claudeMessages.shift();
+    if (claudeMessages.length === 0) return res.status(400).json({ error: 'No valid messages' });
 
-2. Delete scene: \`\`\`action
-{"action":"delete_scene","scene_number":3}
-\`\`\`
-
-3. Add scene: \`\`\`action
-{"action":"add_scene","after_scene_number":2,"location":"INT. STUDIO","what_we_see":"Visual","what_we_hear":"Audio"}
-\`\`\`
-
-4. Reorder scene: \`\`\`action
-{"action":"reorder_scene","scene_number":5,"move_to_position":2}
-\`\`\`
-
-5. Merge scenes: \`\`\`action
-{"action":"merge_scenes","scene_numbers":[3,4]}
-\`\`\`
-
-BULK OPERATIONS:
-6. Find & Replace: \`\`\`action
-{"action":"find_replace","find":"old","replace":"new"}
-\`\`\`
-
-7. Batch edit (edit multiple scenes at once): \`\`\`action
-{"action":"batch_edit","edits":[{"scene_number":1,"field":"what_we_hear","value":"..."},{"scene_number":2,"field":"what_we_hear","value":"..."}]}
-\`\`\`
-
-8. Duplicate script: \`\`\`action
-{"action":"duplicate_script","new_title":"Script v2"}
-\`\`\`
-
-ANALYSIS (no action block needed — just respond with analysis):
-- "Rate this script" → Score pacing (1-10), emotional arc, CTA strength, visual variety, timing fit
-- "Optimize for 30 seconds" → Suggest which scenes to cut/shorten to hit target
-- "Generate shot list" → Production-ready shot list with camera, lighting, crew notes
-- "Suggest alternatives for scene X" → Write 2-3 alternative versions
-
-RULES:
-- Explain BEFORE action blocks. Be concise and creative.
-- Multiple action blocks allowed per response.
-- edit_scene must include the COMPLETE new text for the field.
-- For batch rewrites, use batch_edit with all edits in one action.
-- If user just wants to discuss/analyze, respond without action blocks.
-- When scoring, be honest and specific with improvement suggestions.`;
-
-    // Build conversation messages for Claude API
-    const claudeMessages = messages.map(m => ({
-      role: m.role === 'user' ? 'user' : 'assistant',
-      content: m.content,
-    }));
-
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 2048,
-        system: systemPrompt,
-        messages: claudeMessages,
-      }),
+    const client = getAnthropicClient();
+    const stream = client.beta.messages.stream({
+      model: 'claude-opus-5',
+      max_tokens: 16000,
+      betas: ['server-side-fallback-2026-07-01'],
+      fallbacks: 'default',
+      output_config: { effort: 'low' },
+      system: [
+        { type: 'text', text: instructionsBlock, cache_control: { type: 'ephemeral' } },
+        { type: 'text', text: scriptBlock, cache_control: { type: 'ephemeral' } },
+      ],
+      tools: CHAT_TOOLS,
+      messages: claudeMessages,
     });
+    const msg = await stream.finalMessage();
 
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      return res.status(resp.status).json({ error: err.error?.message || 'AI request failed' });
+    if (msg.stop_reason === 'refusal') {
+      return res.json({ reply: "I can't help with that request — try rephrasing it.", actions: undefined });
     }
 
-    const data = await resp.json();
-    const reply = data.content[0]?.text || 'No response generated.';
-    // Parse action blocks from reply
+    let reply = '';
     const actions = [];
-    const actionRegex = /```action\n([\s\S]*?)```/g;
-    let match;
-    while ((match = actionRegex.exec(reply)) !== null) {
-      try { actions.push(JSON.parse(match[1].trim())); } catch {}
+    for (const block of msg.content) {
+      if (block.type === 'text') reply += block.text;
+      else if (block.type === 'tool_use') actions.push({ action: block.name, ...block.input });
     }
-    // Clean reply text (remove action blocks for display)
-    const cleanReply = reply.replace(/```action\n[\s\S]*?```/g, '').trim();
-    res.json({ reply: cleanReply, actions: actions.length > 0 ? actions : undefined });
+    // Defensive: never let raw JSON/code fences reach the chat UI
+    reply = reply.replace(/```[\s\S]*?```/g, '').trim();
+    if (!reply && actions.length) reply = 'Done!';
+
+    res.json({ reply: reply || 'No response generated.', actions: actions.length > 0 ? actions : undefined });
   } catch (err) {
     console.error('POST /scripts/:id/chat error:', err);
-    res.status(500).json({ error: err.message });
+    const status = err?.status && Number.isInteger(err.status) ? err.status : 500;
+    const friendly = err?.name === 'APIConnectionTimeoutError' || /timeout/i.test(err?.message || '')
+      ? 'The AI took too long to respond — try a smaller request.'
+      : (err?.error?.error?.message || err?.message || 'AI request failed');
+    res.status(status).json({ error: friendly });
   }
 });
 
