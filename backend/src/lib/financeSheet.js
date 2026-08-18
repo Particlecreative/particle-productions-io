@@ -69,11 +69,14 @@ function fmtDate(d) {
   catch { return ''; }
 }
 
-// Normalize a line item's payment status to the template's "Paid" / "Not Payed"
+// Normalize the PAYMENT status (set in the Payments tab -> line_items.payment_status)
+// to the finance template's wording. Never uses the work/progress `status` field
+// (e.g. "Done" is a work status, not "paid").
 function statusLabel(li) {
-  const raw = (li.payment_status || li.status || '').toString().toLowerCase();
-  if (/paid|payed|complete|done/.test(raw) && !/not/.test(raw)) return 'Paid';
-  if (li.paid_at) return 'Paid';
+  const ps = (li.payment_status || '').toString().trim();
+  if (/^paid$/i.test(ps)) return 'Paid';
+  if (li.paid_at) return 'Paid';               // Payments tab stamps paid_at when marking paid
+  if (/pending/i.test(ps)) return 'Pending';
   return 'Not Payed';
 }
 
