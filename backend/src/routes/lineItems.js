@@ -2,6 +2,7 @@ const router = require('express').Router();
 const db     = require('../db');
 const { verifyJWT } = require('../middleware/auth');
 const { logAction } = require('../lib/auditLog');
+const { triggerFinanceSync } = require('../lib/financeSheet');
 
 router.use(verifyJWT);
 
@@ -79,6 +80,7 @@ router.post('/', async (req, res) => {
     }
 
     logAction({ production_id, entity: 'line_item', action: 'create', summary: `Added line item "${item || full_name || 'item'}"`, new_value: `${item || ''} — ${type || ''}`, user_id: req.user?.id, user_name: req.user?.name });
+    triggerFinanceSync(production_id);
     res.status(201).json(rows[0]);
   } catch (err) {
     console.error('POST /line-items error:', err);
@@ -124,6 +126,7 @@ router.patch('/:id', async (req, res) => {
 
     const changedFields = Object.keys(req.body).filter(k => k !== '_log').join(', ');
     logAction({ production_id: rows[0].production_id, entity: 'line_item', action: 'update', summary: `Updated line item "${rows[0].item || rows[0].full_name || ''}" — ${changedFields}`, user_id: req.user?.id, user_name: req.user?.name });
+    triggerFinanceSync(rows[0].production_id);
     res.json(rows[0]);
   } catch (err) {
     console.error('PATCH /line-items error:', err);
@@ -201,6 +204,7 @@ router.delete('/:id', async (req, res) => {
 
     await syncTotals(item.production_id);
     logAction({ production_id: item.production_id, entity: 'line_item', action: 'delete', summary: `Deleted line item "${item.item || item.full_name || ''}"`, user_id: req.user?.id, user_name: req.user?.name });
+    triggerFinanceSync(item.production_id);
     res.json({ success: true, deleted });
   } catch (err) {
     console.error('Delete line item error:', err);

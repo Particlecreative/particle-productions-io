@@ -25,6 +25,7 @@ import GanttTab from '../components/production/GanttTab';
 import ImportModal from '../components/production/ImportModal';
 import CCPaymentsTab from '../components/production/CCPaymentsTab';
 import ImportAccountingModal from '../components/production/ImportAccountingModal';
+import FinanceSheetModal from '../components/production/FinanceSheetModal';
 import CastTab from '../components/production/CastTab';
 import ProductDeliveryTab from '../components/production/ProductDeliveryTab';
 import CallSheetTab from '../components/production/CallSheetTab';
@@ -77,6 +78,7 @@ export default function ProductionBoard() {
   }, []);
   const [showImport, setShowImport] = useState(false);
   const [showAccountingImport, setShowAccountingImport] = useState(false);
+  const [showFinanceSheet, setShowFinanceSheet] = useState(false);
   const [prodRate, setProdRate] = useState(null);
   const [lineItems, setLineItems] = useState([]);
   const [showTaxiWizard, setShowTaxiWizard] = useState(false);
@@ -468,7 +470,7 @@ export default function ProductionBoard() {
 
       {/* ── Tab Content ──────────────────────────────────────── */}
       {activeTab === 'Budget Table' && (
-        <BudgetTable productionId={id} production={production} onRefresh={refresh} prodRate={prodRate} onImport={() => setShowImport(true)} onAccountingImport={() => setShowAccountingImport(true)} />
+        <BudgetTable productionId={id} production={production} onRefresh={refresh} prodRate={prodRate} onImport={() => setShowImport(true)} onFinanceSheet={() => setShowFinanceSheet(true)} />
       )}
       {activeTab === 'People on Set' && (
         <PeopleOnSet production={production} />
@@ -521,12 +523,22 @@ export default function ProductionBoard() {
         />
       )}
 
-      {/* Accounting Import Modal */}
+      {/* Accounting Import Modal (legacy import path — kept for Excel/CSV imports) */}
       {showAccountingImport && (
         <ImportAccountingModal
           productionId={id}
           onClose={() => setShowAccountingImport(false)}
           onImported={() => { setShowAccountingImport(false); refresh(); }}
+        />
+      )}
+
+      {/* Finance Sheet (Google Sheet mirror) */}
+      {showFinanceSheet && (
+        <FinanceSheetModal
+          productionId={id}
+          production={production}
+          onClose={() => setShowFinanceSheet(false)}
+          onChanged={refresh}
         />
       )}
 

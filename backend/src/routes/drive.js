@@ -66,6 +66,7 @@ router.get('/auth', verifyJWT, (req, res) => {
     access_type: 'offline',
     scope: [
       'https://www.googleapis.com/auth/drive',
+      'https://www.googleapis.com/auth/spreadsheets',
       'https://www.googleapis.com/auth/calendar',
       'https://www.googleapis.com/auth/gmail.send',
     ],

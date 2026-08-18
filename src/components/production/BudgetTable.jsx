@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
-import { Plus, Trash2, Mail, FileSignature, ExternalLink, Download, Check, ChevronUp, ChevronDown, ChevronRight, SlidersHorizontal, X, Upload, User, CreditCard, AlertTriangle } from 'lucide-react';
+import { Plus, Trash2, Mail, FileSignature, ExternalLink, Download, Check, ChevronUp, ChevronDown, ChevronRight, SlidersHorizontal, X, Upload, User, CreditCard, AlertTriangle, FileSpreadsheet } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useCurrency } from '../../context/CurrencyContext';
 import { useNotifications } from '../../context/NotificationsContext';
@@ -68,7 +68,7 @@ const STATUS_CLASSES = {
 
 const BUDGET_TOGGLE_KEYS = ['full_name','planned_budget','type','status','timeline','actual_spent','difference','invoice','contract'];
 
-export default function BudgetTable({ productionId, production, onRefresh, prodRate, onImport, onAccountingImport }) {
+export default function BudgetTable({ productionId, production, onRefresh, prodRate, onImport, onFinanceSheet }) {
   const { isEditor, user } = useAuth();
   const { fmt, currency, rate } = useCurrency();
 
@@ -511,13 +511,14 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
             Import
           </button>
         )}
-        {isEditor && onAccountingImport && (
+        {onFinanceSheet && (
           <button
-            onClick={onAccountingImport}
+            onClick={onFinanceSheet}
+            title="Open, generate or connect the finance Google Sheet"
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-green-200 bg-white text-green-600 hover:text-green-700 hover:border-green-400 transition-all"
           >
-            <Upload size={12} />
-            PRD Sheet
+            <FileSpreadsheet size={12} />
+            Finance Sheet
           </button>
         )}
         {/* Sticky toggle */}
@@ -714,7 +715,7 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
                     <p className="text-sm font-semibold text-gray-400">No line items</p>
                     {isEditor && (
                       <p className="text-xs text-gray-300 mt-1">
-                        Add one below{onAccountingImport && <> or <button onClick={onAccountingImport} className="text-blue-500 hover:underline">Import from PRD Sheet</button></>}
+                        Add one below{onFinanceSheet && <> or <button onClick={onFinanceSheet} className="text-blue-500 hover:underline">open the Finance Sheet</button></>}
                       </p>
                     )}
                   </td>

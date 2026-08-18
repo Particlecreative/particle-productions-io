@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const db     = require('../db');
 const { verifyJWT, requireEditor, requireAdmin } = require('../middleware/auth');
+const { createFinanceSheet, triggerFinanceSync } = require('../lib/financeSheet');
 
 // All production routes require authentication
 router.use(verifyJWT);
@@ -88,6 +89,9 @@ router.post('/', requireAdmin, async (req, res) => {
       ]
     );
     res.status(201).json(rows[0]);
+    // Best-effort: auto-create the finance mirror sheet for the new production
+    // (non-blocking; safe no-op if Google isn't connected)
+    createFinanceSheet(id).catch(e => console.error(`finance-sheet auto-create failed for ${id}:`, e.message));
   } catch (err) {
     console.error('POST /productions error:', err);
     if (err.code === '23505') return res.status(409).json({ error: 'Production ID already exists' });
@@ -194,6 +198,7 @@ router.patch('/:id', requireEditor, async (req, res) => {
       }
     }
 
+    triggerFinanceSync(rows[0].id); // refresh sheet title/status if one is linked
     res.json(rows[0]);
   } catch (err) {
     console.error('PATCH /productions error:', err);

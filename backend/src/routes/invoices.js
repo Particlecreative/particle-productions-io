@@ -2,6 +2,7 @@ const router = require('express').Router();
 const db     = require('../db');
 const { logAction } = require('../lib/auditLog');
 const { verifyJWT } = require('../middleware/auth');
+const { triggerFinanceSync } = require('../lib/financeSheet');
 
 router.use(verifyJWT);
 
@@ -37,6 +38,7 @@ router.post('/', async (req, res) => {
       [line_item_id || null, production_id || null, file_url || null, amount || null, date_received || null, payment_due || null, status || 'pending', mismatch || false]
     );
     logAction({ production_id: rows[0].production_id, entity: "invoice", action: "create", summary: `Created invoice for "${rows[0].item || ''}" — ${rows[0].invoice_status || ''}`, user_id: req.user?.id, user_name: req.user?.name });
+    triggerFinanceSync(rows[0].production_id);
     res.status(201).json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
@@ -58,6 +60,7 @@ router.patch('/:id', async (req, res) => {
       [req.params.id, ...values]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+    triggerFinanceSync(rows[0].production_id);
     res.json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: 'Server error' });

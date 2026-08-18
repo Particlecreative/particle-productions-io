@@ -626,6 +626,16 @@ export function updateTask(id, updates) {
   return apiPatch(`/tasks/${encodeURIComponent(id)}`, updates);
 }
 
+// ========== FINANCE SHEET (Google Sheet mirror) ==========
+const _fsPath = (id) => `/finance-sheet/${encodeURIComponent(id)}`;
+export function getFinanceSheet(productionId)    { return apiGet(_fsPath(productionId)); }
+export function createFinanceSheet(productionId) { return apiPost(`${_fsPath(productionId)}/create`, {}); }
+export function syncFinanceSheet(productionId)   { return apiPost(`${_fsPath(productionId)}/sync`, {}); }
+export function linkFinanceSheet(productionId, url) { return apiPost(`${_fsPath(productionId)}/link`, { url }); }
+export function unlinkFinanceSheet(productionId) { return apiDelete(`${_fsPath(productionId)}/link`); }
+export function getFinanceSheetMismatches(productionId) { return apiGet(`${_fsPath(productionId)}/mismatches`); }
+export function shareFinanceSheet(productionId)  { return apiPost(`${_fsPath(productionId)}/share`, {}); }
+
 export function deleteTask(id) {
   if (IS_DEV) {
     write('cp_tasks', read('cp_tasks', []).filter(t => t.id !== id));

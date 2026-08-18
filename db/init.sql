@@ -110,6 +110,10 @@ CREATE TABLE IF NOT EXISTS productions (
   air_date            DATE,
   custom_columns      JSONB DEFAULT '[]',            -- column definitions for this board
   custom_fields       JSONB DEFAULT '{}',            -- admin-defined custom field values
+  finance_sheet_id        TEXT,                      -- linked Google Sheet id (finance mirror)
+  finance_sheet_url       TEXT,
+  finance_sheet_synced_at TIMESTAMPTZ,               -- last CP -> Sheet push
+  finance_sheet_mode      TEXT,                      -- 'mirror' (CP-owned) | 'linked' (external, read-only)
   created_at          TIMESTAMPTZ DEFAULT NOW(),
   updated_at          TIMESTAMPTZ DEFAULT NOW()
 );
