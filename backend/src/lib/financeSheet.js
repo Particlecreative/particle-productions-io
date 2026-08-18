@@ -105,21 +105,24 @@ async function buildSheetData(productionId) {
   titleRow[7] = fmtDate(new Date());
 
   const dataRows = [];
+  const rowStatuses = []; // status per data row, for row coloring
   const links = []; // { row, col, url } for hyperlinking the Invoice/Receipt cell
   let rowIdx = 3; // 1-based sheet row where data starts (title=1, header=2, data from 3)
   for (const li of items) {
     const invoiceUrl = li.invoice_url || invByItem[li.id] || '';
+    const st = statusLabel(li);
     dataRows.push([
       li.full_name || li.supplier || '',
       stripHtml(li.item) || li.type || '',
       money(li.planned_budget, li.currency_code),
       money(li.actual_spent, li.currency_code),
       invoiceUrl ? 'Link' : '',
-      statusLabel(li),
+      st,
       li.payment_method || '',
       li.bank_details || '',
       li.business_type || li.supplier_type || '',
     ]);
+    rowStatuses.push(st);
     if (invoiceUrl) links.push({ row: rowIdx, col: 4, url: invoiceUrl }); // col E (0-based 4)
     rowIdx++;
   }
@@ -139,15 +142,32 @@ async function buildSheetData(productionId) {
   totalRow[2] = totalStr;
 
   const values = [titleRow, HEADERS.slice(), ...dataRows, totalRow];
-  return { prod, values, links, dataRowCount: dataRows.length };
+  return { prod, values, links, dataRowCount: dataRows.length, rowStatuses };
 }
 
 // ── Formatting requests (batchUpdate) to match the template look ─────────────
-function formatRequests(sheetId, dataRowCount) {
+// Light background tints per payment status (row coloring)
+const STATUS_FILL = {
+  'Paid':      { red: 0.85, green: 0.94, blue: 0.85 }, // light green
+  'Not Payed': { red: 0.99, green: 0.89, blue: 0.89 }, // light red
+  'Pending':   { red: 1.00, green: 0.96, blue: 0.83 }, // light amber
+};
+function formatRequests(sheetId, dataRowCount, rowStatuses = []) {
   const headerRow = 1; // 0-based
   const totalRowIdx = 2 + dataRowCount;
   const navy = { red: 0.012, green: 0.043, blue: 0.18 };
+  // Per-row light fill by status (data rows start at 0-based index 2)
+  const rowFills = rowStatuses.map((st, i) => {
+    const bg = STATUS_FILL[st];
+    if (!bg) return null;
+    return { repeatCell: {
+      range: { sheetId, startRowIndex: 2 + i, endRowIndex: 3 + i, startColumnIndex: 0, endColumnIndex: NCOLS },
+      cell: { userEnteredFormat: { backgroundColor: bg } },
+      fields: 'userEnteredFormat.backgroundColor',
+    } };
+  }).filter(Boolean);
   return [
+    ...rowFills,
     // Merge title across C..E (cols 2..4)
     { mergeCells: { range: { sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 2, endColumnIndex: 5 }, mergeType: 'MERGE_ALL' } },
     // Title style
@@ -195,7 +215,7 @@ async function shareFinanceSheet(drive, spreadsheetId) {
 // ── Create a brand-new mirror sheet for a production ─────────────────────────
 async function createFinanceSheet(productionId) {
   const { sheets, drive } = await getGoogleClients((await db.query('SELECT brand_id FROM productions WHERE id = $1', [productionId])).rows[0]?.brand_id);
-  const { prod, values, links, dataRowCount } = await buildSheetData(productionId);
+  const { prod, values, links, dataRowCount, rowStatuses } = await buildSheetData(productionId);
 
   const brandName = prod.brand_id === 'blurr' ? 'Blurr' : 'Particle';
   const created = await sheets.spreadsheets.create({
@@ -212,7 +232,7 @@ async function createFinanceSheet(productionId) {
   await sheets.spreadsheets.values.update({
     spreadsheetId, range: 'Budget!A1', valueInputOption: 'RAW', requestBody: { values },
   });
-  await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: formatRequests(innerSheetId, dataRowCount) } });
+  await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: formatRequests(innerSheetId, dataRowCount, rowStatuses) } });
   await applyLinks(sheets, spreadsheetId, 'Budget', links);
 
   // Share with the finance team as editors (best-effort, per email)
@@ -243,7 +263,7 @@ async function syncFinanceSheet(productionId) {
 
   const { sheets } = await getGoogleClients(prod.brand_id);
   const spreadsheetId = prod.finance_sheet_id;
-  const { values, links, dataRowCount } = await buildSheetData(productionId);
+  const { values, links, dataRowCount, rowStatuses } = await buildSheetData(productionId);
 
   // Find the target tab (prefer "Budget", else first)
   const meta = await sheets.spreadsheets.get({ spreadsheetId, fields: 'sheets.properties' });
@@ -254,7 +274,7 @@ async function syncFinanceSheet(productionId) {
   // Clear old data region then write fresh (keeps sheet id/url stable)
   await sheets.spreadsheets.values.clear({ spreadsheetId, range: `${sheetTitle}!A1:Z1000` });
   await sheets.spreadsheets.values.update({ spreadsheetId, range: `${sheetTitle}!A1`, valueInputOption: 'RAW', requestBody: { values } });
-  await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: formatRequests(innerSheetId, dataRowCount) } });
+  await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: formatRequests(innerSheetId, dataRowCount, rowStatuses) } });
   await applyLinks(sheets, spreadsheetId, sheetTitle, links);
 
   await db.query('UPDATE productions SET finance_sheet_synced_at = NOW() WHERE id = $1', [productionId]);
