@@ -30,6 +30,10 @@ const PEOPLE_COLS = [
 
 const DEFAULT_HIDDEN = PEOPLE_COLS.filter(c => !c.defaultVisible).map(c => c.key);
 
+// Budget line-item types that are SERVICES, not people — excluded from People on Set
+const NON_PERSON_TYPES = new Set(['equipment', 'catering & transport', 'catering', 'transport', 'post', 'office']);
+const isPersonLineItem = (i) => !!i.full_name?.trim() && !NON_PERSON_TYPES.has((i.type || '').trim().toLowerCase());
+
 const BLANK_PERSON = {
   full_name: '', role: '', phone: '', email: '', id_number: '',
   bank_name: '', account_number: '', branch: '', swift: '',
@@ -80,7 +84,7 @@ export default function PeopleOnSet({ production }) {
         Promise.resolve(getSupplierSubmissions(productionId)),
       ]);
       setPeople(Array.isArray(p) ? p : []);
-      setBudgetCrew((Array.isArray(items) ? items : []).filter(i => i.full_name?.trim()));
+      setBudgetCrew((Array.isArray(items) ? items : []).filter(isPersonLineItem));
       setSubmissions(Array.isArray(subs) ? subs : []);
     }
     load();
