@@ -494,7 +494,7 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
         <div className="mb-3 flex items-center gap-2 px-4 py-2.5 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
           <AlertTriangle size={13} className="shrink-0 text-red-500" />
           <span>
-            Line items total <strong>{fmtDisplay(totalPlanned)}</strong> exceeds the production planned budget of{' '}
+            Estimated total <strong>{fmtDisplay(totalPlanned)}</strong> exceeds the planned budget of{' '}
             <strong>{fmtDisplay(capBudget)}</strong> — over by <strong className="text-red-800">{fmtDisplay(overAmount)}</strong>.
           </span>
         </div>

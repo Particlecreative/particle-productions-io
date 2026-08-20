@@ -211,10 +211,13 @@ export default function ProductionBoard() {
   const liveEstILS   = lineItems.filter(i => i.currency_code === 'ILS').reduce((s, i) => s + (parseFloat(i.planned_budget) || 0), 0);
   const hasMixedCurrency = liveSpentUSD > 0 && liveSpentILS > 0;
 
-  // USD-equivalent total (for progress bar + Budget Left only)
+  // USD-equivalent totals (for progress + comparisons)
   const spentUSDEquiv = liveSpentUSD + liveSpentILS / DEFAULT_ILS_RATE;
-  const remaining = planned - spentUSDEquiv;
-  const pct = planned > 0 ? Math.round((spentUSDEquiv / planned) * 100) : 0;
+  const estTotalUSD   = liveEstUSD + liveEstILS / DEFAULT_ILS_RATE;   // live estimated total (sum of line items)
+  const hasMixedEst   = liveEstUSD > 0 && liveEstILS > 0;
+  const estVsPlanned  = estTotalUSD - planned;                        // + = estimate is over the planned budget
+  const spentPct      = estTotalUSD > 0 ? Math.round((spentUSDEquiv / estTotalUSD) * 100) : 0;
+  const leftToPay     = estTotalUSD - spentUSDEquiv;                  // still to pay against the estimate
 
   // Stale detection: DB has non-zero values but line items are empty
   const dbSpent = parseFloat(production.actual_spent) || 0;
@@ -366,12 +369,30 @@ export default function ProductionBoard() {
           </div>
 
           {/* Budget Stats */}
-          <div className="mt-4 grid grid-cols-3 gap-3">
-            {/* Estimated Total */}
+          <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+            {/* Planned Budget — the target/cap set on the production */}
+            <div className="rounded-2xl px-4 py-3 border border-gray-100 bg-gray-50/80">
+              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Planned Budget</div>
+              <div className="text-2xl font-black tracking-tight text-gray-800">{fmt(planned)}</div>
+              <div className="text-[10px] text-gray-400 mt-1">Target for this production</div>
+            </div>
+
+            {/* Estimated Total — live sum of all line-item estimates */}
             <div className="rounded-2xl px-4 py-3 border border-gray-100 bg-gray-50/80">
               <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Estimated Total</div>
-              <div className="text-2xl font-black tracking-tight" style={{ color: 'var(--brand-primary)' }}>{fmt(planned)}</div>
-              <div className="text-[10px] text-gray-400 mt-1">Production budget</div>
+              <div className="text-2xl font-black tracking-tight" style={{ color: 'var(--brand-primary)' }}>{fmt(estTotalUSD)}</div>
+              {hasMixedEst ? (
+                <div className="text-[10px] text-gray-400 mt-0.5">
+                  ${liveEstUSD.toLocaleString()} + ₪{liveEstILS.toLocaleString()} · rate ₪{DEFAULT_ILS_RATE.toFixed(2)}
+                </div>
+              ) : (
+                <div className="text-[10px] text-gray-400 mt-1">Sum of line items</div>
+              )}
+              {planned > 0 && estTotalUSD > 0 && (
+                <div className={clsx('text-[10px] font-bold mt-1', estVsPlanned > 0.5 ? 'text-red-500' : 'text-green-600')}>
+                  {estVsPlanned > 0.5 ? `▲ ${fmt(estVsPlanned)} over planned` : `${fmt(Math.abs(estVsPlanned))} under planned`}
+                </div>
+              )}
             </div>
 
             {/* Actual Spent */}
@@ -395,28 +416,26 @@ export default function ProductionBoard() {
               {lineItems.length === 0 && (
                 <div className="text-[10px] text-gray-400 mt-1">No line items yet</div>
               )}
-              {planned > 0 && spentUSDEquiv > 0 && (
+              {estTotalUSD > 0 && spentUSDEquiv > 0 && (
                 <div className="mt-2 flex items-center gap-2">
                   <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
                     <div className="h-full rounded-full transition-all duration-700"
-                      style={{ width: `${Math.min(pct, 100)}%`, background: pct > 100 ? '#ef4444' : pct > 80 ? '#f59e0b' : 'var(--brand-accent)' }} />
+                      style={{ width: `${Math.min(spentPct, 100)}%`, background: spentPct > 100 ? '#ef4444' : spentPct > 80 ? '#f59e0b' : 'var(--brand-accent)' }} />
                   </div>
-                  <span className="text-[10px] font-bold text-gray-400 shrink-0">{pct}%</span>
+                  <span className="text-[10px] font-bold text-gray-400 shrink-0">{spentPct}%</span>
                 </div>
               )}
             </div>
 
-            {/* Left / Over */}
-            <div className={clsx('rounded-2xl px-4 py-3 border', remaining >= 0 ? 'bg-green-50/80 border-green-100' : 'bg-red-50/80 border-red-100')}>
-              <div className={clsx('text-[10px] font-semibold uppercase tracking-wider mb-1.5', remaining >= 0 ? 'text-green-500' : 'text-red-400')}>
-                {remaining >= 0 ? 'Budget Left ✓' : 'Over Budget ⚠'}
+            {/* Left to Pay — estimated total minus actual spent */}
+            <div className={clsx('rounded-2xl px-4 py-3 border', leftToPay >= 0 ? 'bg-green-50/80 border-green-100' : 'bg-red-50/80 border-red-100')}>
+              <div className={clsx('text-[10px] font-semibold uppercase tracking-wider mb-1.5', leftToPay >= 0 ? 'text-green-500' : 'text-red-400')}>
+                {leftToPay >= 0 ? 'Left to Pay' : 'Overspent ⚠'}
               </div>
-              <div className={clsx('text-2xl font-black tracking-tight', remaining >= 0 ? 'text-green-600' : 'text-red-600')}>
-                {remaining >= 0 ? '' : '-'}{fmt(Math.abs(remaining))}
+              <div className={clsx('text-2xl font-black tracking-tight', leftToPay >= 0 ? 'text-green-600' : 'text-red-600')}>
+                {leftToPay >= 0 ? '' : '-'}{fmt(Math.abs(leftToPay))}
               </div>
-              {hasMixedCurrency && prodRate && (
-                <div className="text-[10px] text-gray-400 mt-1">Rate: ₪{(prodRate || DEFAULT_ILS_RATE).toFixed(2)}/$1</div>
-              )}
+              <div className="text-[10px] text-gray-400 mt-1">Estimated − spent</div>
             </div>
           </div>
         </div>
