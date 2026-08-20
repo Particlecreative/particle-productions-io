@@ -321,22 +321,34 @@ async function findMismatches(productionId) {
     status: statusLabel(li),
   }));
 
-  const norm = (s) => s.toLowerCase().replace(/\s+/g, ' ').trim();
-  const cpByName = new Map(cpRows.map(r => [norm(r.name), r]));
-  const sheetByName = new Map(sheetRows.map(r => [norm(r.name), r]));
-
+  // Greedy fuzzy match: names match across spelling variants, diacritics,
+  // and Hebrew<->English transliteration — not literal string equality.
+  const MATCH_THRESHOLD = 0.82;
+  const usedCp = new Set();
   const diffs = [];
   for (const s of sheetRows) {
-    const cp = cpByName.get(norm(s.name));
-    if (!cp) { diffs.push({ type: 'only_in_sheet', name: s.name, sheet: s }); continue; }
-    const fieldDiffs = [];
-    if (s.budget != null && cp.budget != null && Math.abs(s.budget - cp.budget) > 0.5) fieldDiffs.push({ field: 'Budget', sheet: s.budget, cp: cp.budget });
-    if (s.actual != null && cp.actual != null && Math.abs(s.actual - cp.actual) > 0.5) fieldDiffs.push({ field: 'Actual', sheet: s.actual, cp: cp.actual });
-    if (s.status && cp.status && norm(s.status) !== norm(cp.status)) fieldDiffs.push({ field: 'Status', sheet: s.status, cp: cp.status });
-    if (fieldDiffs.length) diffs.push({ type: 'changed', name: s.name, fields: fieldDiffs });
+    let best = -1, bestScore = 0;
+    for (let i = 0; i < cpRows.length; i++) {
+      if (usedCp.has(i) || !cpRows[i].name) continue;
+      const sc = nameScore(s.name, cpRows[i].name);
+      if (sc > bestScore) { bestScore = sc; best = i; }
+    }
+    if (best >= 0 && bestScore >= MATCH_THRESHOLD) {
+      usedCp.add(best);
+      const cp = cpRows[best];
+      const fieldDiffs = [];
+      if (s.budget != null && cp.budget != null && Math.abs(s.budget - cp.budget) > 0.5) fieldDiffs.push({ field: 'Budget', sheet: s.budget, cp: cp.budget });
+      if (s.actual != null && cp.actual != null && Math.abs(s.actual - cp.actual) > 0.5) fieldDiffs.push({ field: 'Actual', sheet: s.actual, cp: cp.actual });
+      if (s.status && cp.status && normStatus(s.status) !== normStatus(cp.status)) fieldDiffs.push({ field: 'Status', sheet: s.status, cp: cp.status });
+      // Note the spelling variant itself if the names weren't identical
+      if (normName(s.name) !== normName(cp.name)) fieldDiffs.push({ field: 'Name spelling', sheet: s.name, cp: cp.name });
+      if (fieldDiffs.length) diffs.push({ type: 'changed', name: cp.name, fields: fieldDiffs });
+    } else {
+      diffs.push({ type: 'only_in_sheet', name: s.name });
+    }
   }
-  for (const cp of cpRows) {
-    if (!sheetByName.has(norm(cp.name)) && cp.name) diffs.push({ type: 'only_in_cp', name: cp.name, cp });
+  for (let i = 0; i < cpRows.length; i++) {
+    if (!usedCp.has(i) && cpRows[i].name) diffs.push({ type: 'only_in_cp', name: cpRows[i].name });
   }
   return { diffs, sheetRowCount: sheetRows.length, cpRowCount: cpRows.length };
 }
@@ -344,6 +356,60 @@ function parseMoney(v) {
   if (v == null || v === '') return null;
   const n = parseFloat(v.toString().replace(/[^0-9.\-]/g, ''));
   return isNaN(n) ? null : n;
+}
+
+// ── Fuzzy name matching (transliteration + spelling variants) ────────────────
+const HEBREW_TRANSLIT = {
+  'א':'a','ב':'b','ג':'g','ד':'d','ה':'h','ו':'o','ז':'z','ח':'h','ט':'t','י':'i',
+  'כ':'k','ך':'k','ל':'l','מ':'m','ם':'m','נ':'n','ן':'n','ס':'s','ע':'a','פ':'f','ף':'f',
+  'צ':'ts','ץ':'ts','ק':'k','ר':'r','ש':'sh','ת':'t',
+};
+function translitHebrew(s) {
+  // Strip niqqud/marks, map letters phonetically to Latin
+  return s.replace(/[֑-ׇ]/g, '').replace(/[א-ת]/g, ch => (HEBREW_TRANSLIT[ch] ?? ''));
+}
+function normName(s) {
+  let x = translitHebrew((s || '').toString());
+  x = x.normalize('NFD').replace(/[̀-ͯ]/g, '');   // strip Latin diacritics
+  return x.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+const VOWELS = new Set(['a', 'e', 'i', 'o', 'u', 'y']);
+function looseToken(t) {
+  // Drop vowels + h and collapse doubled letters → "assaf"/"asaf" both become "sf"
+  let out = '';
+  for (const ch of t) { if (VOWELS.has(ch) || ch === 'h') continue; if (out[out.length - 1] !== ch) out += ch; }
+  return out || t;
+}
+function looseKey(s) {
+  return normName(s).split(' ').filter(Boolean).map(looseToken).sort().join(' ');
+}
+function levenshtein(a, b) {
+  const m = a.length, n = b.length;
+  if (!m) return n; if (!n) return m;
+  const dp = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) {
+    let prev = dp[0]; dp[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const tmp = dp[j];
+      dp[j] = Math.min(dp[j] + 1, dp[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = tmp;
+    }
+  }
+  return dp[n];
+}
+function nameScore(a, b) {
+  const na = normName(a), nb = normName(b);
+  if (!na || !nb) return 0;
+  if (na === nb) return 1;
+  if (looseKey(a) === looseKey(b)) return 0.95; // spelling/transliteration variants
+  return 1 - levenshtein(na, nb) / Math.max(na.length, nb.length);
+}
+function normStatus(s) {
+  const x = normName(s);
+  if (/pending/.test(x)) return 'pending';
+  if (/not|unpaid/.test(x)) return 'notpaid';       // "not paid" / "not payed"
+  if (/paid|payed/.test(x)) return 'paid';
+  return x;
 }
 
 // ── Fire-and-forget debounced trigger (used by budget mutations) ─────────────
