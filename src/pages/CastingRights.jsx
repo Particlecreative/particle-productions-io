@@ -80,8 +80,7 @@ const VIEW_MODES = [
 
 export default function CastingRights() {
   const { isEditor, isAdmin } = useAuth();
-  const { currentBrand }      = useBrand();
-  const brandId = currentBrand?.id || 'particle';
+  const { brandId }           = useBrand();
 
   const [cast, setCast]         = useState([]);
   const [prods, setProds]       = useState([]);

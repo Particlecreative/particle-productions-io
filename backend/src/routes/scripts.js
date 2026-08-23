@@ -635,8 +635,14 @@ router.post('/temp/ai-generate', async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     const { production_id, status, include_scenes } = req.query;
-    // Always enforce brand from JWT — never trust client-supplied brand_id
-    const brand_id = req.user?.brand_id || req.query.brand_id;
+    // Respect the UI-selected brand (query param), but only if the user is allowed to
+    // see it — super admins, or users whose brand access list includes it. Otherwise
+    // fall back to their JWT brand. This lets multi-brand admins switch brands without
+    // letting a single-brand user pull another brand's scripts.
+    const requestedBrand = req.query.brand_id;
+    const allowedBrand =
+      req.user?.super_admin || (req.user?.brand_ids || []).includes(requestedBrand);
+    const brand_id = (requestedBrand && allowedBrand) ? requestedBrand : req.user?.brand_id;
     const vals = [], where = [];
     if (brand_id) where.push(`s.brand_id = $${vals.push(brand_id)}`);
     if (production_id) where.push(`s.production_id = $${vals.push(production_id)}`);

@@ -114,6 +114,10 @@ export default function Contracts() {
       return { ...c, _prodId: prodId, _prod: prodMap[prodId] };
     });
 
+    // Only contracts whose production belongs to the current brand (prodMap is
+    // already brand-scoped via getProductions(brandId)). Fixes cross-brand leakage.
+    list = list.filter(c => c._prod);
+
     if (filterProd) list = list.filter(c => c._prodId === filterProd);
     if (filterStatus !== 'All') list = list.filter(c => (c.status || 'pending') === filterStatus);
     if (search) {

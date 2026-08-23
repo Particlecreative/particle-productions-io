@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import StoryboardEditor from '../components/scripts/StoryboardEditor';
 import NewScriptModal from '../components/scripts/NewScriptModal';
+import { useBrand } from '../context/BrandContext';
 import clsx from 'clsx';
 
 const API = import.meta.env.VITE_API_URL || '';
@@ -29,13 +30,18 @@ export default function Scripts() {
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     try { return JSON.parse(localStorage.getItem('cp_scripts_sidebar') ?? 'true'); } catch { return true; }
   });
+  const { brandId } = useBrand();
 
   useEffect(() => {
-    fetchAll();
     const params = new URLSearchParams(window.location.search);
     const sid = params.get('script_id');
     if (sid) setSelectedId(sid);
   }, []);
+
+  // Re-fetch whenever the selected brand changes so Scripts only shows this brand.
+  useEffect(() => {
+    fetchAll();
+  }, [brandId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -55,9 +61,10 @@ export default function Scripts() {
   async function fetchAll() {
     setLoading(true);
     try {
+      const qs = `?brand_id=${encodeURIComponent(brandId)}`;
       const [scriptsRes, prodsRes] = await Promise.all([
-        fetch(`${API}/api/scripts`, { headers: { Authorization: `Bearer ${jwt()}` } }),
-        fetch(`${API}/api/productions`, { headers: { Authorization: `Bearer ${jwt()}` } }),
+        fetch(`${API}/api/scripts${qs}`, { headers: { Authorization: `Bearer ${jwt()}` } }),
+        fetch(`${API}/api/productions${qs}`, { headers: { Authorization: `Bearer ${jwt()}` } }),
       ]);
       const [scriptsData, prodsData] = await Promise.all([scriptsRes.json(), prodsRes.json()]);
       setScripts(Array.isArray(scriptsData) ? scriptsData : []);
