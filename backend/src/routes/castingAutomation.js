@@ -29,13 +29,24 @@ async function createNotification(userId, type, message, productionId) {
 }
 
 // ── Notify admin users (Tomer + Omer) ────────────────────────────────────────
-async function notifyAdmins(message, productionId) {
+// Idempotent: skips inserting a notification that's identical to one this admin
+// already received in the last 20h. This makes the automation safe to re-run
+// (startup, cron, every-24h interval) without piling up duplicate alerts.
+async function notifyAdmins(message, productionId, type = 'casting_alert') {
   try {
     const { rows: admins } = await db.query(
       `SELECT id FROM users WHERE role = 'Admin' AND active = true AND deleted_at IS NULL`
     );
     for (const admin of admins) {
-      await createNotification(admin.id, 'casting_alert', message, productionId);
+      const { rows: dup } = await db.query(
+        `SELECT 1 FROM notifications
+          WHERE user_id = $1 AND type = $2 AND message = $3
+            AND created_at > NOW() - INTERVAL '20 hours'
+          LIMIT 1`,
+        [admin.id, type, message]
+      );
+      if (dup.length) continue; // already alerted recently — don't repeat
+      await createNotification(admin.id, type, message, productionId);
     }
   } catch (err) {
     console.error('notifyAdmins error:', err.message);
@@ -72,30 +83,31 @@ async function runCastingAutomations() {
             (typeof cast.end_date === 'string' && cast.end_date.slice(0, 10) === today)) {
           const endDateStr = typeof cast.end_date === 'string' ? cast.end_date.slice(0, 10) : cast.end_date.toISOString().slice(0, 10);
 
-          // Update status to Overdue (Rule 4 + 9 + 10)
+          // Only alert on the actual transition into Overdue (Rule 4 + 9 + 10).
+          // Once it's already Overdue, later runs stay silent — no repeat pings/Slack.
           if (cast.contract_status !== 'Overdue') {
             await db.query(
               `UPDATE casting SET contract_status = 'Overdue' WHERE id = $1`,
               [cast.id]
             );
+
+            const msg = `Casting Rights OVERDUE: ${cast.name} — ${cast.project_name || cast.production_id}. End date: ${endDateStr}`;
+            await notifyAdmins(msg, cast.production_id);
+
+            // Slack to general channel
+            await sendSlack(SLACK_WEBHOOK, `:rotating_light: ${msg}`);
+
+            // Slack to #expiring-contracts
+            const expiringMsg = [
+              `:warning: Casting Rights Alert: ${cast.name} — ${cast.project_name || cast.production_id}`,
+              `Status: Overdue`,
+              `End Date: ${endDateStr}`,
+              `View in CP Panel: ${APP_URL}/casting-rights`,
+            ].join('\n');
+            await sendSlack(SLACK_EXPIRING, expiringMsg);
+
+            summary.overdue.push(cast.name);
           }
-
-          const msg = `Casting Rights OVERDUE: ${cast.name} — ${cast.project_name || cast.production_id}. End date: ${endDateStr}`;
-          await notifyAdmins(msg, cast.production_id);
-
-          // Slack to general channel
-          await sendSlack(SLACK_WEBHOOK, `:rotating_light: ${msg}`);
-
-          // Slack to #expiring-contracts
-          const expiringMsg = [
-            `:warning: Casting Rights Alert: ${cast.name} — ${cast.project_name || cast.production_id}`,
-            `Status: Overdue`,
-            `End Date: ${endDateStr}`,
-            `View in CP Panel: ${APP_URL}/casting-rights`,
-          ].join('\n');
-          await sendSlack(SLACK_EXPIRING, expiringMsg);
-
-          summary.overdue.push(cast.name);
         }
 
         // ── Rule 6: 1 month before End Date → set Close To Overdue, notify, Slack ──
@@ -113,27 +125,28 @@ async function runCastingAutomations() {
             ? (typeof cast.end_date === 'string' ? cast.end_date.slice(0, 10) : cast.end_date.toISOString().slice(0, 10))
             : 'N/A';
 
-          // Update status to Close to Overdue (Rule 7 + 11)
+          // Only alert on the actual transition into Close to Overdue (Rule 7 + 11).
+          // Already Close/Overdue → stay silent on later runs.
           if (cast.contract_status !== 'Close to Overdue' && cast.contract_status !== 'Overdue') {
             await db.query(
               `UPDATE casting SET contract_status = 'Close to Overdue' WHERE id = $1`,
               [cast.id]
             );
+
+            const msg = `Casting Rights expiring soon: ${cast.name} — ${cast.project_name || cast.production_id}. End date: ${endDateStr}`;
+            await notifyAdmins(msg, cast.production_id);
+
+            // Slack to #expiring-contracts (Rule 3)
+            const expiringMsg = [
+              `:warning: Casting Rights Alert: ${cast.name} — ${cast.project_name || cast.production_id}`,
+              `Status: Close To Overdue`,
+              `End Date: ${endDateStr}`,
+              `View in CP Panel: ${APP_URL}/casting-rights`,
+            ].join('\n');
+            await sendSlack(SLACK_EXPIRING, expiringMsg);
+
+            summary.closeToOverdue.push(cast.name);
           }
-
-          const msg = `Casting Rights expiring soon: ${cast.name} — ${cast.project_name || cast.production_id}. End date: ${endDateStr}`;
-          await notifyAdmins(msg, cast.production_id);
-
-          // Slack to #expiring-contracts (Rule 3)
-          const expiringMsg = [
-            `:warning: Casting Rights Alert: ${cast.name} — ${cast.project_name || cast.production_id}`,
-            `Status: Close To Overdue`,
-            `End Date: ${endDateStr}`,
-            `View in CP Panel: ${APP_URL}/casting-rights`,
-          ].join('\n');
-          await sendSlack(SLACK_EXPIRING, expiringMsg);
-
-          summary.closeToOverdue.push(cast.name);
         }
 
         // ── Rule 1: Start Date arrives today → notify subscribers ──

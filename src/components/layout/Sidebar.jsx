@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, DollarSign, BookOpen, Settings, Users, ChevronLeft, ChevronRight,
@@ -73,25 +73,32 @@ export default function Sidebar({ open, onToggle }) {
   // Casting risk badge
   const [castingRiskCount, setCastingRiskCount] = useState(0);
   const [castingBadgeColor, setCastingBadgeColor] = useState('bg-red-500');
-  const { notifications, addNotification } = useNotifications();
-  const notificationsRef = useRef(notifications);
+  const { addNotification } = useNotifications();
 
   useEffect(() => {
     async function checkCasting() {
       try {
         const allCast = await Promise.resolve(getAllCasting());
         const brandCast = (Array.isArray(allCast) ? allCast : []).filter(c => c.brand_id === brand.id);
-        const overdueCount = brandCast.filter(c => c.contract_status === 'Overdue').length;
-        const closeCount   = brandCast.filter(c => c.contract_status === 'Close to Overdue').length;
-        const total = overdueCount + closeCount;
+        const atRisk = brandCast.filter(
+          c => c.contract_status === 'Overdue' || c.contract_status === 'Close to Overdue'
+        );
+        const overdueCount = atRisk.filter(c => c.contract_status === 'Overdue').length;
+        const total = atRisk.length;
         setCastingRiskCount(total);
         setCastingBadgeColor(overdueCount > 0 ? 'bg-red-500' : 'bg-orange-500');
-        if (total > 0) {
-          const today = new Date().toISOString().slice(0, 10);
-          const alreadyToday = notificationsRef.current.some(
-            n => n.type === 'casting_risk' && n.created_at?.startsWith(today)
-          );
-          if (!alreadyToday) {
+
+        // Only raise a notification when the at-risk *set* actually changes — never
+        // on plain mount / window-focus. The signature is persisted in localStorage,
+        // so re-opening or tabbing back won't recreate an alert for an unchanged
+        // situation (this was the source of the duplicate casting alerts).
+        const sigKey = `cp_casting_risk_sig_${brand.id}_${userId}`;
+        const signature = atRisk.map(c => c.id).sort().join(',');
+        if (signature !== localStorage.getItem(sigKey)) {
+          localStorage.setItem(sigKey, signature);
+          // Announce only when there's actually something at risk. Going back to
+          // zero updates the badge but doesn't need a notification.
+          if (total > 0) {
             addNotification(
               'casting_risk',
               `⚠️ ${total} cast member${total > 1 ? 's have' : ' has'} expiring or overdue rights — review Casting`,
