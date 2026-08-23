@@ -8,6 +8,7 @@ const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
 const { verifyJWT } = require('../middleware/auth');
 const { sendEmail } = require('./gmail');
 const driveRouter = require('./drive');
+const { companyForBrand, companyClause } = require('../lib/companyInfo');
 
 // Rate limit for signing endpoints (10 attempts per IP per minute)
 const signLimiter = rateLimit({
@@ -87,7 +88,7 @@ router.get('/sign/:id/:token', async (req, res) => {
               c.exhibit_a, c.exhibit_b, c.fee_amount, c.payment_terms,
               c.provider_id_number, c.provider_address,
               c.currency, c.contract_type, c.effective_date,
-              p.project_name, p.producer, p.production_type
+              p.project_name, p.producer, p.production_type, p.brand_id
        FROM contract_signatures cs
        JOIN contracts c ON cs.contract_id = c.id
        LEFT JOIN productions p ON p.id = split_part(c.production_id, '_li_', 1)
@@ -209,6 +210,7 @@ router.get('/sign/:id/:token', async (req, res) => {
       contract_type: sig.contract_type || 'crew',
       effective_date: sig.effective_date,
       hocp_signature: hocpSignature,
+      company: companyForBrand(sig.brand_id),
     });
   } catch (err) {
     console.error('GET /sign/:id/:token error:', err);
@@ -333,7 +335,7 @@ router.post('/sign/:id/:token', signLimiter, async (req, res) => {
               </p>
               <p style="color: #888; font-size: 13px;">If the button doesn't work, copy this link: ${providerSignUrl}</p>
               <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
-              <p style="color: #aaa; font-size: 11px;">Sent via CP Panel — Particle Aesthetic Science Ltd.</p>
+              <p style="color: #aaa; font-size: 11px;">Sent via CP Panel — ${companyForBrand(sig.brand_id).legalName}</p>
             </div>`,
         }).catch(() => {});
 
@@ -401,6 +403,7 @@ router.post('/sign/:id/:token', signLimiter, async (req, res) => {
           // Generate minimal fallback PDF with pdf-lib
           const { rows: cInfo } = await db.query(`SELECT * FROM contracts WHERE id = $1`, [contractIdForFallback]);
         const c = cInfo[0] || {};
+        const co = companyForBrand(sig.brand_id); // legal entity for this contract's brand
         const { rows: signatures } = await db.query(
           `SELECT signer_role, signer_name, signer_email, signer_id_number, signature_data, signed_at, ip_address, user_agent
            FROM contract_signatures WHERE contract_id = $1 ORDER BY signed_at ASC`, [id]
@@ -427,7 +430,7 @@ router.post('/sign/:id/:token', signLimiter, async (req, res) => {
           y = H - 55;
           // Header line
           page.drawLine({ start: { x: ML, y: H - 40 }, end: { x: W - MR, y: H - 40 }, thickness: 0.5, color: LINE_COLOR });
-          page.drawText('PARTICLE AESTHETIC SCIENCE LTD.', { x: ML, y: H - 35, size: 7, font, color: LIGHT });
+          page.drawText(co.legalName.toUpperCase(), { x: ML, y: H - 35, size: 7, font, color: LIGHT });
           page.drawText('SERVICES AGREEMENT', { x: W - MR - font.widthOfTextAtSize('SERVICES AGREEMENT', 7), y: H - 35, size: 7, font, color: LIGHT });
           // Footer
           page.drawLine({ start: { x: ML, y: 35 }, end: { x: W - MR, y: 35 }, thickness: 0.5, color: LINE_COLOR });
@@ -493,7 +496,7 @@ router.post('/sign/:id/:token', signLimiter, async (req, res) => {
         // ═══════════════════════════════════════════
         newPage();
         y = H - 120;
-        page.drawText('PARTICLE AESTHETIC SCIENCE LTD.', { x: ML, y, size: 9, font, color: GRAY });
+        page.drawText(co.legalName.toUpperCase(), { x: ML, y, size: 9, font, color: GRAY });
         y -= 35;
         page.drawText('SERVICES AGREEMENT', { x: ML, y, size: 22, font: bold, color: BRAND });
         y -= 28;
@@ -507,8 +510,8 @@ router.post('/sign/:id/:token', signLimiter, async (req, res) => {
         // Company box
         page.drawRectangle({ x: ML, y: boxY, width: boxW, height: boxH, color: rgb(0.97, 0.97, 0.97), borderColor: LINE_COLOR, borderWidth: 0.5 });
         page.drawText('THE COMPANY', { x: ML + 12, y: boxY + boxH - 16, size: 7, font: bold, color: GRAY });
-        page.drawText('Particle Aesthetic Science Ltd.', { x: ML + 12, y: boxY + boxH - 32, size: 9, font: bold, color: BRAND });
-        page.drawText('King George 48, Tel Aviv', { x: ML + 12, y: boxY + boxH - 46, size: 8, font, color: GRAY });
+        page.drawText(co.legalName, { x: ML + 12, y: boxY + boxH - 32, size: 9, font: bold, color: BRAND });
+        page.drawText(co.number ? `${co.address} · Co. No. ${co.number}` : co.address, { x: ML + 12, y: boxY + boxH - 46, size: 8, font, color: GRAY });
         // Provider box
         const bx2 = ML + boxW + 20;
         page.drawRectangle({ x: bx2, y: boxY, width: boxW, height: boxH, color: rgb(0.97, 0.97, 0.97), borderColor: LINE_COLOR, borderWidth: 0.5 });
@@ -529,7 +532,7 @@ router.post('/sign/:id/:token', signLimiter, async (req, res) => {
         // AGREEMENT TEXT
         // ═══════════════════════════════════════════
         drawSectionTitle('Preamble');
-        drawParagraph(`This Services Agreement ("Agreement") is made and entered into on ${effDate} ("Effective Date"), by and between Particle Aesthetic Science Ltd., a company registered in Israel, with a principal place of business at King George 48, Tel Aviv ("Company"), and ${provName}, ID/Passport number ${provId}, with a principal place of business at ${provAddr} ("Service Provider").`);
+        drawParagraph(`This Services Agreement ("Agreement") is made and entered into on ${effDate} ("Effective Date"), by and between ${companyClause(co)} ("Company"), and ${provName}, ID/Passport number ${provId}, with a principal place of business at ${provAddr} ("Service Provider").`);
         drawParagraph('WHEREAS, Service Provider has the skills, resources, know-how and ability required to provide the Services and create the Deliverables (each as defined below); and');
         drawParagraph('WHEREAS, based on Service Provider\'s representations hereunder, the parties desire that Service Provider provide the Services as an independent contractor of Company upon the terms and conditions hereinafter specified;');
         drawParagraph('NOW, THEREFORE, the parties hereby agree as follows:');
@@ -815,7 +818,7 @@ router.post('/:id/upload-signed-pdf', async (req, res) => {
     // Get contract info
     const { rows: cRows } = await db.query(
       `SELECT c.*, split_part(c.production_id, '_li_', 1) as prd_short,
-              p.project_name
+              p.project_name, p.brand_id
        FROM contracts c
        LEFT JOIN productions p ON p.id = split_part(c.production_id, '_li_', 1)
        WHERE c.id = $1`,
@@ -899,7 +902,7 @@ router.post('/:id/upload-signed-pdf', async (req, res) => {
         <h3 style="color:#333;font-size:14px;margin-top:24px;">Document History</h3>
         <table style="width:100%;border-collapse:collapse;margin:16px 0;">${historyHtml}</table>
         <hr style="border:none;border-top:1px solid #eee;margin:24px 0;">
-        <p style="color:#aaa;font-size:11px;">Sent via CP Panel — Particle Aesthetic Science Ltd.</p>
+        <p style="color:#aaa;font-size:11px;">Sent via CP Panel — ${companyForBrand(contract.brand_id).legalName}</p>
       </div>`;
 
     sendEmail({ to: contract.provider_email, subject, htmlBody: body, skipDefaultCc: false }).catch(() => {});
@@ -1149,10 +1152,12 @@ router.post('/:production_id/generate', async (req, res) => {
     // Get production name for notifications
     const prdShort = prodId ? prodId.split('_li_')[0] : prodId;
     let projectName = prodId;
+    let contractBrandId = null;
     try {
-      const { rows: prodRows } = await db.query('SELECT project_name FROM productions WHERE id = $1', [prdShort]);
-      if (prodRows[0]) projectName = prodRows[0].project_name;
+      const { rows: prodRows } = await db.query('SELECT project_name, brand_id FROM productions WHERE id = $1', [prdShort]);
+      if (prodRows[0]) { projectName = prodRows[0].project_name; contractBrandId = prodRows[0].brand_id; }
     } catch (_) {}
+    const co = companyForBrand(contractBrandId);
 
     const feeLabel = fee_amount ? `${Number(fee_amount).toLocaleString()} ${currency || 'USD'}` : 'N/A';
     const contractIdForTimer = contract.id;
@@ -1171,7 +1176,7 @@ router.post('/:production_id/generate', async (req, res) => {
         </p>
         <p style="color: #888; font-size: 13px;">If the button doesn't work, copy this link: ${signUrl}</p>
         <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
-        <p style="color: #aaa; font-size: 11px;">Sent via CP Panel — Particle Aesthetic Science Ltd.</p>
+        <p style="color: #aaa; font-size: 11px;">Sent via CP Panel — ${co.legalName}</p>
       </div>`;
 
     if (hocpRequired) {

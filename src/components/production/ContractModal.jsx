@@ -12,6 +12,7 @@ import { getDownloadUrl } from '../../lib/invoiceUtils';
 import { formatIST, nowISOString } from '../../lib/timezone';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationsContext';
+import { companyForBrand, companyClause } from '../../lib/companyInfo';
 import clsx from 'clsx';
 import FileUploadButton, { CloudLinks } from '../shared/FileUploadButton';
 // jsPDF loaded lazily to avoid Vite TDZ errors that crash ContractSign canvas
@@ -223,15 +224,23 @@ async function generateContractPDF(data) {
       try { doc.addImage(data.logoBase64, 'PNG', 14, 10, 50, 10); logoRendered = true; } catch { /* PNG attempt also failed */ }
     }
   }
+  const co = data.company || { legalName: PARTICLE_COMPANY.name, address: PARTICLE_COMPANY.address, number: '', short: 'Particle' };
   if (!logoRendered) {
-    // Text fallback — "PARTICLE" in white on the navy header
-    doc.setTextColor(255, 255, 255); doc.setFontSize(20); doc.setFont('helvetica', 'bold');
-    doc.text('PARTICLE', margin, 18); doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.text('for men', margin + 52, 18);
+    // Text letterhead — "PARTICLE for men" for Particle, plain legal name for other brands
+    doc.setTextColor(255, 255, 255); doc.setFont('helvetica', 'bold');
+    if (co.short === 'Particle') {
+      doc.setFontSize(20); doc.text('PARTICLE', margin, 18);
+      doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.text('for men', margin + 52, 18);
+    } else {
+      doc.setFontSize(18); doc.text(co.legalName.toUpperCase(), margin, 18);
+    }
   }
   doc.setTextColor(255, 255, 255); doc.setFontSize(9); doc.setFont('helvetica', 'normal');
-  doc.text(PARTICLE_COMPANY.name, pageWidth - margin, 14, { align: 'right' });
-  doc.text(PARTICLE_COMPANY.address, pageWidth - margin, 20, { align: 'right' });
-  if (data.effective_date) doc.text(`Date: ${data.effective_date}`, pageWidth - margin, 26, { align: 'right' });
+  doc.text(co.legalName, pageWidth - margin, 14, { align: 'right' });
+  doc.text(co.address, pageWidth - margin, 20, { align: 'right' });
+  let headerY = 26;
+  if (co.number) { doc.text(`Co. No. ${co.number}`, pageWidth - margin, headerY, { align: 'right' }); headerY += 6; }
+  if (data.effective_date) doc.text(`Date: ${data.effective_date}`, pageWidth - margin, headerY, { align: 'right' });
 
   y = 45;
   doc.setTextColor(3, 11, 46);
@@ -260,7 +269,7 @@ async function generateContractPDF(data) {
     }
     y += 1;
   } else {
-    const preamble = `This Services Agreement ("Agreement") is made and entered into on ${data.effective_date || '[Please complete]'} ("Effective Date"), by and between Particle Aesthetic Science Ltd., a company registered in Israel, with a principal place of business at King George 48, Tel Aviv ("Company"), and ${providerIdClause}`;
+    const preamble = `This Services Agreement ("Agreement") is made and entered into on ${data.effective_date || '[Please complete]'} ("Effective Date"), by and between ${companyClause(co)} ("Company"), and ${providerIdClause}`;
     y = drawWrappedText(preamble, margin, y, contentWidth);
     y += 3;
 
@@ -460,7 +469,7 @@ async function generateContractPDF(data) {
 
   const halfWidth = (contentWidth - 10) / 2;
   doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(3, 11, 46);
-  doc.text('Particle Aesthetic Science Ltd.', margin + 3, y + 2);
+  doc.text(co.legalName, margin + 3, y + 2);
   doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
   doc.text(`By: ____________________`, margin + 3, y + 10);
   doc.text(`Title: ___________________`, margin + 3, y + 17);
@@ -529,7 +538,7 @@ async function generateContractPDF(data) {
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
     doc.setFontSize(7); doc.setTextColor(150, 150, 150);
-    doc.text(`${PARTICLE_COMPANY.name} | ${PARTICLE_COMPANY.address} | Page ${i} of ${pageCount}`, pageWidth / 2, 290, { align: 'center' });
+    doc.text(`${co.legalName} | ${co.address} | Page ${i} of ${pageCount}`, pageWidth / 2, 290, { align: 'center' });
   }
 
   return doc;
@@ -573,7 +582,10 @@ export default function ContractModal({ production, lineItem, onClose }) {
   const [uploadSaving, setUploadSaving] = useState(false);
   const [uploadSaved, setUploadSaved] = useState(false);
 
-  // Who signs on behalf of Particle
+  // Company (legal entity) for this contract — derived from the production's brand.
+  const company = companyForBrand(production?.brand_id);
+
+  // Who signs on behalf of the company
   const [companySigner, setCompanySigner] = useState(
     existing?.company_signer || 'omer' // 'omer' | 'tomer' | 'custom'
   );
@@ -683,7 +695,8 @@ export default function ContractModal({ production, lineItem, onClose }) {
   const [autoGenTriggered, setAutoGenTriggered] = useState(false);
 
   // ── Logo for PDF (hardcoded base64, no fetch needed) ──
-  const [logoBase64] = useState(PARTICLE_LOGO_BASE64);
+  // Particle uses its letterhead image; other brands use a text letterhead for now.
+  const logoBase64 = company.hasLogo ? PARTICLE_LOGO_BASE64 : '';
   const [tomerSignature, setTomerSignature] = useState(null);
   useEffect(() => {
     // Load Tomer's saved signature from localStorage
@@ -826,7 +839,7 @@ export default function ContractModal({ production, lineItem, onClose }) {
       ? `${providerName || '[Please complete]'}, ID/Passport number ${providerIdNumber || '[Please complete]'}, with a principal place of business at ${providerAddress || '[Please complete]'} ("Service Provider"),`
       : `${providerName || '[Please complete]'} [ID/Passport number ${providerIdNumber || '[Please complete]'}], with a principal place of business at ${providerAddress || '[Please complete]'} ("Service Provider"),`;
 
-    const defaultIntroText = `This Services Agreement ("Agreement") is made and entered into on ${formattedDate} ("Effective Date"), by and between Particle Aesthetic Science Ltd., a company registered in Israel, with a principal place of business at King George 48, Tel Aviv ("Company"), and ${providerIdClause}\n\nWHEREAS, Service Provider has the skills, resources, know-how and ability required to provide the Services and create the Deliverables (each as defined below); and\n\nWHEREAS, based on Service Provider's representations hereunder, the parties desire that Service Provider provide the Services as an independent contractor of Company upon the terms and conditions hereinafter specified;\n\nNOW, THEREFORE, the parties hereby agree as follows:`;
+    const defaultIntroText = `This Services Agreement ("Agreement") is made and entered into on ${formattedDate} ("Effective Date"), by and between ${companyClause(company)} ("Company"), and ${providerIdClause}\n\nWHEREAS, Service Provider has the skills, resources, know-how and ability required to provide the Services and create the Deliverables (each as defined below); and\n\nWHEREAS, based on Service Provider's representations hereunder, the parties desire that Service Provider provide the Services as an independent contractor of Company upon the terms and conditions hereinafter specified;\n\nNOW, THEREFORE, the parties hereby agree as follows:`;
     // Prefer saved (edited) intro from previous session; fall back to template.
     setEditableIntro(existing?.contract_intro || defaultIntroText);
 
@@ -859,7 +872,7 @@ export default function ContractModal({ production, lineItem, onClose }) {
     const sent = events.find(e => e.type === 'sent');
     if (sent) history.push({ label: `Sent to ${providerName}`, date: fmtDate(sent.at) });
     events.filter(e => e.type === 'signed').forEach(se => {
-      const who = se.role === 'hocp' ? 'Particle (HOCP)' : (se.name || 'Provider');
+      const who = se.role === 'hocp' ? `${company.short} (HOCP)` : (se.name || 'Provider');
       history.push({ label: `Signed by ${who}`, date: fmtDate(se.at) });
     });
     const completed = events.find(e => e.type === 'completed');
@@ -888,6 +901,7 @@ export default function ContractModal({ production, lineItem, onClose }) {
       payment_method: paymentMethod,
       hocp_name: companySignerName,
       logoBase64,
+      company,
       documentHistory: buildDocumentHistory(),
       isCastType: !CREW_TYPES.includes(lineItem?.type),
       intro_text: editableIntro,
@@ -994,7 +1008,7 @@ export default function ContractModal({ production, lineItem, onClose }) {
                 <p style="color: #666; font-size: 13px; margin: 4px 0 0;">${production.project_name}</p>
               </div>
               <p>Dear ${toName},</p>
-              <p>We are pleased to share the Services Agreement for <strong>${production.project_name}</strong> between Particle Aesthetic Science Ltd. and ${providerName}.</p>
+              <p>We are pleased to share the Services Agreement for <strong>${production.project_name}</strong> between ${company.legalName} and ${providerName}.</p>
               <p>Please review the contract details carefully and sign by clicking the button below:</p>
               <p style="margin: 28px 0; text-align: center;">
                 <a href="${providerLink}" style="background: #030b2e; color: white; padding: 14px 36px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 15px;">
@@ -1004,8 +1018,8 @@ export default function ContractModal({ production, lineItem, onClose }) {
               <p style="color: #666; font-size: 13px;">Once both parties have signed, you will automatically receive a fully executed copy of the agreement via email.</p>
               <p style="color: #888; font-size: 12px; margin-top: 8px;">If the button doesn't work, copy this link:<br/><a href="${providerLink}" style="color: #0808f8;">${providerLink}</a></p>
               <hr style="border: none; border-top: 1px solid #eee; margin: 28px 0 16px;" />
-              <p style="color: #030b2e; font-weight: 600; font-size: 13px; margin-bottom: 2px;">Particle Creative Production Team</p>
-              <p style="color: #aaa; font-size: 11px; margin: 0;">Particle Aesthetic Science Ltd. · King George 48, Tel Aviv</p>
+              <p style="color: #030b2e; font-weight: 600; font-size: 13px; margin-bottom: 2px;">${company.short} Creative Production Team</p>
+              <p style="color: #aaa; font-size: 11px; margin: 0;">${company.legalName} · ${company.address}</p>
             </div>
           `,
         }),
@@ -1077,6 +1091,7 @@ export default function ContractModal({ production, lineItem, onClose }) {
       payment_method: paymentMethod,
       hocp_name: companySignerName,
       logoBase64,
+      company,
       documentHistory: buildDocumentHistory(),
       isCastType: !CREW_TYPES.includes(lineItem?.type),
       intro_text: editableIntro,
@@ -1309,17 +1324,18 @@ export default function ContractModal({ production, lineItem, onClose }) {
         ═══════════════════════════════════════════════════ */}
         {currentStep === 1 && (
           <div>
-            {/* Particle info — read-only */}
+            {/* Company info — read-only */}
             <div className="bg-gray-50 rounded-xl p-3 mb-4 text-sm">
-              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-2">Particle Details (Company)</div>
+              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-2">{company.short} Details (Company)</div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <div className="text-[10px] text-gray-400">Company</div>
-                  <div className="font-semibold text-gray-700 text-xs">{PARTICLE_COMPANY.name}</div>
-                  <div className="text-[10px] text-gray-400">{PARTICLE_COMPANY.address}</div>
+                  <div className="font-semibold text-gray-700 text-xs">{company.legalName}</div>
+                  {company.number && <div className="text-[10px] text-gray-400">Co. No. {company.number}</div>}
+                  <div className="text-[10px] text-gray-400">{company.address}</div>
                 </div>
                 <div>
-                  <div className="text-[10px] text-gray-400">Signer (Particle)</div>
+                  <div className="text-[10px] text-gray-400">Signer ({company.short})</div>
                   <div className="font-semibold text-gray-700 text-xs">{companySignerName || 'Select below'}</div>
                   <div className="text-[10px] text-gray-400">{companySignerEmail}</div>
                 </div>
@@ -1389,10 +1405,10 @@ export default function ContractModal({ production, lineItem, onClose }) {
               </div>
             </div>
 
-            {/* Who signs on behalf of Particle? */}
+            {/* Who signs on behalf of the company? */}
             <div className="mt-5 p-4 bg-indigo-50 border border-indigo-200 rounded-xl">
               <div className="text-sm font-bold text-indigo-800 mb-3 flex items-center gap-1.5">
-                <PenTool size={13} /> Who signs on behalf of Particle?
+                <PenTool size={13} /> Who signs on behalf of {company.short}?
               </div>
               <div className="space-y-2">
                 {[
@@ -1667,13 +1683,16 @@ export default function ContractModal({ production, lineItem, onClose }) {
                 <div className="flex items-center justify-between">
                   <div>
                     {logoBase64
-                      ? <img src={logoBase64} alt="Particle" style={{ maxWidth: 250, maxHeight: 50, objectFit: 'contain' }} />
-                      : <div className="text-lg font-bold tracking-wider">PARTICLE <span className="text-xs font-normal">for men</span></div>
+                      ? <img src={logoBase64} alt={company.short} style={{ maxWidth: 250, maxHeight: 50, objectFit: 'contain' }} />
+                      : company.short === 'Particle'
+                        ? <div className="text-lg font-bold tracking-wider">PARTICLE <span className="text-xs font-normal">for men</span></div>
+                        : <div className="text-lg font-bold tracking-wider">{company.legalName}</div>
                     }
                   </div>
                   <div className="text-right text-xs">
-                    <div>{PARTICLE_COMPANY.name}</div>
-                    <div>{PARTICLE_COMPANY.address}</div>
+                    <div>{company.legalName}</div>
+                    {company.number && <div>Co. No. {company.number}</div>}
+                    <div>{company.address}</div>
                     <div>Date: {effectiveDate ? new Date(effectiveDate + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'Not set'}</div>
                   </div>
                 </div>
@@ -1762,7 +1781,7 @@ export default function ContractModal({ production, lineItem, onClose }) {
                   <div className="grid grid-cols-2 gap-6 text-xs text-gray-600">
                     <div>
                       <div className="font-semibold mb-1">For the Company:</div>
-                      <div>{PARTICLE_COMPANY.name}</div>
+                      <div>{company.legalName}</div>
                       <div>Name: {companySignerName}</div>
                       <div>Title: {companySignerTitle}</div>
                       <div>Date: {effectiveDate || new Date().toISOString().slice(0, 10)}</div>

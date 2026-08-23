@@ -4,6 +4,9 @@ import { useParams } from 'react-router-dom';
 // Company details — used across all contract templates
 const COMPANY_NAME = 'Particle Aesthetic Science Ltd.';
 const COMPANY_ADDRESS = 'King George 48, Tel Aviv';
+// Fallback used before the contract loads / for unknown brands. The real company
+// (per the production's brand) arrives on the sign payload as `contractData.company`.
+const DEFAULT_COMPANY = { legalName: COMPANY_NAME, address: COMPANY_ADDRESS, number: '', short: 'Particle' };
 import {
   CheckCircle, RotateCcw, Undo2, PenTool, FileText,
   DollarSign, Shield, AlertTriangle, RefreshCw, Clock,
@@ -84,6 +87,10 @@ export default function ContractSign() {
   // Scroll tracking for "scroll to sign" prompt
   const signSectionRef = useRef(null);
   const [hasScrolledToSign, setHasScrolledToSign] = useState(false);
+
+  // Legal company for this contract (from the production's brand). Falls back to
+  // Particle until the payload loads / for older payloads without a company.
+  const company = contractData?.company || DEFAULT_COMPANY;
 
   /* ── Fetch contract ── */
   useEffect(() => {
@@ -444,7 +451,7 @@ export default function ContractSign() {
       }
     }
     return (
-      <Shell status="delivery">
+      <Shell status="delivery" company={company}>
         <div className="max-w-lg mx-auto py-10 px-4">
           <div className="text-center mb-8">
             <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center mx-auto mb-4">
@@ -537,7 +544,7 @@ export default function ContractSign() {
   // Delivery submitted success flash
   if (showDeliveryForm && deliveryDone) {
     return (
-      <Shell status="delivery">
+      <Shell status="delivery" company={company}>
         <div className="max-w-lg mx-auto py-20 px-4 text-center">
           <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
             <Check size={28} className="text-green-600" />
@@ -598,7 +605,7 @@ export default function ContractSign() {
     if (isCompleted && cd) {
       // Full completed view with both signatures + contract + history
       return (
-        <Shell status="signed">
+        <Shell status="signed" company={company}>
           <style>{GLOBAL_STYLES}</style>
           <div style={{ animation: 'cs-fade-up .4s ease-out' }}>
             {/* Header */}
@@ -614,7 +621,7 @@ export default function ContractSign() {
             {/* Contract summary card */}
             <div className="bg-white rounded-xl shadow border border-gray-100 p-6 mb-6">
               <div className="text-center mb-4">
-                <p className="text-[10px] uppercase tracking-[3px] text-gray-400 mb-2">{COMPANY_NAME}</p>
+                <p className="text-[10px] uppercase tracking-[3px] text-gray-400 mb-2">{company.legalName}</p>
                 <h3 className="text-xl font-bold text-gray-900">SERVICES AGREEMENT</h3>
                 {cd.effective_date && (
                   <p className="text-xs text-gray-500 mt-1">
@@ -625,7 +632,7 @@ export default function ContractSign() {
               <div className="grid grid-cols-2 gap-4 text-sm mb-4">
                 <div className="bg-gray-50 rounded-lg p-3">
                   <p className="text-[10px] uppercase text-gray-400 mb-1">Company</p>
-                  <p className="font-semibold text-gray-900">{COMPANY_NAME}</p>
+                  <p className="font-semibold text-gray-900">{company.legalName}</p>
                 </div>
                 <div className="bg-gray-50 rounded-lg p-3">
                   <p className="text-[10px] uppercase text-gray-400 mb-1">Service Provider</p>
@@ -733,7 +740,7 @@ export default function ContractSign() {
             {/* Security footer */}
             <div className="flex items-center justify-center gap-2 mt-6 text-[11px] text-gray-400">
               <Shield size={11} />
-              <span>Secured & powered by {COMPANY_NAME}</span>
+              <span>Secured & powered by {company.legalName}</span>
             </div>
           </div>
         </Shell>
@@ -742,7 +749,7 @@ export default function ContractSign() {
 
     // Simple already-signed view (not all parties done yet)
     return (
-      <Shell status="signed">
+      <Shell status="signed" company={company}>
         <div className="flex flex-col items-center justify-center py-16 px-6 text-center"
              style={{ animation: 'cs-fade-up .4s ease-out' }}>
           <div className="w-20 h-20 rounded-full bg-green-50 flex items-center justify-center mb-6"
@@ -783,7 +790,7 @@ export default function ContractSign() {
     // Loading completed data...
     if (allSigned && !completedData) {
       return (
-        <Shell status="signed">
+        <Shell status="signed" company={company}>
           <div className="flex flex-col items-center justify-center py-24">
             <div className="w-10 h-10 border-[3px] border-gray-200 border-t-green-500 rounded-full mb-5"
                  style={{ animation: 'cs-spin .6s linear infinite' }} />
@@ -801,7 +808,7 @@ export default function ContractSign() {
       const formatEvt = (dt) => dt ? new Date(dt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
 
       return (
-        <Shell status="signed">
+        <Shell status="signed" company={company}>
           <style>{GLOBAL_STYLES}</style>
 
           {/* Green completion banner */}
@@ -856,14 +863,14 @@ export default function ContractSign() {
             {/* Agreement Header */}
             <div className="px-6 sm:px-10 pt-10 pb-8 border-b border-gray-100">
               <div className="text-center mb-8">
-                <p className="text-[10px] uppercase tracking-[3px] text-gray-400 mb-3">{COMPANY_NAME}</p>
+                <p className="text-[10px] uppercase tracking-[3px] text-gray-400 mb-3">{company.legalName}</p>
                 <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight">SERVICES AGREEMENT</h1>
                 <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 bg-gray-50 rounded-full text-xs text-gray-500">
                   <Calendar size={11} /> Effective Date: {effectiveDate}
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                <PartyCard label="The Company" name={COMPANY_NAME} subtitle={contractData?.hocp_signature?.signer_name || contractData?.signer_name || 'Authorized Signatory'} role="Company" />
+                <PartyCard label="The Company" name={company.legalName} subtitle={contractData?.hocp_signature?.signer_name || contractData?.signer_name || 'Authorized Signatory'} role="Company" />
                 <PartyCard label="Service Provider" name={d.provider_name || '—'} role="Provider" />
               </div>
             </div>
@@ -910,7 +917,7 @@ export default function ContractSign() {
                 {/* Company / HOCP */}
                 <div className="bg-white rounded-lg border border-gray-200 p-5">
                   <p className="text-[10px] uppercase tracking-[2px] text-gray-400 mb-3">For the Company</p>
-                  <p className="text-sm font-semibold text-gray-900">{COMPANY_NAME}</p>
+                  <p className="text-sm font-semibold text-gray-900">{company.legalName}</p>
                   <p className="text-xs text-gray-500 mt-1">{contractData?.hocp_signature?.signer_name || contractData?.signer_name || 'Authorized Signatory'}</p>
                   {contractData?.hocp_signature?.signature_data && (
                     <img src={contractData.hocp_signature.signature_data} alt="Company Signature" className="max-h-16 mt-3" />
@@ -980,7 +987,7 @@ export default function ContractSign() {
           {/* Security footer */}
           <div className="flex items-center justify-center gap-2 mt-6 text-[11px] text-gray-400">
             <Shield size={11} />
-            <span>Secured & powered by {COMPANY_NAME}</span>
+            <span>Secured & powered by {company.legalName}</span>
           </div>
         </Shell>
       );
@@ -988,7 +995,7 @@ export default function ContractSign() {
 
     // Simple success (provider signed but waiting for other party)
     return (
-      <Shell status="signed">
+      <Shell status="signed" company={company}>
         <div className="flex flex-col items-center justify-center py-20 px-6 text-center"
              style={{ animation: 'cs-fade-up .4s ease-out' }}>
           <div className="w-20 h-20 rounded-full bg-green-50 flex items-center justify-center mb-6"
@@ -1002,7 +1009,7 @@ export default function ContractSign() {
           <p className="text-gray-400 text-xs">You may safely close this page.</p>
           <div className="mt-8 flex items-center gap-2 text-xs text-gray-400">
             <Shield size={12} />
-            <span>Secured by Particle</span>
+            <span>Secured by {company.short}</span>
           </div>
         </div>
       </Shell>
@@ -1016,7 +1023,7 @@ export default function ContractSign() {
     : signDate;
 
   return (
-    <Shell status="pending">
+    <Shell status="pending" company={company}>
       <style>{GLOBAL_STYLES}</style>
 
       {/* ── Document Paper ── */}
@@ -1025,7 +1032,7 @@ export default function ContractSign() {
         {/* ── Section 1: Agreement Header ── */}
         <div className="px-6 sm:px-10 pt-10 pb-8 border-b border-gray-100">
           <div className="text-center mb-8">
-            <p className="text-[10px] uppercase tracking-[3px] text-gray-400 mb-3">{COMPANY_NAME}</p>
+            <p className="text-[10px] uppercase tracking-[3px] text-gray-400 mb-3">{company.legalName}</p>
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight">SERVICES AGREEMENT</h1>
             <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 bg-gray-50 rounded-full text-xs text-gray-500">
               <Calendar size={11} />
@@ -1033,7 +1040,7 @@ export default function ContractSign() {
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-            <PartyCard label="The Company" name={COMPANY_NAME} subtitle={contractData?.hocp_signature?.signer_name || contractData?.signer_name || 'Authorized Signatory'} role="Company" />
+            <PartyCard label="The Company" name={company.legalName} subtitle={contractData?.hocp_signature?.signer_name || contractData?.signer_name || 'Authorized Signatory'} role="Company" />
             <PartyCard label="Service Provider" name={d.provider_name || '\u2014'} role={d.signer_role === 'hocp' ? 'HOCP' : 'Provider'} />
           </div>
         </div>
@@ -1313,7 +1320,7 @@ export default function ContractSign() {
       {/* ── Security footer ── */}
       <div className="flex items-center justify-center gap-2 mt-6 text-[11px] text-gray-400">
         <Shield size={11} />
-        <span>Secured & powered by {COMPANY_NAME}</span>
+        <span>Secured & powered by {company.legalName}</span>
       </div>
 
       {/* ── Mobile Sticky Bottom Bar ── */}
@@ -1414,6 +1421,7 @@ function ExhibitCard({ color, icon, title, subtitle, content, children }) {
    ═══════════════════════════════════════════════ */
 function FullContractText({ data: d, effectiveDate, liveId, liveAddress, noScroll }) {
   const isCast = (d.contract_type === 'cast');
+  const company = d.company || DEFAULT_COMPANY;
   const providerName = d.provider_name || '[Service Provider]';
   const providerId = liveId || d.provider_id_number || d.provider_id || '[Please complete]';
   const providerAddr = liveAddress || d.provider_address || '[Please complete]';
@@ -1442,7 +1450,7 @@ function FullContractText({ data: d, effectiveDate, liveId, liveAddress, noScrol
     <div className={noScroll ? '' : 'max-h-[500px] overflow-y-auto pr-2'} style={noScroll ? {} : { scrollbarWidth: 'thin' }}>
       {/* Preamble */}
       <P>
-        This Services Agreement (&ldquo;Agreement&rdquo;) is made and entered into on {effectiveDate} (&ldquo;Effective Date&rdquo;), by and between {COMPANY_NAME}, a company registered in Israel, with a principal place of business at {COMPANY_ADDRESS} (&ldquo;Company&rdquo;), and {providerName}, ID/Passport number {providerId}, with a principal place of business at {providerAddr} (&ldquo;Service Provider&rdquo;),
+        This Services Agreement (&ldquo;Agreement&rdquo;) is made and entered into on {effectiveDate} (&ldquo;Effective Date&rdquo;), by and between {company.legalName}{company.number ? `, company no. ${company.number}` : ''}, a company registered in Israel, with a principal place of business at {company.address} (&ldquo;Company&rdquo;), and {providerName}, ID/Passport number {providerId}, with a principal place of business at {providerAddr} (&ldquo;Service Provider&rdquo;),
       </P>
       <P>WHEREAS, Service Provider has the skills, resources, know-how and ability required to provide the Services and create the Deliverables (each as defined below); and</P>
       <P>WHEREAS, based on Service Provider&rsquo;s representations hereunder, the parties desire that Service Provider provide the Services as an independent contractor of Company upon the terms and conditions hereinafter specified;</P>
@@ -1591,7 +1599,10 @@ function FullContractText({ data: d, effectiveDate, liveId, liveAddress, noScrol
 /* ═══════════════════════════════════════════════
    Shell — Header + Footer wrapper
    ═══════════════════════════════════════════════ */
-function Shell({ children, status }) {
+function Shell({ children, status, company = DEFAULT_COMPANY }) {
+  const secondaryName = company.legalName.startsWith(company.short)
+    ? company.legalName.slice(company.short.length).trim()
+    : company.legalName;
   const statusConfig = {
     loading:   { label: 'Loading',              color: 'bg-gray-100 text-gray-500' },
     pending:   { label: 'Pending Signature',    color: 'bg-amber-100 text-amber-700' },
@@ -1611,11 +1622,11 @@ function Shell({ children, status }) {
           {/* Logo */}
           <div className="flex items-center gap-2.5">
             <div className="w-7 h-7 bg-[#0a1e42] rounded-md flex items-center justify-center">
-              <span className="text-white text-[10px] font-black tracking-tight">P</span>
+              <span className="text-white text-[10px] font-black tracking-tight">{company.short.charAt(0)}</span>
             </div>
             <div className="hidden sm:block">
-              <p className="text-sm font-bold text-[#0a1e42] leading-none">Particle</p>
-              <p className="text-[9px] text-gray-400 leading-none mt-0.5">Aesthetic Science Ltd.</p>
+              <p className="text-sm font-bold text-[#0a1e42] leading-none">{company.short}</p>
+              <p className="text-[9px] text-gray-400 leading-none mt-0.5">{secondaryName}</p>
             </div>
           </div>
 
