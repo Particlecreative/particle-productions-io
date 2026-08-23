@@ -1266,17 +1266,27 @@ function HistorySidebar({ history, weekStart, onSelect, onDelete, isEditor }) {
 function AddProductionModal({ productions, existingIds, onAdd, onClose }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-panel" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
+      <div
+        className="modal-panel flex flex-col"
+        style={{ width: 'min(1080px, 94vw)', maxWidth: '94vw', height: '86vh' }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-4 shrink-0">
           <h2 className="text-lg font-black" style={{ color: 'var(--brand-primary)' }}>Add Production</h2>
           <button onClick={onClose}><X size={18} className="text-gray-400" /></button>
         </div>
-        <ProductionPicker
-          productions={productions}
-          exclude={existingIds}
-          mode="inline"
-          onSelect={p => { onAdd(p); onClose(); }}
-        />
+        <div className="flex-1 min-h-0">
+          <ProductionPicker
+            productions={productions}
+            exclude={existingIds}
+            mode="inline"
+            onSelect={p => { onAdd(p); onClose(); }}
+            showCompletedToggle
+            defaultHideCompleted
+            columns={2}
+            listMaxHeight="max-h-[calc(86vh-160px)]"
+          />
+        </div>
       </div>
     </div>
   );

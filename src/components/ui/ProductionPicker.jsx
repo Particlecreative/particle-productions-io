@@ -63,6 +63,8 @@ function TypePill({ type }) {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
+const isCompletedStage = (stage) => /complete/i.test(stage || '');
+
 export default function ProductionPicker({
   productions = [],
   value = '',
@@ -71,9 +73,14 @@ export default function ProductionPicker({
   exclude = [],
   mode = 'dropdown',
   placeholder = 'Select production…',
+  showCompletedToggle = false,   // inline mode: render a "Hide completed" switch
+  defaultHideCompleted = false,  // inline mode: initial state of that switch
+  columns = 1,                   // inline mode: 1 or 2 column list grid
+  listMaxHeight = 'max-h-72',    // tailwind max-h class for the scroll area
 }) {
   const [search, setSearch] = useState('');
   const [open, setOpen] = useState(false);
+  const [hideCompleted, setHideCompleted] = useState(defaultHideCompleted);
   const wrapRef = useRef(null);
   const searchRef = useRef(null);
 
@@ -106,9 +113,12 @@ export default function ProductionPicker({
 
   const q = search.toLowerCase();
 
+  const completedCount = productions.filter(p => !exclude.includes(p.id) && isCompletedStage(p.stage)).length;
+
   const filtered = sortProductions(
     productions.filter(p => {
       if (exclude.includes(p.id)) return false;
+      if (hideCompleted && isCompletedStage(p.stage)) return false;
       if (!q) return true;
       return (
         p.id?.toLowerCase().includes(q) ||
@@ -152,7 +162,23 @@ export default function ProductionPicker({
             </button>
           )}
         </div>
-        <ProdList groups={groups} value={value} onSelect={handleSelect} filtered={filtered} />
+        {showCompletedToggle && (
+          <div className="flex items-center justify-between px-0.5">
+            <span className="text-[11px] text-gray-400">
+              {filtered.length} shown{hideCompleted && completedCount > 0 ? ` · ${completedCount} completed hidden` : ''}
+            </span>
+            <button
+              type="button"
+              onClick={() => setHideCompleted(v => !v)}
+              className={`flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border transition-colors ${
+                hideCompleted ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+              }`}
+            >
+              {hideCompleted ? <Check size={11} /> : null} Hide completed
+            </button>
+          </div>
+        )}
+        <ProdList groups={groups} value={value} onSelect={handleSelect} filtered={filtered} columns={columns} listMaxHeight={listMaxHeight} />
       </div>
     );
   }
@@ -209,7 +235,7 @@ export default function ProductionPicker({
 }
 
 // ── Shared list renderer ──────────────────────────────────────────────────────
-function ProdList({ groups, value, onSelect, filtered }) {
+function ProdList({ groups, value, onSelect, filtered, columns = 1, listMaxHeight = 'max-h-72' }) {
   if (filtered.length === 0) {
     return (
       <div className="px-4 py-8 text-sm text-gray-400 text-center">
@@ -219,15 +245,16 @@ function ProdList({ groups, value, onSelect, filtered }) {
   }
 
   return (
-    <div className="max-h-72 overflow-y-auto">
+    <div className={`${listMaxHeight} overflow-y-auto`}>
       {groups.map(({ year, items }) => (
         <div key={year}>
           {/* Year group header */}
-          <div className="sticky top-0 px-3 py-1 bg-gray-50 border-b border-gray-100 flex items-center gap-2">
+          <div className="sticky top-0 z-10 px-3 py-1 bg-gray-50 border-b border-gray-100 flex items-center gap-2">
             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{year}</span>
             <span className="text-[10px] text-gray-300">{items.length}</span>
           </div>
 
+          <div className={columns > 1 ? 'grid grid-cols-1 md:grid-cols-2' : ''}>
           {items.map(p => {
             const isSelected = p.id === value;
             const productTypes = Array.isArray(p.product_type) ? p.product_type.slice(0, 2) : [];
@@ -268,6 +295,7 @@ function ProdList({ groups, value, onSelect, filtered }) {
               </button>
             );
           })}
+          </div>
         </div>
       ))}
     </div>
