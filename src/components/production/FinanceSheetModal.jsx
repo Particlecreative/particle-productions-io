@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react';
 import { X, FileSpreadsheet, ExternalLink, RefreshCw, Link2, Unlink, Users, AlertTriangle, Check, Loader2, Plus } from 'lucide-react';
 import {
   getFinanceSheet, createFinanceSheet, syncFinanceSheet,
-  linkFinanceSheet, unlinkFinanceSheet, getFinanceSheetMismatches, shareFinanceSheet,
+  linkFinanceSheet, unlinkFinanceSheet, shareFinanceSheet,
 } from '../../lib/dataService';
 import { toast } from '../../lib/toast';
+import FinanceMismatchModal from './FinanceMismatchModal';
 
 function timeAgo(iso) {
   if (!iso) return 'never';
@@ -23,7 +24,7 @@ export default function FinanceSheetModal({ productionId, production, onClose, o
   const [busy, setBusy] = useState('');       // 'create' | 'sync' | 'link' | 'unlink' | 'share' | 'mismatch'
   const [linkUrl, setLinkUrl] = useState('');
   const [showLink, setShowLink] = useState(false);
-  const [mismatches, setMismatches] = useState(null);
+  const [showMismatch, setShowMismatch] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -57,18 +58,18 @@ export default function FinanceSheetModal({ productionId, production, onClose, o
     const r = await run('link', () => linkFinanceSheet(productionId, linkUrl.trim()), 'Sheet linked');
     if (r) { setShowLink(false); setLinkUrl(''); }
   }
-  async function handleMismatch() {
-    setBusy('mismatch'); setMismatches(null);
-    try {
-      const r = await getFinanceSheetMismatches(productionId);
-      if (r?.error) throw new Error(r.error);
-      setMismatches(r);
-    } catch (e) { toast.error(e.message || 'Could not read the sheet'); }
-    finally { setBusy(''); }
-  }
-
   const linked = state?.linked;
   const isMirror = state?.mode === 'mirror';
+
+  if (showMismatch) {
+    return (
+      <FinanceMismatchModal
+        productionId={productionId}
+        productionName={production?.project_name}
+        onClose={() => setShowMismatch(false)}
+      />
+    );
+  }
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -162,35 +163,10 @@ export default function FinanceSheetModal({ productionId, production, onClose, o
               )}
 
               {!isMirror && (
-                <button onClick={handleMismatch} disabled={!!busy}
-                  className="w-full flex items-center justify-center gap-1.5 text-xs font-semibold py-2 rounded-lg border border-amber-200 text-amber-700 hover:border-amber-400 disabled:opacity-50">
-                  {busy === 'mismatch' ? <Loader2 size={12} className="animate-spin" /> : <AlertTriangle size={12} />} Check mismatches vs CP
+                <button onClick={() => setShowMismatch(true)} disabled={!!busy}
+                  className="w-full flex items-center justify-center gap-1.5 text-xs font-semibold py-2.5 rounded-xl border border-amber-200 text-amber-700 hover:border-amber-400 hover:bg-amber-50/50 transition-colors disabled:opacity-50">
+                  <AlertTriangle size={13} /> Check budget & spend vs CP
                 </button>
-              )}
-
-              {mismatches && (
-                <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3 max-h-56 overflow-y-auto">
-                  {mismatches.diffs?.length === 0 ? (
-                    <p className="text-xs text-green-600 font-semibold flex items-center gap-1.5"><Check size={13} /> No mismatches — sheet matches the CP.</p>
-                  ) : (
-                    <>
-                      <p className="text-[11px] font-bold text-gray-600 dark:text-gray-300 mb-2">{mismatches.diffs.length} difference{mismatches.diffs.length !== 1 ? 's' : ''} ({mismatches.sheetRowCount} sheet rows vs {mismatches.cpRowCount} CP rows)</p>
-                      <div className="space-y-1.5">
-                        {mismatches.diffs.map((d, i) => (
-                          <div key={i} className="text-[11px] leading-snug">
-                            {d.type === 'only_in_sheet' && <span className="text-amber-600">• <b>{d.name}</b> — only in the sheet, not in CP</span>}
-                            {d.type === 'only_in_cp' && <span className="text-blue-600">• <b>{d.name}</b> — only in CP, not in the sheet</span>}
-                            {d.type === 'changed' && (
-                              <span className="text-gray-600 dark:text-gray-300">• <b>{d.name}</b>: {d.fields.map((f, fi) => (
-                                <span key={fi}>{fi > 0 ? ', ' : ''}{f.field} (sheet {String(f.sheet)} → CP {String(f.cp)})</span>
-                              ))}</span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </div>
               )}
 
               <button onClick={handleUnlink} disabled={!!busy}
