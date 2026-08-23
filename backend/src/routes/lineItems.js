@@ -213,29 +213,43 @@ router.delete('/:id', async (req, res) => {
 });
 
 // Helper: recalculate and update production estimated_budget + actual_spent
-// Converts ILS amounts to USD using a default rate before summing
+// Converts ILS amounts to USD using a default rate before summing.
+// Also derives planned_budget_2026 = live estimated total + 10% contingency for the
+// unexpected — unless the budget already has an explicit "unexpected"/contingency line,
+// in which case the buffer is considered already accounted for. When there are no line
+// items yet, the manually-entered planned budget is left untouched.
 const DEFAULT_ILS_RATE = 3.7;
 async function syncTotals(productionId) {
   try {
     await db.query(
-      `UPDATE productions SET
-         estimated_budget = (
-           SELECT COALESCE(SUM(
-             CASE WHEN currency_code = 'ILS' THEN planned_budget / ${DEFAULT_ILS_RATE}
-                  ELSE planned_budget END
-           ), 0) FROM production_line_items WHERE production_id = $1
-         ),
-         actual_spent = (
-           SELECT COALESCE(SUM(
-             CASE WHEN currency_code = 'ILS' THEN actual_spent / ${DEFAULT_ILS_RATE}
-                  ELSE actual_spent END
-           ), 0) FROM production_line_items WHERE production_id = $1
-         ),
+      `UPDATE productions p SET
+         estimated_budget = agg.est,
+         actual_spent     = agg.spent,
+         planned_budget_2026 = CASE
+           WHEN agg.line_count = 0    THEN p.planned_budget_2026        -- no items → keep manual value
+           WHEN agg.has_unexpected    THEN ROUND(agg.est, 2)            -- already has an "unexpected" line
+           ELSE ROUND(agg.est * 1.10, 2)                                -- + 10% contingency
+         END,
          updated_at = NOW()
-       WHERE id = $1`,
+       FROM (
+         SELECT
+           COALESCE(SUM(CASE WHEN currency_code = 'ILS' THEN planned_budget / ${DEFAULT_ILS_RATE}
+                             ELSE planned_budget END), 0) AS est,
+           COALESCE(SUM(CASE WHEN currency_code = 'ILS' THEN actual_spent / ${DEFAULT_ILS_RATE}
+                             ELSE actual_spent END), 0)   AS spent,
+           COUNT(*) AS line_count,
+           COALESCE(BOOL_OR(
+             item ILIKE '%unexpected%' OR item ILIKE '%contingenc%'
+             OR type ILIKE '%unexpected%' OR full_name ILIKE '%unexpected%'
+             OR item ILIKE '%בלת%' OR item ILIKE '%צפוי%'
+           ), false) AS has_unexpected
+         FROM production_line_items
+         WHERE production_id = $1
+       ) agg
+       WHERE p.id = $1`,
       [productionId]
     );
-  } catch { /* non-critical */ }
+  } catch (err) { console.error('syncTotals error:', err.message); }
 }
 
 // GET /api/line-items/gsheet-csv?url=... — proxy-fetch a public Google Sheet as CSV

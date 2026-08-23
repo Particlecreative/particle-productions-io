@@ -1107,16 +1107,23 @@ export function generateId(prefix = 'id') {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
 }
 
+const UNEXPECTED_RE = /unexpected|contingenc|בלת|צפוי/i;
 export function syncProductionTotals(productionId) {
   if (!IS_DEV) return; // server-side in prod
   const lineItems = getLineItems(productionId);
   const estimatedBudget = (lineItems || []).reduce((s, li) => s + (parseFloat(li.planned_budget) || 0), 0);
   const actualSpent     = (lineItems || []).reduce((s, li) => s + (parseFloat(li.actual_spent)  || 0), 0);
+  const hasUnexpected   = (lineItems || []).some(li => UNEXPECTED_RE.test(`${li.item || ''} ${li.type || ''} ${li.full_name || ''}`));
   const all = read('cp_productions', PARTICLE_PRODUCTIONS);
   const idx = all.findIndex(p => p.id === productionId);
   if (idx !== -1) {
     all[idx].estimated_budget = estimatedBudget;
     all[idx].actual_spent     = actualSpent;
+    // Derived Planned Budget = estimate + 10% for the unexpected (skip when an
+    // "unexpected" line already exists). Leave the manual value alone if no items.
+    if ((lineItems || []).length > 0) {
+      all[idx].planned_budget_2026 = Math.round((hasUnexpected ? estimatedBudget : estimatedBudget * 1.10) * 100) / 100;
+    }
     write('cp_productions', all);
   }
 }

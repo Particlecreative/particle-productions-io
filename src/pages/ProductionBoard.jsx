@@ -198,7 +198,12 @@ export default function ProductionBoard() {
     );
   }
 
-  const planned = parseFloat(production.planned_budget_2026) || 0;
+  // "Planned Budget" is derived from the live estimate + a 10% contingency for the
+  // unexpected — unless the budget already has an explicit "unexpected" line (then the
+  // buffer is considered already included). Detected below once line items are summed.
+  const CONTINGENCY_PCT = 0.10;
+  const UNEXPECTED_RE = /unexpected|contingenc|בלת|צפוי/i;
+  const hasUnexpectedLine = lineItems.some(i => UNEXPECTED_RE.test(`${i.item || ''} ${i.type || ''} ${i.full_name || ''}`));
 
   // Live totals computed directly from line items (never stale)
   // Use SAME rate priority as BudgetTable: prodRate (historical for delivery date) → live rate → fallback
@@ -215,7 +220,8 @@ export default function ProductionBoard() {
   const spentUSDEquiv = liveSpentUSD + liveSpentILS / DEFAULT_ILS_RATE;
   const estTotalUSD   = liveEstUSD + liveEstILS / DEFAULT_ILS_RATE;   // live estimated total (sum of line items)
   const hasMixedEst   = liveEstUSD > 0 && liveEstILS > 0;
-  const estVsPlanned  = estTotalUSD - planned;                        // + = estimate is over the planned budget
+  const contingency   = hasUnexpectedLine ? 0 : estTotalUSD * CONTINGENCY_PCT;
+  const planned       = estTotalUSD + contingency;                   // derived Planned Budget (estimate + 10% unexpected)
   const spentPct      = estTotalUSD > 0 ? Math.round((spentUSDEquiv / estTotalUSD) * 100) : 0;
   const leftToPay     = estTotalUSD - spentUSDEquiv;                  // still to pay against the estimate
 
@@ -370,11 +376,17 @@ export default function ProductionBoard() {
 
           {/* Budget Stats */}
           <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
-            {/* Planned Budget — the target/cap set on the production */}
+            {/* Planned Budget — derived: live estimate + 10% for the unexpected */}
             <div className="rounded-2xl px-4 py-3 border border-gray-100 bg-gray-50/80">
               <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Planned Budget</div>
               <div className="text-2xl font-black tracking-tight text-gray-800">{fmt(planned)}</div>
-              <div className="text-[10px] text-gray-400 mt-1">Target for this production</div>
+              <div className="text-[10px] text-gray-400 mt-1">
+                {estTotalUSD <= 0
+                  ? 'Estimate + 10% unexpected'
+                  : hasUnexpectedLine
+                    ? "Estimate — 'unexpected' line included"
+                    : `Estimate + 10% unexpected (+${fmt(contingency)})`}
+              </div>
             </div>
 
             {/* Estimated Total — live sum of all line-item estimates */}
@@ -387,11 +399,6 @@ export default function ProductionBoard() {
                 </div>
               ) : (
                 <div className="text-[10px] text-gray-400 mt-1">Sum of line items</div>
-              )}
-              {planned > 0 && estTotalUSD > 0 && (
-                <div className={clsx('text-[10px] font-bold mt-1', estVsPlanned > 0.5 ? 'text-red-500' : 'text-green-600')}>
-                  {estVsPlanned > 0.5 ? `▲ ${fmt(estVsPlanned)} over planned` : `${fmt(Math.abs(estVsPlanned))} under planned`}
-                </div>
               )}
             </div>
 
