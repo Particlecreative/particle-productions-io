@@ -860,6 +860,40 @@ router.get('/:id/versions', async (req, res) => {
   }
 });
 
+// GET /api/scripts/comments/inbox — all OPEN top-level comments across the brand's
+// scripts, so feedback can be triaged in one place instead of opening each script.
+// (Declared before /:id/comments; the path is distinct so ordering is not strictly
+// required, but keeping it here is unambiguous.)
+router.get('/comments/inbox', async (req, res) => {
+  try {
+    // Same brand rule as the list: honor the requested brand only if the user is
+    // allowed it (super admin / in their brand_ids), else fall back to JWT brand.
+    const requestedBrand = req.query.brand_id;
+    const allowedBrand =
+      req.user?.super_admin || (req.user?.brand_ids || []).includes(requestedBrand);
+    const brand_id = (requestedBrand && allowedBrand) ? requestedBrand : req.user?.brand_id;
+    const vals = [];
+    const brandClause = brand_id ? `AND s.brand_id = $${vals.push(brand_id)}` : '';
+    const { rows } = await db.query(
+      `SELECT sc.id, sc.script_id, sc.scene_id, sc.cell, sc.selected_text, sc.text,
+              sc.author_name, sc.created_at,
+              s.title AS script_title, s.production_id,
+              p.project_name,
+              (SELECT COUNT(*)::int FROM script_comments r WHERE r.parent_comment_id = sc.id) AS reply_count
+         FROM script_comments sc
+         JOIN scripts s ON s.id = sc.script_id
+         LEFT JOIN productions p ON p.id = s.production_id
+        WHERE sc.status = 'open' AND sc.parent_comment_id IS NULL ${brandClause}
+        ORDER BY sc.created_at DESC`,
+      vals
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('GET /scripts/comments/inbox error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // GET /api/scripts/:id/comments
 router.get('/:id/comments', async (req, res) => {
   try {

@@ -550,7 +550,7 @@ const SortableSceneRow = memo(function SortableSceneRow({ scene, index, visibleC
 });
 
 // ── Main StoryboardEditor ─────────────────────────────────────────────────────
-export default function StoryboardEditor({ scriptId, readOnly = false, onBack, onDeleted, onUpdated, defaultProductionId, defaultBrandId, productions = [] }) {
+export default function StoryboardEditor({ scriptId, readOnly = false, onBack, onDeleted, onUpdated, defaultProductionId, defaultBrandId, productions = [], openCommentsSignal = 0 }) {
   const { user } = useAuth();
   const { brand } = useBrand();
 
@@ -720,6 +720,11 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
     const res = await fetch(`${API}/api/scripts/${scriptId}/comments`, { headers: { Authorization: `Bearer ${jwt()}` } });
     setComments(await res.json());
   };
+
+  // Opened from the Scripts comments inbox ("Open" on a thread): reveal the panel.
+  useEffect(() => {
+    if (openCommentsSignal > 0) { setShowComments(true); loadComments(); }
+  }, [openCommentsSignal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadVersions = async () => {
     const res = await fetch(`${API}/api/scripts/${scriptId}/versions`, { headers: { Authorization: `Bearer ${jwt()}` } });

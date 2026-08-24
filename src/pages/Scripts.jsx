@@ -1,12 +1,16 @@
 import { useState, useEffect } from 'react';
 import {
   FileText, Plus, Search, CheckCircle, Eye, Archive, ChevronDown, ChevronRight, ChevronLeft,
-  Loader2, Scroll, PanelLeftClose, PanelLeftOpen,
+  Loader2, Scroll, PanelLeftClose, PanelLeftOpen, MessageSquare,
 } from 'lucide-react';
 import StoryboardEditor from '../components/scripts/StoryboardEditor';
 import NewScriptModal from '../components/scripts/NewScriptModal';
+import ScriptCommentsInbox from '../components/scripts/ScriptCommentsInbox';
 import { useBrand } from '../context/BrandContext';
 import clsx from 'clsx';
+
+// A script's open-comment count — API returns `open_comments`; tolerate older field name.
+const openCount = (s) => s.open_comments ?? s.open_comment_count ?? 0;
 
 const API = import.meta.env.VITE_API_URL || '';
 function jwt() { return localStorage.getItem('cp_auth_token'); }
@@ -30,6 +34,8 @@ export default function Scripts() {
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     try { return JSON.parse(localStorage.getItem('cp_scripts_sidebar') ?? 'true'); } catch { return true; }
   });
+  const [showInbox, setShowInbox] = useState(false);
+  const [openCommentsSignal, setOpenCommentsSignal] = useState(0); // bump → editor opens its comments panel
   const { brandId } = useBrand();
 
   useEffect(() => {
@@ -105,8 +111,18 @@ export default function Scripts() {
     byProduction[s.production_id].push(s);
   });
 
+  const totalOpenComments = scripts.reduce((n, s) => n + openCount(s), 0);
+
   function toggleCollapse(prodId) {
     setCollapsed(c => ({ ...c, [prodId]: !c[prodId] }));
+  }
+
+  // From the inbox: jump to a script and auto-open its comments panel.
+  function openScriptFromInbox(scriptId) {
+    setShowInbox(false);
+    setSelectedId(scriptId);
+    setOpenCommentsSignal(n => n + 1);
+    fetchAll(); // refresh list badges after any resolves done in the inbox
   }
 
   function renderScriptItem(script) {
@@ -141,9 +157,9 @@ export default function Scripts() {
               <span className={clsx('text-[9px] px-1.5 py-0.5 rounded-full font-semibold', STATUS_COLORS[script.status])}>
                 {script.status}
               </span>
-              {script.open_comment_count > 0 && (
-                <span className="text-[9px] bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded-full font-semibold">
-                  {script.open_comment_count}
+              {openCount(script) > 0 && (
+                <span className="flex items-center gap-0.5 text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-bold" title={`${openCount(script)} open comment${openCount(script) === 1 ? '' : 's'}`}>
+                  <MessageSquare size={9} /> {openCount(script)}
                 </span>
               )}
               <span className="text-[9px] text-gray-400 font-mono">{script.scene_count ?? 0} scenes</span>
@@ -174,6 +190,20 @@ export default function Scripts() {
               <span className="text-[10px] font-mono text-gray-400 font-normal">{scripts.length}</span>
             </h2>
             <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setShowInbox(true)}
+                className={clsx(
+                  'relative flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border transition-colors',
+                  totalOpenComments > 0
+                    ? 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                    : 'border-gray-200 text-gray-500 hover:bg-gray-100',
+                )}
+                title="See and resolve all open comments across scripts"
+                aria-label="Open comments inbox"
+              >
+                <MessageSquare size={12} />
+                {totalOpenComments > 0 && <span>{totalOpenComments}</span>}
+              </button>
               <button
                 onClick={() => setShowModal(true)}
                 className="flex items-center gap-1.5 text-white text-[11px] font-semibold px-3 py-1.5 rounded-lg transition-colors"
@@ -241,6 +271,11 @@ export default function Scripts() {
                     >
                       {isOpen ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
                       <span className="truncate">{prod?.project_name || 'Unknown'}</span>
+                      {(() => { const oc = prodScripts.reduce((n, s) => n + openCount(s), 0); return oc > 0 ? (
+                        <span className="flex items-center gap-0.5 text-[9px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-bold normal-case" title={`${oc} open comment${oc === 1 ? '' : 's'}`}>
+                          <MessageSquare size={9} /> {oc}
+                        </span>
+                      ) : null; })()}
                       <span className="ml-auto text-gray-400 font-mono text-[10px] font-normal lowercase">{prodScripts.length}</span>
                     </button>
                     {isOpen && prodScripts.map(renderScriptItem)}
@@ -298,6 +333,7 @@ export default function Scripts() {
                 onDeleted={handleScriptDeleted}
                 onUpdated={handleScriptUpdated}
                 productions={productions}
+                openCommentsSignal={openCommentsSignal}
               />
             </div>
           </>
@@ -327,6 +363,14 @@ export default function Scripts() {
           onClose={() => setShowModal(false)}
         />
       )}
+
+      {/* Cross-script comments inbox */}
+      <ScriptCommentsInbox
+        isOpen={showInbox}
+        brandId={brandId}
+        onClose={() => { setShowInbox(false); fetchAll(); }}
+        onOpenScript={openScriptFromInbox}
+      />
     </div>
   );
 }
