@@ -40,7 +40,9 @@ CREATE TABLE IF NOT EXISTS script_comments (
   author_name TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   resolved_at TIMESTAMPTZ,
-  resolved_by_name TEXT
+  resolved_by_name TEXT,
+  parent_comment_id UUID REFERENCES script_comments(id) ON DELETE CASCADE,  -- threaded replies
+  is_system BOOLEAN DEFAULT FALSE                                            -- auto/system-generated note
 );
 
 CREATE INDEX IF NOT EXISTS idx_scripts_brand_id ON scripts(brand_id);
