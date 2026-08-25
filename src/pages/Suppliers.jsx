@@ -8,6 +8,7 @@ import { useBrand } from '../context/BrandContext';
 import { useAuth } from '../context/AuthContext';
 import ExportMenu from '../components/ui/ExportMenu';
 import ImportSuppliersModal from '../components/shared/ImportSuppliersModal';
+import PeopleHistory from '../components/suppliers/PeopleHistory';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
   PieChart, Pie, Legend,
@@ -50,7 +51,7 @@ export default function Suppliers() {
   const { brandId } = useBrand();
   const { isEditor } = useAuth();
 
-  const [tab, setTab] = useState('list'); // 'list' | 'dashboard'
+  const [tab, setTab] = useState('people'); // 'people' | 'list' | 'dashboard'
   const [suppliers, setSuppliers] = useState([]);
   const [productions, setProductions] = useState([]);
 
@@ -221,16 +222,23 @@ export default function Suppliers() {
 
       {/* Inner tabs */}
       <div className="brand-tabs mb-6">
-        {['list', 'dashboard'].map(t => (
+        {[
+          ['people', 'People'],
+          ['list', 'Directory'],
+          ['dashboard', 'Dashboard'],
+        ].map(([t, label]) => (
           <button
             key={t}
             className={clsx('brand-tab', tab === t && 'active')}
             onClick={() => setTab(t)}
           >
-            {t === 'list' ? 'List' : 'Dashboard'}
+            {label}
           </button>
         ))}
       </div>
+
+      {/* ── PEOPLE TAB (work history from line items) ── */}
+      {tab === 'people' && <PeopleHistory productions={productions} brandId={brandId} />}
 
       {/* ── LIST TAB ── */}
       {tab === 'list' && (
