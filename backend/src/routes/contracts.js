@@ -88,6 +88,7 @@ router.get('/sign/:id/:token', async (req, res) => {
               c.exhibit_a, c.exhibit_b, c.fee_amount, c.payment_terms,
               c.provider_id_number, c.provider_address,
               c.currency, c.contract_type, c.effective_date,
+              c.contract_intro, c.contract_body,
               p.project_name, p.producer, p.production_type, p.brand_id
        FROM contract_signatures cs
        JOIN contracts c ON cs.contract_id = c.id
@@ -159,6 +160,8 @@ router.get('/sign/:id/:token', async (req, res) => {
           exhibit_a: contract.exhibit_a,
           exhibit_b: contract.exhibit_b,
           contract_type: contract.contract_type,
+          contract_intro: contract.contract_intro,
+          contract_body: contract.contract_body,
           drive_url: contract.drive_url,
           events: contract.events,
         },
@@ -209,6 +212,8 @@ router.get('/sign/:id/:token', async (req, res) => {
       currency: sig.currency || 'USD',
       contract_type: sig.contract_type || 'crew',
       effective_date: sig.effective_date,
+      contract_intro: sig.contract_intro,
+      contract_body: sig.contract_body,
       hocp_signature: hocpSignature,
       company: companyForBrand(sig.brand_id),
     });
