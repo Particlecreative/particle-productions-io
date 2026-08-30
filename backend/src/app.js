@@ -98,6 +98,7 @@ app.use('/api/monday',         require('./routes/monday'));
 app.use('/api/briefs',         require('./routes/briefs'));
 app.use('/api/tasks',          require('./routes/tasks'));
 app.use('/api/finance-sheet',  require('./routes/financeSheet'));
+app.use('/api/taxi',           require('./routes/taxi'));
 
 // Google OAuth callback redirect — the callback URL registered with Google
 // points to /api/auth/google/callback, so we redirect to the drive router

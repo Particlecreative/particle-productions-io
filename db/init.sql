@@ -114,6 +114,7 @@ CREATE TABLE IF NOT EXISTS productions (
   finance_sheet_url       TEXT,
   finance_sheet_synced_at TIMESTAMPTZ,               -- last CP -> Sheet push
   finance_sheet_mode      TEXT,                      -- 'mirror' (CP-owned) | 'linked' (external, read-only)
+  taxi_plan               JSONB,                     -- chat-based Taxi Wizard: { messages, plan }
   created_at          TIMESTAMPTZ DEFAULT NOW(),
   updated_at          TIMESTAMPTZ DEFAULT NOW()
 );

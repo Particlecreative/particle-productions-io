@@ -132,7 +132,7 @@ router.patch('/:id', requireEditor, async (req, res) => {
     'planned_budget_2026','estimated_budget','actual_spent','payment_date',
     'stage','production_type','production_category','timeline_sync',
     'shoot_dates','delivery_date','air_date','custom_columns','custom_fields',
-    'production_year',
+    'production_year','taxi_plan',
   ];
 
   const updates = Object.entries(req.body)
