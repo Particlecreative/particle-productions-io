@@ -4,6 +4,8 @@ import {
   Sparkles, ArrowRight, RotateCcw, Home, AlertTriangle,
 } from 'lucide-react';
 import { updateProduction } from '../../lib/dataService';
+import TaxiMap from './TaxiMap';
+import clsx from 'clsx';
 
 const API = import.meta.env.VITE_API_URL || '';
 function jwt() { return localStorage.getItem('cp_auth_token'); }
@@ -46,6 +48,7 @@ export default function TaxiWizard({ production, people = [], cast = [], onClose
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState('');
+  const [planView, setPlanView] = useState('list'); // 'list' | 'map'
   const scrollRef = useRef(null);
   const kickedOff = useRef(false);
 
@@ -239,14 +242,32 @@ export default function TaxiWizard({ production, people = [], cast = [], onClose
                 </div>
               </div>
               {taxis.length > 0 && (
-                <button onClick={copyAll}
-                  className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 hover:border-amber-300 hover:text-amber-700 transition-colors">
-                  {copied === '__all__' ? <><Check size={12} /> Copied</> : <><Copy size={12} /> Copy all</>}
-                </button>
+                <div className="flex items-center gap-2">
+                  {/* List / Map toggle */}
+                  <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden text-xs font-semibold">
+                    <button onClick={() => setPlanView('list')}
+                      className={clsx('px-2.5 py-1.5 transition-colors', planView === 'list' ? 'bg-amber-500 text-white' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800')}>
+                      List
+                    </button>
+                    <button onClick={() => setPlanView('map')}
+                      className={clsx('px-2.5 py-1.5 transition-colors flex items-center gap-1', planView === 'map' ? 'bg-amber-500 text-white' : 'text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800')}>
+                      <MapPin size={11} /> Map
+                    </button>
+                  </div>
+                  <button onClick={copyAll}
+                    className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 hover:border-amber-300 hover:text-amber-700 transition-colors">
+                    {copied === '__all__' ? <><Check size={12} /> Copied</> : <><Copy size={12} /> Copy all</>}
+                  </button>
+                </div>
               )}
             </div>
 
             {/* Plan body */}
+            {planView === 'map' && taxis.length > 0 ? (
+            <div className="flex-1 min-h-0 p-3">
+              <TaxiMap plan={plan} />
+            </div>
+            ) : (
             <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
               {taxis.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-center text-gray-400 py-16">
@@ -341,6 +362,7 @@ export default function TaxiWizard({ production, people = [], cast = [], onClose
                 </>
               )}
             </div>
+            )}
           </div>
         </div>
       </div>
