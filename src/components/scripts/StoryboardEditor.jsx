@@ -162,6 +162,35 @@ function resizeImageBase64(base64, mimeType, maxDim = 800) {
   });
 }
 
+// Read a user file and downscale it to a JPEG for AI reference images, so upload
+// payloads stay small and generation is fast. Returns { base64, mimeType, dataUrl }
+// (no data: prefix on base64). Falls back to the raw file if anything fails.
+function fileToRefBase64(file, maxDim = 1600) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result;
+      const raw = { base64: String(dataUrl).split(',')[1], mimeType: file.type || 'image/jpeg', dataUrl: String(dataUrl) };
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+          const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          const out = canvas.toDataURL('image/jpeg', 0.85);
+          resolve({ base64: out.split(',')[1], mimeType: 'image/jpeg', dataUrl: out });
+        } catch { resolve(raw); }
+      };
+      img.onerror = () => resolve(raw);
+      img.src = String(dataUrl);
+    };
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+}
+
 // Strip HTML for TTS/AI (plain text only)
 function stripHtml(html) {
   return html?.replace(/<[^>]*>/g, '') || '';
@@ -1364,37 +1393,33 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
     if (files.length === 0) return;
 
     for (const file of files.slice(0, 3)) {
-      const reader = new FileReader();
-      reader.onload = async (ev) => {
-        const dataUrl = ev.target.result;
-        const base64 = dataUrl.split(',')[1];
-        const mimeType = file.type || 'image/jpeg';
-        // Add photo to character's photos array (up to 3)
-        setWizardCharacters(prev => prev.map((c, i) => {
-          if (i !== charIndex) return c;
-          const photos = [...(c.photos || [])];
-          if (photos.length < 3) photos.push({ base64, mimeType, previewUrl: dataUrl });
-          // Keep first photo as legacy photoBase64 for backward compat
-          return { ...c, photos, photoBase64: photos[0]?.base64 || null, photoMime: photos[0]?.mimeType || null };
-        }));
-        // Describe actor from first photo only
-        if (files.indexOf(file) === 0) {
-          setDescribingActor(charIndex);
-          try {
-            const res = await fetch(`${API}/api/scripts/${scriptId}/describe-actor`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
-              body: JSON.stringify({ imageBase64: base64, mimeType, name: wizardCharacters[charIndex]?.name }),
-            });
-            const data = await res.json();
-            if (data.description) {
-              setWizardCharacters(prev => prev.map((c, i) => i === charIndex ? { ...c, description: data.description } : c));
-            }
-          } catch {}
-          setDescribingActor(null);
-        }
-      };
-      reader.readAsDataURL(file);
+      const r = await fileToRefBase64(file);
+      if (!r) continue;
+      const { base64, mimeType, dataUrl } = r;
+      // Add photo to character's photos array (up to 3)
+      setWizardCharacters(prev => prev.map((c, i) => {
+        if (i !== charIndex) return c;
+        const photos = [...(c.photos || [])];
+        if (photos.length < 3) photos.push({ base64, mimeType, previewUrl: dataUrl });
+        // Keep first photo as legacy photoBase64 for backward compat
+        return { ...c, photos, photoBase64: photos[0]?.base64 || null, photoMime: photos[0]?.mimeType || null };
+      }));
+      // Describe actor from first photo only
+      if (files.indexOf(file) === 0) {
+        setDescribingActor(charIndex);
+        try {
+          const res = await fetch(`${API}/api/scripts/${scriptId}/describe-actor`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
+            body: JSON.stringify({ imageBase64: base64, mimeType, name: wizardCharacters[charIndex]?.name }),
+          });
+          const data = await res.json();
+          if (data.description) {
+            setWizardCharacters(prev => prev.map((c, i) => i === charIndex ? { ...c, description: data.description } : c));
+          }
+        } catch {}
+        setDescribingActor(null);
+      }
     }
   };
 
@@ -2562,17 +2587,15 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                     type="file"
                     accept="image/*"
                     className="hidden"
-                    onChange={e => {
+                    onChange={async e => {
                       const file = e.target.files?.[0]; if (!file) return;
-                      const reader = new FileReader();
-                      reader.onload = ev => {
-                        const b64 = ev.target.result.split(',')[1];
-                        setRegenRefBase64(b64);
-                        setRegenRefMime(file.type);
-                        setRegenRefPreview(ev.target.result);
+                      const r = await fileToRefBase64(file);
+                      if (r) {
+                        setRegenRefBase64(r.base64);
+                        setRegenRefMime(r.mimeType);
+                        setRegenRefPreview(r.dataUrl);
                         setRegenRefUrl('');
-                      };
-                      reader.readAsDataURL(file);
+                      }
                       e.target.value = '';
                     }}
                   />
@@ -3229,20 +3252,17 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                     accept="image/*"
                     multiple
                     className="hidden"
-                    onChange={e => {
+                    onChange={async e => {
                       const files = Array.from(e.target.files || []);
-                      files.slice(0, 5 - wizardRefImages.length).forEach(file => {
-                        const reader = new FileReader();
-                        reader.onload = ev => {
-                          const dataUrl = ev.target.result;
-                          setWizardRefImages(prev => prev.length < 5 ? [...prev, {
-                            base64: dataUrl.split(',')[1],
-                            mimeType: file.type || 'image/jpeg',
-                            previewUrl: dataUrl,
-                          }] : prev);
-                        };
-                        reader.readAsDataURL(file);
-                      });
+                      for (const file of files.slice(0, 5 - wizardRefImages.length)) {
+                        const r = await fileToRefBase64(file);
+                        if (!r) continue;
+                        setWizardRefImages(prev => prev.length < 5 ? [...prev, {
+                          base64: r.base64,
+                          mimeType: r.mimeType,
+                          previewUrl: r.dataUrl,
+                        }] : prev);
+                      }
                       e.target.value = '';
                     }}
                   />
