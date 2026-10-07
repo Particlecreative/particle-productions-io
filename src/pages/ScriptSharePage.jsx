@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   Table2, Volume2, Layout, Maximize2, X, ChevronLeft, ChevronRight,
-  Printer, Loader2, MessageSquare, Send, Check, Play, Pause, Download,
+  Printer, Loader2, MessageSquare, Send, Check, Play, Pause, Download, Copy,
 } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import clsx from 'clsx';
@@ -75,6 +75,7 @@ export default function ScriptSharePage() {
   const { token } = useParams();
   const [script, setScript] = useState(null);
   const [scenes, setScenes] = useState([]);
+  const [copiedKey, setCopiedKey] = useState(null); // which prompt/button was just copied
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState('table');
@@ -420,6 +421,40 @@ export default function ScriptSharePage() {
 
   const scene = scenes[presentIndex];
 
+  // ── Image prompts (share-link viewers can copy all / download / copy one) ──
+  const imagePromptBlocks = scenes.map((s, i) => {
+    const prompts = [...new Set((s.images || []).map(im => (im.prompt || '').trim()).filter(Boolean))];
+    const text = prompts.length
+      ? prompts.join('\n\n')
+      : (s.what_we_see || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!text) return null;
+    return { label: `Scene ${i + 1}${s.location ? ' · ' + s.location : ''}`, text };
+  }).filter(Boolean);
+  const allPromptsText = `${script.title || 'Script'} — Image prompts\n\n${imagePromptBlocks.map(b => `${b.label}\n${b.text}`).join('\n\n')}`;
+
+  const flashCopied = (key) => { setCopiedKey(key); setTimeout(() => setCopiedKey(k => (k === key ? null : k)), 1800); };
+  const copyToClipboard = (text, key) => {
+    if (!text) return;
+    const ok = () => flashCopied(key);
+    try {
+      navigator.clipboard.writeText(text).then(ok).catch(() => {
+        const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
+        try { document.execCommand('copy'); ok(); } catch {}
+        document.body.removeChild(ta);
+      });
+    } catch {}
+  };
+  const downloadAllPrompts = () => {
+    const blob = new Blob([allPromptsText], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${(script.title || 'script').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '')}_image_prompts.txt`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    flashCopied('download');
+  };
+
   return (
     <>
       {/* Present Mode Overlay */}
@@ -676,6 +711,27 @@ export default function ScriptSharePage() {
                   {downloadingVO ? 'Generating...' : 'Play Full VO'}
                 </button>
               )}
+              {imagePromptBlocks.length > 0 && (
+                <>
+                  <button
+                    onClick={() => copyToClipboard(allPromptsText, 'all')}
+                    title="Copy every scene's image prompt"
+                    className={clsx('flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors border',
+                      copiedKey === 'all'
+                        ? 'bg-green-600 border-green-600 text-white'
+                        : 'border-gray-200 text-gray-600 hover:bg-gray-100')}
+                  >
+                    {copiedKey === 'all' ? <><Check size={13} /> Copied</> : <><Copy size={13} /> Copy prompts ({imagePromptBlocks.length})</>}
+                  </button>
+                  <button
+                    onClick={downloadAllPrompts}
+                    title="Download all image prompts (.txt)"
+                    className="p-2 rounded-lg border border-gray-200 hover:bg-gray-100 text-gray-500 transition-colors"
+                  >
+                    {copiedKey === 'download' ? <Check size={15} className="text-green-600" /> : <Download size={15} />}
+                  </button>
+                </>
+              )}
               <button
                 onClick={() => { setPresentIndex(0); setPresentMode(true); }}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-gray-800 hover:bg-gray-900 text-white text-xs font-medium transition-colors"
@@ -780,6 +836,15 @@ export default function ScriptSharePage() {
                                 className="w-16 h-12 object-cover rounded-lg cursor-pointer hover:ring-2 hover:ring-indigo-300 transition-all scripts-visuals"
                                 loading="lazy"
                                 onClick={(e) => { e.stopPropagation(); setLightbox({ url: img.url, name: img.prompt || '' }); }} />
+                              {img.prompt && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); copyToClipboard(img.prompt, img.id); }}
+                                  title="Copy this image's prompt"
+                                  className="absolute top-0.5 right-0.5 p-1 rounded-md bg-black/55 text-white opacity-0 group-hover/img:opacity-100 transition-opacity hover:bg-black/80 scripts-no-print"
+                                >
+                                  {copiedKey === img.id ? <Check size={11} /> : <Copy size={11} />}
+                                </button>
+                              )}
                             </div>
                           ))}
                         </div>
