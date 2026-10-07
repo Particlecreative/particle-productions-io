@@ -41,7 +41,7 @@ app.use(cors({
   credentials: true,
 }));
 
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '50mb' })); // base64 reference images for AI image gen can exceed 10mb
 
 // ── Rate limiting on auth ────────────────────────────
 const authLimiter = rateLimit({
