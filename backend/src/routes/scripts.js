@@ -395,6 +395,107 @@ router.get('/share/:token', async (req, res) => {
   }
 });
 
+// ── Minimal ZIP writer (store / no compression — images are already compressed) ──
+const _CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); t[n] = c >>> 0; }
+  return t;
+})();
+function _crc32(buf) {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < buf.length; i++) c = _CRC_TABLE[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+function buildZip(files) {
+  const localParts = [], central = [];
+  let offset = 0;
+  for (const f of files) {
+    const nameBuf = Buffer.from(f.name, 'utf8');
+    const crc = _crc32(f.data), size = f.data.length;
+    const lh = Buffer.alloc(30);
+    lh.writeUInt32LE(0x04034b50, 0); lh.writeUInt16LE(20, 4); lh.writeUInt16LE(0, 6);
+    lh.writeUInt16LE(0, 8); lh.writeUInt16LE(0, 10); lh.writeUInt16LE(0, 12);
+    lh.writeUInt32LE(crc, 14); lh.writeUInt32LE(size, 18); lh.writeUInt32LE(size, 22);
+    lh.writeUInt16LE(nameBuf.length, 26); lh.writeUInt16LE(0, 28);
+    localParts.push(lh, nameBuf, f.data);
+    const cd = Buffer.alloc(46);
+    cd.writeUInt32LE(0x02014b50, 0); cd.writeUInt16LE(20, 4); cd.writeUInt16LE(20, 6);
+    cd.writeUInt16LE(0, 8); cd.writeUInt16LE(0, 10); cd.writeUInt16LE(0, 12); cd.writeUInt16LE(0, 14);
+    cd.writeUInt32LE(crc, 16); cd.writeUInt32LE(size, 20); cd.writeUInt32LE(size, 24);
+    cd.writeUInt16LE(nameBuf.length, 28); cd.writeUInt16LE(0, 30); cd.writeUInt16LE(0, 32);
+    cd.writeUInt16LE(0, 34); cd.writeUInt16LE(0, 36); cd.writeUInt32LE(0, 38); cd.writeUInt32LE(offset, 42);
+    central.push(cd, nameBuf);
+    offset += lh.length + nameBuf.length + f.data.length;
+  }
+  const centralBuf = Buffer.concat(central);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(0, 4); end.writeUInt16LE(0, 6);
+  end.writeUInt16LE(files.length, 8); end.writeUInt16LE(files.length, 10);
+  end.writeUInt32LE(centralBuf.length, 12); end.writeUInt32LE(offset, 16); end.writeUInt16LE(0, 20);
+  return Buffer.concat([...localParts, centralBuf, end]);
+}
+
+// ── PUBLIC: download all storyboard images as a zip (named/ordered by shot) ──
+// Lets a video editor pull every visual straight into a timeline. The server
+// fetches Drive-hosted images (no browser CORS) and streams a store-zip.
+router.get('/share/:token/download.zip', async (req, res) => {
+  try {
+    const { rows } = await db.query(
+      'SELECT title, scenes, share_mode, share_expires_at FROM scripts WHERE share_token = $1',
+      [req.params.token]
+    );
+    const script = rows[0];
+    if (!script) return res.status(404).json({ error: 'Not found' });
+    if (script.share_mode === 'none' || !script.share_mode) return res.status(403).json({ error: 'Sharing disabled' });
+    if (script.share_expires_at && new Date(script.share_expires_at) < new Date()) return res.status(410).json({ error: 'Link expired' });
+
+    const scenes = Array.isArray(script.scenes) ? script.scenes : [];
+    const slug = (s) => (s || '').replace(/<[^>]+>/g, ' ').replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'shot';
+    const tasks = [];
+    scenes.forEach((sc, i) => {
+      (sc.images || []).forEach((img, j) => {
+        if (!img?.url) return;
+        const base = `${String(i + 1).padStart(2, '0')}_${slug(sc.location || sc.what_we_see)}`;
+        tasks.push({ url: img.url, name: (sc.images.length > 1 ? `${base}_${j + 1}` : base) });
+      });
+    });
+    if (!tasks.length) return res.status(404).json({ error: 'No images to download' });
+
+    const files = [];
+    const CONC = 6;
+    for (let k = 0; k < tasks.length; k += CONC) {
+      const batch = tasks.slice(k, k + CONC);
+      const out = await Promise.all(batch.map(async (t) => {
+        try {
+          const r = await fetch(t.url, { redirect: 'follow' });
+          if (!r.ok) return null;
+          const ct = (r.headers.get('content-type') || '').toLowerCase();
+          if (!ct.startsWith('image/')) return null;
+          const ext = ct.includes('png') ? 'png' : ct.includes('webp') ? 'webp' : ct.includes('gif') ? 'gif' : 'jpg';
+          const buf = Buffer.from(await r.arrayBuffer());
+          return buf.length ? { name: `${t.name}.${ext}`, data: buf } : null;
+        } catch { return null; }
+      }));
+      out.forEach((f) => f && files.push(f));
+    }
+    if (!files.length) return res.status(502).json({ error: 'Could not fetch images' });
+
+    // De-dupe duplicate filenames
+    const seen = {};
+    for (const f of files) { seen[f.name] = (seen[f.name] || 0) + 1; if (seen[f.name] > 1) f.name = f.name.replace(/(\.\w+)$/, `_${seen[f.name]}$1`); }
+
+    const zip = buildZip(files);
+    const safe = (script.title || 'script').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '') || 'script';
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${safe}_storyboard.zip"`);
+    res.setHeader('Content-Length', zip.length);
+    res.end(zip);
+  } catch (err) {
+    console.error('GET /scripts/share/:token/download.zip error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // ── PUBLIC: get comments via share token (comment/edit mode) ─────────────────
 router.get('/share/:token/comments', async (req, res) => {
   try {

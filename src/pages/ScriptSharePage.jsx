@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import {
   Table2, Volume2, Layout, Maximize2, X, ChevronLeft, ChevronRight,
   Printer, Loader2, MessageSquare, Send, Check, Play, Pause, Download, Copy,
+  ChevronDown, Image as ImageIcon, FileText,
 } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import clsx from 'clsx';
@@ -76,6 +77,8 @@ export default function ScriptSharePage() {
   const [script, setScript] = useState(null);
   const [scenes, setScenes] = useState([]);
   const [copiedKey, setCopiedKey] = useState(null); // which prompt/button was just copied
+  const [dlOpen, setDlOpen] = useState(false);       // download menu
+  const [zipLoading, setZipLoading] = useState(false);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState('table');
@@ -444,15 +447,47 @@ export default function ScriptSharePage() {
       });
     } catch {}
   };
-  const downloadAllPrompts = () => {
-    const blob = new Blob([allPromptsText], { type: 'text/plain;charset=utf-8' });
+  const safeTitle = (script.title || 'script').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '') || 'script';
+  const imgCount = scenes.reduce((n, s) => n + ((s.images || []).length), 0);
+
+  const saveBlob = (blob, filename) => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url;
-    a.download = `${(script.title || 'script').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '')}_image_prompts.txt`;
+    a.href = url; a.download = filename;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    flashCopied('download');
+  };
+
+  const downloadAllPrompts = () => {
+    saveBlob(new Blob([allPromptsText], { type: 'text/plain;charset=utf-8' }), `${safeTitle}_image_prompts.txt`);
+  };
+
+  // All storyboard images, named/ordered by shot — zipped server-side (Drive is CORS-blocked in the browser).
+  const downloadImagesZip = async () => {
+    setDlOpen(false);
+    setZipLoading(true);
+    try {
+      const res = await fetch(`${API}/api/scripts/share/${token}/download.zip`);
+      if (!res.ok) throw new Error('zip failed');
+      saveBlob(await res.blob(), `${safeTitle}_storyboard.zip`);
+    } catch {
+      alert('Could not prepare the images zip — please try again.');
+    }
+    setZipLoading(false);
+  };
+
+  // Shot list for the edit (import to Premiere/Resolve/Sheets): #, location, what we see, VO, prompt.
+  const downloadShotList = () => {
+    setDlOpen(false);
+    const clean = (v) => String(v || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    const esc = (v) => `"${clean(v).replace(/"/g, '""')}"`;
+    const rows = [['#', 'Location', 'What we see', 'VO (what we hear)', 'Image prompt']];
+    scenes.forEach((s, i) => {
+      const prompt = (s.images || []).map(im => im.prompt).filter(Boolean)[0] || '';
+      rows.push([i + 1, s.location, s.what_we_see, s.what_we_hear, prompt].map(esc));
+    });
+    const csv = '﻿' + rows.map(r => r.join(',')).join('\r\n');
+    saveBlob(new Blob([csv], { type: 'text/csv;charset=utf-8' }), `${safeTitle}_shot_list.csv`);
   };
 
   return (
@@ -712,25 +747,52 @@ export default function ScriptSharePage() {
                 </button>
               )}
               {imagePromptBlocks.length > 0 && (
-                <>
+                <button
+                  onClick={() => copyToClipboard(allPromptsText, 'all')}
+                  title="Copy every scene's image prompt"
+                  className={clsx('flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors border',
+                    copiedKey === 'all'
+                      ? 'bg-green-600 border-green-600 text-white'
+                      : 'border-gray-200 text-gray-600 hover:bg-gray-100')}
+                >
+                  {copiedKey === 'all' ? <><Check size={13} /> Copied</> : <><Copy size={13} /> Copy prompts ({imagePromptBlocks.length})</>}
+                </button>
+              )}
+              {scenes.length > 0 && (
+                <div className="relative">
                   <button
-                    onClick={() => copyToClipboard(allPromptsText, 'all')}
-                    title="Copy every scene's image prompt"
-                    className={clsx('flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors border',
-                      copiedKey === 'all'
-                        ? 'bg-green-600 border-green-600 text-white'
-                        : 'border-gray-200 text-gray-600 hover:bg-gray-100')}
+                    onClick={() => setDlOpen(v => !v)}
+                    disabled={zipLoading}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 hover:bg-gray-100 text-gray-600 text-xs font-medium transition-colors disabled:opacity-60"
                   >
-                    {copiedKey === 'all' ? <><Check size={13} /> Copied</> : <><Copy size={13} /> Copy prompts ({imagePromptBlocks.length})</>}
+                    {zipLoading ? <Loader2 size={13} className="animate-spin" /> : <Download size={14} />}
+                    {zipLoading ? 'Preparing zip…' : 'Download'}
+                    {!zipLoading && <ChevronDown size={12} className="text-gray-400" />}
                   </button>
-                  <button
-                    onClick={downloadAllPrompts}
-                    title="Download all image prompts (.txt)"
-                    className="p-2 rounded-lg border border-gray-200 hover:bg-gray-100 text-gray-500 transition-colors"
-                  >
-                    {copiedKey === 'download' ? <Check size={15} className="text-green-600" /> : <Download size={15} />}
-                  </button>
-                </>
+                  {dlOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setDlOpen(false)} />
+                      <div className="absolute right-0 mt-1 z-50 w-64 bg-white rounded-xl shadow-xl border border-gray-200 p-1">
+                        {imgCount > 0 && (
+                          <button onClick={downloadImagesZip} className="w-full flex items-start gap-2.5 px-3 py-2 rounded-lg hover:bg-indigo-50 text-left transition-colors">
+                            <ImageIcon size={15} className="text-indigo-500 mt-0.5 shrink-0" />
+                            <div><p className="text-sm font-semibold text-gray-800">Storyboard images</p><p className="text-[11px] text-gray-400">{imgCount} visual{imgCount > 1 ? 's' : ''}, named by shot · .zip</p></div>
+                          </button>
+                        )}
+                        <button onClick={downloadShotList} className="w-full flex items-start gap-2.5 px-3 py-2 rounded-lg hover:bg-gray-50 text-left transition-colors">
+                          <Table2 size={15} className="text-emerald-500 mt-0.5 shrink-0" />
+                          <div><p className="text-sm font-semibold text-gray-800">Shot list</p><p className="text-[11px] text-gray-400">Scenes, VO & prompts · .csv</p></div>
+                        </button>
+                        {imagePromptBlocks.length > 0 && (
+                          <button onClick={() => { downloadAllPrompts(); setDlOpen(false); }} className="w-full flex items-start gap-2.5 px-3 py-2 rounded-lg hover:bg-gray-50 text-left transition-colors">
+                            <FileText size={15} className="text-gray-500 mt-0.5 shrink-0" />
+                            <div><p className="text-sm font-semibold text-gray-800">Image prompts</p><p className="text-[11px] text-gray-400">All prompts, per scene · .txt</p></div>
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
               )}
               <button
                 onClick={() => { setPresentIndex(0); setPresentMode(true); }}
