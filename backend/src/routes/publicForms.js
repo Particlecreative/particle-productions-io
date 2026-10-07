@@ -55,7 +55,7 @@ router.post('/cc-purchase', async (req, res) => {
     production_id, store_name, description,
     amount_without_vat, total_amount, purchase_date,
     purchaser_name, receipt_url, parent_line_item_id,
-    category, notes,
+    notes,
   } = req.body;
 
   if (!production_id || !store_name) {
@@ -65,17 +65,17 @@ router.post('/cc-purchase', async (req, res) => {
   try {
     const { rows } = await db.query(
       `INSERT INTO cc_purchases
-        (production_id, store_name, description, amount_without_vat, total_amount,
+        (id, production_id, store_name, description, amount_without_vat, total_amount,
          purchase_date, purchaser_name, receipt_url, parent_line_item_id,
-         category, notes, approval_status)
+         notes, approval_status)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'Pending')
        RETURNING *`,
       [
-        production_id, store_name, description || '',
+        require('crypto').randomUUID(), production_id, store_name, description || '',
         parseFloat(amount_without_vat) || 0, parseFloat(total_amount) || 0,
         purchase_date || null, purchaser_name || '',
-        receipt_url || '', parent_line_item_id || null,
-        category || 'Office', notes || '',
+        receipt_url || '', parent_line_item_id || '',
+        notes || '',
       ]
     );
     res.status(201).json(rows[0]);

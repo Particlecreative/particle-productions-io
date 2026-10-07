@@ -580,6 +580,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
   const [showComments, setShowComments] = useState(false);
   const [showVersions, setShowVersions] = useState(false);
   const [showShare, setShowShare] = useState(false);
+  const [promptsCopied, setPromptsCopied] = useState(false);
   const [comments, setComments] = useState([]);
   const [versions, setVersions] = useState([]);
   const [lightbox, setLightbox] = useState(null);
@@ -1581,6 +1582,34 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
   const scenes = script?.scenes || [];
   const shareUrl = shareToken ? `${window.location.origin}/script/${shareToken}` : '';
 
+  // ── Image prompts: one per scene (the AI image-generation prompt), for one-click copy ──
+  const imagePromptBlocks = useMemo(() => {
+    return (scenes || []).map((s, i) => {
+      const prompts = [...new Set((s.images || []).map(im => (im.prompt || '').trim()).filter(Boolean))];
+      const text = prompts.length ? prompts.join('\n\n') : (s.what_we_see || '').trim();
+      if (!text) return null;
+      return { label: `Scene ${i + 1}${s.location ? ' · ' + s.location : ''}`, text };
+    }).filter(Boolean);
+  }, [scenes]);
+
+  const imagePromptText = useMemo(
+    () => `${script?.title || 'Script'} — Image prompts\n\n${imagePromptBlocks.map(b => `${b.label}\n${b.text}`).join('\n\n')}`,
+    [imagePromptBlocks, script],
+  );
+
+  const copyImagePrompts = useCallback(() => {
+    if (!imagePromptBlocks.length) return;
+    const n = imagePromptBlocks.length;
+    const done = () => { setPromptsCopied(true); toast.success(`Copied ${n} image prompt${n > 1 ? 's' : ''}`); setTimeout(() => setPromptsCopied(false), 2000); };
+    try {
+      navigator.clipboard.writeText(imagePromptText).then(done).catch(() => {
+        const ta = document.createElement('textarea'); ta.value = imagePromptText; document.body.appendChild(ta); ta.select();
+        try { document.execCommand('copy'); done(); } catch { toast.error('Copy failed'); }
+        document.body.removeChild(ta);
+      });
+    } catch { toast.error('Copy failed'); }
+  }, [imagePromptBlocks, imagePromptText]);
+
   // ── Format toolbar — global mouseup listener ──
   useEffect(() => {
     const handleMouseUp = () => {
@@ -2428,6 +2457,37 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
               </div>
             )}
             {sharingLoading && <div className="mt-3 flex justify-center"><Loader2 size={16} className="animate-spin text-gray-400" /></div>}
+
+            {/* ── Copy image prompts ── */}
+            <div className="mt-5 pt-5 border-t border-gray-100">
+              <div className="flex items-center gap-2 mb-1">
+                <ImageIcon size={14} className="text-indigo-500" />
+                <p className="text-sm font-semibold text-gray-800">Image prompts</p>
+                {imagePromptBlocks.length > 0 && (
+                  <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 rounded-full px-1.5 py-0.5">{imagePromptBlocks.length}</span>
+                )}
+              </div>
+              <p className="text-xs text-gray-500 mb-2.5">Grab every scene's image prompt in one click — paste straight into Midjourney, Gemini, etc.</p>
+              <button
+                onClick={copyImagePrompts}
+                disabled={imagePromptBlocks.length === 0}
+                className={clsx(
+                  'w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-[0.99]',
+                  imagePromptBlocks.length === 0
+                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                    : promptsCopied
+                      ? 'bg-green-600 text-white'
+                      : 'bg-indigo-600 text-white hover:bg-indigo-700',
+                )}
+              >
+                {promptsCopied
+                  ? <><Check size={15} /> Copied {imagePromptBlocks.length} prompt{imagePromptBlocks.length > 1 ? 's' : ''}</>
+                  : <><Copy size={15} /> Copy image prompts{imagePromptBlocks.length ? ` (${imagePromptBlocks.length})` : ''}</>}
+              </button>
+              {imagePromptBlocks.length === 0 && (
+                <p className="text-[11px] text-gray-400 mt-1.5 text-center">No prompts yet — generate images (or add “what we see”) to create them.</p>
+              )}
+            </div>
           </div>
         </div>
       )}
