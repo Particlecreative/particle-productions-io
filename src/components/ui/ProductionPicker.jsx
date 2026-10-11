@@ -77,6 +77,7 @@ export default function ProductionPicker({
   defaultHideCompleted = false,  // inline mode: initial state of that switch
   columns = 1,                   // inline mode: 1 or 2 column list grid
   listMaxHeight = 'max-h-72',    // tailwind max-h class for the scroll area
+  brandDot = null,               // (prod) => { color, label } | null — shows a brand tag per item
 }) {
   const [search, setSearch] = useState('');
   const [open, setOpen] = useState(false);
@@ -178,7 +179,7 @@ export default function ProductionPicker({
             </button>
           </div>
         )}
-        <ProdList groups={groups} value={value} onSelect={handleSelect} filtered={filtered} columns={columns} listMaxHeight={listMaxHeight} />
+        <ProdList groups={groups} value={value} onSelect={handleSelect} filtered={filtered} columns={columns} listMaxHeight={listMaxHeight} brandDot={brandDot} />
       </div>
     );
   }
@@ -227,7 +228,7 @@ export default function ProductionPicker({
             </div>
           </div>
           {/* List */}
-          <ProdList groups={groups} value={value} onSelect={handleSelect} filtered={filtered} />
+          <ProdList groups={groups} value={value} onSelect={handleSelect} filtered={filtered} brandDot={brandDot} />
         </div>
       )}
     </div>
@@ -235,7 +236,7 @@ export default function ProductionPicker({
 }
 
 // ── Shared list renderer ──────────────────────────────────────────────────────
-function ProdList({ groups, value, onSelect, filtered, columns = 1, listMaxHeight = 'max-h-72' }) {
+function ProdList({ groups, value, onSelect, filtered, columns = 1, listMaxHeight = 'max-h-72', brandDot = null }) {
   if (filtered.length === 0) {
     return (
       <div className="px-4 py-8 text-sm text-gray-400 text-center">
@@ -258,12 +259,14 @@ function ProdList({ groups, value, onSelect, filtered, columns = 1, listMaxHeigh
           {items.map(p => {
             const isSelected = p.id === value;
             const productTypes = Array.isArray(p.product_type) ? p.product_type.slice(0, 2) : [];
+            const dot = brandDot ? brandDot(p) : null;
             return (
               <button
                 key={p.id}
                 type="button"
                 onClick={() => onSelect(p)}
                 className={`w-full flex items-start gap-3 px-3 py-2.5 text-left transition-all hover:bg-gray-50 ${isSelected ? 'bg-indigo-50' : ''}`}
+                style={dot ? { borderLeft: `3px solid ${dot.color}` } : undefined}
               >
                 {/* PRD ID */}
                 <span className="font-mono text-[11px] font-bold bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded shrink-0 mt-0.5">
@@ -277,6 +280,13 @@ function ProdList({ groups, value, onSelect, filtered, columns = 1, listMaxHeigh
                     <span className={`text-sm font-semibold truncate ${isSelected ? 'text-indigo-700' : 'text-gray-800'}`}>
                       {p.project_name}
                     </span>
+                    {dot && (
+                      <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
+                        style={{ background: `${dot.color}1a`, color: dot.color }}>
+                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: dot.color }} />
+                        {dot.label}
+                      </span>
+                    )}
                   </div>
                   {(p.production_type || productTypes.length > 0) && (
                     <div className="flex items-center gap-1 mt-1 flex-wrap">

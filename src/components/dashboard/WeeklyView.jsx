@@ -14,7 +14,7 @@ import {
 import { getHoliday } from '../../lib/holidays';
 import { getAllGanttEvents, createGanttEvent, DEFAULT_PHASES } from '../../lib/ganttService';
 import { useAuth } from '../../context/AuthContext';
-import { useBrand } from '../../context/BrandContext';
+import { useBrand, BRANDS } from '../../context/BrandContext';
 import StageBadge from '../ui/StageBadge';
 import ProductionPicker from '../ui/ProductionPicker';
 import FileUploadButton, { getDriveThumbnail } from '../shared/FileUploadButton';
@@ -86,11 +86,21 @@ function historyDot(entries) {
 function buildEmptyEntry(prod) {
   return {
     production_id: prod.id,
+    brand_id: prod.brand_id || null,
     note: '',
     selected_comment_ids: [],
     approved_comment_ids: [],
     weekly_links: [],
   };
+}
+
+// Brand color + label for a weekly entry. Cross-brand productions (added from
+// Biomella/Blurr into another brand's weekly) keep their own brand color.
+function brandMeta(brandId, brands = [], currentBrandId = null) {
+  const b = (brands || []).find(x => x.id === brandId) || BRANDS[brandId] || {};
+  const color = b.primary || b.accent || BRANDS[brandId]?.primary || '#6B7280';
+  const name = b.name || BRANDS[brandId]?.name || (brandId || '');
+  return { color, name, cross: !!brandId && brandId !== currentBrandId };
 }
 
 function overlapsWeek(prod, weekStart, weekEnd) {
@@ -224,7 +234,7 @@ function StatusDropdown({ value, onChange }) {
 // ProductionEntry (edit mode)
 // ============================================================================
 
-function ProductionEntry({ entry, prod, links, scripts = [], onUpdate, onRemove, isEditor }) {
+function ProductionEntry({ entry, prod, brandMeta = {}, links, scripts = [], onUpdate, onRemove, isEditor }) {
   const [showLinks, setShowLinks] = useState(false);
   const [addLinkMode, setAddLinkMode] = useState(null);
   const [customLink, setCustomLink] = useState({ title: '', url: '' });
@@ -316,14 +326,22 @@ function ProductionEntry({ entry, prod, links, scripts = [], onUpdate, onRemove,
   const availableScripts = scripts.filter(s => !(entry.weekly_links || []).some(wl => wl.type === 'script' && wl.link_id === s.id));
 
   return (
-    <div className="rounded-2xl border-l-4 bg-white shadow-sm border-gray-200">
+    <div className="rounded-2xl border-l-4 bg-white shadow-sm border-gray-200"
+      style={{ borderLeftColor: brandMeta.color || '#e5e7eb' }}>
       {/* Header */}
       <div className="flex items-center gap-3 p-4 pb-3">
         <StageBadge stage={prod.stage} />
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="font-mono text-[10px] text-gray-400">{prod.id}</span>
             <span className="font-bold text-gray-800 text-sm truncate">{prod.project_name}</span>
+            {brandMeta.cross && brandMeta.name && (
+              <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
+                style={{ background: `${brandMeta.color}1a`, color: brandMeta.color }}>
+                <span className="w-1.5 h-1.5 rounded-full" style={{ background: brandMeta.color }} />
+                {brandMeta.name}
+              </span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
@@ -848,7 +866,7 @@ function PresentCard({ entry, prod }) {
 // ============================================================================
 
 // ── Sortable production row for present mode ──────────────────────────────────
-function SortableProdRow({ entry, prod, isCollapsed, onToggle }) {
+function SortableProdRow({ entry, prod, brandMeta = {}, isCollapsed, onToggle }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: entry.production_id });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1, zIndex: isDragging ? 50 : 'auto' };
 
@@ -867,7 +885,7 @@ function SortableProdRow({ entry, prod, isCollapsed, onToggle }) {
   })();
 
   return (
-    <div ref={setNodeRef} style={style}
+    <div ref={setNodeRef} style={{ ...style, borderLeft: `4px solid ${brandMeta.color || '#e5e7eb'}` }}
       className={clsx('group bg-white rounded-2xl border border-gray-100 shadow-sm transition-all duration-200 overflow-hidden',
         isDragging && 'shadow-xl ring-2 ring-indigo-200')}>
       {/* Header — always visible, clickable to toggle */}
@@ -893,6 +911,13 @@ function SortableProdRow({ entry, prod, isCollapsed, onToggle }) {
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="text-base font-black text-gray-900 leading-tight truncate">{prod.project_name}</h3>
             <span className="font-mono text-[10px] text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded shrink-0">{prod.id}</span>
+            {brandMeta.cross && brandMeta.name && (
+              <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
+                style={{ background: `${brandMeta.color}1a`, color: brandMeta.color }}>
+                <span className="w-1.5 h-1.5 rounded-full" style={{ background: brandMeta.color }} />
+                {brandMeta.name}
+              </span>
+            )}
           </div>
           {/* Production type + timeline */}
           {(prod.production_type || prod.planned_start || prod.planned_end) && (
@@ -996,7 +1021,7 @@ function SortableProdRow({ entry, prod, isCollapsed, onToggle }) {
   );
 }
 
-function PresentationMode({ report, productions, brand, onClose, onReorder }) {
+function PresentationMode({ report, productions, brand, brandMetaOf, onClose, onReorder }) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const entries = report.entries || [];
@@ -1173,6 +1198,7 @@ function PresentationMode({ report, productions, brand, onClose, onReorder }) {
                       key={entry.production_id}
                       entry={entry}
                       prod={prod}
+                      brandMeta={brandMetaOf ? brandMetaOf(entry.brand_id || prod?.brand_id) : {}}
                       isCollapsed={collapsed[entry.production_id] !== false}
                       onToggle={() => toggleOne(entry.production_id)}
                     />
@@ -1263,7 +1289,23 @@ function HistorySidebar({ history, weekStart, onSelect, onDelete, isEditor }) {
 // AddProductionModal
 // ============================================================================
 
-function AddProductionModal({ productions, existingIds, onAdd, onClose }) {
+function AddProductionModal({ productions, brands = [], currentBrandId, brandMetaOf, existingIds, onAdd, onClose }) {
+  // Brands the user can pull from (only those that actually have productions)
+  const brandsWithProds = (brands || []).filter(b => productions.some(p => p.brand_id === b.id));
+  const [selectedBrands, setSelectedBrands] = useState(() => new Set([currentBrandId].filter(Boolean)));
+  const toggleBrand = (id) => setSelectedBrands(prev => {
+    const n = new Set(prev);
+    n.has(id) ? n.delete(id) : n.add(id);
+    if (n.size === 0 && currentBrandId) n.add(currentBrandId); // never empty
+    return n;
+  });
+  const shown = productions.filter(p => !p.brand_id || selectedBrands.has(p.brand_id));
+  const brandDot = (p) => {
+    const m = brandMetaOf ? brandMetaOf(p.brand_id) : null;
+    return (m && m.cross) ? { color: m.color, label: m.name } : null;
+  };
+  const multiBrand = brandsWithProds.length > 1;
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div
@@ -1271,20 +1313,44 @@ function AddProductionModal({ productions, existingIds, onAdd, onClose }) {
         style={{ width: 'min(1080px, 94vw)', maxWidth: '94vw', height: '86vh' }}
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between mb-4 shrink-0">
+        <div className="flex items-center justify-between mb-3 shrink-0">
           <h2 className="text-lg font-black" style={{ color: 'var(--brand-primary)' }}>Add Production</h2>
           <button onClick={onClose}><X size={18} className="text-gray-400" /></button>
         </div>
+        {multiBrand && (
+          <div className="flex items-center gap-1.5 flex-wrap mb-3 shrink-0">
+            <span className="text-[11px] text-gray-400 mr-0.5">Show brands:</span>
+            {brandsWithProds.map(b => {
+              const m = brandMetaOf ? brandMetaOf(b.id) : { color: '#6B7280', name: b.name };
+              const on = selectedBrands.has(b.id);
+              return (
+                <button
+                  key={b.id}
+                  type="button"
+                  onClick={() => toggleBrand(b.id)}
+                  className="flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border transition-all"
+                  style={on
+                    ? { background: m.color, borderColor: m.color, color: '#fff' }
+                    : { borderColor: m.color, color: m.color, background: `${m.color}12` }}
+                >
+                  <span className="w-2 h-2 rounded-full" style={{ background: on ? '#fff' : m.color }} />
+                  {m.name}
+                </button>
+              );
+            })}
+          </div>
+        )}
         <div className="flex-1 min-h-0">
           <ProductionPicker
-            productions={productions}
+            productions={shown}
             exclude={existingIds}
             mode="inline"
             onSelect={p => { onAdd(p); onClose(); }}
             showCompletedToggle
             defaultHideCompleted
             columns={2}
-            listMaxHeight="max-h-[calc(86vh-160px)]"
+            listMaxHeight={multiBrand ? 'max-h-[calc(86vh-210px)]' : 'max-h-[calc(86vh-160px)]'}
+            brandDot={brandDot}
           />
         </div>
       </div>
@@ -1417,7 +1483,24 @@ function HolidayToggles({ showUS, showIL, onToggleUS, onToggleIL }) {
 
 function WeeklyReportsTab({ productions, brandId, selectedYear }) {
   const { user, isEditor } = useAuth();
-  const { brand } = useBrand();
+  const { brand, brands } = useBrand();
+
+  // Cross-brand: a weekly can include productions from the user's other brands
+  // (Biomella, Blurr…). Load them all so they can be picked and rendered/colored.
+  const [allProds, setAllProds] = useState(productions || []);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const otherBrands = (brands || []).filter(b => b.id !== brandId);
+      const lists = await Promise.all(otherBrands.map(b => Promise.resolve(getProductions(b.id)).catch(() => [])));
+      if (!alive) return;
+      const merged = []; const seen = new Set();
+      [productions || [], ...lists].forEach(list => (list || []).forEach(p => { if (p && !seen.has(p.id)) { seen.add(p.id); merged.push(p); } }));
+      setAllProds(merged);
+    })();
+    return () => { alive = false; };
+  }, [brands, brandId, productions]);
+  const brandMetaOf = (bid) => brandMeta(bid, brands, brand?.id);
 
   const [weekStart, setWeekStart] = useState(() => getMondayOf(new Date()));
   const [report, setReport] = useState(null);
@@ -1527,8 +1610,8 @@ function WeeklyReportsTab({ productions, brandId, selectedYear }) {
 
   function updateEntry(prodId, patch) {
     setReport(r => ({
-      ...r,
-      entries: (r.entries || []).map(e =>
+      ...(r || {}),
+      entries: ((r && r.entries) || []).map(e =>
         e.production_id === prodId ? { ...e, ...patch } : e
       ),
     }));
@@ -1590,7 +1673,7 @@ function WeeklyReportsTab({ productions, brandId, selectedYear }) {
 
   async function addProduction(prod) {
     const entry = buildEmptyEntry(prod);
-    setReport(r => ({ ...r, entries: [...(r.entries || []), entry] }));
+    setReport(r => ({ ...(r || {}), entries: [...((r && r.entries) || []), entry] }));
     const [comments, links] = await Promise.all([
       Promise.resolve(getComments(prod.id)),
       Promise.resolve(getLinks(prod.id)),
@@ -1601,7 +1684,7 @@ function WeeklyReportsTab({ productions, brandId, selectedYear }) {
   }
 
   function removeEntry(prodId) {
-    setReport(r => ({ ...r, entries: (r.entries || []).filter(e => e.production_id !== prodId) }));
+    setReport(r => ({ ...(r || {}), entries: ((r && r.entries) || []).filter(e => e.production_id !== prodId) }));
     setDirty(true);
   }
 
@@ -1621,8 +1704,9 @@ function WeeklyReportsTab({ productions, brandId, selectedYear }) {
     return (
       <PresentationMode
         report={report}
-        productions={productions}
+        productions={allProds}
         brand={brand}
+        brandMetaOf={brandMetaOf}
         onClose={() => setMode('edit')}
         onReorder={(entries) => patchReport({ entries })}
       />
@@ -1787,12 +1871,13 @@ function WeeklyReportsTab({ productions, brandId, selectedYear }) {
                 )}
               </div>
             ) : (report.entries || []).map(entry => {
-              const prod = productions.find(p => p.id === entry.production_id);
+              const prod = allProds.find(p => p.id === entry.production_id);
               return (
                 <ProductionEntry
                   key={entry.production_id}
                   entry={entry}
                   prod={prod}
+                  brandMeta={brandMetaOf(entry.brand_id || prod?.brand_id)}
                   links={linksByProd[entry.production_id] || []}
                   scripts={scriptsByProd[entry.production_id] || []}
                   onUpdate={patch => updateEntry(entry.production_id, patch)}
@@ -1807,7 +1892,10 @@ function WeeklyReportsTab({ productions, brandId, selectedYear }) {
 
       {showAddProd && (
         <AddProductionModal
-          productions={productions}
+          productions={allProds}
+          brands={brands}
+          currentBrandId={brand?.id}
+          brandMetaOf={brandMetaOf}
           existingIds={existingProdIds}
           onAdd={addProduction}
           onClose={() => setShowAddProd(false)}
