@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, DollarSign, BookOpen, Settings, Users, ChevronLeft, ChevronRight,
   History, FileText, Link, FileSignature, Clapperboard, Users2, GripVertical,
-  GanttChartSquare, Check, Star, Sun, Moon, Grid3x3, X as XIcon, Scroll, CheckSquare,
+  GanttChartSquare, Check, Star, Sun, Moon, Grid3x3, X as XIcon, Scroll, CheckSquare, Presentation,
 } from 'lucide-react';
 import {
   DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors,
@@ -28,6 +28,7 @@ const DEFAULT_NAV_ITEMS = [
   { to: '/contracts',      icon: FileSignature,    label: 'Contracts',   accountingHide: true, studioHide: true },
   { to: '/suppliers',      icon: Users2,           label: 'Suppliers',   accountingHide: true, studioHide: true },
   { to: '/studio-tickets', icon: Clapperboard,     label: 'Studio',      accountingHide: true, particleOnly: true },
+  { to: '/creative-reports', icon: Presentation,   label: 'Creative Weekly', accountingHide: true, studioHide: true, particleOnly: true, editorOnly: true },
   { to: '/gantts',         icon: GanttChartSquare, label: 'Gantts',      accountingHide: true, studioHide: true },
   { to: '/call-sheets',    icon: FileText,         label: 'Call Sheets', accountingHide: true, studioHide: true },
   { to: '/financial',      icon: DollarSign,       label: 'Budget Overview', studioHide: true },
@@ -57,7 +58,7 @@ function applySavedOrder(items, order) {
 
 export default function Sidebar({ open, onToggle }) {
   const { brand } = useBrand();
-  const { isAdmin, isAccounting, user } = useAuth();
+  const { isAdmin, isEditor, isAccounting, user } = useAuth();
   const { dark, toggle: toggleDark } = useDarkMode();
   const navigate = useNavigate();
   const userId = user?.id ?? 'guest';
@@ -121,6 +122,7 @@ export default function Sidebar({ open, onToggle }) {
     .filter(i => !isAccounting || !i.accountingHide)
     .filter(i => !isStudio || !i.studioHide)
     .filter(i => !i.particleOnly || brand.id === 'particle')
+    .filter(i => !i.editorOnly || isEditor)
     .filter(i => !pageAccess || isAdmin || pageAccess.includes(i.to));
 
   const sensors = useSensors(
@@ -333,6 +335,7 @@ export default function Sidebar({ open, onToggle }) {
                 { to: '/contracts',      icon: FileSignature,    label: 'Contracts' },
                 { to: '/invoices',       icon: FileText,         label: 'Invoices' },
                 { to: '/manual',         icon: BookOpen,         label: 'Manual' },
+                ...(brand?.id === 'particle' && !isAccounting ? [{ to: '/creative-reports', icon: Presentation, label: 'Creative' }] : []),
                 ...(isAdmin ? [
                   { to: '/settings', icon: Settings, label: 'Settings' },
                   { to: '/users',    icon: Users,    label: 'Users' },

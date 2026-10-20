@@ -565,5 +565,6 @@ async function runDropboxBackup() {
 }
 
 router.runDropboxBackup = runDropboxBackup;
+router.getDropboxToken = getDropboxToken;
 
 module.exports = router;

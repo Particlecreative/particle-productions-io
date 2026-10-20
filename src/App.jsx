@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { BrandProvider } from './context/BrandContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -35,6 +35,44 @@ import WeeklySharePage from './pages/WeeklySharePage';
 import Scripts from './pages/Scripts';
 import ScriptSharePage from './pages/ScriptSharePage';
 import Tasks from './pages/Tasks';
+
+// Creative Weekly is code-split: its deck engine + `motion` never touch the main bundle.
+// After a deploy an open tab may request chunk hashes that no longer exist — reload once.
+function lazyPage(loader) {
+  const key = 'cp_chunk_reload';
+  return lazy(() => loader().then((mod) => { sessionStorage.removeItem(key); return mod; }).catch((err) => {
+    if (!sessionStorage.getItem(key)) {
+      sessionStorage.setItem(key, '1');
+      window.location.reload();
+      return new Promise(() => {});
+    }
+    sessionStorage.removeItem(key);
+    throw err;
+  }));
+}
+const CreativeReportsPage = lazyPage(() => import('./pages/creative/CreativeReportsPage'));
+const CreativeReportEditorPage = lazyPage(() => import('./pages/creative/CreativeReportEditorPage'));
+const CreativeReportPresentPage = lazyPage(() => import('./pages/creative/CreativeReportPresentPage'));
+const CreativeReportSharePage = lazyPage(() => import('./pages/creative/CreativeReportSharePage'));
+
+function DeckSplash() {
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: '#030b2e', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ width: 44, height: 44, borderRadius: 99, border: '3px solid rgba(140,147,255,.25)', borderTopColor: '#8c93ff', animation: 'spin 0.9s linear infinite' }} />
+    </div>
+  );
+}
+const lazyEl = (el, fallback = null) => <Suspense fallback={fallback}>{el}</Suspense>;
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('vite:preloadError', (e) => {
+    if (!sessionStorage.getItem('cp_chunk_reload')) {
+      e.preventDefault();
+      sessionStorage.setItem('cp_chunk_reload', '1');
+      window.location.reload();
+    }
+  });
+}
 
 function ProtectedRoute({ children, adminOnly = false, blockForAccounting = false, blockForStudio = false }) {
   const { user, loading, isAdmin, isAccounting, isStudio } = useAuth();
@@ -114,6 +152,10 @@ function AppRoutes() {
         <Route path="/call-sheets" element={<ProtectedRoute blockForAccounting blockForStudio><AppShell><ErrorBoundary><CallSheets /></ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="/manual" element={<ProtectedRoute><AppShell><ErrorBoundary><Manual /></ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="/tasks" element={<ProtectedRoute><AppShell><ErrorBoundary><Tasks /></ErrorBoundary></AppShell></ProtectedRoute>} />
+        <Route path="/creative-reports" element={<ProtectedRoute blockForAccounting blockForStudio><AppShell><ErrorBoundary>{lazyEl(<CreativeReportsPage />)}</ErrorBoundary></AppShell></ProtectedRoute>} />
+        <Route path="/creative-reports/:id" element={<ProtectedRoute blockForAccounting blockForStudio><AppShell><ErrorBoundary>{lazyEl(<CreativeReportEditorPage />)}</ErrorBoundary></AppShell></ProtectedRoute>} />
+        <Route path="/creative-reports/:id/present" element={<ProtectedRoute blockForAccounting blockForStudio><ErrorBoundary>{lazyEl(<CreativeReportPresentPage />, <DeckSplash />)}</ErrorBoundary></ProtectedRoute>} />
+        <Route path="/creative-report/:token" element={<ErrorBoundary>{lazyEl(<CreativeReportSharePage />, <DeckSplash />)}</ErrorBoundary>} />
         {/* Public forms — no auth required */}
         <Route path="/supplier-form/:productionId" element={<SupplierForm />} />
         <Route path="/cc-payment/:productionId" element={<CCPaymentForm />} />

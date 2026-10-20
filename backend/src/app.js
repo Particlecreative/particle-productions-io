@@ -99,6 +99,7 @@ app.use('/api/briefs',         require('./routes/briefs'));
 app.use('/api/tasks',          require('./routes/tasks'));
 app.use('/api/finance-sheet',  require('./routes/financeSheet'));
 app.use('/api/taxi',           require('./routes/taxi'));
+app.use('/api/creative-reports', require('./routes/creativeReports'));
 
 // Google OAuth callback redirect — the callback URL registered with Google
 // points to /api/auth/google/callback, so we redirect to the drive router
@@ -151,6 +152,9 @@ cron.schedule('0 8 * * *', async () => {
     console.error('[CRON] Casting automation failed:', err.message);
   }
 }, { timezone: 'Asia/Jerusalem' });
+
+// ── Creative Weekly: Sunday auto-generate (opt-in), Frame.io keepalive, media cache prune ───
+require('./lib/creative/jobs').schedule(cron);
 
 // ── Contract PDF orphan check (every 10 minutes) ───
 // Catches signed contracts where the frontend didn't upload the PDF (user closed tab too early)

@@ -6,6 +6,12 @@
       "runtimeExecutable": "bash",
       "runtimeArgs": ["-c", "source $HOME/.nvm/nvm.sh && nvm use 20 && npm run dev"],
       "port": 5173
+    },
+    {
+      "name": "CP Panel Dev (live Creative Weekly API)",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "source $HOME/.nvm/nvm.sh && nvm use 20 && CREATIVE_API_PROXY=http://127.0.0.1:3901 VITE_CREATIVE_LIVE=1 npx vite --port 5174 --strictPort"],
+      "port": 5174
     }
   ]
 }

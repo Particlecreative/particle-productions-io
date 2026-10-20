@@ -545,6 +545,7 @@ const ALL_PAGES = [
   { to: '/contracts',      label: 'Contracts' },
   { to: '/suppliers',      label: 'Suppliers' },
   { to: '/studio-tickets', label: 'Studio' },
+  { to: '/creative-reports', label: 'Creative Weekly' },
   { to: '/gantts',         label: 'Gantts' },
   { to: '/call-sheets',    label: 'Call Sheets' },
   { to: '/financial',      label: 'Financial' },
