@@ -180,7 +180,8 @@ function mediaUrl(entity, variant) {
   const ml = entity?.media_links || {};
   const pick = (o) => (o && (o.download_url || o.url || o.href || (typeof o === 'string' ? o : null))) || null;
   if (variant === 'thumb') return pick(ml.thumbnail) || pick(ml.thumbnail_high_quality) || null;
-  if (variant === 'play') return pick(ml.video_h264_720) || pick(ml.efficient) || pick(ml.high_quality) || pick(ml.video_h264_1080_best) || null;
+  // `efficient` is the small web proxy (fast start on a TV); fall back to the bigger renditions
+  if (variant === 'play') return pick(ml.efficient) || pick(ml.high_quality) || pick(ml.original) || null;
   return pick(ml.high_quality) || pick(ml.original) || pick(ml.efficient) || null;
 }
 
@@ -285,12 +286,16 @@ async function listing(link) {
   return { entries: files.slice(0, 24).map(entryFromFile), resolved };
 }
 
-/** Fresh media URL for a file id: variant thumb | play | full. */
+/**
+ * Fresh media URL for a file id: variant thumb | play | full.
+ * V4 accepts media_links.{thumbnail, thumbnail_high_quality, efficient, high_quality, original,
+ * video_h264_180, scrub_sheet} — anything else (e.g. video_h264_720) is a 422.
+ */
 async function fileMediaUrl(fileId, variant) {
   const accountId = await resolveAccount();
   const include = variant === 'thumb' ? 'media_links.thumbnail' : variant === 'play'
-    ? 'media_links.video_h264_720,media_links.efficient,media_links.high_quality'
-    : 'media_links.high_quality,media_links.efficient';
+    ? 'media_links.efficient,media_links.high_quality,media_links.original'
+    : 'media_links.high_quality,media_links.original,media_links.efficient';
   const d = await api(`/accounts/${accountId}/files/${fileId}?include=${encodeURIComponent(include)}`);
   return mediaUrl(d?.data, variant);
 }

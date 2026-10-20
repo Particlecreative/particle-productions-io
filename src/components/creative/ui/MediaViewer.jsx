@@ -220,7 +220,8 @@ export default function MediaViewer({ item, source: initialSource, onClose }) {
   );
 }
 
-const fit = { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 14, boxShadow: '0 30px 80px -20px rgba(0,0,0,.7)' };
+// Fill the stage (scales small thumbnails / proxies up too), never crop
+const fit = { width: '100%', height: '100%', objectFit: 'contain', background: 'transparent' };
 
 function friendlyError(source, msg) {
   if (source === 'frameio' && /not linked to an adobe id|not connected|reconnect/i.test(msg)) return 'Frame.io isn’t connected yet, so the cut can’t be previewed here.';
