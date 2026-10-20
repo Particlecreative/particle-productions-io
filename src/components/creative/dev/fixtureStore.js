@@ -76,6 +76,10 @@ export function buildFixtureSnapshot(weekStart, seed = 7) {
       items[id].fixes_in_week = Math.floor(r() * 3);
       sections.delivered.push(id);
     } else {
+      // Open work is scheduled next week; video editors often get whole-week timelines
+      const k = Math.floor(r() * 5);
+      const span = board === 'video' && r() > 0.4 ? 4 - k : Math.floor(r() * 2);
+      items[id].timeline = { from: nextDays[k], to: nextDays[Math.min(4, k + span)] };
       sections[cat === 'in_progress' ? 'in_progress' : cat]?.push(id);
       if (r() > 0.4) sections.planned_next_week.push(id);
       if (r() > 0.6) sections.overdue.push(id);

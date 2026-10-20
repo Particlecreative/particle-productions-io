@@ -38,12 +38,12 @@ export default function ProductModal({ filter, onClose, onOpenItem }) {
         style={{ position: 'absolute', inset: 0, background: 'rgba(2,6,26,.94)', backdropFilter: 'blur(10px)', overflowY: 'auto' }}>
         <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: 1500, margin: '0 auto', padding: '28px 28px 48px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 22 }}>
-            <span style={{ width: 18, height: 18, borderRadius: 99, background: color, flex: 'none' }} />
+            {!filter.ids && <span style={{ width: 18, height: 18, borderRadius: 99, background: color, flex: 'none' }} />}
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 12, letterSpacing: '.16em', textTransform: 'uppercase', color: '#8c93ff', fontWeight: 600 }}>
                 {person ? displayName(person.name) : DIVISIONS[filter.division]?.label || 'All'} · {total} {total === 1 ? 'project' : 'projects'}
               </div>
-              <div style={{ fontFamily: 'var(--cr-font-display)', fontWeight: 800, fontSize: 52, lineHeight: 0.95, textTransform: 'uppercase', color: '#fff' }}>{filter.product}</div>
+              <div style={{ fontFamily: 'var(--cr-font-display)', fontWeight: 800, fontSize: 52, lineHeight: 0.95, textTransform: 'uppercase', color: '#fff' }}>{filter.title || filter.product}</div>
             </div>
             <button type="button" onClick={onClose} aria-label="Close" style={{ width: 42, height: 42, borderRadius: 99, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff', background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.14)' }}><X size={20} /></button>
           </div>

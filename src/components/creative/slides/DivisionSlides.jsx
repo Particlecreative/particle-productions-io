@@ -6,7 +6,7 @@ import { MediaImage, FallbackTile } from '../ui/Media';
 import { dayLabel, shortDate, withAlpha, ensureContrast, fmtDays } from '../deck/format';
 import { SlideFrame, SlideHeader } from './SlideFrame';
 import { BulletList } from './StorySlides';
-import { decorate } from './specs';
+import { decorate, fmtLoad } from './specs';
 
 const DIV_ICON = { design: PenTool, video: Film, tv: Tv };
 const STAGE_COLOR = { pending: '#9d99b9', 'pre-production': '#fdab3d', production: '#579bfc', post: '#ff7575', 'post-production': '#ff7575', completed: '#00c875', delivered: '#00c875' };
@@ -245,7 +245,8 @@ function loadBg(load, accent) {
 
 export function DivisionNextSlide({ slide, active }) {
   const { vm } = slide;
-  const { layout, editBullets, motionLevel } = useDeck();
+  const { layout, editBullets, motionLevel, openProduct, mode } = useDeck();
+  const drill = openProduct && mode !== 'thumb' ? openProduct : null;
   const canvas = layout === 'canvas';
   const accent = vm.meta.accent;
   const filter = { division: vm.division };
@@ -314,31 +315,35 @@ export function DivisionNextSlide({ slide, active }) {
               {vm.days.map(d => (
                 <span key={d} className="cr-small" style={{ textAlign: 'center', fontWeight: 600 }}>{dayLabel(d)} <span style={{ opacity: 0.6, fontWeight: 400 }}>{shortDate(d).split(' ')[1]}</span></span>
               ))}
-              <Label style={{ textAlign: 'right' }}>Total</Label>
+              <Label style={{ textAlign: 'right' }}>Projects</Label>
             </div>
             {rows.map((r, ri) => (
               <div key={r.person.id} style={{ display: 'grid', gridTemplateColumns: grid, gap: 10, height: rowH }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                <div className={drill && r.total ? 'cr-clickable' : ''} data-no-advance
+                  onClick={drill && r.total ? (e) => { e.stopPropagation(); drill({ ids: r.ids, uid: r.person.id, title: `${r.person.name.split(' ')[0]} · this week` }); } : undefined}
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
                   <Avatar person={r.person} size={canvas ? Math.min(46, rowH - 14) : 26} />
                   <span className="cr-clamp-1" style={{ fontWeight: 600, fontSize: 'var(--t-small)' }}>{r.person.name.split(' ')[0]}</span>
                 </div>
                 {r.cells.map((c, ci) => {
-                  const load = c.count / vm.capacity;
+                  const load = c.load / vm.capacity;
                   return (
-                    <m.div key={c.date} className="cr-heat-cell"
+                    <m.div key={c.date} className={`cr-heat-cell ${drill && c.count ? 'cr-clickable' : ''}`} data-no-advance
+                      onClick={drill && c.count ? (e) => { e.stopPropagation(); drill({ ids: c.ids, uid: r.person.id, title: `${r.person.name.split(' ')[0]} · ${dayLabel(c.date)} ${shortDate(c.date).split(' ')[1]}` }); } : undefined}
                       initial={motionLevel === 'static' ? false : { opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }}
                       transition={{ duration: 0.45, ease: EASE, delay: 0.35 + ci * 0.06 + ri * 0.03 }}
                       style={{ background: loadBg(load, accent), borderColor: load > 1 ? 'rgba(226,68,92,.7)' : undefined }}>
-                      {c.count > 0 && <span className="cr-num" style={{ fontWeight: 800, fontSize: canvas ? 'var(--t-h3)' : 16, color: '#fff', fontFamily: 'var(--cr-font-display)' }}>{c.count}</span>}
+                      {c.load > 0 && <span className="cr-num" style={{ fontWeight: 800, fontSize: canvas ? 'var(--t-h3)' : 16, color: '#fff', fontFamily: 'var(--cr-font-display)' }}>{fmtLoad(c.load)}</span>}
                     </m.div>
                   );
                 })}
-                <span className="cr-num" style={{ alignSelf: 'center', textAlign: 'right', fontFamily: 'var(--cr-font-display)', fontWeight: 800, fontSize: 'var(--t-h3)', color: r.total ? accent : 'var(--cr-faint)' }}>{r.total}</span>
+                <span className="cr-num" style={{ alignSelf: 'center', textAlign: 'right', fontFamily: 'var(--cr-font-display)', fontWeight: 800, fontSize: 'var(--t-h3)', color: r.total ? accent : 'var(--cr-faint)' }}
+                  title={r.multiDay ? `${r.multiDay} of these run over several days` : undefined}>{r.total}</span>
               </div>
             ))}
             {!rows.length && <span className="cr-small">Nobody has work scheduled yet.</span>}
             <div className="cr-small" style={{ marginTop: 'auto', fontSize: 'calc(var(--t-small) * .78)', display: 'flex', alignItems: 'center', gap: 12 }}>
-              Projects scheduled per day · capacity {vm.capacity}/day
+              Work per day — a project running several days is split across them · Projects = different projects this week · capacity {vm.capacity}/day
               {[0.25, 0.6, 1, 1.2].map(v => <span key={v} style={{ width: 22, height: 14, borderRadius: 4, background: loadBg(v, accent) }} />)}
             </div>
           </Reveal>

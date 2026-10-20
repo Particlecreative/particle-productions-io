@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Play, Share2, History, RefreshCw, Lock, Unlock, Loader2, Check, AlertTriangle,
-  CloudOff, Undo2, Redo2, ChevronDown, MonitorPlay, Sparkles, X, Wand2, Trash2,
+  CloudOff, Undo2, Redo2, ChevronDown, MonitorPlay, Sparkles, X, Wand2, Trash2, LayoutGrid,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useBrand } from '../../context/BrandContext';
@@ -16,6 +16,7 @@ import SlideRenderer from '../../components/creative/deck/SlideRenderer';
 import SlideRail from '../../components/creative/editor/SlideRail';
 import Inspector from '../../components/creative/editor/Inspector';
 import MediaPicker from '../../components/creative/editor/MediaPicker';
+import ProjectChooser from '../../components/creative/editor/ProjectChooser';
 import { ShareDialog, VersionsDrawer, DiffToast, AddSlideMenu } from '../../components/creative/editor/Dialogs';
 import { useDeckModel } from '../../components/creative/deck/useDeckModel';
 import { useAutosave, requestFullscreen } from '../../components/creative/deck/hooks';
@@ -54,6 +55,7 @@ export default function CreativeReportEditorPage() {
   const [tab, setTab] = useState('slide');
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [pickerFor, setPickerFor] = useState(null);
+  const [chooserFor, setChooserFor] = useState(null);
   const [dialog, setDialog] = useState(null);
   const [diff, setDiff] = useState(null);
   const [busy, setBusy] = useState({});
@@ -204,6 +206,7 @@ export default function CreativeReportEditorPage() {
     },
     setShareLinks: (v) => applyOv(ov => ({ ...ov, share: { ...(ov.share || {}), show_links: !!v } })),
     openMediaPicker: (tid) => setPickerFor(tid),
+    openProjectChooser: (uid) => setChooserFor(uid || '__first'),
     setTemplateEnabled: (specId, enabled) => {
       if (!editable) return;
       const tpl = latest.current.template || { slides: [] };
@@ -348,7 +351,7 @@ export default function CreativeReportEditorPage() {
       const t = e.target;
       const typing = t?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t?.tagName);
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') { e.preventDefault(); autosave.flush(); flash('Saved'); return; }
-      if (typing || dialog || pickerFor || overlays.open) return;
+      if (typing || dialog || pickerFor || chooserFor || overlays.open) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === 'ArrowDown' || e.key === 'ArrowRight') { e.preventDefault(); go(1); }
@@ -400,6 +403,8 @@ export default function CreativeReportEditorPage() {
               <button type="button" onClick={refresh} disabled={busy.refresh || final} className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg hover:bg-gray-100 text-gray-700 disabled:opacity-40" title={`Data from ${relTime(payload.report.generated_at)}`}>
                 <RefreshCw size={14} className={busy.refresh ? 'animate-spin' : ''} /> Refresh live data
               </button>
+              <button type="button" onClick={() => setChooserFor(slide.type === 'person' ? slide.params.uid : '__first')} title="Choose what each designer and video editor presents"
+                className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg hover:bg-gray-100 text-gray-700"><LayoutGrid size={14} /> Projects</button>
               <button type="button" onClick={() => setDialog('versions')} className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg hover:bg-gray-100 text-gray-700"><History size={14} /> History</button>
               {isAdmin && (
                 <button type="button" title="Delete this deck" className="p-2 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600"
@@ -488,6 +493,11 @@ export default function CreativeReportEditorPage() {
                 </SlideStage>
                 <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-2 text-xs">
                   {slide.hidden && <span className="px-2 py-1 rounded-full bg-gray-800 text-white">Hidden — skipped when presenting</span>}
+                  {slide.type === 'person' && (
+                    <button type="button" onClick={() => setChooserFor(slide.params.uid)} className="px-3 py-1.5 rounded-full text-white shadow flex items-center gap-1.5 font-semibold" style={{ background: '#0808f8' }}>
+                      <LayoutGrid size={12} /> Choose projects
+                    </button>
+                  )}
                   <button type="button" onClick={() => setAnimate(a => a + 1)} className="px-3 py-1.5 rounded-full bg-white/90 shadow text-gray-700 hover:text-gray-900 flex items-center gap-1.5"><Play size={12} /> Preview animation</button>
                   {editable && <span className="px-3 py-1.5 rounded-full bg-white/70 text-gray-500">Click any text on the slide to edit it</span>}
                 </div>
@@ -514,6 +524,10 @@ export default function CreativeReportEditorPage() {
           {dialog === 'add' && (
             <AddSlideMenu onClose={() => setDialog(null)} onAdd={addSlide} onAddTemplateType={addTemplateType}
               existingTypes={new Set((template?.slides || []).filter(s => s.enabled !== false).map(s => s.type))} />
+          )}
+          {chooserFor && (
+            <ProjectChooser ctx={ctx} slides={model.slides} initialUid={chooserFor === '__first' ? null : chooserFor}
+              onClose={() => setChooserFor(null)} onShowSlide={(k) => { setCurrentKey(k); setAnimate(0); }} />
           )}
           {pickerItem && (
             <MediaPicker reportId={id} item={pickerItem} snapshot={model.snapshot} media={model.media}

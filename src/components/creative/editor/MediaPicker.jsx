@@ -49,7 +49,7 @@ export default function MediaPicker({ reportId, item, snapshot, media, value, on
   const cur = tab ? listings[tab] : null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[90] flex justify-end" onClick={onClose} style={{ background: 'rgba(3,11,46,.45)' }}>
+    <div data-media-picker-open className="fixed inset-0 z-[90] flex justify-end" onClick={onClose} style={{ background: 'rgba(3,11,46,.45)' }}>
       <div className="h-full w-full max-w-[640px] bg-white shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-gray-200 flex items-start gap-3">
           <div className="flex-1 min-w-0">

@@ -4,7 +4,7 @@ import { Reveal, CountUp, GrowBar, m, EASE } from '../motion/Motion';
 import { Avatar, EditableText, ProductButton, SourceLinks, StatusChip, TicketTile } from '../ui/Bits';
 import { dayLabel, withAlpha } from '../deck/format';
 import { SlideFrame, SlideHeader } from './SlideFrame';
-import { decorate } from './specs';
+import { decorate, fmtLoad } from './specs';
 import { DIVISIONS } from './divisions';
 import { galleryGrid } from './DivisionSlides';
 
@@ -58,22 +58,22 @@ function MiniStat({ label, value, accent, i }) {
 /** Sun–Thu strip of what's scheduled for this person this week. */
 function WeekStrip({ days, capacity, accent, i }) {
   const { motionLevel } = useDeck();
-  const max = Math.max(capacity, ...days.map(d => d.ids.length), 1);
+  const max = Math.max(capacity, ...days.map(d => d.load), 1);
   return (
     <Reveal i={i} className="cr-col" style={{ gap: 10 }}>
       <span className="cr-small" style={{ fontSize: 'calc(var(--t-small) * .8)', letterSpacing: '.08em', textTransform: 'uppercase', fontWeight: 600 }}>
-        This week · {new Set(days.flatMap(d => d.ids)).size} scheduled
+        This week · {new Set(days.flatMap(d => d.ids)).size} projects
       </span>
       <div style={{ display: 'grid', gridTemplateColumns: `repeat(${days.length || 5}, minmax(0,1fr))`, gap: 8 }}>
         {days.map(d => {
-          const n = d.ids.length;
+          const n = d.load;
           const over = n > capacity;
           return (
             <div key={d.date} className="cr-col" style={{ gap: 6, alignItems: 'center' }}>
               <div style={{ height: 64, width: '100%', borderRadius: 10, background: 'rgba(255,255,255,.04)', border: '1px solid var(--cr-hair)', display: 'flex', alignItems: 'flex-end', overflow: 'hidden', position: 'relative' }}>
                 <m.div initial={motionLevel === 'static' ? false : { scaleY: 0 }} animate={{ scaleY: 1 }} transition={{ duration: 0.9, ease: EASE, delay: 0.55 }}
                   style={{ width: '100%', height: `${(n / max) * 100}%`, background: over ? 'linear-gradient(180deg,#e2445c,#8c2bd6)' : withAlpha(accent, 0.75), transformOrigin: 'bottom center' }} />
-                <span className="cr-num" style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--cr-font-display)', fontWeight: 800, fontSize: 'calc(var(--t-h3) * .9)', color: n ? '#fff' : 'var(--cr-faint)' }}>{n}</span>
+                <span className="cr-num" style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--cr-font-display)', fontWeight: 800, fontSize: 'calc(var(--t-h3) * .9)', color: n ? '#fff' : 'var(--cr-faint)' }}>{fmtLoad(n) || '0'}</span>
               </div>
               <span className="cr-small" style={{ fontSize: 'calc(var(--t-small) * .78)', fontWeight: 600 }}>{dayLabel(d.date)}</span>
             </div>

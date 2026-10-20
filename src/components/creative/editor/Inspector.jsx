@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   Star, EyeOff, Eye, ImageIcon, RotateCcw, Trash2, Sparkles, Loader2, Search, Link2, Save, RefreshCw, UserX, UserCheck, AlertTriangle,
-  ArrowUp, ArrowDown, Minus, Plus, ListChecks, Images,
+  ArrowUp, ArrowDown, Minus, Plus, ListChecks, Images, LayoutGrid,
 } from 'lucide-react';
 import { SPECS, COMMON_SCHEMA, decorate, personShown } from '../slides/specs';
 import { DIVISIONS, divisionOf, personCandidates, productionMatchScore } from '../slides/divisions';
@@ -267,6 +267,10 @@ function PersonProjects({ slide, ctx }) {
     <div>
       <div className="text-sm font-bold text-gray-900">{displayName(person?.name || '')}</div>
       <div className="text-[11px] text-gray-500 mb-3">{manual ? `Hand-picked · ${base.length} project${base.length === 1 ? '' : 's'}` : 'Automatic · everything delivered last week (★ first)'}</div>
+      <button type="button" onClick={() => ctx.openProjectChooser(uid)}
+        className="w-full mb-4 flex items-center justify-center gap-2 text-sm font-semibold px-3 py-2.5 rounded-xl text-white shadow-sm" style={{ background: '#0808f8' }}>
+        <LayoutGrid size={15} /> Open the project chooser
+      </button>
       <div className="flex gap-2 mb-3">
         {manual
           ? <button type="button" disabled={ro} onClick={() => set(null)} className="flex-1 text-xs font-semibold px-3 py-2 rounded-lg border border-gray-200 hover:bg-gray-50 flex items-center justify-center gap-1.5"><RotateCcw size={13} /> Back to automatic</button>

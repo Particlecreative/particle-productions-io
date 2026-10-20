@@ -219,14 +219,10 @@ export const SPECS = {
           .filter(p => p.hits.length);
         return { division: dv, meta, week: snapshot.week, days, productions, planned: s.planned, topProducts, focus, focusSource: Array.isArray(custom) ? 'edited' : (ai?.length ? 'ai' : 'auto') };
       }
-      const wl = snapshot.workload?.people || {};
       const cap = snapshot.workload?.capacity?.[meta.role] || 4;
       const rows = peopleByRole(snapshot, overrides, meta.role).map(p => {
-        const cells = days.map(d => {
-          const ids = (wl[p.id]?.[d]?.planned || []).filter(id => !isHidden(overrides, id));
-          return { date: d, count: ids.length };
-        });
-        return { person: { ...p, name: displayName(p.name) }, cells, total: cells.reduce((a, c) => a + c.count, 0) };
+        const w = workloadFor(snapshot, overrides, p.id, days);
+        return { person: { ...p, name: displayName(p.name) }, cells: w.cells, total: w.total, ids: w.ids, multiDay: w.multiDay };
       }).sort((a, b) => b.total - a.total);
       return { division: dv, meta, week: snapshot.week, days, rows, capacity: cap, planned: s.planned, topProducts, focus, focusSource: Array.isArray(custom) ? 'edited' : (ai?.length ? 'ai' : 'auto') };
     },
@@ -431,8 +427,7 @@ export const SPECS = {
       const products = countRows(worked.map(id => snapshot.items[id]), it => (it.product?.label && it.product.label !== '-' ? it.product.label : null), it => it.product?.color)
         .map((r, i) => ({ ...r, color: ensureContrast(r.color || paletteColor(i), '#030b2e', 2.6) }));
       const days = snapshot.workload?.next_week || [];
-      const wl = snapshot.workload?.people?.[uid] || {};
-      const nextWeek = days.map(d => ({ date: d, ids: (wl[d]?.planned || []).filter(id => !isHidden(overrides, id)) }));
+      const nextWeek = workloadFor(snapshot, overrides, uid, days).cells;
       const oneLiner = overrides?.people?.[uid]?.one_liner
         ?? narrative?.per_person?.find(x => String(x.monday_user_id) === String(uid))?.one_liner ?? '';
       return {
@@ -606,6 +601,44 @@ export function optionsFor(type, specOptions, ovOptions) {
 // ── Helpers ─────────────────────────────────────────────────────────────────
 function addDaysStr(s, n) { return s ? addDays(s, n) : ''; }
 
+/** Sun–Thu working days in [from, to] (inclusive, YYYY-MM-DD). */
+function workdaysIn(from, to) {
+  if (!from) return 1;
+  const a = Date.parse(`${from}T00:00:00Z`);
+  const b = Date.parse(`${to || from}T00:00:00Z`);
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b < a) return 1;
+  let n = 0;
+  for (let t = a, i = 0; t <= b && i < 370; t += 86400000, i++) if (new Date(t).getUTCDay() <= 4) n++;
+  return Math.max(1, n);
+}
+
+/**
+ * A person's workload for the given days. A project's effort is SPREAD over the working days of its
+ * timeline (a Sun–Thu project = 0.2 a day), so ten week-long projects read as 2 a day, not 10 — and
+ * every project counts once in the total.
+ */
+export function workloadFor(snapshot, overrides, uid, days) {
+  const wl = snapshot.workload?.people?.[uid] || {};
+  const share = new Map();
+  const cells = days.map(d => {
+    const ids = [...new Set(wl[d]?.planned || [])].filter(id => !isHidden(overrides, id));
+    let load = 0;
+    for (const id of ids) {
+      if (!share.has(id)) { const tl = snapshot.items?.[id]?.timeline; share.set(id, 1 / workdaysIn(tl?.from, tl?.to)); }
+      load += share.get(id);
+    }
+    return { date: d, ids, count: ids.length, load: Math.round(load * 10) / 10 };
+  });
+  const ids = [...new Set(cells.flatMap(c => c.ids))];
+  const multiDay = ids.filter(id => share.get(id) < 1).length;
+  return { cells, ids, total: ids.length, multiDay };
+}
+
+export function fmtLoad(n) {
+  if (!n) return '';
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+
 /** What a person slide shows: the chosen projects, else what they delivered, else what they're on now. */
 export function personShown(snapshot, overrides, uid) {
   const manual = Array.isArray(overrides?.people?.[uid]?.selection);
@@ -616,11 +649,13 @@ export function personShown(snapshot, overrides, uid) {
 }
 
 /** Every ticket of a division (optionally one person / one product), grouped for the product drill-down. */
-export function productBreakdown(snapshot, overrides, { division, product, uid }) {
+export function productBreakdown(snapshot, overrides, { division, product, uid, ids: only }) {
   const S = snapshot.sections || {};
+  const onlySet = Array.isArray(only) ? new Set(only.map(String)) : null;
   const match = (id) => {
     const it = snapshot.items?.[id];
     if (!it || isHidden(overrides, id)) return false;
+    if (onlySet) return onlySet.has(String(id));
     if (!uid && division && divisionOf(it) !== division) return false;
     if (uid && !it.people?.includes(uid)) return false;
     if (product && (it.product?.label || '') !== product) return false;
