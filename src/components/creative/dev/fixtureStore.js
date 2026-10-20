@@ -18,7 +18,8 @@ const PEOPLE = [
   ['9004', 'Tal Ben-Ami', 'design'], ['9005', 'Lior Katz', 'design'], ['9006', 'Shira Golan', 'design'], ['9007', 'Eden Avraham', 'design'],
 ];
 const VIDEO_TYPES = [['Iterations/Cuts/Edits', '#007eb5'], ['TV', '#ff7575'], ['UGC/Creator', '#9d99b9'], ['Script (<1 min)', '#00c875'], ['Motion Design', '#9d50dd']];
-const CAMPAIGNS = ['The Line Up', 'Levitas 1.0', 'OuterSignal', 'Creators Oct', 'Amazon UK', 'Fall Flash Sale', 'Dermatologist'];
+const CAMPAIGNS = ['The Line Up', 'Levitas 1.0', 'OuterSignal', 'Creators Oct', 'Amazon UK', 'Fall Flash Sale', 'Heart Rate Test', 'Couple Testimonials'];
+const DEPARTMENTS = [['Marketing/Media', '#00c875'], ['Marketing/Media', '#00c875'], ['Amazon', '#fdab3d'], ['CRM', '#579bfc'], ['TV', '#ff7575']];
 const CONCEPTS = ['Hero cut 30s', 'Digital versions', 'Before & After', 'Product in setting', 'Hook variants x3', 'Founder story', 'Static carousel', 'TV commercial offline', 'One woman slogan', 'Comedy cutdown'];
 
 function rand(seed) { let s = seed; return () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; }; }
@@ -53,17 +54,21 @@ export function buildFixtureSnapshot(weekStart, seed = 7) {
     const vt = VIDEO_TYPES[Math.floor(r() * VIDEO_TYPES.length)];
     const refId = `fx${n}`;
     media_refs[refId] = { kind: 'dropbox_folder', item_id: id };
+    const refs = [refId];
+    if (board === 'design') { media_refs[`${refId}f`] = { kind: 'figma', item_id: id, url: 'https://www.figma.com/design/abc123/Fixture' }; refs.unshift(`${refId}f`); }
+    if (board === 'video') { media_refs[`${refId}v`] = { kind: 'frameio', item_id: id }; refs.unshift(`${refId}v`); }
+    const dep = DEPARTMENTS[Math.floor(r() * DEPARTMENTS.length)];
     const start = days[Math.floor(r() * 3)];
     items[id] = {
       id, board, name: `${prod} | ${camp} | Meta | ${concept}`, title: concept, subtitle: `${camp} · Meta`,
       product: { label: prod, color }, type: board === 'video' ? { label: vt[0], color: vt[1] } : null,
-      department: { label: 'Marketing/Media', color: '#00c875' }, platform: 'Meta', campaign: camp,
+      department: { label: dep[0], color: dep[1] }, platform: 'Meta', campaign: camp, division: dep[0] === 'TV' || (board === 'video' && vt[0] === 'TV') ? 'tv' : board,
       status: { label: status, color: { Completed: '#00c875', Approved: '#784bd1', Working: '#fdab3d', Review: '#9cd326', Stuck: '#333333', 'Fixes Round': '#cab641', Pending: '#df2f4a' }[status] || '#c4c4c4', category: cat },
       group: status, people: [p[0]], requested_by: [], timeline: { from: start, to: addDays(start, 1 + Math.floor(r() * 3)) },
       deadline: addDays(weekStart, Math.floor(r() * 10)), versions: 1 + Math.floor(r() * 3),
       tracked_s_week: Math.floor(r() * 30000), tracked_days: days.slice(0, 2), created_at: new Date(Date.parse(weekStart) - r() * 14 * 86400000).toISOString(),
       monday_url: 'https://monday.com', links: { frame: board === 'video' ? 'https://next.frame.io' : null, dropbox: 'https://www.dropbox.com', figma: null, project: null },
-      assets: [], media_refs: [refId], fixture_thumb: thumb(color, concept, board, n),
+      assets: [], media_refs: refs, fixture_thumb: thumb(color, concept, board, n),
     };
     if (deliveredDay != null) {
       items[id].delivered_at = Date.parse(`${days[deliveredDay]}T12:00:00Z`) + Math.floor(r() * 3600000);
@@ -116,10 +121,15 @@ export function buildFixtureSnapshot(weekStart, seed = 7) {
       for (const d of [...days, ...nextDays]) if (it.timeline.from <= d && it.timeline.to >= d) workload.people[pid][d].planned.push(it.id);
     }
   }
-  const trend = Array.from({ length: 8 }, (_, i) => ({ week_start: addDays(weekStart, -7 * (7 - i)), label: shortDate(addDays(weekStart, -7 * (7 - i))), video: 6 + Math.floor(r() * 12), design: 14 + Math.floor(r() * 18), by_person: {} }));
+  const trend = Array.from({ length: 8 }, (_, i) => {
+    const v = 6 + Math.floor(r() * 12); const d = 14 + Math.floor(r() * 18); const tv = Math.floor(r() * 4);
+    return { week_start: addDays(weekStart, -7 * (7 - i)), label: shortDate(addDays(weekStart, -7 * (7 - i))), video: v, design: d, by_person: {}, by_division: { design: d, video: v - Math.min(v, tv), tv } };
+  });
   const video = del.filter(i => i.board === 'video').length;
   const design = del.length - video;
-  trend[7] = { ...trend[7], video, design, current: true };
+  const byDiv = { design: 0, video: 0, tv: 0 };
+  for (const it of del) byDiv[it.division]++;
+  trend[7] = { ...trend[7], video, design, current: true, by_division: byDiv };
   return {
     schema_version: 1, generated_at: new Date().toISOString(),
     week: { start: weekStart, end: addDays(weekStart, 7), last_day: addDays(weekStart, 6), label: `${shortDate(weekStart)} – ${shortDate(addDays(weekStart, 4))}`, number: 43, year: Number(weekStart.slice(0, 4)), workdays: days, partial: weekStart === sundayOf(), next: { start: addDays(weekStart, 7), label: `${shortDate(addDays(weekStart, 7))} – ${shortDate(addDays(weekStart, 11))}` } },
@@ -140,9 +150,9 @@ export function buildFixtureSnapshot(weekStart, seed = 7) {
     cp_weekly: {
       found: true, weekly_report_id: 'wr-fixture', updated_at: null,
       productions: [
-        { production_id: 'PRD26-09', name: 'Particle Gravité The Heart Rate Test Campaign', stage: 'Post', planned_start: '2026-09-01', planned_end: '2026-10-30', brand: { id: 'particle', name: 'Particle' }, cross_brand: false, note: 'Final grade locked; delivering cutdowns Thursday.', bullets: [{ text: 'Addressed CEO notes — new version by EOD' }], links: [] },
-        { production_id: 'PRD26-14', name: 'Particle Face Cream Couple Testimonials', stage: 'Production', planned_start: '2026-10-19', planned_end: '2026-11-05', brand: { id: 'particle', name: 'Particle' }, cross_brand: false, note: 'Shoot day Tuesday, 3 couples confirmed.', bullets: [], links: [] },
-        { production_id: 'PRD26-BLR1', name: 'Blurr Eye Tightener TV', stage: 'Pre-production', planned_start: '2026-10-25', planned_end: '2026-11-20', brand: { id: 'blurr', name: 'Blurr', color: '#B842A9' }, cross_brand: true, note: 'Casting approved, locations scouted.', bullets: [], links: [] },
+        { production_id: 'PRD26-09', name: 'Particle Gravité The Heart Rate Test Campaign', stage: 'Post', production_type: 'TV Commercial', product_type: ['Gravité'], producer: 'Maya R.', planned_start: '2026-09-01', planned_end: addDays(weekStart, 11), delivery_date: addDays(weekStart, 10), shoot_dates: ['2026-09-14'], brand: { id: 'particle', name: 'Particle' }, cross_brand: false, note: 'Final grade locked; delivering cutdowns Thursday.', bullets: [{ text: 'Addressed CEO notes — new version by EOD' }, { text: 'Music license signed' }], links: [] },
+        { production_id: 'PRD26-14', name: 'Particle Face Cream Couple Testimonials', stage: 'Production', production_type: 'Digital', product_type: ['Face Cream'], producer: 'Yoav S.', planned_start: addDays(weekStart, 7), planned_end: addDays(weekStart, 20), delivery_date: null, shoot_dates: [addDays(weekStart, 9)], brand: { id: 'particle', name: 'Particle' }, cross_brand: false, note: 'Shoot day Tuesday, 3 couples confirmed.', bullets: [], links: [] },
+        { production_id: 'PRD26-BLR1', name: 'Blurr Eye Tightener TV', stage: 'Pre-production', production_type: 'TV Commercial', product_type: [], producer: null, planned_start: addDays(weekStart, 14), planned_end: '2026-11-20', delivery_date: null, shoot_dates: [], brand: { id: 'blurr', name: 'Blurr', color: '#B842A9' }, cross_brand: true, note: 'Casting approved, locations scouted.', bullets: [], links: [] },
       ],
       general_updates: [{ text: 'Video editors lunch on Thursday' }, { text: 'New designer onboarding next week' }, { text: 'Monday AI hands-on session for the studio' }],
     },
@@ -153,7 +163,7 @@ export function buildFixtureSnapshot(weekStart, seed = 7) {
 const withMedia = (report) => ({ report, media: { token: 'fixture' } });
 
 export async function list() {
-  return { reports: read().map(r => ({ id: r.id, week_start: r.week_start, title: r.title, status: r.status, revision: r.revision, week_label: r.snapshot.week.label, week_number: r.snapshot.week.number, totals: r.snapshot.metrics.totals, shared: !!r.share_token, generated_at: r.generated_at, updated_at: r.updated_at })), current_week: sundayOf() };
+  return { reports: read().map(r => ({ id: r.id, week_start: r.week_start, title: r.title, status: r.status, revision: r.revision, week_label: r.snapshot.week.label, week_number: r.snapshot.week.number, totals: r.snapshot.metrics.totals, shared: !!r.share_token, generated_at: r.generated_at, updated_at: r.updated_at })), current_week: sundayOf(), review_week: sundayOf() };
 }
 export async function get(id) {
   const r = read().find(x => x.id === id);
@@ -207,6 +217,7 @@ export async function narrative(id) {
   r.narrative = {
     exec_summary: [`${t.delivered} pieces shipped: ${t.video} videos and ${t.design} designs.`, 'Face Cream and Gravité carried the week.', `${t.in_progress} tickets in the pipeline heading into next week.`, `Watch: ${t.stuck} stuck, ${t.overdue} overdue.`],
     highlights: [], risks: [], next_week_focus: ['Lock the Gravité TV cutdowns', 'NeoRoot creators batch', 'Fall Flash Sale statics'],
+    focus_by_division: { design: ['Fall Flash Sale statics for Meta', 'Face Cream Amazon A+ refresh'], video: ['NeoRoot creators batch', 'Hook variants for Levitas'], tv: ['Gravité TV cutdowns delivered Thursday', 'Couple Testimonials shoot Tuesday'] },
     per_person: Object.values(r.snapshot.people).map(p => ({ monday_user_id: p.id, one_liner: `${p.name.split(' ')[0]} kept the ${p.role === 'video' ? 'edit' : 'design'} queue moving.` })),
     generated_at: new Date().toISOString(), locked_fields: [],
   };
@@ -259,7 +270,11 @@ export async function publicShare(token) {
   if (!r) throw Object.assign(new Error('This link was revoked or does not exist'), { status: 404 });
   return { report: r, media: { token: 'fixture' }, brand: { id: 'particle', name: 'Particle', logo_url: null } };
 }
-export async function listing() { return { entries: [], error: 'Media browsing needs the live API' }; }
+export async function listing(id, refId) {
+  await delay(300);
+  if (String(refId).endsWith('v')) return { entries: [], error: 'Your Frame user is not linked to an Adobe ID' };
+  return { entries: Array.from({ length: 6 }, (_, i) => ({ key: `k${i}`, name: `${String(refId).endsWith('f') ? 'Frame' : 'Export'} ${i + 1}.png`, kind: 'image', ext: 'png', preferred: i === 0 })) };
+}
 export async function remove(id) { write(read().filter(x => x.id !== id)); return { ok: true }; }
 export async function config() { return { config: { default_template: DEFAULT_TEMPLATE } }; }
 export async function saveTemplate() { return { template: DEFAULT_TEMPLATE }; }

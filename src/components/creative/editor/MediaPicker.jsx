@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 import { X, Loader2, RefreshCw, Film, ImageIcon, FileText, Check, Star, AlertTriangle } from 'lucide-react';
 import { creativeApi } from '../../../lib/creativeReportService';
 
-const KIND_LABEL = { dropbox_folder: 'Dropbox', dropbox_file: 'Dropbox', frameio: 'Frame.io', monday_asset: 'Monday file', figma: 'Figma', link: 'Link' };
+const KIND_LABEL = { dropbox_folder: 'Dropbox', dropbox_file: 'Dropbox', frameio: 'Frame.io', monday_asset: 'Monday file (reference)', figma: 'Figma', link: 'Link' };
+const KIND_ORDER = { design: ['figma', 'dropbox_folder', 'dropbox_file', 'frameio', 'monday_asset'], video: ['frameio', 'dropbox_folder', 'dropbox_file', 'figma', 'monday_asset'] };
 
 /**
  * Pick the cover + ordered gallery for one ticket from every file behind its Dropbox / Frame.io /
@@ -12,7 +13,11 @@ const KIND_LABEL = { dropbox_folder: 'Dropbox', dropbox_file: 'Dropbox', frameio
 export default function MediaPicker({ reportId, item, snapshot, media, value, onSave, onClose }) {
   const refs = useMemo(() => (item?.media_refs || [])
     .map(id => ({ id, ...(snapshot.media_refs?.[id] || {}) }))
-    .filter(r => r.kind && !['figma', 'link'].includes(r.kind)), [item, snapshot]);
+    .filter(r => r.kind && r.kind !== 'link')
+    .sort((a, b) => {
+      const order = KIND_ORDER[item?.board] || KIND_ORDER.video;
+      return order.indexOf(a.kind) - order.indexOf(b.kind);
+    }), [item, snapshot]);
   const [tab, setTab] = useState(refs[0]?.id || null);
   const [listings, setListings] = useState({});
   const [cover, setCover] = useState(value?.cover || null);
@@ -50,7 +55,7 @@ export default function MediaPicker({ reportId, item, snapshot, media, value, on
           <div className="flex-1 min-w-0">
             <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Choose media</div>
             <div className="font-bold text-gray-900 truncate">{item.title}</div>
-            <div className="text-xs text-gray-500 mt-0.5">Click a file to make it the <b>cover</b>. Use ✓ to add it to the lightbox gallery.</div>
+            <div className="text-xs text-gray-500 mt-0.5">Click a file to make it the <b>cover</b>. Use ✓ to add it to the <b>gallery</b> (showcase slide + in-deck viewer). Monday files are usually references — prefer Figma or Dropbox.</div>
           </div>
           <button type="button" onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100"><X size={18} /></button>
         </div>
@@ -64,7 +69,7 @@ export default function MediaPicker({ reportId, item, snapshot, media, value, on
           {tab && <button type="button" onClick={() => load(tab, true)} className="ml-auto text-xs text-gray-500 flex items-center gap-1 hover:text-gray-800"><RefreshCw size={12} /> Refresh</button>}
         </div>
         <div className="flex-1 overflow-y-auto p-5">
-          {!refs.length && <div className="text-sm text-gray-500 text-center py-12">This ticket has no Dropbox, Frame.io or Monday files.</div>}
+          {!refs.length && <div className="text-sm text-gray-500 text-center py-12">This ticket has no Figma, Dropbox, Frame.io or Monday files.</div>}
           {cur?.loading && <div className="py-12 text-center text-gray-400"><Loader2 className="animate-spin inline" /> Loading files…</div>}
           {cur?.error && (
             <div className="mb-4 p-3 rounded-xl bg-amber-50 text-amber-900 text-xs flex gap-2"><AlertTriangle size={14} className="flex-none mt-0.5" /> {cur.error}</div>

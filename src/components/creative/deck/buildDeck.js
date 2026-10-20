@@ -1,14 +1,17 @@
 // buildDeck(template, snapshot, overrides, narrative) → resolved slides (pure).
 //
 // Stable slide keys make human edits survive "Refresh live data":
-//   template slides:  spec.id
-//   person slides:    `${spec.id}:${mondayUserId}` (+ `:p2` for overflow pages)
-//   custom slides:    `custom:<uuid>`
+//   template slides:    spec.id
+//   person slides:      `${spec.id}:${mondayUserId}` (+ `:p2` for overflow pages)
+//   production slides:  `${spec.id}:${productionId}`
+//   custom slides:      `custom:<uuid>` (free text, section divider or a one-project showcase)
 import { SPECS, optionsFor } from '../slides/specs';
 
 export function personKey(specId, uid, page) {
   return `${specId}:${uid}${page ? `:p${page + 1}` : ''}`;
 }
+
+const CUSTOM_TYPES = new Set(['custom', 'section', 'showcase']);
 
 /** Default (template) order of slide stubs, before overrides.order is applied. */
 function expandTemplate(template, snapshot, overrides) {
@@ -18,9 +21,9 @@ function expandTemplate(template, snapshot, overrides) {
     const def = SPECS[spec.type];
     if (!def) continue;
     const options = optionsFor(spec.type, spec.options, overrides?.slides?.[spec.id]?.options);
-    if (spec.repeat === 'perPerson' && def.repeat) {
+    if (spec.repeat && def.repeat) {
       for (const params of def.repeat(spec, snapshot, overrides, options)) {
-        const key = personKey(spec.id, params.uid, params.page);
+        const key = def.keyOf ? def.keyOf(spec.id, params) : personKey(spec.id, params.uid, params.page);
         out.push({ key, type: spec.type, specId: spec.id, params, baseOptions: options });
       }
     } else {
@@ -30,13 +33,16 @@ function expandTemplate(template, snapshot, overrides) {
   // Custom slides: inserted after their anchor, else before the closing slide
   const custom = Object.entries(overrides?.custom || {});
   for (const [key, c] of custom) {
-    const stub = { key, type: c.type === 'section' ? 'section' : 'custom', specId: key, params: {}, custom: true,
-      baseOptions: optionsFor(c.type === 'section' ? 'section' : 'custom', c.options, overrides?.slides?.[key]?.options) };
+    const type = CUSTOM_TYPES.has(c.type) ? c.type : 'custom';
+    const stub = { key, type, specId: key, params: {}, custom: true,
+      baseOptions: optionsFor(type, c.options, overrides?.slides?.[key]?.options) };
     const anchor = c.after ? out.findIndex(s => s.key === c.after) : -1;
     if (anchor >= 0) out.splice(anchor + 1, 0, stub);
     else {
+      // Anchor slide gone (e.g. a person page that no longer exists) → after that person's first slide
+      const base = c.after ? out.findIndex(s => c.after.startsWith(`${s.key}:`)) : -1;
       const closing = out.findIndex(s => s.type === 'closing');
-      out.splice(closing >= 0 ? closing : out.length, 0, stub);
+      out.splice(base >= 0 ? base + 1 : closing >= 0 ? closing : out.length, 0, stub);
     }
   }
   return out;

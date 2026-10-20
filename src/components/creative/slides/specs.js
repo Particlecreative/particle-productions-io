@@ -1,6 +1,9 @@
 // Pure slide specifications: defaults, editable schema, text slots and view-model selectors.
 // No React here — buildDeck() uses these; slides/registry.jsx maps types to components.
-import { displayName, fmtNum, plural, ensureContrast, paletteColor } from '../deck/format';
+import { displayName, fmtNum, plural, ensureContrast, paletteColor, addDays } from '../deck/format';
+import {
+  DIVISIONS, DIVISION_ORDER, divisionOf, personCandidates, personSelection, productionTickets, visibleProductions, productionDatesIn,
+} from './divisions';
 
 // ── Shared selectors ────────────────────────────────────────────────────────
 export function ticketOv(overrides, id) { return overrides?.tickets?.[id] || {}; }
@@ -47,6 +50,51 @@ function delta(snapshot, key) {
 const ROLE_LABEL = { video: 'Video editor', design: 'Designer' };
 const TYPE_ICON = { video: 'video', design: 'design' };
 
+const median = (arr) => {
+  if (!arr.length) return null;
+  const s = [...arr].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+};
+
+function countRows(list, keyFn, colorFn) {
+  const m = new Map();
+  for (const it of list) {
+    const k = keyFn(it);
+    if (!k) continue;
+    const e = m.get(k) || { label: k, color: colorFn(it) || null, total: 0, ids: [] };
+    e.total++;
+    e.ids.push(it.id);
+    if (!e.color) e.color = colorFn(it) || null;
+    m.set(k, e);
+  }
+  return [...m.values()].sort((a, b) => b.total - a.total);
+}
+
+/** Per-division numbers from the snapshot's items (works for v1 snapshots too). Hidden tickets are excluded. */
+export function divisionStats(snapshot, overrides, dv) {
+  const S = snapshot.sections || {};
+  const pick = (list) => visibleIds(snapshot, overrides, list).filter(id => divisionOf(snapshot.items[id]) === dv);
+  const delivered = pick(S.delivered);
+  const dItems = delivered.map(id => snapshot.items[id]);
+  const turn = dItems.filter(it => it.created_at && it.delivered_at).map(it => (it.delivered_at - Date.parse(it.created_at)) / 86400000).filter(n => n >= 0);
+  const trend = (snapshot.trend || []).map(t => (t.current ? delivered.length : (t.by_division?.[dv] ?? null)));
+  const prev = (snapshot.trend || []).slice(-2, -1)[0];
+  const prevCount = prev?.by_division?.[dv];
+  return {
+    delivered,
+    inProgress: pick([...(S.in_progress || []), ...(S.review || []), ...(S.fixes || [])]),
+    inReview: pick(S.review),
+    planned: pick(S.planned_next_week),
+    stuck: pick(S.stuck),
+    medianTurnaround: median(turn),
+    delta: prevCount != null ? delivered.length - prevCount : null,
+    trend: trend.every(v => v == null) ? [] : trend.map(v => v ?? 0),
+    byProduct: countRows(dItems, it => (it.product?.label && it.product.label !== '-' ? it.product.label : null), it => it.product?.color),
+    byDepartment: countRows(dItems, it => it.department?.label || null, it => it.department?.color),
+  };
+}
+
 // ── Common options every slide has ──────────────────────────────────────────
 export const COMMON_SCHEMA = [
   { key: 'theme', type: 'segmented', label: 'Background', options: [['dark', 'Navy'], ['light', 'Light'], ['electric', 'Electric']] },
@@ -65,20 +113,174 @@ export const SPECS = {
     schema: [{ key: 'mosaic', type: 'toggle', label: 'Background mosaic of the week’s work' }],
     textSlots: ['eyebrow', 'title', 'subtitle'],
     select(snapshot, { overrides }) {
-      const t = snapshot.metrics?.totals || {};
       const delivered = visibleIds(snapshot, overrides, snapshot.sections?.delivered).map(id => decorate(snapshot, overrides, id));
       const mosaic = delivered.filter(i => i.media_refs?.length).sort(byHighlightThenRecent).slice(0, 12).map(i => i.id);
+      return { week: snapshot.week, mosaic, divisions: DIVISION_ORDER.map(k => DIVISIONS[k]) };
+    },
+    defaultText: () => ({ eyebrow: 'Particle · Creative Department', title: 'Creative Weekly', subtitle: '' }),
+  },
+
+  dept_overview: {
+    label: 'Department at a glance',
+    category: 'Numbers',
+    defaults: {},
+    schema: [],
+    textSlots: ['eyebrow', 'title'],
+    select(snapshot, { overrides }) {
+      const productions = visibleProductions(snapshot, overrides);
       return {
         week: snapshot.week,
-        kpis: [
-          { key: 'video', label: 'Videos delivered', value: t.video ?? 0 },
-          { key: 'design', label: 'Designs delivered', value: t.design ?? 0 },
-          { key: 'people', label: 'Creatives', value: t.people ?? 0 },
-        ],
-        mosaic,
+        divisions: DIVISION_ORDER.map(k => {
+          const s = divisionStats(snapshot, overrides, k);
+          return {
+            ...DIVISIONS[k],
+            delivered: s.delivered.length,
+            delta: s.delta,
+            trend: s.trend,
+            inProgress: s.inProgress.length,
+            planned: s.planned.length,
+            productions: k === 'tv' ? productions.length : null,
+          };
+        }),
       };
     },
-    defaultText: (vm) => ({ eyebrow: 'Creative Weekly', title: `Week ${vm.week?.number ?? ''}`, subtitle: 'Prepared for Guy & Ayal' }),
+    defaultText: (vm) => ({ eyebrow: `Last week · ${vm.week?.label || ''}`, title: 'Creative at a glance' }),
+  },
+
+  division_overview: {
+    label: 'Division overview',
+    category: 'Numbers',
+    defaults: { division: 'design' },
+    schema: [{ key: 'division', type: 'segmented', label: 'Division', options: [['design', 'Design'], ['video', 'Video'], ['tv', 'TV & SP']] }],
+    textSlots: ['eyebrow', 'title'],
+    select(snapshot, { overrides, options }) {
+      const dv = options.division || 'design';
+      const meta = DIVISIONS[dv];
+      const s = divisionStats(snapshot, overrides, dv);
+      if (dv === 'tv') {
+        const productions = visibleProductions(snapshot, overrides).map(p => ({
+          ...p, linked: productionTickets(snapshot, overrides, p).length,
+          thisWeek: productionDatesIn(p, snapshot.week?.next?.start || '', addDaysStr(snapshot.week?.next?.start, 4)),
+        }));
+        return { division: dv, meta, week: snapshot.week, stats: s, productions, deliveredIds: s.delivered.slice(0, 4) };
+      }
+      // By person: everyone who delivered in this division, bars stacked by department
+      const per = new Map();
+      for (const id of s.delivered) {
+        const it = snapshot.items[id];
+        for (const uid of it.people || []) {
+          const row = per.get(uid) || { uid, total: 0, segs: new Map() };
+          row.total++;
+          const dep = it.department?.label || 'Other';
+          const seg = row.segs.get(dep) || { label: dep, color: it.department?.color || '#8c93ff', count: 0 };
+          seg.count++;
+          row.segs.set(dep, seg);
+          per.set(uid, row);
+        }
+      }
+      const byPerson = [...per.values()]
+        .filter(r => snapshot.people?.[r.uid] && !overrides?.people?.[r.uid]?.hidden)
+        .map(r => ({ person: { ...snapshot.people[r.uid], name: displayName(snapshot.people[r.uid].name) }, total: r.total, segments: [...r.segs.values()] }))
+        .sort((a, b) => b.total - a.total)
+        .slice(0, 9);
+      const departments = [...new Map(byPerson.flatMap(r => r.segments).map(sg => [sg.label, sg])).values()];
+      return { division: dv, meta, week: snapshot.week, stats: s, byPerson, departments, byProduct: s.byProduct.slice(0, 9) };
+    },
+    defaultText: (vm) => ({
+      eyebrow: `${vm.meta.label} · Last week · ${vm.week?.label || ''}`,
+      title: vm.division === 'tv' ? 'Productions & TV' : `${vm.meta.short} overview`,
+    }),
+  },
+
+  division_next: {
+    label: 'Division · this week',
+    category: 'Pipeline',
+    defaults: { division: 'design' },
+    schema: [{ key: 'division', type: 'segmented', label: 'Division', options: [['design', 'Design'], ['video', 'Video'], ['tv', 'TV & SP']] }],
+    textSlots: ['eyebrow', 'title'],
+    select(snapshot, { overrides, options, narrative, key }) {
+      const dv = options.division || 'design';
+      const meta = DIVISIONS[dv];
+      const days = snapshot.workload?.next_week || [];
+      const s = divisionStats(snapshot, overrides, dv);
+      const custom = overrides?.slides?.[key]?.bullets;
+      const ai = narrative?.focus_by_division?.[dv];
+      const plannedItems = s.planned.map(id => snapshot.items[id]);
+      const topProducts = countRows(plannedItems, it => (it.product?.label && it.product.label !== '-' ? it.product.label : null), it => it.product?.color).slice(0, 5);
+      const fallback = topProducts.length
+        ? topProducts.slice(0, 3).map(p => `${p.label}: ${plural(p.total, 'piece')} planned`)
+        : [];
+      const focus = Array.isArray(custom) ? custom : (ai?.length ? ai : fallback);
+      if (dv === 'tv') {
+        const from = snapshot.week?.next?.start || '';
+        const to = addDaysStr(from, 4);
+        const productions = visibleProductions(snapshot, overrides)
+          .map(p => ({ ...p, hits: productionDatesIn(p, from, to) }))
+          .filter(p => p.hits.length);
+        return { division: dv, meta, week: snapshot.week, days, productions, planned: s.planned, topProducts, focus, focusSource: Array.isArray(custom) ? 'edited' : (ai?.length ? 'ai' : 'auto') };
+      }
+      const wl = snapshot.workload?.people || {};
+      const cap = snapshot.workload?.capacity?.[meta.role] || 4;
+      const rows = peopleByRole(snapshot, overrides, meta.role).map(p => {
+        const cells = days.map(d => {
+          const ids = (wl[p.id]?.[d]?.planned || []).filter(id => !isHidden(overrides, id));
+          return { date: d, count: ids.length };
+        });
+        return { person: { ...p, name: displayName(p.name) }, cells, total: cells.reduce((a, c) => a + c.count, 0) };
+      }).sort((a, b) => b.total - a.total);
+      return { division: dv, meta, week: snapshot.week, days, rows, capacity: cap, planned: s.planned, topProducts, focus, focusSource: Array.isArray(custom) ? 'edited' : (ai?.length ? 'ai' : 'auto') };
+    },
+    defaultText: (vm) => ({ eyebrow: `${vm.meta.label} · This week · ${vm.week?.next?.label || ''}`, title: 'Coming up' }),
+  },
+
+  production: {
+    label: 'Production (one per CP production)',
+    category: 'Productions',
+    defaults: {},
+    schema: [],
+    textSlots: ['eyebrow', 'title', 'subtitle'],
+    // Every CP production gets a slide; "left out" ones stay in the rail (skipped when presenting)
+    repeat(spec, snapshot) {
+      return (snapshot.cp_weekly?.productions || []).map(p => ({ pid: p.production_id }));
+    },
+    keyOf: (specId, params) => `${specId}:${params.pid}`,
+    select(snapshot, { overrides, params }) {
+      const p = (snapshot.cp_weekly?.productions || []).find(x => x.production_id === params.pid) || null;
+      if (!p) return { p: null, tickets: [] };
+      const tickets = productionTickets(snapshot, overrides, p);
+      const manual = Array.isArray(overrides?.productions?.[p.production_id]?.tickets);
+      const from = snapshot.week?.next?.start || '';
+      return { p, tickets, manual, thisWeek: productionDatesIn(p, from, addDaysStr(from, 4)), hiddenProduction: !!overrides?.productions?.[p.production_id]?.hidden };
+    },
+    isEmpty: (vm) => !vm.p || vm.hiddenProduction,
+    defaultText: (vm) => ({
+      eyebrow: vm.p ? `TV & Special Productions${vm.p.cross_brand ? ` · ${vm.p.brand?.name}` : ''} · ${vm.p.production_id}` : 'Production',
+      title: vm.p?.name || 'Production',
+      subtitle: '',
+    }),
+  },
+
+  showcase: {
+    label: 'Showcase (one project, gallery)',
+    category: 'Work',
+    defaults: { transition: 'fade' },
+    schema: [],
+    textSlots: ['eyebrow', 'title', 'subtitle'],
+    select(snapshot, { overrides, key }) {
+      const c = overrides?.custom?.[key] || {};
+      const id = c.item;
+      if (!id || !snapshot.items?.[id]) return { item: null, images: [] };
+      const it = decorate(snapshot, overrides, id);
+      const images = [...(it.cover ? [it.cover] : []), ...(it.gallery || []).filter(g => !(it.cover && g.refId === it.cover.refId && g.key === it.cover.key))].slice(0, 6);
+      const owner = snapshot.people?.[it.people?.[0]];
+      return { item: it, images, owner: owner ? { ...owner, name: displayName(owner.name) } : null };
+    },
+    isEmpty: (vm) => !vm.item,
+    defaultText: (vm) => ({
+      eyebrow: vm.item ? [vm.owner?.name, DIVISIONS[divisionOf(vm.item)]?.label].filter(Boolean).join(' · ') : 'Showcase',
+      title: vm.item?.caption || vm.item?.title || 'Showcase',
+      subtitle: vm.item ? [vm.item.product?.label !== '-' ? vm.item.product?.label : null, vm.item.subtitle].filter(Boolean).join(' · ') : '',
+    }),
   },
 
   exec_summary: {
@@ -200,39 +402,60 @@ export const SPECS = {
     defaults: { role: 'video', perPage: 8 },
     schema: [
       { key: 'role', type: 'segmented', label: 'Team', options: [['video', 'Video editors'], ['design', 'Designers']] },
-      { key: 'perPage', type: 'number', label: 'Tiles per slide', min: 3, max: 12 },
+      { key: 'perPage', type: 'number', label: 'Max projects per slide', min: 1, max: 12 },
     ],
     textSlots: ['eyebrow', 'title', 'subtitle'],
     repeat(spec, snapshot, overrides, options) {
       return peopleByRole(snapshot, overrides, options.role).flatMap(p => {
-        const n = personTickets(snapshot, overrides, p.id).delivered.length;
-        const pages = Math.max(1, Math.ceil(n / (options.perPage || 8)));
-        return Array.from({ length: Math.min(pages, 4) }, (_, page) => ({ uid: p.id, page, pages: Math.min(pages, 4) }));
+        const n = personShown(snapshot, overrides, p.id).ids.length;
+        const per = Math.max(1, overrides?.people?.[p.id]?.perPage || options.perPage || 8);
+        const pages = Math.min(6, Math.max(1, Math.ceil(n / per)));
+        return Array.from({ length: pages }, (_, page) => ({ uid: p.id, page, pages }));
       });
     },
-    select(snapshot, { overrides, narrative, options, params }) {
-      const p = snapshot.people?.[params.uid] || { id: params.uid, name: 'Unknown' };
-      const stats = snapshot.metrics?.by_person?.[params.uid] || {};
-      const t = personTickets(snapshot, overrides, params.uid);
-      const per = options.perPage || 8;
+    select(snapshot, { overrides, narrative, params }) {
+      const uid = params.uid;
+      const p = snapshot.people?.[uid] || { id: uid, name: 'Unknown' };
+      const stats = snapshot.metrics?.by_person?.[uid] || {};
+      const shown = personShown(snapshot, overrides, uid);
+      const pages = params.pages || 1;
       const page = params.page || 0;
-      const delivered = t.delivered.slice(page * per, page * per + per);
-      const oneLiner = overrides?.people?.[params.uid]?.one_liner
-        ?? narrative?.per_person?.find(x => String(x.monday_user_id) === String(params.uid))?.one_liner ?? '';
-      const trend = (snapshot.trend || []).map(w => w.by_person?.[params.uid] ?? 0);
+      // Balanced pages (9 projects over 2 slides → 5 + 4, never 8 + 1)
+      const size = Math.ceil(shown.ids.length / pages) || 0;
+      const tickets = shown.ids.slice(page * size, page * size + size);
+      const cand = personCandidates(snapshot, uid);
+      const vis = (list) => list.filter(id => !isHidden(overrides, id));
+      const delivered = vis(cand.delivered);
+      const active = vis(cand.active);
+      const worked = [...delivered, ...active];
+      const products = countRows(worked.map(id => snapshot.items[id]), it => (it.product?.label && it.product.label !== '-' ? it.product.label : null), it => it.product?.color)
+        .map((r, i) => ({ ...r, color: ensureContrast(r.color || paletteColor(i), '#030b2e', 2.6) }));
+      const days = snapshot.workload?.next_week || [];
+      const wl = snapshot.workload?.people?.[uid] || {};
+      const nextWeek = days.map(d => ({ date: d, ids: (wl[d]?.planned || []).filter(id => !isHidden(overrides, id)) }));
+      const oneLiner = overrides?.people?.[uid]?.one_liner
+        ?? narrative?.per_person?.find(x => String(x.monday_user_id) === String(uid))?.one_liner ?? '';
       return {
         person: { ...p, name: displayName(p.name) },
+        role: p.role,
         stats,
         oneLiner,
-        tickets: delivered,
-        totalDelivered: t.delivered.length,
-        current: page === 0 ? t.current.slice(0, delivered.length ? 3 : 8) : [],
-        page, pages: params.pages || 1,
-        trend,
+        tickets,
+        totalShown: shown.ids.length,
+        showingActive: shown.fallback,
+        manual: shown.manual,
+        deliveredCount: delivered.length,
+        activeCount: active.length,
+        tvCount: delivered.filter(id => divisionOf(snapshot.items[id]) === 'tv').length,
+        products,
+        nextWeek,
+        nextWeekTotal: new Set(nextWeek.flatMap(d => d.ids)).size,
+        capacity: snapshot.workload?.capacity?.[p.role] || 4,
+        page, pages,
         icon: TYPE_ICON[p.role],
       };
     },
-    isEmpty: (vm) => !vm.totalDelivered && !vm.current.length,
+    isEmpty: (vm) => !vm.totalShown && !vm.activeCount && !vm.nextWeekTotal,
     defaultText: (vm) => ({
       eyebrow: `${ROLE_LABEL[vm.person.role] || 'Creative'}${vm.pages > 1 ? ` · ${vm.page + 1}/${vm.pages}` : ''}`,
       title: vm.person.name,
@@ -381,6 +604,38 @@ export function optionsFor(type, specOptions, ovOptions) {
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
+function addDaysStr(s, n) { return s ? addDays(s, n) : ''; }
+
+/** What a person slide shows: the chosen projects, else what they delivered, else what they're on now. */
+export function personShown(snapshot, overrides, uid) {
+  const manual = Array.isArray(overrides?.people?.[uid]?.selection);
+  const ids = personSelection(snapshot, overrides, uid);
+  if (ids.length || manual) return { ids, manual, fallback: false };
+  const active = personCandidates(snapshot, uid).active.filter(id => !isHidden(overrides, id)).slice(0, 6);
+  return { ids: active, manual: false, fallback: active.length > 0 };
+}
+
+/** Every ticket of a division (optionally one person / one product), grouped for the product drill-down. */
+export function productBreakdown(snapshot, overrides, { division, product, uid }) {
+  const S = snapshot.sections || {};
+  const match = (id) => {
+    const it = snapshot.items?.[id];
+    if (!it || isHidden(overrides, id)) return false;
+    if (!uid && division && divisionOf(it) !== division) return false;
+    if (uid && !it.people?.includes(uid)) return false;
+    if (product && (it.product?.label || '') !== product) return false;
+    return true;
+  };
+  const seen = new Set();
+  const take = (list) => (list || []).filter(id => match(id) && !seen.has(id) && seen.add(id));
+  return [
+    { key: 'delivered', label: 'Delivered last week', ids: take(S.delivered) },
+    { key: 'active', label: 'In progress', ids: take([...(S.review || []), ...(S.in_progress || []), ...(S.fixes || []), ...(S.stuck || [])]) },
+    { key: 'planned', label: 'Planned this week', ids: take(S.planned_next_week) },
+    { key: 'other', label: 'Also open', ids: take(Object.keys(snapshot.items || {})) },
+  ].filter(g => g.ids.length);
+}
+
 export function personTickets(snapshot, overrides, uid) {
   const mine = (list) => visibleIds(snapshot, overrides, list).filter(id => snapshot.items[id].people?.includes(uid));
   const delivered = mine(snapshot.sections?.delivered).map(id => decorate(snapshot, overrides, id)).sort(byHighlightThenRecent).map(i => i.id);

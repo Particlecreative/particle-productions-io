@@ -72,4 +72,5 @@ export const creativeApi = {
   // Public (no auth)
   async publicShare(token) { return LIVE ? crFetch(`/share/${token}`, { auth: false }) : (await fx()).publicShare(token); },
   async publicPicks(token) { return LIVE ? crFetch(`/share/${token}/picks`, { auth: false }) : { picks: {} }; },
+  async publicListing(token, refId) { return LIVE ? crFetch(`/share/${token}/media/${refId}`, { auth: false }) : (await fx()).listing(null, refId); },
 };

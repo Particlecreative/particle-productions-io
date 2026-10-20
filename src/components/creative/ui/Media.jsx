@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Film, PenTool, Play } from 'lucide-react';
 import { withAlpha } from '../deck/format';
 
@@ -19,23 +19,29 @@ export function FallbackTile({ color = '#4a55ff', board = 'design', label, size 
 }
 
 export function MediaImage({ src, alt = '', className = 'cr-tile-media', style, fallback, kenBurns = false, onLoad }) {
-  const [failed, setFailed] = useState(!src);
-  const [loaded, setLoaded] = useState(false);
-  useEffect(() => { setFailed(!src); setLoaded(false); }, [src]);
-  if (failed) return fallback || null;
+  // State is keyed by src, so a load event that lands before effects run (cached / data: URLs) is never lost
+  const [st, setSt] = useState({ src: null, loaded: false, failed: false });
+  const cur = st.src === src ? st : { src, loaded: false, failed: !src };
+  const ref = useRef(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el && !cur.loaded && el.complete && el.naturalWidth > 0) setSt({ src, loaded: true, failed: false });
+  });
+  if (cur.failed) return fallback || null;
   return (
     <>
-      {!loaded && <div className="cr-tile-media cr-skeleton" />}
+      {!cur.loaded && <div className="cr-tile-media cr-skeleton" />}
       <img
+        ref={ref}
         src={src}
         alt={alt}
         loading="lazy"
         decoding="async"
         draggable={false}
         className={`${className}${kenBurns ? ' cr-kenburns' : ''}`}
-        style={{ opacity: loaded ? 1 : 0, transition: 'opacity .5s ease', ...style }}
-        onLoad={(e) => { setLoaded(true); onLoad?.(e); }}
-        onError={() => setFailed(true)}
+        style={{ opacity: cur.loaded ? 1 : 0, transition: 'opacity .5s ease', ...style }}
+        onLoad={(e) => { setSt({ src, loaded: true, failed: false }); onLoad?.(e); }}
+        onError={() => setSt({ src, loaded: false, failed: true })}
       />
     </>
   );

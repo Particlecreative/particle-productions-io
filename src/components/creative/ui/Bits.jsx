@@ -119,48 +119,137 @@ export function Sparkline({ values = [], width = 300, height = 72, color = '#4a5
   );
 }
 
+// ── Media sources behind a ticket (from its media refs, so it works on share links too) ──
+const SOURCE_OF_KIND = { frameio: 'frameio', dropbox_folder: 'dropbox', dropbox_file: 'dropbox', figma: 'figma', monday_asset: 'monday' };
+export const SOURCE_META = {
+  frameio: { label: 'Frame.io', dots: ['#7b61ff'] },
+  dropbox: { label: 'Dropbox', dots: ['#0061fe'] },
+  figma: { label: 'Figma', dots: ['#f24e1e', '#a259ff', '#1abcfe'] },
+  monday: { label: 'Monday files', dots: ['#ff3d57', '#ffcb00', '#00ca72'] },
+};
+
+/** [{ source, refs: [refId] }] in presenting order: designs lead with Figma/Dropbox, videos with Frame.io. */
+export function sourcesOf(item, snapshot) {
+  const by = new Map();
+  for (const refId of item?.media_refs || []) {
+    const s = SOURCE_OF_KIND[snapshot?.media_refs?.[refId]?.kind];
+    if (!s) continue;
+    if (!by.has(s)) by.set(s, []);
+    by.get(s).push(refId);
+  }
+  const order = item?.board === 'design' ? ['figma', 'dropbox', 'frameio', 'monday'] : ['frameio', 'dropbox', 'figma', 'monday'];
+  return order.filter(s => by.has(s)).map(s => ({ source: s, refs: by.get(s) }));
+}
+
+function SourceDots({ source, size }) {
+  return (
+    <span style={{ display: 'inline-flex', gap: Math.max(1, size * 0.08) }}>
+      {SOURCE_META[source].dots.map((d, i) => <span key={i} style={{ width: size * 0.32, height: size * 0.32, borderRadius: 99, background: d }} />)}
+    </span>
+  );
+}
+
+/** Small round buttons that open the ticket's files inside the deck (never navigates away). */
+export function SourceButtons({ item, size = 34 }) {
+  const { snapshot, openViewer, mode } = useDeck();
+  const list = sourcesOf(item, snapshot).filter(s => s.source !== 'monday');
+  if (!list.length || mode === 'thumb') return null;
+  return (
+    <span style={{ display: 'inline-flex', gap: 6, flex: 'none' }} data-no-advance>
+      {list.map(s => (
+        <button
+          key={s.source}
+          type="button"
+          className="cr-src-btn"
+          title={`Open ${SOURCE_META[s.source].label}`}
+          aria-label={`Open ${SOURCE_META[s.source].label}`}
+          onClick={openViewer ? (e) => { e.stopPropagation(); openViewer(item, s.source); } : undefined}
+          style={{ width: size, height: size }}
+        >
+          <SourceDots source={s.source} size={size} />
+        </button>
+      ))}
+    </span>
+  );
+}
+
+/** Product label that opens every ticket of that product (division / person scoped). */
+export function ProductButton({ product, color, count, filter, size = 'small', style }) {
+  const { openProduct, mode } = useDeck();
+  if (!product) return null;
+  const c = ensureContrast(color || '#8c93ff', '#030b2e', 2.6);
+  const clickable = !!openProduct && mode !== 'thumb';
+  const Tag = clickable ? 'button' : 'span'; // thumbnails live inside rail buttons
+  return (
+    <Tag
+      type={clickable ? 'button' : undefined}
+      className={`cr-chip ${clickable ? 'cr-chip-btn' : ''}`}
+      onClick={clickable ? (e) => { e.stopPropagation(); openProduct({ ...filter, product }); } : undefined}
+      style={{ borderColor: withAlpha(c, 0.45), background: withAlpha(c, 0.12), fontSize: size === 'small' ? 'calc(var(--t-small) * .9)' : 'var(--t-body)', cursor: clickable ? 'pointer' : 'default', ...style }}
+    >
+      <span className="cr-chip-dot" style={{ background: c }} />
+      {product}
+      {count != null && <span className="cr-num" style={{ opacity: 0.75, fontWeight: 700 }}>{count}</span>}
+    </Tag>
+  );
+}
+
 // ── Ticket tile ─────────────────────────────────────────────────────────────
+/**
+ * Work tile built for a TV across the room: the whole creative is shown (contain, never cropped)
+ * over a soft blur of itself; caption sits below the image; chrome stays small.
+ */
 export function TicketTile({ item, active = true, showTitle = true, showLinks = true, onClick, style, className = '', titleClamp = 2, big = false }) {
   const { media, mode } = useDeck();
   if (!item) return null;
   const poster = media.cover(item);
   const vid = media.video(item);
   const badge = formatBadge(item);
+  const tv = item.division === 'tv' || (!item.division && /^(tv|special project)/i.test(item.department?.label || ''));
   const fallback = <FallbackTile color={item.product?.color || '#4a55ff'} board={item.board} size={big ? 96 : 56} />;
+  const productLabel = item.product?.label && item.product.label !== '-' ? item.product.label : null;
   return (
     <div
-      className={`cr-tile ${onClick ? 'cr-clickable' : ''} ${className}`}
+      className={`cr-tile cr-tile2 ${onClick ? 'cr-clickable' : ''} ${className}`}
       data-highlight={item.highlighted ? 'true' : 'false'}
       style={style}
       onClick={onClick ? (e) => { e.stopPropagation(); onClick(item); } : undefined}
     >
-      {/* Only hero-size tiles autoplay; gallery tiles show the poster frame (opens full video in the lightbox) */}
-      {vid && big && mode !== 'thumb' && active
-        ? <MediaVideo src={vid} poster={poster} active={active} fallback={fallback} />
-        : <MediaImage src={poster} fallback={fallback} kenBurns={big} />}
-      {showTitle && <div className="cr-tile-shade" />}
-      {badge && <span className="cr-tile-badge">{badge}</span>}
-      {!(vid && big && active) && media.kindOf(item) === 'video' && (
-        <span style={{ position: 'absolute', top: '42%', left: '50%', transform: 'translate(-50%, -50%)', width: big ? 96 : 60, height: big ? 96 : 60, borderRadius: 99, background: 'rgba(3,11,46,.55)', border: '1px solid rgba(255,255,255,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(6px)', pointerEvents: 'none' }}>
-          <Play size={big ? 40 : 24} color="#fff" fill="#fff" style={{ marginLeft: 4 }} />
+      <div className="cr-tile2-media">
+        {poster && <div className="cr-tile2-backdrop" style={{ backgroundImage: `url("${poster}")` }} />}
+        {/* Only hero-size tiles autoplay; gallery tiles show the poster (the viewer plays the full video) */}
+        {vid && big && mode !== 'thumb' && active
+          ? <MediaVideo src={vid} poster={poster} active={active} className="cr-tile2-img" fallback={fallback} />
+          : <MediaImage src={poster} className="cr-tile2-img" fallback={fallback} />}
+        <span style={{ position: 'absolute', top: 12, left: 12, display: 'flex', gap: 6 }}>
+          {badge && <span className="cr-tile-badge" style={{ position: 'static' }}>{badge}</span>}
+          {tv && <span className="cr-tile-badge" style={{ position: 'static', background: '#ff8a3d', color: '#1a0b00' }}>TV</span>}
         </span>
-      )}
-      {item.highlighted && (
-        <span style={{ position: 'absolute', top: 14, right: 14, width: 40, height: 40, borderRadius: 99, background: '#4a55ff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 6px 20px rgba(8,8,248,.6)' }}>
-          <Star size={20} color="#fff" fill="#fff" />
-        </span>
-      )}
+        {!(vid && big && active) && media.kindOf(item) === 'video' && (
+          <span style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: big ? 76 : 48, height: big ? 76 : 48, borderRadius: 99, background: 'rgba(3,11,46,.5)', border: '1px solid rgba(255,255,255,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(6px)', pointerEvents: 'none' }}>
+            <Play size={big ? 32 : 20} color="#fff" fill="#fff" style={{ marginLeft: 3 }} />
+          </span>
+        )}
+        {item.highlighted && (
+          <span style={{ position: 'absolute', top: 12, right: 12, width: 34, height: 34, borderRadius: 99, background: '#4a55ff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 6px 20px rgba(8,8,248,.6)' }}>
+            <Star size={17} color="#fff" fill="#fff" />
+          </span>
+        )}
+      </div>
       {showTitle && (
-        <div className="cr-tile-body">
-          <div className={`cr-clamp-${titleClamp}`} style={{ fontWeight: 700, fontSize: big ? 'var(--t-h3)' : 'calc(var(--t-small) * 1.05)', lineHeight: 1.18, color: '#fff' }}>
-            {item.caption || item.title}
-          </div>
-          {(item.subtitle || item.product?.label) && (
-            <div className="cr-clamp-1" style={{ marginTop: 6, fontSize: big ? 'var(--t-small)' : 'calc(var(--t-small) * 0.82)', color: 'rgba(232,236,255,.72)' }}>
-              {[item.product?.label !== '-' ? item.product?.label : null, item.subtitle].filter(Boolean).join(' · ')}
+        <div className="cr-tile2-cap">
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className={`cr-clamp-${titleClamp}`} style={{ fontWeight: 700, fontSize: big ? 'var(--t-body)' : 'calc(var(--t-small) * 1.02)', lineHeight: 1.18, color: 'var(--cr-white)' }}>
+              {item.caption || item.title}
             </div>
-          )}
-          {showLinks && <div style={{ marginTop: 10 }}><SourceLinks item={item} /></div>}
+            {(item.subtitle || productLabel) && (
+              <div className="cr-clamp-1" style={{ marginTop: 4, fontSize: 'calc(var(--t-small) * 0.8)', color: 'var(--cr-mute)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                {productLabel && <span className="cr-chip-dot" style={{ background: ensureContrast(item.product?.color || '#8c93ff', '#030b2e', 2.6), width: 10, height: 10 }} />}
+                <span className="cr-clamp-1">{[productLabel, item.subtitle].filter(Boolean).join(' · ')}</span>
+              </div>
+            )}
+          </div>
+          {showLinks && <SourceButtons item={item} size={big ? 38 : 30} />}
         </div>
       )}
     </div>

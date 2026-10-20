@@ -1,10 +1,12 @@
-import { Clock, Film, Layers, PenTool, Timer } from 'lucide-react';
+import { Film, PenTool } from 'lucide-react';
 import { useDeck } from '../deck/DeckContext';
-import { Reveal, CountUp, GrowBar } from '../motion/Motion';
-import { Avatar, EditableText, ProductChip, SourceLinks, StatusChip, TicketTile } from '../ui/Bits';
-import { fmtDays, fmtHours } from '../deck/format';
+import { Reveal, CountUp, GrowBar, m, EASE } from '../motion/Motion';
+import { Avatar, EditableText, ProductButton, SourceLinks, StatusChip, TicketTile } from '../ui/Bits';
+import { dayLabel, withAlpha } from '../deck/format';
 import { SlideFrame, SlideHeader } from './SlideFrame';
 import { decorate } from './specs';
+import { DIVISIONS } from './divisions';
+import { galleryGrid } from './DivisionSlides';
 
 // ── Highlights ──────────────────────────────────────────────────────────────
 export function HighlightsSlide({ slide, active }) {
@@ -44,24 +46,40 @@ export function HighlightsSlide({ slide, active }) {
 }
 
 // ── Person ──────────────────────────────────────────────────────────────────
-function galleryGrid(n) {
-  if (n <= 1) return { cols: 1, rows: 1 };
-  if (n === 2) return { cols: 2, rows: 1 };
-  if (n === 3) return { cols: 3, rows: 1 };
-  if (n === 4) return { cols: 2, rows: 2 };
-  if (n <= 6) return { cols: 3, rows: 2 };
-  return { cols: 4, rows: 2 };
+function MiniStat({ label, value, accent, i }) {
+  return (
+    <Reveal i={i} className="cr-col" style={{ gap: 4 }}>
+      <span className="cr-small" style={{ fontSize: 'calc(var(--t-small) * .8)', letterSpacing: '.08em', textTransform: 'uppercase', fontWeight: 600 }}>{label}</span>
+      <span className="cr-num" style={{ fontFamily: 'var(--cr-font-display)', fontWeight: 800, fontSize: 'var(--t-h2)', color: accent || '#fff', lineHeight: 1 }}>{value}</span>
+    </Reveal>
+  );
 }
 
-function Stat({ icon: Icon, label, value, children, i }) {
+/** Sun–Thu strip of what's scheduled for this person this week. */
+function WeekStrip({ days, capacity, accent, i }) {
+  const { motionLevel } = useDeck();
+  const max = Math.max(capacity, ...days.map(d => d.ids.length), 1);
   return (
-    <Reveal i={i} className="cr-card" style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <span className="cr-small" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(var(--t-small) * .82)', letterSpacing: '.06em', textTransform: 'uppercase' }}>
-        <Icon size={18} /> {label}
+    <Reveal i={i} className="cr-col" style={{ gap: 10 }}>
+      <span className="cr-small" style={{ fontSize: 'calc(var(--t-small) * .8)', letterSpacing: '.08em', textTransform: 'uppercase', fontWeight: 600 }}>
+        This week · {new Set(days.flatMap(d => d.ids)).size} scheduled
       </span>
-      <span className="cr-num" style={{ fontFamily: 'var(--cr-font-display)', fontWeight: 800, fontSize: 'var(--t-h2)', color: '#fff', lineHeight: 1 }}>
-        {children ?? value}
-      </span>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${days.length || 5}, minmax(0,1fr))`, gap: 8 }}>
+        {days.map(d => {
+          const n = d.ids.length;
+          const over = n > capacity;
+          return (
+            <div key={d.date} className="cr-col" style={{ gap: 6, alignItems: 'center' }}>
+              <div style={{ height: 64, width: '100%', borderRadius: 10, background: 'rgba(255,255,255,.04)', border: '1px solid var(--cr-hair)', display: 'flex', alignItems: 'flex-end', overflow: 'hidden', position: 'relative' }}>
+                <m.div initial={motionLevel === 'static' ? false : { scaleY: 0 }} animate={{ scaleY: 1 }} transition={{ duration: 0.9, ease: EASE, delay: 0.55 }}
+                  style={{ width: '100%', height: `${(n / max) * 100}%`, background: over ? 'linear-gradient(180deg,#e2445c,#8c2bd6)' : withAlpha(accent, 0.75), transformOrigin: 'bottom center' }} />
+                <span className="cr-num" style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--cr-font-display)', fontWeight: 800, fontSize: 'calc(var(--t-h3) * .9)', color: n ? '#fff' : 'var(--cr-faint)' }}>{n}</span>
+              </div>
+              <span className="cr-small" style={{ fontSize: 'calc(var(--t-small) * .78)', fontWeight: 600 }}>{dayLabel(d.date)}</span>
+            </div>
+          );
+        })}
+      </div>
     </Reveal>
   );
 }
@@ -70,82 +88,78 @@ export function PersonSlide({ slide, active }) {
   const { snapshot, overrides, onTicket, editText, layout } = useDeck();
   const { vm } = slide;
   const canvas = layout === 'canvas';
-  const s = vm.stats || {};
   const tickets = vm.tickets.map(id => decorate(snapshot, overrides, id));
-  const current = vm.current.map(id => decorate(snapshot, overrides, id));
-  const showCurrentAsGallery = !tickets.length && current.length;
-  const gallery = showCurrentAsGallery ? current.slice(0, 8) : tickets;
-  const g = galleryGrid(gallery.length);
+  const g = galleryGrid(tickets.length);
   const set = (slot) => (editText ? (v) => editText(slide.key, slot, v) : undefined);
-  const RoleIcon = vm.person.role === 'video' ? Film : PenTool;
-  const mix = s.products || [];
-  const mixTotal = mix.reduce((a, b) => a + b.total, 0) || 1;
+  const RoleIcon = vm.role === 'video' ? Film : PenTool;
+  const accent = DIVISIONS[vm.role]?.accent || '#4a55ff';
+  const first = vm.page === 0;
+  const mixTotal = vm.products.reduce((a, b) => a + b.total, 0) || 1;
 
   return (
     <SlideFrame slide={slide} active={active}>
-      <div className="cr-row" style={{ gap: 64, height: '100%' }}>
+      <div className="cr-row" style={{ gap: 56, height: '100%' }}>
         {/* Left: who + numbers */}
-        <div className="cr-col cr-fixed-sm" style={{ width: canvas ? 560 : 'auto', flex: 'none', gap: 22, overflow: canvas ? 'hidden' : undefined, height: canvas ? '100%' : undefined }}>
-          <Reveal i={0} style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
-            <Avatar person={vm.person} size={canvas ? 132 : 72} ring="rgba(74,85,255,.65)" />
-            <div className="cr-col" style={{ gap: 8 }}>
+        <div className="cr-col cr-fixed-sm" style={{ width: canvas ? 500 : 'auto', flex: 'none', gap: 22, overflow: canvas ? 'hidden' : undefined, height: canvas ? '100%' : undefined }}>
+          <Reveal i={0} style={{ display: 'flex', alignItems: 'center', gap: 22 }}>
+            <Avatar person={vm.person} size={canvas ? (first ? 116 : 84) : 64} ring={withAlpha(accent, 0.75)} />
+            <div className="cr-col" style={{ gap: 6 }}>
               <EditableText className="cr-eyebrow" value={slide.text.eyebrow} onCommit={set('eyebrow')} />
-              <span className="cr-small" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><RoleIcon size={18} /> {vm.person.role === 'video' ? 'Video' : 'Design'} team</span>
+              <span className="cr-small" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><RoleIcon size={18} color={accent} /> {DIVISIONS[vm.role]?.label || 'Creative'}</span>
             </div>
           </Reveal>
           <Reveal i={1}>
-            <EditableText className="cr-title" value={slide.text.title} onCommit={set('title')} style={{ fontSize: canvas ? 'calc(var(--t-title) * .92)' : undefined }} />
+            <EditableText className="cr-title" value={slide.text.title} onCommit={set('title')} style={{ fontSize: canvas ? 'calc(var(--t-title) * .84)' : undefined }} />
           </Reveal>
-          <Reveal i={2}>
-            <EditableText className="cr-sub" value={slide.text.subtitle} onCommit={set('subtitle')} multiline placeholder="One line about their week" style={{ fontSize: 'calc(var(--t-sub) * .86)' }} />
-          </Reveal>
-          {vm.page === 0 && (
+          {(slide.text.subtitle || editText) && (
+            <Reveal i={2}>
+              <EditableText className="cr-sub cr-clamp-3" value={slide.text.subtitle} onCommit={set('subtitle')} multiline placeholder="One line about their week" style={{ fontSize: 'calc(var(--t-sub) * .8)' }} />
+            </Reveal>
+          )}
+          {first && (
             <>
-              <div className="cr-grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <Stat i={3} icon={Layers} label="Delivered"><CountUp value={s.delivered ?? 0} delay={0.5} /></Stat>
-                <Stat i={4} icon={Clock} label="In progress" value={s.in_progress ?? 0} />
-                <Stat i={5} icon={Timer} label="Median turnaround" value={fmtDays(s.median_turnaround_days)} />
-                <Stat i={6} icon={Film} label="Hrs in Working" value={fmtHours(s.tracked_hours)} />
+              <div style={{ display: 'flex', gap: 34 }}>
+                <MiniStat i={3} label="Delivered" value={<CountUp value={vm.deliveredCount} delay={0.5} />} />
+                <MiniStat i={4} label="In progress" value={vm.activeCount} />
+                {vm.tvCount > 0 && <MiniStat i={5} label="TV" value={vm.tvCount} accent="#ff8a3d" />}
               </div>
-              {mix.length > 0 && (
-                <Reveal i={7} className="cr-col" style={{ gap: 12 }}>
-                  <div style={{ display: 'flex', height: 14, borderRadius: 99, overflow: 'hidden', gap: 3 }}>
-                    {mix.map((p, i) => <GrowBar key={p.label} pct={(p.total / mixTotal) * 100} color={p.color || '#4a55ff'} delay={0.2 + i * 0.05} style={{ borderRadius: 99 }} />)}
+              {vm.products.length > 0 && (
+                <Reveal i={6} className="cr-col" style={{ gap: 12 }}>
+                  <span className="cr-small" style={{ fontSize: 'calc(var(--t-small) * .8)', letterSpacing: '.08em', textTransform: 'uppercase', fontWeight: 600 }}>By product</span>
+                  <div style={{ display: 'flex', height: 12, borderRadius: 99, overflow: 'hidden', gap: 3 }}>
+                    {vm.products.map((p, i) => <GrowBar key={p.label} pct={(p.total / mixTotal) * 100} color={p.color} delay={0.2 + i * 0.05} style={{ borderRadius: 99 }} />)}
                   </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-                    {mix.slice(0, 4).map(p => <ProductChip key={p.label} product={{ label: `${p.label} · ${p.total}`, color: p.color }} small />)}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {vm.products.slice(0, 6).map(p => <ProductButton key={p.label} product={p.label} color={p.color} count={p.total} filter={{ uid: vm.person.id, division: vm.role }} />)}
                   </div>
                 </Reveal>
               )}
+              {vm.nextWeek.length > 0 && (
+                <div style={{ marginTop: 'auto' }}>
+                  <WeekStrip days={vm.nextWeek} capacity={vm.capacity} accent={accent} i={7} />
+                </div>
+              )}
             </>
-          )}
-          {current.length > 0 && !showCurrentAsGallery && canvas && (
-            <Reveal i={8} className="cr-hide-sm cr-clamp-2" style={{ marginTop: 'auto', flex: 'none', fontSize: 'var(--t-small)', color: 'var(--cr-mute)' }}>
-              <span style={{ letterSpacing: '.08em', textTransform: 'uppercase', fontWeight: 600, color: 'var(--cr-faint)', marginRight: 10 }}>Currently on</span>
-              {current.slice(0, 2).map(it => it.title).join(' · ')}{current.length > 2 ? ` +${current.length - 2}` : ''}
-            </Reveal>
           )}
         </div>
 
-        {/* Right: the work */}
-        <div className="cr-col cr-fill" style={{ gap: 18 }}>
-          {showCurrentAsGallery ? (
+        {/* Right: the work they chose to show */}
+        <div className="cr-col cr-fill" style={{ gap: 14 }}>
+          {vm.showingActive && (
             <Reveal i={3} className="cr-small" style={{ letterSpacing: '.08em', textTransform: 'uppercase', fontWeight: 600 }}>
-              Nothing delivered yet this week · currently working on
+              Nothing delivered last week · currently working on
             </Reveal>
-          ) : vm.totalDelivered > tickets.length && vm.pages === 1 ? (
-            <span className="cr-small">Showing {tickets.length} of {vm.totalDelivered}</span>
-          ) : null}
+          )}
           <div className="cr-grid cr-fill" style={{ gridTemplateColumns: `repeat(${g.cols}, minmax(0,1fr))`, gridTemplateRows: `repeat(${g.rows}, minmax(0,1fr))`, gap: 18 }}>
-            {gallery.map((it, i) => (
+            {tickets.map((it, i) => (
               <Reveal key={it.id} i={3 + i} y={30} className="cr-ratio-sm" style={{ position: 'relative', minHeight: 0 }}>
-                <TicketTile item={it} active={active} onClick={onTicket} style={{ position: 'absolute', inset: 0 }} big={gallery.length <= 2} />
-                {showCurrentAsGallery && it.status && <span style={{ position: 'absolute', top: 14, left: 14 }}><StatusChip status={it.status} /></span>}
+                <TicketTile item={it} active={active} onClick={onTicket} style={{ position: 'absolute', inset: 0 }} big={tickets.length <= 2} />
+                {vm.showingActive && it.status && <span style={{ position: 'absolute', top: 12, right: 12, fontSize: '0.7em' }}><StatusChip status={it.status} /></span>}
               </Reveal>
             ))}
-            {!gallery.length && (
+            {!tickets.length && (
               <div className="cr-card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gridColumn: '1 / -1' }}>
-                <span className="cr-sub">No tickets this week</span>
+                <span className="cr-sub">{vm.manual ? 'No projects picked for this slide' : 'No tickets last week'}</span>
               </div>
             )}
           </div>

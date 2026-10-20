@@ -662,6 +662,7 @@ CREATE TABLE IF NOT EXISTS creative_week_stats (
   delivered_item_ids TEXT[] NOT NULL DEFAULT '{}',
   by_person          JSONB NOT NULL DEFAULT '{}'::jsonb,
   by_product         JSONB NOT NULL DEFAULT '{}'::jsonb,
+  by_division        JSONB,
   rule_hash          TEXT,                                -- delivery-rule hash; mismatch => recompute
   is_closed          BOOLEAN NOT NULL DEFAULT FALSE,
   computed_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),

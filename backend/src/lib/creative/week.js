@@ -66,6 +66,15 @@ function sundayOf(ms = Date.now(), tz = TZ) {
   return addDays(today, -dow(today));
 }
 
+/**
+ * The week the next Sunday presentation reviews. On Sunday it's the week that just ended;
+ * Monday–Saturday we're preparing for the coming Sunday, so it's the current week.
+ */
+function reviewWeekOf(ms = Date.now(), tz = TZ) {
+  const sun = sundayOf(ms, tz);
+  return localDate(ms, tz) === sun ? addDays(sun, -7) : sun;
+}
+
 /** Monday date-only value → "YYYY-MM-DD" (or null). */
 function dateOnly(v) {
   if (!v) return null;
@@ -141,6 +150,7 @@ module.exports = {
   zonedMidnightUtc,
   localDate,
   sundayOf,
+  reviewWeekOf,
   dateOnly,
   weekBounds,
   weekNumber,

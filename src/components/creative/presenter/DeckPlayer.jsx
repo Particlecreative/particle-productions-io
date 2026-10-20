@@ -5,7 +5,7 @@ import SlideStage, { SlideThumbFrame } from '../deck/SlideStage';
 import SlideRenderer from '../deck/SlideRenderer';
 import DeckShell from '../deck/DeckShell';
 import { useDeck, DeckProvider } from '../deck/DeckContext';
-import TicketLightbox from '../ui/TicketLightbox';
+import { useDeckOverlays } from '../ui/Overlays';
 import { slideVariants } from '../motion/Motion';
 import { useDeckNavigation, useDeckKeys, useIdle, useWakeLock, useFullscreenState, requestFullscreen, exitFullscreen } from '../deck/hooks';
 
@@ -26,7 +26,8 @@ export default function DeckPlayer({ model, deckValue, variant = 'present', init
   const [screen, setScreen] = useState(null); // 'black' | 'white' | null
   const [notes, setNotes] = useState(false);
   const [kiosk, setKiosk] = useState(false);
-  const [lightbox, setLightbox] = useState(null);
+  const overlays = useDeckOverlays();
+  const lightbox = overlays.open;
   const [digits, setDigits] = useState('');
   const idle = useIdle(2400);
   const fs = useFullscreenState();
@@ -132,8 +133,10 @@ export default function DeckPlayer({ model, deckValue, variant = 'present', init
     media: model.media,
     pageOf: model.pageOf,
     buildStep: nav.build,
-    onTicket: (it) => setLightbox(it),
-  }), [deckValue, variant, model, nav.build]);
+    onTicket: overlays.api.openViewer,
+    openViewer: overlays.api.openViewer,
+    openProduct: overlays.api.openProduct,
+  }), [deckValue, variant, model, nav.build, overlays.api]);
 
   const transition = slide?.options?.transition || 'push';
   const variants = slideVariants[transition] || slideVariants.push;
@@ -203,7 +206,7 @@ export default function DeckPlayer({ model, deckValue, variant = 'present', init
         )}
 
         {screen && <div onClick={() => setScreen(null)} style={{ position: 'absolute', inset: 0, zIndex: 50, background: screen === 'white' ? '#fff' : '#000' }} />}
-        {lightbox && <TicketLightbox item={lightbox} onClose={() => setLightbox(null)} />}
+        {overlays.element}
         <div aria-live="polite" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>
           {slide ? `Slide ${nav.index + 1} of ${slides.length}: ${slide.text?.title || slide.type}` : ''}
         </div>
@@ -270,6 +273,6 @@ export function SlideThumb({ slide }) {
 
 function ThumbContext({ children }) {
   const ctx = useDeck();
-  const value = useMemo(() => ({ ...ctx, mode: 'thumb', motionLevel: 'static', editable: false, onTicket: undefined, editText: undefined, editBullets: undefined, editBody: undefined }), [ctx]);
+  const value = useMemo(() => ({ ...ctx, mode: 'thumb', motionLevel: 'static', editable: false, onTicket: undefined, openViewer: undefined, openProduct: undefined, editText: undefined, editBullets: undefined, editBody: undefined }), [ctx]);
   return <DeckProvider value={value}>{children}</DeckProvider>;
 }

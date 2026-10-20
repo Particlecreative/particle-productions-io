@@ -20,7 +20,7 @@ async function importCpWeekly(brandId, weekStart) {
     const { rows: prods } = await db.query(
       `SELECT id, project_name, stage, brand_id, production_type, product_type,
               planned_start::text AS planned_start, planned_end::text AS planned_end,
-              delivery_date::text AS delivery_date
+              delivery_date::text AS delivery_date, shoot_dates, producer
          FROM productions WHERE id = ANY($1)`,
       [prodIds]
     );
@@ -44,6 +44,8 @@ async function importCpWeekly(brandId, weekStart) {
         planned_start: p.planned_start || null,
         planned_end: p.planned_end || null,
         delivery_date: p.delivery_date || null,
+        shoot_dates: (Array.isArray(p.shoot_dates) ? p.shoot_dates : []).map(d => String(d).slice(0, 10)).filter(Boolean),
+        producer: p.producer || null,
         brand: { id: bId, name: b.name || bId, color: b.primary_color || null },
         cross_brand: bId !== brandId,
         note: (e.long_text ?? e.note ?? '').toString(),

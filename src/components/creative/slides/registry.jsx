@@ -1,15 +1,21 @@
 import {
   Presentation, Sparkles, Gauge, Star, BarChart3, PieChart, Bookmark, UserRound, Grid3x3,
-  Clapperboard, Megaphone, CalendarDays, AlertTriangle, Type, Flag,
+  Clapperboard, Megaphone, CalendarDays, AlertTriangle, Type, Flag, LayoutDashboard, Layers3, CalendarRange, Film, Images,
 } from 'lucide-react';
 import { CoverSlide, ExecSummarySlide, SectionSlide, CustomSlide, ClosingSlide } from './StorySlides';
 import { KpisSlide, ByProductSlide, ByTypeSlide } from './NumberSlides';
 import { HighlightsSlide, PersonSlide } from './WorkSlides';
 import { WorkloadSlide, PlannedNextSlide, RisksSlide, CpProductionsSlide, CpUpdatesSlide } from './TeamSlides';
+import { DeptOverviewSlide, DivisionOverviewSlide, DivisionNextSlide, ProductionSlide, ShowcaseSlide } from './DivisionSlides';
 
 export const SLIDE_COMPONENTS = {
   cover: { Component: CoverSlide, icon: Presentation },
   exec_summary: { Component: ExecSummarySlide, icon: Sparkles },
+  dept_overview: { Component: DeptOverviewSlide, icon: LayoutDashboard },
+  division_overview: { Component: DivisionOverviewSlide, icon: Layers3 },
+  division_next: { Component: DivisionNextSlide, icon: CalendarRange },
+  production: { Component: ProductionSlide, icon: Film },
+  showcase: { Component: ShowcaseSlide, icon: Images },
   kpis: { Component: KpisSlide, icon: Gauge },
   highlights: { Component: HighlightsSlide, icon: Star },
   by_product: { Component: ByProductSlide, icon: BarChart3 },

@@ -3,12 +3,12 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AnimatePresence, LazyMotion, domMax, m } from 'motion/react';
 import {
   Sparkles, Play, ArrowRight, Calendar, CheckCircle2, Loader2, AlertTriangle, Film, PenTool, Users,
-  Link2, Plug, ChevronDown, X, Lock,
+  Link2, Plug, ChevronDown, X, Lock, Trash2,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useBrand } from '../../context/BrandContext';
 import { creativeApi, LIVE } from '../../lib/creativeReportService';
-import { addDays, sundayOf, weekLabelOf, relTime } from '../../components/creative/deck/format';
+import { addDays, sundayOf, weekLabelOf, relTime, shortDate } from '../../components/creative/deck/format';
 
 const NAVY = '#030b2e';
 const ELECTRIC = '#0808f8';
@@ -142,7 +142,7 @@ function IntegrationsModal({ open, onClose, data, reload, isAdmin }) {
   );
 }
 
-function WeekCard({ r, onOpen, onPresent }) {
+function WeekCard({ r, onOpen, onPresent, onDelete }) {
   const t = r.totals || {};
   return (
     <m.div layout initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
@@ -166,8 +166,24 @@ function WeekCard({ r, onOpen, onPresent }) {
         style={{ background: ELECTRIC }} title="Present">
         <Play size={18} fill="#fff" color="#fff" />
       </button>
+      {onDelete && (
+        <button type="button" onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          className="absolute bottom-5 right-[4.5rem] w-11 h-11 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-white/10 hover:bg-red-500/80"
+          title="Delete this deck">
+          <Trash2 size={17} color="#fff" />
+        </button>
+      )}
     </m.div>
   );
+}
+
+/** Admin-only, typed confirmation: deleting a deck removes its versions and kills its share link. */
+export async function confirmDeleteDeck(r) {
+  const label = r.week_label || weekLabelOf(r.week_start);
+  const typed = window.prompt(`Delete the Creative Weekly deck for ${label}?\n\nThis removes the deck, its saved versions and its share link. Monday, Dropbox and the CP weekly are not touched — you can generate the week again.\n\nType DELETE to confirm.`);
+  if (typed?.trim().toUpperCase() !== 'DELETE') return false;
+  await creativeApi.remove(r.id);
+  return true;
 }
 
 export default function CreativeReportsPage() {
@@ -200,14 +216,21 @@ export default function CreativeReportsPage() {
     setParams(params, { replace: true });
   }, [params, setParams]);
 
-  const thisWeek = data?.current_week || sundayOf();
+  // Presented on Sunday about the Sun–Thu that just ended: Mon–Sat we prepare the coming Sunday's deck
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
+  const thisWeek = data?.review_week || (today === sundayOf() ? addDays(sundayOf(), -7) : sundayOf());
+  const inProgress = thisWeek === (data?.current_week || sundayOf());
+  const presentedOn = addDays(thisWeek, 7);
   const reports = data?.reports || [];
   const current = reports.find(r => r.week_start === thisWeek);
   const past = reports.filter(r => r.week_start !== thisWeek);
+  const removeDeck = async (r) => {
+    try { if (await confirmDeleteDeck(r)) { setNotice({ ok: true, text: `Deleted the deck for ${r.week_label || weekLabelOf(r.week_start)}.` }); load(); } } catch (e) { setNotice({ ok: false, text: e.message }); }
+  };
   const missingWeeks = useMemo(() => {
     const have = new Set(reports.map(r => r.week_start));
-    return Array.from({ length: 10 }, (_, i) => addDays(thisWeek, -7 * i)).filter(w => !have.has(w));
-  }, [reports, thisWeek]);
+    return Array.from({ length: 11 }, (_, i) => addDays(thisWeek, 7 - 7 * i)).filter(w => w <= (data?.current_week || sundayOf()) && !have.has(w));
+  }, [reports, thisWeek, data]);
 
   async function generate(weekStart) {
     const claude = !!integrations?.anthropic?.configured || !LIVE;
@@ -244,7 +267,7 @@ export default function CreativeReportsPage() {
             <div className="flex flex-wrap items-end gap-4 mb-6">
               <div>
                 <h1 className="brand-title text-4xl" style={{ color: 'var(--brand-primary)' }}>Creative Weekly</h1>
-                <p className="text-sm text-gray-500 mt-1">The studio’s week as a live deck for Guy & Ayal — Monday, Dropbox, Frame.io and the CP weekly in one place.</p>
+                <p className="text-sm text-gray-500 mt-1">The creative department’s week as a live deck — Design, Video and TV & Special Productions from Monday, Dropbox, Figma, Frame.io and the CP.</p>
               </div>
               <button type="button" onClick={() => setShowIntegrations(true)} className="ml-auto flex items-center gap-2 text-xs font-semibold px-3 py-2 rounded-full border border-gray-200 bg-white hover:border-gray-300">
                 <Plug size={13} /> Data sources
@@ -267,18 +290,25 @@ export default function CreativeReportsPage() {
             <div className="relative rounded-[32px] overflow-hidden mb-10" style={{ background: `radial-gradient(900px 520px at 85% -20%, rgba(8,8,248,.7), transparent 60%), radial-gradient(600px 400px at -10% 120%, rgba(8,8,248,.3), transparent 60%), ${NAVY}`, color: '#e8ecff' }}>
               <div className="p-8 md:p-12 flex flex-col md:flex-row gap-8 md:items-end">
                 <div className="flex-1">
-                  <div className="text-xs font-bold tracking-[0.22em] uppercase" style={{ color: '#8c93ff' }}>This week</div>
+                  <div className="text-xs font-bold tracking-[0.22em] uppercase" style={{ color: '#8c93ff' }}>
+                    Sunday {shortDate(presentedOn)} · {inProgress ? 'reviewing this week (in progress)' : 'reviewing last week'}
+                  </div>
                   <div className="mt-3 text-6xl md:text-7xl font-black leading-[0.85]" style={{ fontFamily: '"Sofia Sans Extra Condensed", sans-serif', textTransform: 'uppercase', color: '#fff' }}>
                     {weekLabelOf(thisWeek)}
                   </div>
                   {current ? (
                     <div className="mt-5 flex flex-wrap gap-6 text-base">
-                      <span><b className="text-white text-2xl">{current.totals?.video ?? 0}</b> videos</span>
                       <span><b className="text-white text-2xl">{current.totals?.design ?? 0}</b> designs</span>
+                      <span><b className="text-white text-2xl">{current.totals?.video ?? 0}</b> videos</span>
                       <span><b className="text-white text-2xl">{current.totals?.in_progress ?? 0}</b> in the pipeline</span>
+                      {isAdmin && (
+                        <button type="button" onClick={() => removeDeck(current)} className="text-xs font-semibold opacity-60 hover:opacity-100 flex items-center gap-1.5">
+                          <Trash2 size={13} /> Delete & start over
+                        </button>
+                      )}
                     </div>
                   ) : (
-                    <p className="mt-4 max-w-lg opacity-75">Pulls deliveries from Monday’s status history, thumbnails from Dropbox & Frame.io, and the productions + updates from this week’s CP weekly — then builds the deck.</p>
+                    <p className="mt-4 max-w-lg opacity-75">Pulls deliveries from Monday’s status history, work from Figma, Dropbox & Frame.io, and the productions + updates from the CP weekly — then builds Design, Video and TV & SP, each with its overview, every person’s work and what’s coming this week.</p>
                   )}
                 </div>
                 <div className="flex gap-3">
@@ -295,7 +325,7 @@ export default function CreativeReportsPage() {
                     <button type="button" disabled={!data} onClick={() => generate(thisWeek)}
                       className="px-7 py-4 rounded-full font-bold text-white flex items-center gap-2 text-lg disabled:opacity-50"
                       style={{ background: ELECTRIC, boxShadow: '0 14px 48px -8px rgba(8,8,248,.95)' }}>
-                      <Sparkles size={20} /> Generate this week’s deck
+                      <Sparkles size={20} /> Generate Sunday’s deck
                     </button>
                   )}
                 </div>
@@ -304,12 +334,12 @@ export default function CreativeReportsPage() {
 
             {/* Past weeks */}
             <div className="flex items-center gap-3 mb-4">
-              <h2 className="text-sm font-bold uppercase tracking-wider text-gray-500">Past weeks</h2>
+              <h2 className="text-sm font-bold uppercase tracking-wider text-gray-500">Other weeks</h2>
               <div className="ml-auto flex items-center gap-2">
                 <div className="relative">
                   <select value={pickWeek} onChange={e => setPickWeek(e.target.value)} className="appearance-none text-sm pl-3 pr-8 py-2 rounded-full border border-gray-200 bg-white">
                     <option value="">Generate another week…</option>
-                    {missingWeeks.filter(w => w !== thisWeek).map(w => <option key={w} value={w}>{weekLabelOf(w)}</option>)}
+                    {missingWeeks.filter(w => w !== thisWeek).map(w => <option key={w} value={w}>{weekLabelOf(w)}{w === (data?.current_week || sundayOf()) ? ' (in progress)' : ''}</option>)}
                   </select>
                   <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                 </div>
@@ -322,7 +352,7 @@ export default function CreativeReportsPage() {
               </div>
             ) : past.length ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                {past.map(r => <WeekCard key={r.id} r={r} onOpen={() => navigate(`/creative-reports/${r.id}`)} onPresent={() => navigate(`/creative-reports/${r.id}/present`)} />)}
+                {past.map(r => <WeekCard key={r.id} r={r} onOpen={() => navigate(`/creative-reports/${r.id}`)} onPresent={() => navigate(`/creative-reports/${r.id}/present`)} onDelete={isAdmin ? () => removeDeck(r) : undefined} />)}
               </div>
             ) : (
               <div className="text-sm text-gray-400 py-10 text-center border border-dashed border-gray-200 rounded-3xl">No past decks yet — generate an earlier week to compare.</div>

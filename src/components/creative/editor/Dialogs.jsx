@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Copy, Check, Link2, Loader2, RotateCcw, History, Eye, Trash2, RefreshCw, Type, Bookmark, Plus, Sparkles } from 'lucide-react';
+import { X, Copy, Check, Link2, Loader2, RotateCcw, History, Eye, Trash2, RefreshCw, Type, Bookmark, Plus, Sparkles, Images } from 'lucide-react';
 import { creativeApi } from '../../../lib/creativeReportService';
 import { relTime, shortDate } from '../deck/format';
 import { SPECS } from '../slides/specs';
@@ -49,7 +49,7 @@ export function ShareDialog({ report, onClose, onChanged, showLinks, setShowLink
   const copy = async () => { try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1800); } catch { /* ignore */ } };
 
   return (
-    <Modal title="Share with Guy & Ayal" onClose={onClose}>
+    <Modal title="Share this deck" onClose={onClose}>
       <p className="text-sm text-gray-500 mb-4">A private, read-only link. Works on phones (scrolls) and laptops (full deck). Hidden tickets, speaker notes and private notes are never included.</p>
       {active ? (
         <>
@@ -154,11 +154,11 @@ export function DiffToast({ diff, onClose }) {
 
 // ── Add slide ───────────────────────────────────────────────────────────────
 export function AddSlideMenu({ onClose, onAdd, onAddTemplateType, existingTypes }) {
-  const addable = ['highlights', 'by_product', 'by_type', 'workload', 'planned_next', 'risks', 'cp_productions', 'cp_updates', 'kpis', 'exec_summary']
+  const addable = ['dept_overview', 'cp_updates', 'exec_summary', 'workload', 'planned_next', 'risks', 'kpis', 'by_product', 'by_type', 'highlights', 'cp_productions', 'closing']
     .filter(t => !existingTypes.has(t));
   return (
     <Modal title="Add a slide" onClose={onClose} width={480}>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         <button type="button" onClick={() => onAdd('custom')} className="p-4 rounded-xl border border-gray-200 hover:border-[#4a55ff] text-left">
           <Type size={18} className="text-[#0808f8]" />
           <div className="font-semibold text-sm mt-2">Custom slide</div>
@@ -168,6 +168,11 @@ export function AddSlideMenu({ onClose, onAdd, onAddTemplateType, existingTypes 
           <Bookmark size={18} className="text-[#0808f8]" />
           <div className="font-semibold text-sm mt-2">Section divider</div>
           <div className="text-xs text-gray-500">Electric-blue chapter break</div>
+        </button>
+        <button type="button" onClick={() => onAdd('showcase')} className="p-4 rounded-xl border border-gray-200 hover:border-[#4a55ff] text-left">
+          <Images size={18} className="text-[#0808f8]" />
+          <div className="font-semibold text-sm mt-2">Showcase</div>
+          <div className="text-xs text-gray-500">One project, a gallery of its images</div>
         </button>
       </div>
       {addable.length > 0 && (

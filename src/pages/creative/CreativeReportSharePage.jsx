@@ -6,7 +6,7 @@ import { useFontsReady } from '../../components/creative/deck/hooks';
 import DeckPlayer from '../../components/creative/presenter/DeckPlayer';
 import DeckShell from '../../components/creative/deck/DeckShell';
 import SlideRenderer from '../../components/creative/deck/SlideRenderer';
-import TicketLightbox from '../../components/creative/ui/TicketLightbox';
+import { useDeckOverlays } from '../../components/creative/ui/Overlays';
 import { DeckSplash } from './CreativeReportPresentPage';
 
 function useMeta(name, content) {
@@ -36,7 +36,7 @@ export default function CreativeReportSharePage() {
   const [payload, setPayload] = useState(null);
   const [picks, setPicks] = useState({});
   const [error, setError] = useState(null);
-  const [lightbox, setLightbox] = useState(null);
+  const overlays = useDeckOverlays();
   const fontsReady = useFontsReady();
   const phone = usePhoneLayout();
   useMeta('robots', 'noindex, nofollow');
@@ -59,7 +59,7 @@ export default function CreativeReportSharePage() {
   }, [payload]);
 
   const model = useDeckModel({ report: payload?.report, mediaToken: payload?.media?.token, picks });
-  const deckValue = useMemo(() => ({ reportId: payload?.report?.id, isPublic: true, brand: payload?.brand || { name: 'Particle' } }), [payload]);
+  const deckValue = useMemo(() => ({ reportId: payload?.report?.id, isPublic: true, shareToken: token, brand: payload?.brand || { name: 'Particle' } }), [payload, token]);
 
   if (error) {
     return (
@@ -76,7 +76,7 @@ export default function CreativeReportSharePage() {
 
   if (phone) {
     return (
-      <DeckShell value={{ ...deckValue, mode: 'share', layout: 'stack', motionLevel: 'full', snapshot: model.snapshot, overrides: model.overrides, narrative: model.narrative, media: model.media, pageOf: model.pageOf, onTicket: setLightbox }}>
+      <DeckShell value={{ ...deckValue, mode: 'share', layout: 'stack', motionLevel: 'full', snapshot: model.snapshot, overrides: model.overrides, narrative: model.narrative, media: model.media, pageOf: model.pageOf, onTicket: overlays.api.openViewer, ...overlays.api }}>
         <div style={{ background: '#030b2e' }}>
           {model.visible.map(s => (
             <section key={s.key} style={{ borderBottom: '1px solid rgba(255,255,255,.06)' }}>
@@ -84,7 +84,7 @@ export default function CreativeReportSharePage() {
             </section>
           ))}
         </div>
-        {lightbox && <TicketLightbox item={lightbox} onClose={() => setLightbox(null)} />}
+        {overlays.element}
       </DeckShell>
     );
   }

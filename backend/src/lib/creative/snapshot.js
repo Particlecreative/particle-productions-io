@@ -11,7 +11,13 @@ const crypto = require('crypto');
 const db = require('../../db');
 const monday = require('../monday');
 const W = require('./week');
-const { getCreativeConfig } = require('./config');
+const { getCreativeConfig, divisionOf } = require('./config');
+
+const DIVISIONS = [
+  { key: 'design', label: 'Design' },
+  { key: 'video', label: 'Video' },
+  { key: 'tv', label: 'TV & Special Productions' },
+];
 const { classifyDeliveries } = require('./classify');
 const { importCpWeekly } = require('./cpWeekly');
 
@@ -189,7 +195,7 @@ function normalizeItem(raw, ctx) {
     if (f.asset_id) assets.push({ asset_id: String(f.asset_id), name: f.name || '', is_image: !!f.is_image });
   }
 
-  return {
+  const item = {
     id: String(raw.id),
     board: boardKey,
     name: raw.name,
@@ -222,6 +228,8 @@ function normalizeItem(raw, ctx) {
     assets,
     media_refs: [],
   };
+  item.division = divisionOf(item, config);
+  return item;
 }
 
 function registerMedia(item, mediaRefs) {
@@ -243,7 +251,7 @@ function registerMedia(item, mediaRefs) {
 // ── Trend (8 weeks) with creative_week_stats cache ─────────────────────────
 function ruleHash(config) {
   const b = config.boards;
-  return sha(JSON.stringify({ r: config.delivery_rule, v: b.video.statuses.delivered, d: b.design.statuses.delivered, x: config.exclude }), 12);
+  return sha(JSON.stringify({ r: config.delivery_rule, v: b.video.statuses.delivered, d: b.design.statuses.delivered, x: config.exclude, dv: config.divisions }), 12);
 }
 
 async function computeTrend({ brandId, config, bounds, currentCounts, metas, deadline, warnings }) {
@@ -253,7 +261,7 @@ async function computeTrend({ brandId, config, bounds, currentCounts, metas, dea
   const stored = {};
   try {
     const { rows } = await db.query(
-      `SELECT week_start, board_key, delivered_count, by_person, by_product, rule_hash, is_closed
+      `SELECT week_start, board_key, delivered_count, by_person, by_product, by_division, rule_hash, is_closed
          FROM creative_week_stats WHERE brand_id = $1 AND week_start = ANY($2)`,
       [brandId, weeks]
     );
@@ -267,8 +275,8 @@ async function computeTrend({ brandId, config, bounds, currentCounts, metas, dea
   for (const ws of weeks) {
     for (const bk of ['video', 'design']) {
       const row = stored[`${ws}|${bk}`];
-      if (row && row.is_closed && row.rule_hash === rh) {
-        result[`${ws}|${bk}`] = { count: row.delivered_count, by_person: row.by_person || {}, by_product: row.by_product || {} };
+      if (row && row.is_closed && row.rule_hash === rh && row.by_division) {
+        result[`${ws}|${bk}`] = { count: row.delivered_count, by_person: row.by_person || {}, by_product: row.by_product || {}, by_division: row.by_division || {} };
       } else {
         toCompute[bk].push(ws);
       }
@@ -300,14 +308,18 @@ async function computeTrend({ brandId, config, bounds, currentCounts, metas, dea
     let details = {};
     if (allIds.size) {
       try {
-        const raws = await monday.itemsByIds([...allIds], { cols: [board.columns.person, board.columns.product].filter(Boolean), deadline });
+        const cols = [board.columns.person, board.columns.product, board.columns.department, board.columns.type].filter(Boolean);
+        const raws = await monday.itemsByIds([...allIds], { cols, deadline });
         for (const r of raws) {
           const m = cvMap(r);
           const pc = m[board.columns.person];
           const pr = m[board.columns.product];
+          const dc = board.columns.department ? m[board.columns.department] : null;
+          const tc = board.columns.type ? m[board.columns.type] : null;
           details[String(r.id)] = {
             people: (pc?.persons_and_teams || []).filter(p => p.kind !== 'team').map(p => String(p.id)),
             product: pr?.label ?? pr?.text ?? '',
+            division: divisionOf({ board: bk, department: { label: dc?.label ?? dc?.text ?? '' }, type: { label: tc?.label ?? tc?.text ?? '' } }, config),
           };
         }
       } catch (e) { warnings.push(`Trend details for ${bk} unavailable (${e.message})`); details = {}; }
@@ -316,24 +328,27 @@ async function computeTrend({ brandId, config, bounds, currentCounts, metas, dea
       const ids = deliveredByWeek[w.key];
       const by_person = {};
       const by_product = {};
+      const by_division = {};
       for (const id of ids) {
         const d = details[id];
         if (d && config.exclude?.products?.includes(d.product)) continue;
         for (const p of d?.people || []) by_person[p] = (by_person[p] || 0) + 1;
         if (d?.product) by_product[d.product] = (by_product[d.product] || 0) + 1;
+        const dv = d?.division || bk;
+        by_division[dv] = (by_division[dv] || 0) + 1;
       }
       const count = ids.filter(id => !(details[id] && config.exclude?.products?.includes(details[id].product))).length;
-      result[`${w.key}|${bk}`] = { count, by_person, by_product };
+      result[`${w.key}|${bk}`] = { count, by_person, by_product, by_division };
       const isClosed = w.toMs + 3 * DAY_MS < Date.now();
       try {
         await db.query(
-          `INSERT INTO creative_week_stats (brand_id, week_start, board_key, delivered_count, delivered_item_ids, by_person, by_product, rule_hash, is_closed, computed_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())
+          `INSERT INTO creative_week_stats (brand_id, week_start, board_key, delivered_count, delivered_item_ids, by_person, by_product, by_division, rule_hash, is_closed, computed_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
            ON CONFLICT (brand_id, week_start, board_key) DO UPDATE SET
              delivered_count = EXCLUDED.delivered_count, delivered_item_ids = EXCLUDED.delivered_item_ids,
-             by_person = EXCLUDED.by_person, by_product = EXCLUDED.by_product, rule_hash = EXCLUDED.rule_hash,
-             is_closed = EXCLUDED.is_closed, computed_at = NOW()`,
-          [brandId, w.key, bk, count, ids, JSON.stringify(by_person), JSON.stringify(by_product), rh, isClosed]
+             by_person = EXCLUDED.by_person, by_product = EXCLUDED.by_product, by_division = EXCLUDED.by_division,
+             rule_hash = EXCLUDED.rule_hash, is_closed = EXCLUDED.is_closed, computed_at = NOW()`,
+          [brandId, w.key, bk, count, ids, JSON.stringify(by_person), JSON.stringify(by_product), JSON.stringify(by_division), rh, isClosed]
         );
       } catch { /* cache write is best-effort */ }
     }
@@ -346,8 +361,13 @@ async function computeTrend({ brandId, config, bounds, currentCounts, metas, dea
       video: result[`${ws}|video`]?.count ?? null,
       design: result[`${ws}|design`]?.count ?? null,
       by_person: mergeCounts(result[`${ws}|video`]?.by_person, result[`${ws}|design`]?.by_person),
+      by_division: result[`${ws}|video`] || result[`${ws}|design`]
+        ? mergeCounts(result[`${ws}|video`]?.by_division, result[`${ws}|design`]?.by_division) : null,
     })),
-    { week_start: bounds.start, label: W.shortLabel(bounds.start), video: currentCounts.video, design: currentCounts.design, by_person: currentCounts.by_person, current: true },
+    {
+      week_start: bounds.start, label: W.shortLabel(bounds.start), video: currentCounts.video, design: currentCounts.design,
+      by_person: currentCounts.by_person, by_division: currentCounts.by_division, current: true,
+    },
   ];
 }
 
@@ -436,7 +456,7 @@ async function buildSnapshot({ brandId = 'particle', weekStart, force = false, n
         // Deleted since delivery — keep a minimal record from the log
         const { title, subtitle } = parseItemName(info.pulse_name, '', knownProducts);
         items[id] = {
-          id, board: bk, name: info.pulse_name, title, subtitle, missing: true,
+          id, board: bk, division: bk, name: info.pulse_name, title, subtitle, missing: true,
           product: { label: '', color: null }, type: null, department: null, platform: '', campaign: '',
           status: { label: info.delivered_status, color: null, category: 'delivered' }, group: '',
           people: [], requested_by: [], timeline: null, deadline: null, versions: null,
@@ -613,13 +633,36 @@ async function buildSnapshot({ brandId = 'particle', weekStart, force = false, n
     by_person: byPerson,
   };
 
+  // ── Per division (Design / Video / TV & Special Productions) ──
+  const inDiv = (dv) => (list) => list.filter(id => items[id]?.division === dv);
+  metrics.by_division = {};
+  for (const { key: dv } of DIVISIONS) {
+    const pick = inDiv(dv);
+    const dDel = pick(sections.delivered).map(id => items[id]);
+    const tt = dDel.filter(it => it.created_at).map(it => (it.delivered_at - Date.parse(it.created_at)) / DAY_MS).filter(n => n >= 0);
+    const perPerson = {};
+    for (const it of dDel) for (const uid of it.people) perPerson[uid] = (perPerson[uid] || 0) + 1;
+    metrics.by_division[dv] = {
+      delivered: dDel.length,
+      in_progress: pick([...sections.in_progress, ...sections.review, ...sections.fixes]).length,
+      in_review: pick(sections.review).length,
+      stuck: pick(sections.stuck).length,
+      planned_next: pick(sections.planned_next_week).length,
+      median_turnaround_days: round1(median(tt)),
+      by_product: countBy(dDel, it => it.product.label && it.product.label !== '-' ? it.product.label : null, it => it.product.color),
+      by_department: countBy(dDel, it => it.department?.label || null, it => it.department?.color),
+      by_person: perPerson,
+    };
+  }
+
   // ── Trend ──
   const currentByPerson = Object.fromEntries(Object.entries(byPerson).map(([k, v]) => [k, v.delivered]));
+  const currentByDivision = Object.fromEntries(Object.entries(metrics.by_division).map(([k, v]) => [k, v.delivered]));
   let trend = [];
   if (includeTrend) {
     trend = await computeTrend({
       brandId, config, bounds, metas, deadline, warnings,
-      currentCounts: { video: metrics.totals.video, design: metrics.totals.design, by_person: currentByPerson },
+      currentCounts: { video: metrics.totals.video, design: metrics.totals.design, by_person: currentByPerson, by_division: currentByDivision },
     });
   }
   const prev = trend.length >= 2 ? trend[trend.length - 2] : null;
@@ -627,6 +670,9 @@ async function buildSnapshot({ brandId = 'particle', weekStart, force = false, n
     video: prev.video != null ? metrics.totals.video - prev.video : null,
     design: prev.design != null ? metrics.totals.design - prev.design : null,
     delivered: prev.video != null && prev.design != null ? metrics.totals.delivered - (prev.video + prev.design) : null,
+    by_division: prev.by_division
+      ? Object.fromEntries(DIVISIONS.map(({ key }) => [key, currentByDivision[key] - (prev.by_division[key] || 0)]))
+      : null,
   } : null;
 
   // ── CP weekly ──
@@ -647,6 +693,7 @@ async function buildSnapshot({ brandId = 'particle', weekStart, force = false, n
       next: { start: bounds.next.start, label: W.weekBounds(bounds.next.start).label },
     },
     boards: Object.fromEntries(boardKeys.map(bk => [bk, { board_id: config.boards[bk].board_id, label: config.boards[bk].label, name: metas[bk].name }])),
+    divisions: DIVISIONS,
     people,
     items,
     sections,

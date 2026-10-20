@@ -4,8 +4,9 @@
 //   order: [slideKey], hidden: { [slideKey]: true },
 //   slides:  { [slideKey]: { eyebrow, title, subtitle, notes, body, bullets, options } },
 //   tickets: { [mondayItemId]: { hidden, highlighted, highlightRank, caption, cover: {refId,key,kind}, gallery: [...], private_note } },
-//   people:  { [mondayUserId]: { hidden } },
-//   custom:  { [slideKey]: { type: 'custom'|'section', after, title, subtitle, body, imageItem, options } },
+//   people:  { [mondayUserId]: { hidden, one_liner, selection: [itemId] (ordered), perPage } },
+//   productions: { [productionId]: { hidden, tickets: [itemId] } },
+//   custom:  { [slideKey]: { type: 'custom'|'section'|'showcase', after, title, subtitle, body, imageItem, item, options } },
 //   share:   { show_links },
 // }
 
@@ -60,9 +61,29 @@ export function setPerson(ov, uid, patch) {
   return { ...ov, people };
 }
 
-export function addCustom(ov, { type = 'custom', after = null, title } = {}) {
+/** A person's ordered project list for their slides (null → back to automatic: everything they delivered). */
+export function setPersonSelection(ov, uid, ids) {
+  const people = { ...(ov.people || {}) };
+  const cur = { ...(people[uid] || {}) };
+  if (Array.isArray(ids)) cur.selection = [...new Set(ids.map(String))]; else delete cur.selection;
+  if (Object.keys(cur).length) people[uid] = cur; else delete people[uid];
+  return { ...ov, people };
+}
+
+/** Production slide edits: { hidden, tickets: [itemId] | undefined (auto-match) }. */
+export function setProduction(ov, pid, patch) {
+  const productions = { ...(ov.productions || {}) };
+  const cur = clean({ ...(productions[pid] || {}), ...patch });
+  if (cur.hidden === false) delete cur.hidden;
+  if (cur.tickets === null) delete cur.tickets;
+  if (Object.keys(cur).length) productions[pid] = cur; else delete productions[pid];
+  return { ...ov, productions };
+}
+
+export function addCustom(ov, { type = 'custom', after = null, title, item } = {}) {
   const key = `custom:${(crypto.randomUUID ? crypto.randomUUID() : String(Date.now())).slice(0, 8)}`;
-  const custom = { ...(ov.custom || {}), [key]: clean({ type, after, title: title || (type === 'section' ? 'New section' : 'New slide') }) };
+  const fallbackTitle = type === 'section' ? 'New section' : type === 'showcase' ? undefined : 'New slide';
+  const custom = { ...(ov.custom || {}), [key]: clean({ type, after, item, title: title || fallbackTitle }) };
   let order = ov.order;
   if (Array.isArray(order) && order.length) {
     const i = after ? order.indexOf(after) : -1;
@@ -89,5 +110,5 @@ export function deleteCustom(ov, key) {
 
 export function countEdits(ov) {
   return Object.keys(ov?.slides || {}).length + Object.keys(ov?.tickets || {}).length + Object.keys(ov?.custom || {}).length
-    + Object.keys(ov?.hidden || {}).length + Object.keys(ov?.people || {}).length;
+    + Object.keys(ov?.hidden || {}).length + Object.keys(ov?.people || {}).length + Object.keys(ov?.productions || {}).length;
 }

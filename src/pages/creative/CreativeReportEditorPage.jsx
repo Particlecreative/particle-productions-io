@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Play, Share2, History, RefreshCw, Lock, Unlock, Loader2, Check, AlertTriangle,
-  CloudOff, Undo2, Redo2, ChevronDown, MonitorPlay, Sparkles, X, Wand2,
+  CloudOff, Undo2, Redo2, ChevronDown, MonitorPlay, Sparkles, X, Wand2, Trash2,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useBrand } from '../../context/BrandContext';
@@ -21,7 +21,8 @@ import { useDeckModel } from '../../components/creative/deck/useDeckModel';
 import { useAutosave, requestFullscreen } from '../../components/creative/deck/hooks';
 import * as O from '../../components/creative/deck/overrides';
 import { addDays, weekLabelOf, timeOfDay, relTime } from '../../components/creative/deck/format';
-import { ParticleOnlyGate, EditorsOnly } from './CreativeReportsPage';
+import { ParticleOnlyGate, EditorsOnly, confirmDeleteDeck } from './CreativeReportsPage';
+import { useDeckOverlays } from '../../components/creative/ui/Overlays';
 
 function SaveIndicator({ status, lastSavedAt }) {
   const map = {
@@ -41,7 +42,7 @@ export default function CreativeReportEditorPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { isEditor } = useAuth();
+  const { isEditor, isAdmin } = useAuth();
   const { brand } = useBrand();
 
   const [payload, setPayload] = useState(null);
@@ -62,6 +63,7 @@ export default function CreativeReportEditorPage() {
   const [error, setError] = useState(null);
   const [presentMenu, setPresentMenu] = useState(false);
   const [toast, setToast] = useState(null);
+  const overlays = useDeckOverlays();
 
   const revision = useRef(0);
   const latest = useRef({ overrides: {}, template: null, narrative: null });
@@ -192,6 +194,14 @@ export default function CreativeReportEditorPage() {
     },
     setTicket: (tid, patch) => applyOv(ov => O.setTicket(ov, tid, patch), patch.caption !== undefined ? `t.${tid}.caption` : null),
     setPerson: (uid, patch) => applyOv(ov => O.setPerson(ov, uid, patch)),
+    setPersonSelection: (uid, ids) => applyOv(ov => O.setPersonSelection(ov, uid, ids)),
+    setProduction: (pid, patch) => applyOv(ov => O.setProduction(ov, pid, patch)),
+    setShowcaseItem: (key, itemId) => applyOv(ov => O.updateCustom(ov, key, { item: String(itemId) })),
+    addShowcase: (itemId, after) => {
+      let key;
+      applyOv(ov => { const [next, k] = O.addCustom(ov, { type: 'showcase', after: after || null, item: String(itemId) }); key = k; return next; });
+      setTimeout(() => { if (key) { setCurrentKey(key); setTab('tickets'); } }, 0);
+    },
     setShareLinks: (v) => applyOv(ov => ({ ...ov, share: { ...(ov.share || {}), show_links: !!v } })),
     openMediaPicker: (tid) => setPickerFor(tid),
     setTemplateEnabled: (specId, enabled) => {
@@ -260,8 +270,10 @@ export default function CreativeReportEditorPage() {
     editBullets: editable ? ctx.setBullets : undefined,
     editBody: editable ? ctx.setBody : undefined,
     onTicket: (it) => { setSelectedTicket(it.id); setTab('tickets'); },
-  }), [id, brand, animate, editable, model, ctx]);
-  const thumbValue = useMemo(() => ({ ...canvasValue, mode: 'thumb', motionLevel: 'static', editable: false, editText: undefined, editBullets: undefined, editBody: undefined, onTicket: undefined }), [canvasValue]);
+    openViewer: overlays.api.openViewer,
+    openProduct: overlays.api.openProduct,
+  }), [id, brand, animate, editable, model, ctx, overlays.api]);
+  const thumbValue = useMemo(() => ({ ...canvasValue, mode: 'thumb', motionLevel: 'static', editable: false, editText: undefined, editBullets: undefined, editBody: undefined, onTicket: undefined, openViewer: undefined, openProduct: undefined }), [canvasValue]);
 
   // ── Actions ──
   const go = (delta) => {
@@ -316,7 +328,7 @@ export default function CreativeReportEditorPage() {
     let key;
     applyOv(ov => { const [next, k] = O.addCustom(ov, { type, after }); key = k; return next; });
     setDialog(null);
-    setTimeout(() => key && setCurrentKey(key), 0);
+    setTimeout(() => { if (key) { setCurrentKey(key); if (type === 'showcase') setTab('tickets'); } }, 0);
   };
   const addTemplateType = (type) => {
     if (!editable) return;
@@ -336,7 +348,7 @@ export default function CreativeReportEditorPage() {
       const t = e.target;
       const typing = t?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t?.tagName);
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') { e.preventDefault(); autosave.flush(); flash('Saved'); return; }
-      if (typing || dialog || pickerFor) return;
+      if (typing || dialog || pickerFor || overlays.open) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === 'ArrowDown' || e.key === 'ArrowRight') { e.preventDefault(); go(1); }
@@ -389,6 +401,17 @@ export default function CreativeReportEditorPage() {
                 <RefreshCw size={14} className={busy.refresh ? 'animate-spin' : ''} /> Refresh live data
               </button>
               <button type="button" onClick={() => setDialog('versions')} className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg hover:bg-gray-100 text-gray-700"><History size={14} /> History</button>
+              {isAdmin && (
+                <button type="button" title="Delete this deck" className="p-2 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-600"
+                  onClick={async () => {
+                    try {
+                      await autosave.flush().catch(() => {});
+                      if (await confirmDeleteDeck(payload.report)) navigate('/creative-reports', { replace: true });
+                    } catch (e) { flash(e.message); }
+                  }}>
+                  <Trash2 size={15} />
+                </button>
+              )}
               <button type="button" onClick={() => setFinal(!final)} disabled={busy.final || !isEditor} className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg hover:bg-gray-100 text-gray-700">
                 {final ? <Unlock size={14} /> : <Lock size={14} />} {final ? 'Unlock' : 'Mark final'}
               </button>
@@ -459,6 +482,7 @@ export default function CreativeReportEditorPage() {
                       <div key={`${slide.key}:${animate}`}>
                         <SlideRenderer slide={slide} active />
                       </div>
+                      {overlays.element}
                     </DeckShell>
                   </div>
                 </SlideStage>

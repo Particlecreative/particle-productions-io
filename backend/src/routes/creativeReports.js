@@ -167,7 +167,11 @@ async function computePicks(report, audience, itemIds = null) {
   const snap = report.snapshot || {};
   const allowed = allowedMediaRefs(report, audience);
   const visible = audience === 'public' ? visibleTicketIds(report) : null;
-  const wanted = itemIds || [...new Set([...(snap.sections?.delivered || []), ...(snap.sections?.planned_next_week || []).slice(0, 30)])];
+  const wanted = itemIds || [...new Set([
+    ...(snap.sections?.delivered || []),
+    ...(snap.sections?.review || []), ...(snap.sections?.in_progress || []), ...(snap.sections?.fixes || []),
+    ...(snap.sections?.planned_next_week || []).slice(0, 30),
+  ])];
   const ids = wanted.filter(id => snap.items?.[id] && (!visible || visible.has(String(id)))).slice(0, 150);
   const picks = {};
   const deadline = Date.now() + 25000;
@@ -185,6 +189,23 @@ async function computePicks(report, audience, itemIds = null) {
   await Promise.all([worker(), worker(), worker(), worker()]);
   return { picks, complete: i >= ids.length };
 }
+
+/** Public file listing for the in-deck media viewer (only media of visible tickets). */
+router.get('/share/:token/media/:refId', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    const token = String(req.params.token || '');
+    if (!/^[0-9a-f]{64}$/.test(token)) return res.status(404).json({ error: 'Not found' });
+    const { rows } = await db.query(`SELECT ${service.REPORT_COLS} FROM creative_reports WHERE share_token = $1`, [token]);
+    const report = rows[0];
+    if (!report || !shareActive(report)) return res.status(404).json({ error: 'Not found' });
+    if (!allowedMediaRefs(report, 'public').has(req.params.refId)) return res.status(403).json({ error: 'Not available' });
+    const ref = report.snapshot?.media_refs?.[req.params.refId];
+    if (!ref) return res.status(404).json({ error: 'Unknown media source' });
+    const { entries, error } = await media.getListing(ref);
+    res.json({ ref: { id: req.params.refId, kind: ref.kind, item_id: ref.item_id }, entries, error });
+  } catch (err) { errorJson(res, err); }
+});
 
 router.get('/share/:token/picks', async (req, res) => {
   res.set('Cache-Control', 'no-store');
@@ -292,6 +313,7 @@ router.get('/integrations', async (req, res) => {
     } catch { sample = null; }
     out.dropbox = await require('../lib/creative/providers/dropbox').health(sample);
     out.frameio = await require('../lib/creative/providers/frameio').status();
+    out.figma = await require('../lib/creative/providers/figma').health();
     res.json(out);
   } catch (err) { errorJson(res, err); }
 });
@@ -308,7 +330,8 @@ router.delete('/frameio', requireAdminRole, async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     const rows = await service.listReports(req.brandId);
-    res.json({ reports: rows.map(coverSummary), current_week: W.sundayOf(Date.now()) });
+    const current = W.sundayOf(Date.now());
+    res.json({ reports: rows.map(coverSummary), current_week: current, review_week: W.reviewWeekOf(Date.now()) });
   } catch (err) { errorJson(res, err); }
 });
 
@@ -323,7 +346,8 @@ router.get('/weeks/:weekStart', async (req, res) => {
 
 router.post('/generate', async (req, res) => {
   try {
-    const weekStart = String(req.body?.week_start || W.sundayOf(Date.now()));
+    // Presented on Sunday about the Sun–Thu that just ended → default to the week the next Sunday reviews
+    const weekStart = String(req.body?.week_start || W.reviewWeekOf(Date.now()));
     try { W.weekBounds(weekStart); } catch (e) { return res.status(400).json({ error: e.message }); }
     const { report, created } = await service.generateReport({ brandId: req.brandId, weekStart, user: req.user });
     if (!created) return res.status(409).json({ error: 'A deck already exists for this week', id: report.id });

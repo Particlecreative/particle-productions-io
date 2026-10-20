@@ -6,30 +6,37 @@ const db = require('../../db');
 const { boardMeta, normLabel } = require('../monday');
 
 const SLIDE_TYPES = [
-  'cover', 'exec_summary', 'kpis', 'highlights', 'by_product', 'by_type', 'section',
+  'cover', 'exec_summary', 'dept_overview', 'division_overview', 'division_next', 'production', 'showcase',
+  'kpis', 'highlights', 'by_product', 'by_type', 'section',
   'person', 'workload', 'cp_productions', 'cp_updates', 'planned_next', 'risks', 'custom', 'closing',
 ];
 
+/**
+ * v2 — the creative department as three divisions, presented on Sunday about the Sun–Thu that ended:
+ * Design (overview → each designer → this week), Video (same), TV & Special Productions
+ * (CP productions are the core: one slide each, with their connected Monday tickets).
+ * Stored templates older than this version are ignored in favour of this one.
+ */
+const TEMPLATE_VERSION = 2;
 const DEFAULT_TEMPLATE = {
-  version: 1,
+  version: TEMPLATE_VERSION,
   slides: [
-    { id: 'cover',          type: 'cover',          enabled: true, options: {} },
-    { id: 'exec_summary',   type: 'exec_summary',   enabled: true, options: {} },
-    { id: 'kpis',           type: 'kpis',           enabled: true, options: {} },
-    { id: 'highlights',     type: 'highlights',     enabled: true, options: { layout: 'hero+3' } },
-    { id: 'sec_output',     type: 'section',        enabled: true, options: { number: '01', title: 'The Output', subtitle: 'What the studio shipped' } },
-    { id: 'by_product',     type: 'by_product',     enabled: true, options: { limit: 10 } },
-    { id: 'by_type',        type: 'by_type',        enabled: true, options: { dimension: 'type' } },
-    { id: 'sec_team',       type: 'section',        enabled: true, options: { number: '02', title: 'The Team', subtitle: 'Who made what' } },
-    { id: 'person_video',   type: 'person',         enabled: true, repeat: 'perPerson', options: { role: 'video', perPage: 8 } },
-    { id: 'person_design',  type: 'person',         enabled: true, repeat: 'perPerson', options: { role: 'design', perPage: 8 } },
-    { id: 'workload',       type: 'workload',       enabled: true, options: { variant: 'heatmap' } },
-    { id: 'sec_prod',       type: 'section',        enabled: true, options: { number: '03', title: 'Productions', subtitle: 'From the CP weekly' } },
-    { id: 'cp_productions', type: 'cp_productions', enabled: true, options: {} },
-    { id: 'cp_updates',     type: 'cp_updates',     enabled: true, options: {} },
-    { id: 'planned_next',   type: 'planned_next',   enabled: true, options: { groupBy: 'person' } },
-    { id: 'risks',          type: 'risks',          enabled: true, options: { whenEmpty: 'celebrate' } },
-    { id: 'closing',        type: 'closing',        enabled: true, options: {} },
+    { id: 'cover',           type: 'cover',             enabled: true, options: {} },
+    { id: 'exec_summary',    type: 'exec_summary',      enabled: true, options: {} },
+    { id: 'dept_overview',   type: 'dept_overview',     enabled: true, options: {} },
+    { id: 'sec_design',      type: 'section',           enabled: true, options: { number: '01', title: 'Design', subtitle: '', division: 'design' } },
+    { id: 'design_overview', type: 'division_overview', enabled: true, options: { division: 'design' } },
+    { id: 'person_design',   type: 'person',            enabled: true, repeat: 'perPerson', options: { role: 'design' } },
+    { id: 'design_next',     type: 'division_next',     enabled: true, options: { division: 'design' } },
+    { id: 'sec_video',       type: 'section',           enabled: true, options: { number: '02', title: 'Video', subtitle: '', division: 'video' } },
+    { id: 'video_overview',  type: 'division_overview', enabled: true, options: { division: 'video' } },
+    { id: 'person_video',    type: 'person',            enabled: true, repeat: 'perPerson', options: { role: 'video' } },
+    { id: 'video_next',      type: 'division_next',     enabled: true, options: { division: 'video' } },
+    { id: 'sec_tv',          type: 'section',           enabled: true, options: { number: '03', title: 'TV & Special Productions', subtitle: '', division: 'tv' } },
+    { id: 'tv_overview',     type: 'division_overview', enabled: true, options: { division: 'tv' } },
+    { id: 'productions',     type: 'production',        enabled: true, repeat: 'perProduction', options: {} },
+    { id: 'tv_next',         type: 'division_next',     enabled: true, options: { division: 'tv' } },
+    { id: 'cp_updates',      type: 'cp_updates',        enabled: true, options: {} },
   ],
 };
 
@@ -77,6 +84,10 @@ const DEFAULTS = {
       },
     },
   },
+  // Tickets whose Monday Department (or video Type) matches go to the TV & Special Productions division
+  divisions: {
+    tv: { departments: ['TV', 'Special Project (SP)'], types: ['TV'] },
+  },
   delivery_rule: { count_intra_delivered: false, exclude_reopened_in_week: true, treat_is_done_as_delivered: true },
   exclude: { products: [], groups: [] },
   capacity_per_day: { video: 3, design: 5 },
@@ -105,8 +116,10 @@ async function getCreativeConfig(brandId = 'particle') {
     stored = rows[0]?.creative_config || null;
   } catch { stored = null; }
   const merged = deepMerge(DEFAULTS, stored || {});
-  // Templates are replaced wholesale, never merged slide-by-slide
-  if (stored?.default_template?.slides) merged.default_template = stored.default_template;
+  // Templates are replaced wholesale, never merged slide-by-slide; outdated saved templates are ignored
+  merged.default_template = stored?.default_template?.slides && (stored.default_template.version || 1) >= TEMPLATE_VERSION
+    ? stored.default_template
+    : DEFAULT_TEMPLATE;
   return merged;
 }
 
@@ -162,8 +175,19 @@ async function validateConfig(config) {
   return warnings;
 }
 
+/** Division of a normalized item: 'tv' if its department/type matches the TV & SP rules, else its board. */
+function divisionOf(item, config) {
+  const tv = config?.divisions?.tv || {};
+  const dept = normLabel(item.department?.label);
+  const type = normLabel(item.type?.label);
+  if ((tv.departments || []).some(d => normLabel(d) === dept) || (tv.types || []).some(t => normLabel(t) === type)) return 'tv';
+  return item.board;
+}
+
 module.exports = {
   SLIDE_TYPES,
+  TEMPLATE_VERSION,
+  divisionOf,
   DEFAULT_TEMPLATE,
   DEFAULTS,
   deepMerge,

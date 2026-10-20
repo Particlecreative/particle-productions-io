@@ -15,6 +15,7 @@ const db = require('../../db');
 const dbx = require('./providers/dropbox');
 const mondayAssets = require('./providers/mondayAssets');
 const frameio = require('./providers/frameio');
+const figma = require('./providers/figma');
 const ff = require('./providers/ffmpeg');
 
 const LISTING_TTL_MS = 15 * 60 * 1000;
@@ -94,6 +95,13 @@ async function getListing(ref, { force = false } = {}) {
         if (r.unresolvable) error = 'Frame.io link could not be resolved to files';
         break;
       }
+      case 'figma': {
+        const r = await figma.listing(ref.url);
+        entries = r.entries || [];
+        if (r.error) error = r.error;
+        else if (r.unresolvable) error = 'Figma link could not be read';
+        break;
+      }
       default: entries = [];
     }
   } catch (e) {
@@ -106,35 +114,55 @@ async function getListing(ref, { force = false } = {}) {
 // ── Auto cover per ticket ───────────────────────────────────────────────────
 const autoCache = new Map(); // itemId|refsHash → { at, pick }
 
-/** Best visual for a ticket: attached finals (Monday) → Frame.io → Dropbox image → Dropbox video. */
+const COMPLETED_RE = /^(completed|upload complete)$/i;
+
+/**
+ * Best visual for a ticket.
+ *   Design, Completed      → Dropbox finals, then Figma
+ *   Design, not Completed  → Figma (work in progress lives there), then Dropbox
+ *   Video                  → Frame.io, then Dropbox (playable formats first)
+ * Monday file attachments are briefs/references — never auto-picked (still choosable in the picker).
+ */
 async function autoPick(item, mediaRefs) {
   const refs = (item.media_refs || []).map(id => ({ id, ...mediaRefs[id] })).filter(r => r.kind);
-  const cacheKey = `${item.id}|${refs.map(r => r.id).join(',')}`;
+  const completed = COMPLETED_RE.test(item.status?.label || '');
+  const order = item.board === 'design' ? (completed ? ['dropbox', 'figma'] : ['figma', 'dropbox']) : ['frameio', 'dropbox'];
+  const cacheKey = `${item.id}|${order.join('>')}|${refs.map(r => r.id).join(',')}`;
   const hit = autoCache.get(cacheKey);
   if (hit && Date.now() - hit.at < LISTING_TTL_MS) return hit.pick;
 
+  const tryRefs = {
+    frameio: async () => {
+      for (const r of refs.filter(x => x.kind === 'frameio')) {
+        const { entries } = await getListing(r);
+        const e = entries.find(x => x.kind === 'video' || x.kind === 'image');
+        if (e) return { refId: r.id, key: e.key, kind: e.kind, source: 'frameio' };
+      }
+      return null;
+    },
+    figma: async () => {
+      if (!figma.configured()) return null;
+      for (const r of refs.filter(x => x.kind === 'figma')) {
+        const { entries } = await getListing(r);
+        if (entries[0]) return { refId: r.id, key: entries[0].key, kind: 'image', source: 'figma' };
+      }
+      return null;
+    },
+    dropbox: async () => {
+      for (const r of refs.filter(x => x.kind === 'dropbox_folder' || x.kind === 'dropbox_file')) {
+        const { entries } = await getListing(r);
+        const img = entries.find(x => x.kind === 'image' && dbx.THUMBABLE.has(x.ext));
+        const vid = entries.find(x => x.kind === 'video' && ['mp4', 'm4v', 'webm'].includes(x.ext)) || entries.find(x => x.kind === 'video');
+        const e = item.board === 'video' ? (vid || img) : (img || vid);
+        if (e) return { refId: r.id, key: e.key, kind: e.kind, source: 'dropbox' };
+      }
+      return null;
+    },
+  };
   let pick = null;
-  const mondayImg = refs.find(r => r.kind === 'monday_asset' && r.is_image);
-  if (mondayImg) pick = { refId: mondayImg.id, key: '_', kind: 'image' };
-  if (!pick) {
-    for (const r of refs.filter(x => x.kind === 'frameio')) {
-      const { entries } = await getListing(r);
-      const e = entries.find(x => x.kind === 'video' || x.kind === 'image');
-      if (e) { pick = { refId: r.id, key: e.key, kind: e.kind }; break; }
-    }
-  }
-  if (!pick) {
-    for (const r of refs.filter(x => x.kind === 'dropbox_folder' || x.kind === 'dropbox_file')) {
-      const { entries } = await getListing(r);
-      const img = entries.find(x => x.kind === 'image' && dbx.THUMBABLE.has(x.ext));
-      const vid = entries.find(x => x.kind === 'video' && ['mp4', 'm4v', 'webm'].includes(x.ext)) || entries.find(x => x.kind === 'video');
-      const e = img || vid;
-      if (e) { pick = { refId: r.id, key: e.key, kind: e.kind }; break; }
-    }
-  }
-  if (!pick) {
-    const anyAsset = refs.find(r => r.kind === 'monday_asset');
-    if (anyAsset) pick = { refId: anyAsset.id, key: '_', kind: 'other' };
+  for (const src of order) {
+    pick = await tryRefs[src]();
+    if (pick) break;
   }
   autoCache.set(cacheKey, { at: Date.now(), pick });
   return pick;
@@ -188,6 +216,7 @@ async function entryFor(ref, key) {
     return { key, path: p, name, ext: dbx.extOf(name), kind: dbx.kindOf(name) };
   }
   if (ref.kind === 'frameio') return { key, kind: 'video' };
+  if (ref.kind === 'figma') return { key, kind: 'image', modified: new Date().toISOString().slice(0, 10) };
   return null;
 }
 
@@ -210,6 +239,15 @@ async function produceThumb(ref, key, entry) {
     if (a.kind === 'video') return { type: 'image/jpeg', bytes: await ff.posterFromUrl(a.public_url) };
     if (a.kind !== 'image') return null;
     const r = await fetch(a.public_url, { signal: AbortSignal.timeout(20000) });
+    if (!r.ok) return null;
+    const raw = Buffer.from(await r.arrayBuffer());
+    if (raw.length <= MAX_THUMB_BYTES) return { type: r.headers.get('content-type') || 'image/jpeg', bytes: raw };
+    return { type: 'image/jpeg', bytes: await ff.downscaleImage(raw) };
+  }
+  if (ref.kind === 'figma') {
+    const u = await figma.imageUrl(key, { scale: 0.5 });
+    if (!u) return null;
+    const r = await fetch(u, { signal: AbortSignal.timeout(20000) });
     if (!r.ok) return null;
     const raw = Buffer.from(await r.arrayBuffer());
     if (raw.length <= MAX_THUMB_BYTES) return { type: r.headers.get('content-type') || 'image/jpeg', bytes: raw };
@@ -264,6 +302,7 @@ async function freshUrl(ref, key, variant) {
   }
   if (ref.kind === 'monday_asset') return (await mondayAssets.asset(ref.asset_id))?.public_url || null;
   if (ref.kind === 'frameio') return frameio.fileMediaUrl(key, variant === 'play' ? 'play' : 'full');
+  if (ref.kind === 'figma') return figma.imageUrl(key, { scale: 2 });
   return null;
 }
 

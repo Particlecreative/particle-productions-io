@@ -1,6 +1,6 @@
 import { Sparkles } from 'lucide-react';
 import { useDeck } from '../deck/DeckContext';
-import { Reveal, CountUp, m, EASE } from '../motion/Motion';
+import { Reveal, m, EASE } from '../motion/Motion';
 import { EditableText } from '../ui/Bits';
 import { MediaImage } from '../ui/Media';
 import { SlideFrame, SlideHeader, DeckLogo } from './SlideFrame';
@@ -12,9 +12,8 @@ export function CoverSlide({ slide, active }) {
   const { vm, text } = slide;
   const set = (slot) => (editText ? (v) => editText(slide.key, slot, v) : undefined);
   const mosaic = slide.options.mosaic !== false ? vm.mosaic.map(id => decorate(snapshot, overrides, id)) : [];
-  const year = vm.week?.year;
   return (
-    <SlideFrame slide={slide} active={active}>
+    <SlideFrame slide={slide} active={active} footer={false}>
       {mosaic.length > 0 && (
         <div className="cr-hide-sm" style={{ position: 'absolute', inset: '-4% -4% -4% 38%', zIndex: 0, overflow: 'hidden' }}>
           <div className={motionLevel === 'static' ? '' : 'cr-drift'} style={{ position: 'absolute', inset: 0, display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gridAutoRows: '1fr', gap: 14, transform: 'rotate(-6deg) scale(1.15)', transformOrigin: 'center' }}>
@@ -42,22 +41,18 @@ export function CoverSlide({ slide, active }) {
           <Reveal i={1} y={40}>
             <EditableText className="cr-display" value={text.title} onCommit={set('title')} placeholder="Title" style={{ fontSize: 'calc(var(--t-display) * 1.25)' }} />
           </Reveal>
-          <Reveal i={2}>
-            <div className="cr-h3 cr-num" style={{ color: '#fff', fontWeight: 300, fontFamily: 'var(--cr-font-sub)' }}>
-              {vm.week?.label}{year ? `, ${year}` : ''}{vm.week?.partial ? <span className="cr-small" style={{ marginLeft: 16 }}>· week in progress</span> : null}
-            </div>
-          </Reveal>
-          <Reveal i={3}>
-            <EditableText className="cr-sub" value={text.subtitle} onCommit={set('subtitle')} placeholder="Prepared for…" />
-          </Reveal>
+          {(text.subtitle || editText) && (
+            <Reveal i={2}>
+              <EditableText className="cr-sub" value={text.subtitle} onCommit={set('subtitle')} placeholder="Optional subtitle" />
+            </Reveal>
+          )}
         </div>
-        <div className="cr-row cr-keep-row" style={{ gap: layout === 'canvas' ? 72 : 28, marginBottom: layout === 'canvas' ? 8 : 48, marginTop: layout === 'canvas' ? 0 : 40 }}>
-          {vm.kpis.map((k, i) => (
-            <Reveal key={k.key} i={4 + i} y={30}>
-              <div className="cr-col" style={{ gap: 10 }}>
-                <CountUp className="cr-kpi-num" value={k.value} delay={0.5 + i * 0.12} style={{ fontSize: 'calc(var(--t-kpi) * 0.78)' }} />
-                <span className="cr-small" style={{ letterSpacing: '.08em', textTransform: 'uppercase' }}>{k.label}</span>
-              </div>
+        <div className="cr-row cr-keep-row" style={{ gap: layout === 'canvas' ? 40 : 16, alignItems: 'center', marginBottom: layout === 'canvas' ? 0 : 48, marginTop: layout === 'canvas' ? 0 : 40, flexWrap: 'wrap' }}>
+          <Reveal i={3} y={10}><DeckLogo /></Reveal>
+          {(vm.divisions || []).map((d, i) => (
+            <Reveal key={d.key} i={4 + i} y={20} style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <span style={{ width: 14, height: 14, borderRadius: 99, background: d.accent }} />
+              <span className="cr-h3" style={{ fontWeight: 600, color: '#fff', fontSize: layout === 'canvas' ? 'calc(var(--t-h3) * .85)' : undefined }}>{d.label}</span>
             </Reveal>
           ))}
         </div>
@@ -120,11 +115,18 @@ export function ExecSummarySlide({ slide, active }) {
 }
 
 // ── Section divider ─────────────────────────────────────────────────────────
+const SECTION_BG = {
+  design: 'radial-gradient(1200px 800px at 80% 0%, #b79cff, transparent 60%), #6d4bd8',
+  video: 'radial-gradient(1200px 800px at 80% 0%, #3b3bff, transparent 60%), #0808f8',
+  tv: 'radial-gradient(1200px 800px at 80% 0%, #ffb27a, transparent 60%), #e8641b',
+};
+
 export function SectionSlide({ slide, active }) {
   const { editText, layout } = useDeck();
   const set = (slot) => (editText ? (v) => editText(slide.key, slot, v) : undefined);
+  const bg = (slide.options.theme || 'electric') === 'electric' ? SECTION_BG[slide.options.division] : null;
   return (
-    <SlideFrame slide={slide} active={active} theme={slide.options.theme || 'electric'}>
+    <SlideFrame slide={slide} active={active} theme={slide.options.theme || 'electric'} style={bg ? { background: bg } : undefined}>
       <div className="cr-row" style={{ height: '100%', alignItems: 'center', gap: 80 }}>
         {slide.vm.number ? (
           <Reveal i={0} y={60} scale={0.9}>

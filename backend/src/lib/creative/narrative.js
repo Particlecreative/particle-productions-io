@@ -10,12 +10,22 @@ const MODEL = 'claude-opus-5-5';
 const NARRATIVE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['exec_summary', 'highlights', 'risks', 'next_week_focus', 'per_person'],
+  required: ['exec_summary', 'highlights', 'risks', 'next_week_focus', 'focus_by_division', 'per_person'],
   properties: {
     exec_summary: { type: 'array', items: { type: 'string' }, description: '3-5 short bullets for the CEOs' },
     highlights: { type: 'array', items: { type: 'string' } },
     risks: { type: 'array', items: { type: 'string' } },
     next_week_focus: { type: 'array', items: { type: 'string' } },
+    focus_by_division: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['design', 'video', 'tv'],
+      properties: {
+        design: { type: 'array', items: { type: 'string' } },
+        video: { type: 'array', items: { type: 'string' } },
+        tv: { type: 'array', items: { type: 'string' } },
+      },
+    },
     per_person: {
       type: 'array',
       items: {
@@ -28,15 +38,17 @@ const NARRATIVE_SCHEMA = {
   },
 };
 
-const SYSTEM = `You write the narrative for Particle's weekly creative studio report, presented by the head of creative to the two CEOs.
-Particle is a men's skincare brand; the studio's video editors and designers produce ads, statics, TV spots and website assets.
+const SYSTEM = `You write the narrative for Particle's weekly creative department report, presented by the head of creative to the two CEOs.
+Particle is a men's skincare brand. The creative department has three divisions: Design (statics, web, email), Video (digital ads and edits) and TV & Special Productions (TV commercials and shoots, managed as productions in the CP).
+The deck is presented on Sunday: "last week" is the Sunday–Thursday that just ended; "this week" is the week starting now.
 
 Rules:
 - Use only facts and numbers present in the JSON you receive. Never invent tickets, people, numbers or causes.
-- exec_summary: 3 to 5 bullets, each under 20 words, together under 70 words. Lead with output (what shipped), then momentum vs last week, then the one thing that needs CEO attention if any.
+- exec_summary: 3 to 5 bullets, each under 20 words, together under 70 words. Cover the three divisions' output last week, momentum vs the week before, then the one thing that needs CEO attention if any.
 - highlights: up to 4 notable deliveries (name the campaign/product), each under 16 words.
 - risks: up to 4 concrete risks (stuck, overdue, heavy fixes rounds), each under 16 words. Empty array if none.
-- next_week_focus: up to 4 bullets from the planned-next-week data, each under 14 words.
+- next_week_focus: up to 4 department-wide bullets for this week, each under 14 words.
+- focus_by_division: for each of design, video and tv, up to 4 bullets for THIS week drawn from that division's planned work (and, for tv, its productions), each under 14 words. Empty array if there is nothing planned.
 - per_person: one line per person listed, under 18 words, describing what they shipped or worked on. Factual and generous; never rank or compare people against each other.
 - Plain confident business English. No emojis, no hype words like "amazing" or "crushing".`;
 
@@ -72,9 +84,24 @@ function compactInput(report) {
     .filter(p => p.delivered_count || p.in_progress_count || p.planned_next_count);
 
   const prevTrend = (snap.trend || []).slice(-2, -1)[0] || null;
+  const divisionOf = (x) => it(x)?.division || it(x)?.board;
+  const byDivision = {};
+  for (const dv of ['design', 'video', 'tv']) {
+    const m = snap.metrics?.by_division?.[dv] || {};
+    byDivision[dv] = {
+      delivered_last_week: m.delivered ?? null,
+      week_before: prevTrend?.by_division?.[dv] ?? null,
+      in_progress: m.in_progress ?? null,
+      top_products: (m.by_product || []).slice(0, 4).map(p => `${p.label} (${p.total})`),
+      delivered: vis(snap.sections?.delivered).filter(x => divisionOf(x) === dv).slice(0, 10).map(label),
+      planned_this_week: vis(snap.sections?.planned_next_week).filter(x => divisionOf(x) === dv).slice(0, 12).map(label),
+    };
+  }
   return {
-    week: snap.week?.label,
+    week_reviewed: snap.week?.label,
+    this_week: snap.week?.next?.label,
     week_partial: !!snap.week?.partial,
+    divisions: byDivision,
     totals: snap.metrics?.totals,
     last_week: prevTrend ? { video: prevTrend.video, design: prevTrend.design } : null,
     turnaround_median_days: snap.metrics?.turnaround?.median_days ?? null,
@@ -84,7 +111,7 @@ function compactInput(report) {
     stuck: vis(snap.sections?.stuck).slice(0, 8).map(label),
     overdue: vis(snap.sections?.overdue).slice(0, 8).map(id => ({ ticket: label(id), deadline: it(id)?.deadline })),
     planned_next_week: vis(snap.sections?.planned_next_week).slice(0, 12).map(label),
-    cp_productions: (snap.cp_weekly?.productions || []).slice(0, 10).map(p => ({ name: p.name, stage: p.stage, note: String(p.note || '').slice(0, 300) })),
+    cp_productions: (snap.cp_weekly?.productions || []).slice(0, 10).map(p => ({ name: p.name, stage: p.stage, planned_start: p.planned_start, planned_end: p.planned_end, note: String(p.note || '').slice(0, 300) })),
     cp_general_updates: (snap.cp_weekly?.general_updates || []).slice(0, 10).map(u => String(u.text || '').slice(0, 200)),
   };
 }
