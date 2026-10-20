@@ -301,19 +301,21 @@ export default function CreativeReportsPage() {
                       <span><b className="text-white text-2xl">{current.totals?.design ?? 0}</b> designs</span>
                       <span><b className="text-white text-2xl">{current.totals?.video ?? 0}</b> videos</span>
                       <span><b className="text-white text-2xl">{current.totals?.in_progress ?? 0}</b> in the pipeline</span>
-                      {isAdmin && (
-                        <button type="button" onClick={() => removeDeck(current)} className="text-xs font-semibold opacity-60 hover:opacity-100 flex items-center gap-1.5">
-                          <Trash2 size={13} /> Delete & start over
-                        </button>
-                      )}
+
                     </div>
                   ) : (
                     <p className="mt-4 max-w-lg opacity-75">Pulls deliveries from Monday’s status history, work from Figma, Dropbox & Frame.io, and the productions + updates from the CP weekly — then builds Design, Video and TV & SP, each with its overview, every person’s work and what’s coming this week.</p>
                   )}
                 </div>
-                <div className="flex gap-3">
+                <div className="flex flex-wrap gap-3">
                   {current ? (
                     <>
+                      {isAdmin && (
+                        <button type="button" onClick={() => removeDeck(current)} title="Delete this week's deck and generate a fresh one"
+                          className="px-5 py-3.5 rounded-full font-semibold border border-white/20 hover:bg-red-500/80 hover:border-red-400 flex items-center gap-2 transition-colors">
+                          <Trash2 size={16} /> Delete & start over
+                        </button>
+                      )}
                       <button type="button" onClick={() => navigate(`/creative-reports/${current.id}`)} className="px-6 py-3.5 rounded-full font-semibold bg-white/10 hover:bg-white/20 flex items-center gap-2">
                         Open <ArrowRight size={16} />
                       </button>
