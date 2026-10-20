@@ -306,8 +306,24 @@ async function status() {
     last_refresh_at: t?.last_refresh_at || null,
     error: t?.last_error || null,
   };
-  if (out.connected && !out.error) {
-    try { await api('/me'); } catch (e) { out.error = e.message; out.hint = e.hint || null; }
+  if (out.connected) {
+    // Always re-check live: a stale error (e.g. "not linked to an Adobe ID") must clear once the user fixes it
+    try {
+      await api('/me');
+      out.error = null;
+      if (t.last_error) await saveTokens({ ...(await loadTokens()), last_error: null });
+      if (!t.account_id) {
+        try {
+          await resolveAccount(true);
+          const fresh = await loadTokens();
+          out.account_id = fresh?.account_id || null;
+          out.account_name = fresh?.account_name || null;
+        } catch (e) { out.error = e.message; }
+      }
+    } catch (e) {
+      out.error = e.message;
+      out.hint = e.hint || null;
+    }
   }
   return out;
 }
