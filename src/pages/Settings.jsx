@@ -1312,6 +1312,21 @@ export default function Settings() {
       {/* ── Integrations tab ──────────────────────────────────────────────────── */}
       {tab === 'integrations' && isSuperAdmin && (
         <div className="max-w-xl space-y-5">
+          {/* Studio connections live inside the Studio page */}
+          <section className="brand-card">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-xl">⏱️</span>
+              <h2 className="font-bold" style={{ color: 'var(--brand-primary)' }}>BambooHR &amp; TMDB (Studio)</h2>
+            </div>
+            <p className="text-xs text-gray-400 mb-3">
+              Clock in / out and time off from BambooHR for the Studio’s time tracking and vacations, plus movie stills for the line of the day.
+              Keys are pasted in the Studio and stored encrypted on the server.
+            </p>
+            <a href="/studio?tab=connections" className="inline-flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-xl text-white" style={{ background: '#0808f8' }}>
+              Open Studio → Connections
+            </a>
+          </section>
+
           {/* Google Drive */}
           <section className="brand-card">
             <div className="flex items-center gap-2 mb-1">
