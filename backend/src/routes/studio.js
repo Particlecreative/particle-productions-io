@@ -9,6 +9,9 @@ const { getStudio } = require('../lib/studio/data');
 const { decide } = require('../lib/studio/tvLinks');
 const { dailyInspiration, tmdbConfigured, testTmdb } = require('../lib/studio/inspiration');
 const secrets = require('../lib/studio/secrets');
+const { getCreativeConfig } = require('../lib/creative/config');
+const { updateSchedule } = require('../lib/studio/write');
+const tickets = require('../lib/studio/tickets');
 const monday = require('../lib/monday');
 const bamboo = require('../lib/studio/bamboohr');
 
@@ -63,6 +66,81 @@ router.put('/tv-links/:itemId', async (req, res) => {
     await decide(itemId, { productionId, decision, board: req.body?.board || null, user: req.user });
     monday.clearCache(`studio:${req.brandId}:`);
     res.json({ ok: true });
+  } catch (err) { errorJson(res, err); }
+});
+
+// ── Workload: reschedule / reassign (writes the task's timeline + person columns on Monday) ──
+router.patch('/items/:itemId', async (req, res) => {
+  try {
+    const { board, timeline, people } = req.body || {};
+    const config = await getCreativeConfig(req.brandId);
+    // Vacations layer: never schedule work onto someone's day off
+    if (timeline && (await bamboo.configured().catch(() => false))) {
+      const who = Array.isArray(people) ? people : (req.body.current_people || []);
+      if (who.length) {
+        const studio = await getStudio({ brandId: req.brandId, from: timeline.from, to: timeline.to }).catch(() => null);
+        const plist = who.map(id => studio?.people?.[id]).filter(Boolean).map(p => ({ id: p.id, name: p.name, email: p.email }));
+        if (plist.length) {
+          const wo = await bamboo.whosOut(plist, timeline.from, timeline.to);
+          // A task can't start or end on someone's day off (crossing one is fine)
+          const ends = [timeline.from, timeline.to];
+          for (const p of plist) {
+            const clash = [...(wo.byPerson[p.id] || []), ...wo.holidays].find(o => ends.some(d => d >= o.start && d <= o.end));
+            if (clash) return res.status(409).json({ error: `${p.name.split(' ')[0]} is ${clash.type === 'holiday' ? `off (${clash.name || 'holiday'})` : 'on vacation'} ${clash.start === clash.end ? `on ${clash.start}` : `${clash.start} → ${clash.end}`}` });
+          }
+        }
+      }
+    }
+    await updateSchedule(config, { board, itemId: req.params.itemId, timeline, people });
+    res.json({ ok: true });
+  } catch (err) { errorJson(res, err); }
+});
+
+// ── AI ticket creator ───────────────────────────────────────────────────────
+async function ticketPeople(brandId, user) {
+  const data = await getStudio({ brandId, from: W.sundayOf(Date.now()), to: W.addDays(W.sundayOf(Date.now()), 6) });
+  const studio = Object.values(data.people);
+  const pool = (role) => studio.filter(p => p.role === role).map(p => ({ id: p.id, name: p.name }));
+  const req = new Map(Object.values(data.requesters).map(r => [r.id, { id: r.id, name: r.name }]));
+  for (const p of studio) req.set(p.id, { id: p.id, name: p.name });
+  // The person typing is usually the requester — find their Monday account by email
+  if (user?.email) {
+    try {
+      const me = await monday.cached(`me:${user.email}`, 6 * 3600000, async () =>
+        (await monday.mondayQuery('query ($e: [String]) { users(emails: $e) { id name } }', { e: [user.email] }))?.users?.[0] || null);
+      if (me) req.set(String(me.id), { id: String(me.id), name: me.name });
+    } catch { /* optional */ }
+  }
+  return { requesters: [...req.values()].sort((a, b) => a.name.localeCompare(b.name)), video: pool('video'), design: pool('design') };
+}
+
+async function formFor(req) {
+  const config = await getCreativeConfig(req.brandId);
+  const people = await ticketPeople(req.brandId, req.user);
+  return { config, people, form: await tickets.ticketForm(config, people) };
+}
+
+router.get('/ticket-form', async (req, res) => {
+  try {
+    const { form } = await formFor(req);
+    res.json({ ...form, recent: await tickets.recentTickets(12), empty: tickets.emptyFields() });
+  } catch (err) { errorJson(res, err); }
+});
+
+router.post('/ticket/draft', async (req, res) => {
+  try {
+    const { form } = await formFor(req);
+    const out = await tickets.draftTicket({ form, messages: req.body?.messages, draft: req.body?.draft, board: req.body?.board, userName: req.user?.name });
+    res.json(out);
+  } catch (err) { errorJson(res, err); }
+});
+
+router.post('/ticket/submit', async (req, res) => {
+  try {
+    if (req.body?.confirm !== true) return res.status(400).json({ error: 'Confirm the ticket first' });
+    const { config, people, form } = await formFor(req);
+    const out = await tickets.submitTicket({ config, form, board: req.body.board, fields: req.body.fields, people, user: req.user, conversation: req.body.conversation });
+    res.json({ ok: true, ...out });
   } catch (err) { errorJson(res, err); }
 });
 

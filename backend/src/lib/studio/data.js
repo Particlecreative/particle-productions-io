@@ -31,6 +31,63 @@ function periodBounds(from, to) {
 const ACTIVE = new Set(['in_progress', 'fixes']);
 const LIFETIME_DAYS = 180;
 
+/** Email tasks from Retention Projects 3.0 designed by the studio's designers (open, or completed in the period). */
+async function loadEmails(config, P, now, deadline) {
+  const r = config.retention;
+  if (!r?.board_id) return { emails: [], board: null };
+  const meta = await monday.boardMeta(r.board_id);
+  const c = r.columns;
+  const cols = [...new Set(Object.values(c))].filter(id => meta.columns[id]);
+  const { items } = await monday.fetchAllItems(r.board_id, { cols, maxPages: 4, deadline });
+  const catOf = {};
+  for (const [cat, labels] of Object.entries(r.statuses)) for (const l of labels) catOf[norm(l)] = cat;
+  const category = (label) => catOf[norm(label)] || (label ? 'other' : 'queued');
+  const sm = meta.statusMaps[c.status] || { byIndex: {}, byLabel: {} };
+  const color = (colId, cv) => {
+    const m = meta.statusMaps[colId];
+    if (!m || !cv) return null;
+    const idx = cv.index ?? m.byLabel[norm(cv.label ?? cv.text)];
+    return idx != null ? m.byIndex[idx]?.color || null : null;
+  };
+  const wanted = new Set(r.designers.map(String));
+  const emails = [];
+  for (const raw of items) {
+    const cv = Object.fromEntries((raw.column_values || []).map(x => [x.id, x]));
+    const designers = (cv[c.designer]?.persons_and_teams || []).filter(p => p.kind !== 'team').map(p => String(p.id));
+    if (!designers.some(d => wanted.has(d))) continue;
+    const label = cv[c.status]?.label ?? cv[c.status]?.text ?? '';
+    const cat = category(label);
+    const completed = W.dateOnly(cv[c.completed]?.date || cv[c.completed]?.text);
+    if (cat === 'delivered' && !(completed && completed >= P.from && completed <= P.to)) continue;
+    const tl = cv[c.timeline];
+    emails.push({
+      id: String(raw.id),
+      board: 'retention',
+      division: 'email',
+      name: raw.name,
+      group: raw.group?.title || '',
+      status: { label: label || '—', color: color(c.status, cv[c.status]) || '#c4c4c4', category: cat },
+      people: designers,
+      manager: (cv[c.manager]?.persons_and_teams || []).map(p => String(p.id)),
+      deadline: W.dateOnly(cv[c.deadline]?.date || cv[c.deadline]?.text),
+      launch: W.dateOnly(cv[c.launch]?.date || cv[c.launch]?.text),
+      timeline: tl && (tl.from || tl.to) ? { from: W.dateOnly(tl.from), to: W.dateOnly(tl.to) } : null,
+      product: { label: cv[c.product]?.label ?? cv[c.product]?.text ?? '', color: color(c.product, cv[c.product]) },
+      priority: cv[c.priority]?.label ?? cv[c.priority]?.text ?? '',
+      amount: Number.isFinite(cv[c.amount]?.number) ? cv[c.amount].number : null,
+      completed,
+      open: cat !== 'delivered',
+      monday_url: raw.url || null,
+    });
+  }
+  const board = {
+    key: 'retention', label: r.label, board_id: r.board_id,
+    statuses: Object.entries(sm.byIndex).filter(([, v]) => v.label && !v.deactivated)
+      .map(([idx, v]) => ({ label: v.label, color: v.color || '#c4c4c4', category: category(v.label), index: Number(idx) })),
+  };
+  return { emails, board };
+}
+
 async function buildStudio({ brandId = 'particle', from, to, now = Date.now(), force = false } = {}) {
   const t0 = Date.now();
   const deadline = t0 + 50000;
@@ -189,6 +246,8 @@ async function buildStudio({ brandId = 'particle', from, to, now = Date.now(), f
   for (const [uid, rc] of Object.entries(roleCount)) {
     const t = config.team?.[uid] || {};
     if (t.hidden) continue;
+    // Accounts Monday no longer returns (former staff) — keep their tasks, drop them from the roster
+    if (!userMap[uid] && !t.display_name && users.length) continue;
     people[uid] = {
       id: uid,
       name: nameOf(uid),
@@ -198,6 +257,14 @@ async function buildStudio({ brandId = 'particle', from, to, now = Date.now(), f
       counts: rc,
     };
   }
+
+  // Email tasks (Retention Projects 3.0) for the studio's designers
+  let emails = [];
+  try {
+    const r = await loadEmails(config, P, now, deadline);
+    emails = r.emails;
+    if (r.board) boards.retention = r.board;
+  } catch (e) { warnings.push(`Email tasks unavailable (${e.message})`); }
 
   // When were people actually working? BambooHR clock-ins when connected, else Sun–Thu 09:00–19:00
   let presence = { period: null, life: null };
@@ -268,6 +335,7 @@ async function buildStudio({ brandId = 'particle', from, to, now = Date.now(), f
     people,
     requesters,
     items: Object.values(items),
+    emails,
     productions,
     effort_source: clockSource,
     holidays,

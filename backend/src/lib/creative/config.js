@@ -84,6 +84,24 @@ const DEFAULTS = {
       },
     },
   },
+  // Studio: email tasks from Retention Projects 3.0 — only those designed by the studio's designers
+  retention: {
+    board_id: '9993980489',
+    label: 'Email',
+    designers: ['69272319', '75466488', '118504944'], // Dan Lowenstein, Natalie Abesdid, Kerry Bershtein
+    columns: {
+      designer: 'multiple_person_mkvptn73', status: 'status', deadline: 'date4', timeline: 'timerange_mkxtd2na',
+      product: 'color_mkvkyncm', priority: 'color_mkvm6gzj', manager: 'person', amount: 'numeric_mkvk3t78',
+      launch: 'date_mkxnnsx', link: 'link_mkvtf48w', completed: 'date_mkvp1wgb', created: 'date_mkvk4kk4',
+    },
+    statuses: {
+      delivered: ['completed', 'Completed', 'Done'],
+      in_progress: ['Design Stage'],
+      review: ['Copy Review', 'Proofreading', 'Eikona Review', 'Design Review', 'Upload to Klaviyo'],
+      queued: ['To Schedule', 'Brief'],
+      paused: ['On Hold'],
+    },
+  },
   // Tickets whose Monday Department (or video Type) matches go to the TV & Special Productions division
   divisions: {
     tv: { departments: ['TV', 'Special Project (SP)'], types: ['TV'] },

@@ -1,18 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { LayoutDashboard, Clock, Tv, Plug, Loader2, AlertTriangle, Lock } from 'lucide-react';
+import { LayoutDashboard, Clock, Tv, Plug, Loader2, AlertTriangle, Lock, GanttChart, Sparkles } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useBrand } from '../../context/BrandContext';
 import { studioApi } from '../../lib/studioService';
-import Inspiration from '../../components/studio/Inspiration';
 import Filters, { applyFilters, presetRange } from '../../components/studio/Filters';
 import Overview from '../../components/studio/Overview';
 import TimeTracking from '../../components/studio/TimeTracking';
 import TvLinks from '../../components/studio/TvLinks';
 import Connections from '../../components/studio/Connections';
+import Workload from '../../components/studio/Workload';
+import TicketCreator from '../../components/studio/TicketCreator';
 
 const TABS = [
   ['overview', 'Creative Control', LayoutDashboard],
+  ['workload', 'Workload', GanttChart],
+  ['ticket', 'New ticket', Sparkles],
   ['time', 'Time tracking', Clock],
   ['tv', 'TV ↔ Productions', Tv],
   ['connections', 'Connections', Plug],
@@ -46,6 +49,11 @@ export default function StudioPage() {
   useEffect(() => { if (isEditor && brandId === 'particle') load(); }, [load, isEditor, brandId]);
 
   const items = useMemo(() => (data ? applyFilters(data.items, f) : []), [data, f]);
+  const emails = useMemo(() => (data?.emails || []).filter(e =>
+    (!f.people.length || e.people.some(p => f.people.includes(p))) &&
+    (!f.product || e.product?.label === f.product) &&
+    (!f.q.trim() || e.name.toLowerCase().includes(f.q.trim().toLowerCase())) &&
+    (f.division === 'all' || f.division === 'design')), [data, f]);
 
   if (brandId !== 'particle') {
     return (
@@ -85,10 +93,8 @@ export default function StudioPage() {
         </nav>
       </div>
 
-      {tab === 'overview' && <div className="mb-2"><Inspiration /></div>}
-
-      {tab !== 'connections' && (
-        <Filters f={f} setF={setF} range={range} data={data} loading={loading} onRefresh={() => load(true)} showDivision={tab !== 'tv'} />
+      {!['connections', 'ticket'].includes(tab) && (
+        <Filters f={f} setF={setF} range={range} data={data} loading={loading} onRefresh={() => load(true)} showDivision={!['tv', 'workload'].includes(tab)} showPeriod={tab !== 'workload'} />
       )}
 
       {error && (
@@ -103,6 +109,10 @@ export default function StudioPage() {
 
       {tab === 'connections' ? (
         <Connections onChanged={() => load(true)} />
+      ) : tab === 'ticket' ? (
+        <TicketCreator />
+      ) : tab === 'workload' ? (
+        <Workload f={f} />
       ) : !data ? (
         <div className="py-24 text-center text-gray-400 flex flex-col items-center gap-3">
           <Loader2 className="animate-spin" />
@@ -110,7 +120,7 @@ export default function StudioPage() {
         </div>
       ) : (
         <div className={loading ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
-          {tab === 'overview' && <Overview data={data} items={items} f={f} setF={setF} />}
+          {tab === 'overview' && <Overview data={data} items={items} emails={emails} f={f} setF={setF} />}
           {tab === 'time' && <TimeTracking data={data} items={items} range={range} />}
           {tab === 'tv' && <TvLinks data={data} items={applyFilters(data.items, { ...f, division: 'all' })} onChanged={() => load(true)} />}
         </div>

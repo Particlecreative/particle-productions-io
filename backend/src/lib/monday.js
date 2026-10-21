@@ -302,6 +302,7 @@ async function boardMeta(boardId, { force = false } = {}) {
     if (!b) throw new MondayError(`Board ${boardId} not found`, { code: 'NOT_FOUND' });
     const columns = {};
     const statusMaps = {};
+    const dropdowns = {};
     for (const c of b.columns || []) {
       columns[c.id] = { id: c.id, title: c.title, type: c.type };
       if (c.type === 'status' || c.type === 'color') {
@@ -319,8 +320,13 @@ async function boardMeta(boardId, { force = false } = {}) {
         }
         statusMaps[c.id] = { byIndex, byLabel };
       }
+      if (c.type === 'dropdown') {
+        let s = {};
+        try { s = JSON.parse(c.settings_str || '{}'); } catch { s = {}; }
+        dropdowns[c.id] = (Array.isArray(s.labels) ? s.labels : []).filter(l => l && !l.is_deactivated).map(l => l.name).filter(Boolean);
+      }
     }
-    return { id: String(b.id), name: b.name, columns, groups: b.groups || [], statusMaps };
+    return { id: String(b.id), name: b.name, columns, groups: b.groups || [], statusMaps, dropdowns };
   }, { force });
 }
 

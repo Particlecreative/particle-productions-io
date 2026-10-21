@@ -83,7 +83,7 @@ function PeoplePicker({ label, icon: Icon, people, value, onChange }) {
 }
 
 /** Sticky filter bar shared by every Studio tab. */
-export default function Filters({ f, setF, range, data, loading, onRefresh, showDivision = true }) {
+export default function Filters({ f, setF, range, data, loading, onRefresh, showDivision = true, showPeriod = true }) {
   const dateRef = useRef(null);
   const [dateOpen, setDateOpen] = useState(false);
   const people = Object.values(data?.people || {}).map(p => ({ ...p, count: (data.items || []).filter(i => i.people.includes(p.id)).length }))
@@ -94,12 +94,12 @@ export default function Filters({ f, setF, range, data, loading, onRefresh, show
     .sort((a, b) => a.label.localeCompare(b.label));
   return (
     <div className="sticky -top-6 z-20 -mx-6 px-6 pt-4 pb-3 flex flex-wrap items-center gap-2" style={{ background: 'var(--brand-bg, #f4f5f7)', boxShadow: '0 8px 12px -12px rgba(3,11,46,.25)' }}>
-      <button ref={dateRef} type="button" onClick={() => setDateOpen(v => !v)}
+      {showPeriod && <button ref={dateRef} type="button" onClick={() => setDateOpen(v => !v)}
         className="flex items-center gap-2 text-xs font-semibold px-3 py-2 rounded-xl border border-gray-200 bg-white text-gray-800 hover:border-gray-300">
         <Calendar size={14} className="text-[#0808f8]" />
         {PRESETS.find(([k]) => k === f.preset)?.[1] || 'Custom'} <span className="text-gray-400 font-medium">{rangeLabel(range)}</span>
         <ChevronDown size={13} className="opacity-50" />
-      </button>
+      </button>}
       <Popover anchor={dateRef} open={dateOpen} onClose={() => setDateOpen(false)} width={300}>
         {PRESETS.map(([k, label]) => (
           <button key={k} type="button" onClick={() => { setF({ ...f, preset: k }); setDateOpen(false); }}
