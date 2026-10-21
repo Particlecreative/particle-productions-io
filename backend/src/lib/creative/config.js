@@ -102,8 +102,14 @@ const DEFAULTS = {
       paused: ['On Hold'],
     },
   },
-  // AI ticket creator: write briefs in the style of these requesters' real briefs (Lilian Krumholz)
-  tickets: { style_authors: ['101019167'] },
+  // AI ticket creator: real briefs to learn the house style from — [mondayUserId, examples per board, what they're good at]
+  tickets: {
+    style_authors: [
+      ['101019167', 3, 'performance creative: hooks, scripts, ad copy'],           // Lilian Krumholz
+      ['69149907', 2, 'production: assets, creative direction, specs, deliverables'], // Omer Barak
+      ['60980766', 1, 'the why, references to follow / avoid, scope, who reviews'],  // Tomer Wilf Lezmy
+    ],
+  },
   // Tickets whose Monday Department (or video Type) matches go to the TV & Special Productions division
   divisions: {
     tv: { departments: ['TV', 'Special Project (SP)'], types: ['TV'] },

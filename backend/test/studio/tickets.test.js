@@ -20,3 +20,13 @@ test('design brief: Concept / Idea and Supporting Text', () => {
   assert.ok(t.includes('Concept / Idea\n--------------\n\nCopy the layout.'));
   assert.ok(t.endsWith('Supporting Text\n---------------\n\nV1: A'));
 });
+
+test('example briefs: credentials and empty sections are removed', () => {
+  const { cleanExample } = require('../../src/lib/studio/tickets');
+  const raw = 'Department: Website | Product / Bundle: X | Priority: High | How did you create this?: ChatGPT\n\nConcept / Idea\n--------------\n\nPlease update the home page.\n\nLogin Password: hunter2\nAPI key = abc\n\nSupporting Text\n---------------\n\nnone\n\nHook Variations\n---------------\n\n1. none\n\nScript / Message\n----------------\n\nscript';
+  const t = cleanExample(raw);
+  assert.ok(!/hunter2|abc/.test(t), 'no credentials');
+  assert.ok(!/How did you create/.test(t));
+  assert.ok(!/Supporting Text|Hook Variations|Script \/ Message/.test(t), t);
+  assert.ok(t.startsWith('Department: Website | Product / Bundle: X | Priority: High\n\nConcept / Idea\n--------------\n\nPlease update the home page.'));
+});

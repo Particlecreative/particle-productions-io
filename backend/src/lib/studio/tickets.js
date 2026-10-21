@@ -105,10 +105,17 @@ Every turn you receive today's date, the current draft and every field's allowed
 Rules:
 - Pick the board from the request (video vs design); keep the current board unless the user clearly changes it.
 - For status / dropdown / people fields use ONLY exact option texts from the lists. Never invent people, products or labels. Use "" (or []) when unknown.
-  Exception — campaign: use the existing option when one matches; otherwise the campaign name as the user wrote it (it goes in the ticket name and the brief).
+  Exception — campaign: only when the user names one (never guess it); use the existing option when one matches, otherwise the name as the user wrote it (it goes in the ticket name and the brief).
 - Resolve relative dates ("Thursday", "next week", "end of month") to YYYY-MM-DD in Israel time from today. Studio work days are Sunday–Thursday.
 - task_name: named like the team's tickets — product, platform, format and a short concept name, e.g. "Gravité Meta Static Sticky Note On Bottle", "NeoRoot Meta Thinning But Not Gone", "Mike Provenzano NeoRoot UGC Edit — Enhanced Cut x2 Hooks". Never include "/" or "|".
-- Write every brief the way the studio's real briefs are written — the <reference_briefs> below are recent briefs from the team (mostly Lilian Krumholz). Match their structure, tone, density and level of visual detail. They show the STYLE: how a product works may be reused for that same product, but never their stats, study numbers, ratings, prices, discounts, codes, guarantees, testimonials, people's names or links — those come only from the user.
+- Write every brief in the team's house style. The <reference_briefs> below are recent real briefs by Lilian Krumholz (performance creative), Omer Barak (TV, Amazon, website and production) and Tomer Wilf Lezmy (head of creative). They show the STYLE: how a product works may be reused for that same product, but never their stats, study numbers, ratings, prices, discounts, codes, guarantees, testimonials, people's names or links — those come only from the user.
+- House style — a brief the editor / designer can start on with no follow-up questions, scaled to the task (a fix is two lines; a production gets the full treatment), in this order inside concept:
+  1. The ask in one line, then the why — the goal, the context, what worked or didn't before ("Following our conversation…", "This year we want…", "Why: …").
+  2. Everything they need, each link labelled: script / copy doc, footage or raw material, clean MOV, separated sound channels, music, logo, bar, CTA / end card, 3D model, the current asset to replace; references to follow, and clearly marked references NOT to follow.
+  3. Creative direction: what's on screen or the layout, tone and pace, look (palette, light, styling), sound (VO voice, music, SFX), text on screen, and Don'ts. For big pieces use short headed blocks like "Global look & feel", "Sound notes", "Don'ts", "References", "Technicals".
+  4. Deliverables: versions, sizes, length, and specs when they matter (fps, resolution, file type / size, captions, platform rules), as a short list.
+  5. Process: who to talk to, who reviews or approves, what still needs confirming, where comments live (e.g. "All comments on Frame").
+  Plain, direct, polite ("Please…"), no filler. Only include what applies — never write "none" or empty headings.
 - Video concept: open with what's on screen — who (age, look), where, framing, light — then tone, what to take from each reference (keep the user's links exactly), footage sources and a concrete shot list, pacing (scene length), subtitles, how much product is on screen, formats and length; end with the ad headline when there is one. For edits of creator footage use "FOOTAGE: <link>" then "EDIT:" with the instructions.
 - hook (video): 2–3 alternative opening lines for the first 3 seconds, one per line, no numbering — only when the video needs a hook.
 - script (video): for scripted / VO ads write it out like the references — SCRIPT (voiceover) in quotes, starting with "[hook]", in the voice of a real man talking to men like him, then TEXT ON SCREEN (only these); or timed parts like "Part 1 — The comment (0:00–0:05)". The hook lines live only in the hook field — don't repeat them in the script. Plain, specific, spoken; no hype words. Leave it empty for simple edits.
@@ -127,54 +134,63 @@ function emptyFields() { return Object.fromEntries(ALL_KEYS.map(k => [k, ['sizes
 
 // ── Style references: the team's real briefs ───────────────────────────────
 const BRIEF_RE = /^Department:/;
+
+/** A real brief, made safe and useful as an example: no credentials, no empty "none" sections, a sensible length. */
+function cleanExample(text) {
+  return String(text || '')
+    .split('\n').filter(l => !/(pass(word|code)?|login|api[ _-]?key|token|secret)\s*[:=]/i.test(l)).join('\n')
+    .replace(/\n*📎 Reference files are attached[^\n]*/g, '')
+    .replace(/\s*\|\s*How did you create this\?:[^|\n]*/g, '')
+    .replace(/\n*(Hook Variations|Script \/ Message|Supporting Text)\n-+\n+(1\.\s*)?(none|script)\s*(?=\n[A-Z][^\n]*\n-+|$)/gi, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 /**
- * Recent real briefs from each board — the brief-writer update that starts with "Department:" — preferring the
- * configured style authors (Lilian), varied by type. Cached 12h; if Monday is unavailable the writer just has none.
+ * Recent real briefs from each board (the brief-writer update that starts with "Department:"), written by the
+ * configured style authors — Lilian for performance creative, Omer for production, Tomer for the why — each a spread
+ * of types. Cached 12h; if Monday is unavailable the writer just has none.
  */
 async function styleExamples(config) {
-  const authors = (config.tickets?.style_authors || []).map(String);
+  const authors = (config.tickets?.style_authors || []).map(a => (Array.isArray(a) ? a : [a, 2, '']));
   return monday.cached('studio:tickets:style', 12 * 3600 * 1000, async () => {
     const out = {};
     for (const bk of ['video', 'design']) {
       const reqCol = FIELDS[bk].find(f => f.key === 'requested_by').col;
-      const recent = async (rules) => {
-        const d = await monday.mondayQuery(
-          `query ($b: [ID!], $qp: ItemsQuery) { boards(ids: $b) { items_page(limit: 30, query_params: $qp) { items { id updates(limit: 6) { text_body creator { id } } } } } }`,
-          { b: [String(config.boards[bk].board_id)], qp: { rules, order_by: [{ column_id: '__creation_log__', direction: 'desc' }] } }
-        );
-        return d?.boards?.[0]?.items_page?.items || [];
-      };
-      let items = [];
-      try {
-        if (authors.length) items = await recent([{ column_id: reqCol, compare_value: authors.map(a => `person-${a}`), operator: 'any_of' }]);
-        if (items.length < 6) items = [...items, ...await recent([])];
-      } catch { items = []; }
-      const briefs = [];
-      const seen = new Set();
-      for (const it of items) {
-        if (seen.has(it.id)) continue;
-        seen.add(it.id);
-        const ups = (it.updates || []).filter(u => BRIEF_RE.test(u.text_body || ''));
-        const u = ups.find(x => authors.includes(String(x.creator?.id))) || ups[0];
-        if (!u || u.text_body.length < 250) continue;
-        const text = u.text_body.replace(/\n*📎 Reference files are attached[^\n]*/g, '').trim();
-        const type = (text.match(/\|\s*Type:\s*([^|\n]+)/) || [])[1]?.trim() || '';
-        briefs.push({ text: text.length > 3500 ? `${text.slice(0, 3500)}\n[…]` : text, type, mine: authors.includes(String(u.creator?.id)) });
+      const kindRe = bk === 'video' ? /\|\s*Type:\s*([^|\n]+)/ : /^Department:\s*([^|\n]+)/;
+      out[bk] = [];
+      for (const [uid, per, role] of authors) {
+        let items = [];
+        try {
+          const d = await monday.mondayQuery(
+            `query ($b: [ID!], $qp: ItemsQuery) { boards(ids: $b) { items_page(limit: 40, query_params: $qp) { items { id updates(limit: 6) { text_body creator { id name } } } } } }`,
+            { b: [String(config.boards[bk].board_id)], qp: { rules: [{ column_id: reqCol, compare_value: [`person-${uid}`], operator: 'any_of' }], order_by: [{ column_id: '__creation_log__', direction: 'desc' }] } }
+          );
+          items = d?.boards?.[0]?.items_page?.items || [];
+        } catch { items = []; }
+        // Briefs this person actually wrote, newest first, one per type before any repeats
+        const briefs = [];
+        for (const it of items) {
+          const u = (it.updates || []).find(x => BRIEF_RE.test(x.text_body || '') && String(x.creator?.id) === String(uid));
+          if (!u) continue;
+          const text = cleanExample(u.text_body);
+          if (text.length < 300) continue;
+          briefs.push({ text: text.length > 2800 ? `${text.slice(0, 2800)}\n[…]` : text, kind: (text.match(kindRe) || [])[1]?.trim() || '', by: u.creator?.name || '', role });
+        }
+        const pick = [];
+        for (const br of briefs) if (pick.length < per && !pick.some(p => p.kind === br.kind)) pick.push(br);
+        for (const br of briefs) if (pick.length < per && !pick.includes(br)) pick.push(br);
+        out[bk].push(...pick);
       }
-      // Lilian's first, a spread of types, newest first
-      briefs.sort((a, b) => Number(b.mine) - Number(a.mine));
-      const pick = [];
-      for (const br of briefs) if (pick.length < 4 && !pick.some(p => p.type === br.type)) pick.push(br);
-      for (const br of briefs) if (pick.length < 4 && !pick.includes(br)) pick.push(br);
-      out[bk] = pick.map(p => p.text);
     }
     return out;
   });
 }
 
 function referenceBlock(examples) {
-  const part = (bk, label) => (examples?.[bk]?.length
-    ? `<${bk}_briefs>\n${examples[bk].map((t, i) => `<brief n="${i + 1}">\n${t}\n</brief>`).join('\n')}\n</${bk}_briefs>` : '');
+  const esc = (t) => String(t).replace(/"/g, "'");
+  const part = (bk) => (examples?.[bk]?.length
+    ? `<${bk}_briefs>\n${examples[bk].map((b, i) => `<brief n="${i + 1}" by="${esc(b.by)}" shows="${esc(b.role)}">\n${b.text}\n</brief>`).join('\n')}\n</${bk}_briefs>` : '');
   const body = [part('video'), part('design')].filter(Boolean).join('\n');
   return body ? `<reference_briefs>\nRecent real briefs from the team — imitate their style, never their facts.\n${body}\n</reference_briefs>` : '';
 }
@@ -321,4 +337,4 @@ async function recentTickets(limit = 20) {
   } catch { return []; }
 }
 
-module.exports = { ticketForm, draftTicket, submitTicket, recentTickets, itemName, sanitize, briefText, styleExamples, FIELDS, emptyFields };
+module.exports = { ticketForm, draftTicket, submitTicket, recentTickets, itemName, sanitize, briefText, styleExamples, cleanExample, FIELDS, emptyFields };
