@@ -27,7 +27,8 @@ const DEFAULT_NAV_ITEMS = [
   { to: '/links',          icon: Link,             label: 'Links',       accountingHide: true },
   { to: '/contracts',      icon: FileSignature,    label: 'Contracts',   accountingHide: true, studioHide: true },
   { to: '/suppliers',      icon: Users2,           label: 'Suppliers',   accountingHide: true, studioHide: true },
-  { to: '/studio-tickets', icon: Clapperboard,     label: 'Studio',      accountingHide: true, particleOnly: true },
+  { to: '/studio',         icon: Clapperboard,     label: 'Studio',      accountingHide: true, studioHide: true, particleOnly: true, editorOnly: true },
+  { to: '/studio-tickets', icon: Clapperboard,     label: 'Studio',      accountingHide: true, particleOnly: true, nonEditorOnly: true },
   { to: '/creative-reports', icon: Presentation,   label: 'Creative Weekly', accountingHide: true, studioHide: true, particleOnly: true, editorOnly: true },
   { to: '/gantts',         icon: GanttChartSquare, label: 'Gantts',      accountingHide: true, studioHide: true },
   { to: '/call-sheets',    icon: FileText,         label: 'Call Sheets', accountingHide: true, studioHide: true },
@@ -123,6 +124,7 @@ export default function Sidebar({ open, onToggle }) {
     .filter(i => !isStudio || !i.studioHide)
     .filter(i => !i.particleOnly || brand.id === 'particle')
     .filter(i => !i.editorOnly || isEditor)
+    .filter(i => !i.nonEditorOnly || !isEditor)
     .filter(i => !pageAccess || isAdmin || pageAccess.includes(i.to));
 
   const sensors = useSensors(

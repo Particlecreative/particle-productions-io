@@ -91,7 +91,8 @@ const DEFAULTS = {
   delivery_rule: { count_intra_delivered: false, exclude_reopened_in_week: true, treat_is_done_as_delivered: true },
   exclude: { products: [], groups: [] },
   capacity_per_day: { video: 3, design: 5 },
-  team: {},            // { mondayUserId: { role, display_name, hidden, order } }
+  // { mondayUserId: { role, display_name, hidden, order } } — Omer Ben Simon's Monday profile has no name yet
+  team: { 119970319: { display_name: 'Omer Ben Simon', role: 'video' } },
   product_colors: {},  // { 'Face Cream': '#579bfc' } overrides
   auto_generate: { enabled: false, target: 'previous_week' },
   default_template: DEFAULT_TEMPLATE,

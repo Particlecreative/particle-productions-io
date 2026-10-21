@@ -712,4 +712,4 @@ function hashSnapshot(snapshot) {
   return crypto.createHash('sha256').update(JSON.stringify(rest)).digest('hex');
 }
 
-module.exports = { buildSnapshot, hashSnapshot, parseItemName, canonicalUrl, linkKind, trackedInWindow, SCHEMA_VERSION };
+module.exports = { buildSnapshot, hashSnapshot, parseItemName, canonicalUrl, linkKind, trackedInWindow, unionIntervals, normalizeItem, SCHEMA_VERSION };

@@ -50,6 +50,7 @@ function lazyPage(loader) {
     throw err;
   }));
 }
+const StudioPage = lazyPage(() => import('./pages/studio/StudioPage'));
 const CreativeReportsPage = lazyPage(() => import('./pages/creative/CreativeReportsPage'));
 const CreativeReportEditorPage = lazyPage(() => import('./pages/creative/CreativeReportEditorPage'));
 const CreativeReportPresentPage = lazyPage(() => import('./pages/creative/CreativeReportPresentPage'));
@@ -147,6 +148,7 @@ function AppRoutes() {
         <Route path="/contracts" element={<ProtectedRoute blockForStudio><AppShell><ErrorBoundary><Contracts /></ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="/suppliers" element={<ProtectedRoute blockForStudio><AppShell><ErrorBoundary><Suppliers /></ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="/studio-tickets" element={<ProtectedRoute><AppShell><ErrorBoundary><StudioTickets /></ErrorBoundary></AppShell></ProtectedRoute>} />
+        <Route path="/studio" element={<ProtectedRoute blockForAccounting blockForStudio><AppShell><ErrorBoundary>{lazyEl(<StudioPage />)}</ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="/gantts" element={<ProtectedRoute blockForAccounting blockForStudio><AppShell><ErrorBoundary><Gantts /></ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="/casting-rights" element={<ProtectedRoute blockForStudio><AppShell><ErrorBoundary><CastingRights /></ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="/call-sheets" element={<ProtectedRoute blockForAccounting blockForStudio><AppShell><ErrorBoundary><CallSheets /></ErrorBoundary></AppShell></ProtectedRoute>} />

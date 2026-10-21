@@ -1,0 +1,120 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { LayoutDashboard, Clock, Tv, Plug, Loader2, AlertTriangle, Lock } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import { useBrand } from '../../context/BrandContext';
+import { studioApi } from '../../lib/studioService';
+import Inspiration from '../../components/studio/Inspiration';
+import Filters, { applyFilters, presetRange } from '../../components/studio/Filters';
+import Overview from '../../components/studio/Overview';
+import TimeTracking from '../../components/studio/TimeTracking';
+import TvLinks from '../../components/studio/TvLinks';
+import Connections from '../../components/studio/Connections';
+
+const TABS = [
+  ['overview', 'Creative Control', LayoutDashboard],
+  ['time', 'Time tracking', Clock],
+  ['tv', 'TV ↔ Productions', Tv],
+  ['connections', 'Connections', Plug],
+];
+const PREF_KEY = 'cp_studio_filters_v1';
+
+function loadPrefs() {
+  try { return JSON.parse(localStorage.getItem(PREF_KEY) || 'null') || {}; } catch { return {}; }
+}
+
+/** Studio Control — the creative studio's management panel (replaces the old Studio list). */
+export default function StudioPage() {
+  const { isEditor } = useAuth();
+  const { brandId, switchBrand } = useBrand();
+  const [params, setParams] = useSearchParams();
+  const tab = TABS.some(([k]) => k === params.get('tab')) ? params.get('tab') : 'overview';
+  const [f, setFState] = useState(() => ({ preset: 'this_week', division: 'all', people: [], requesters: [], product: '', q: '', status: null, ...loadPrefs() }));
+  const setF = useCallback((next) => {
+    setFState(next);
+    try { localStorage.setItem(PREF_KEY, JSON.stringify({ preset: next.preset, from: next.from, to: next.to, division: next.division })); } catch { /* ignore */ }
+  }, []);
+  const range = useMemo(() => (f.preset === 'custom' && f.from && f.to ? { from: f.from, to: f.to } : presetRange(f.preset)), [f.preset, f.from, f.to]);
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const load = useCallback(async (force = false) => {
+    setLoading(true); setError(null);
+    try { setData(await studioApi.dashboard({ ...range, force })); } catch (e) { setError(e.message); } finally { setLoading(false); }
+  }, [range]);
+  useEffect(() => { if (isEditor && brandId === 'particle') load(); }, [load, isEditor, brandId]);
+
+  const items = useMemo(() => (data ? applyFilters(data.items, f) : []), [data, f]);
+
+  if (brandId !== 'particle') {
+    return (
+      <div className="max-w-xl mx-auto mt-16 text-center p-10 rounded-3xl text-white" style={{ background: '#030b2e' }}>
+        <h2 className="text-3xl font-black uppercase" style={{ fontFamily: '"Sofia Sans Extra Condensed", sans-serif' }}>Particle only</h2>
+        <p className="mt-2 opacity-70">The Studio reads Particle’s Creative Studio boards on Monday.</p>
+        <button type="button" onClick={() => switchBrand('particle')} className="mt-6 px-5 py-2.5 rounded-full font-semibold" style={{ background: '#0808f8' }}>Switch to Particle</button>
+      </div>
+    );
+  }
+  if (!isEditor) {
+    return (
+      <div className="max-w-xl mx-auto mt-16 text-center p-10 rounded-3xl border border-gray-200 bg-white">
+        <Lock className="mx-auto text-gray-400" />
+        <h2 className="mt-3 text-xl font-bold text-gray-800">Editors only</h2>
+        <p className="mt-1 text-gray-500 text-sm">The Studio shows per-person workload and time, so it’s limited to Editors and Admins.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-[1500px] mx-auto pb-16">
+      <div className="flex flex-wrap items-end gap-4 mb-4">
+        <div>
+          <h1 className="brand-title text-4xl" style={{ color: 'var(--brand-primary)' }}>Studio</h1>
+          <p className="text-sm text-gray-500 mt-1">Design, Video and TV &amp; Special Productions — live from Monday, managed here.</p>
+        </div>
+        <nav className="ml-auto flex flex-wrap gap-1 p-1 rounded-2xl bg-white border border-gray-200">
+          {TABS.map(([k, label, Icon]) => (
+            <button key={k} type="button" onClick={() => setParams(k === 'overview' ? {} : { tab: k })}
+              className={`flex items-center gap-1.5 text-sm font-semibold px-3.5 py-2 rounded-xl transition-colors ${tab === k ? 'text-white shadow' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'}`}
+              style={tab === k ? { background: '#030b2e' } : undefined}>
+              <Icon size={15} /> {label}
+              {k === 'tv' && data && data.items.some(i => i.tv?.source === 'ask') && <span className="w-2 h-2 rounded-full bg-[#ff7a1a]" />}
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      {tab === 'overview' && <div className="mb-2"><Inspiration /></div>}
+
+      {tab !== 'connections' && (
+        <Filters f={f} setF={setF} range={range} data={data} loading={loading} onRefresh={() => load(true)} showDivision={tab !== 'tv'} />
+      )}
+
+      {error && (
+        <div className="my-3 px-4 py-3 rounded-2xl bg-red-50 text-red-700 text-sm flex items-center gap-2">
+          <AlertTriangle size={16} /> {error}
+          <button type="button" onClick={() => load(true)} className="ml-auto font-semibold underline">Try again</button>
+        </div>
+      )}
+      {data?.warnings?.length > 0 && tab !== 'connections' && (
+        <div className="my-2 text-xs text-amber-700">{data.warnings.join(' · ')}</div>
+      )}
+
+      {tab === 'connections' ? (
+        <Connections onChanged={() => load(true)} />
+      ) : !data ? (
+        <div className="py-24 text-center text-gray-400 flex flex-col items-center gap-3">
+          <Loader2 className="animate-spin" />
+          <span className="text-sm">Reading the Monday boards…</span>
+        </div>
+      ) : (
+        <div className={loading ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
+          {tab === 'overview' && <Overview data={data} items={items} f={f} setF={setF} />}
+          {tab === 'time' && <TimeTracking data={data} items={items} range={range} />}
+          {tab === 'tv' && <TvLinks data={data} items={applyFilters(data.items, { ...f, division: 'all' })} onChanged={() => load(true)} />}
+        </div>
+      )}
+    </div>
+  );
+}
