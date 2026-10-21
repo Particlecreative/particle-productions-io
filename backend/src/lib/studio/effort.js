@@ -90,7 +90,8 @@ function union(list) {
  * Split each person's time among their concurrently active tasks.
  * tasks: [{ id, people: [uid], iv: [[a, b], ...] }]
  * presence: { uid: sorted intervals the person worked (clock-ins) } — people without it use `fallback`
- * → { task: { id: seconds }, person: { uid: seconds }, personDay: { uid: { date: seconds } }, taskPerson: { id: { uid: seconds } } }
+ * → { task: { id: seconds }, person: { uid: seconds }, personDay: { uid: { date: seconds } }, taskPerson: { id: { uid: seconds } },
+ *     taskPersonDay: { id: { uid: { date: seconds } } } }
  */
 function splitEffort(tasks, { presence = null, fallback = null } = {}) {
   const byPerson = new Map();
@@ -110,6 +111,7 @@ function splitEffort(tasks, { presence = null, fallback = null } = {}) {
   const person = {};
   const personDay = {};
   const taskPerson = {};
+  const taskPersonDay = {};
   for (const [uid, pts] of byPerson) {
     pts.sort((x, y) => (x[0] - y[0]) || (x[1] - y[1])); // ends before starts at the same instant
     const active = new Map();
@@ -118,12 +120,14 @@ function splitEffort(tasks, { presence = null, fallback = null } = {}) {
       if (prev != null && t > prev && active.size) {
         const len = (t - prev) / 1000;
         const share = len / active.size;
+        const day = W.localDate(prev);
         for (const tid of active.keys()) {
           task[tid] = (task[tid] || 0) + share;
           (taskPerson[tid] = taskPerson[tid] || {})[uid] = (taskPerson[tid][uid] || 0) + share;
+          const tpd = ((taskPersonDay[tid] = taskPersonDay[tid] || {})[uid] = taskPersonDay[tid][uid] || {});
+          tpd[day] = (tpd[day] || 0) + share;
         }
         person[uid] = (person[uid] || 0) + len;
-        const day = W.localDate(prev);
         (personDay[uid] = personDay[uid] || {})[day] = (personDay[uid][day] || 0) + len;
       }
       const n = (active.get(id) || 0) + delta;
@@ -135,7 +139,37 @@ function splitEffort(tasks, { presence = null, fallback = null } = {}) {
   round(task); round(person);
   for (const d of Object.values(personDay)) round(d);
   for (const d of Object.values(taskPerson)) round(d);
-  return { task, person, personDay, taskPerson };
+  for (const byUid of Object.values(taskPersonDay)) for (const d of Object.values(byUid)) round(d);
+  return { task, person, personDay, taskPerson, taskPersonDay };
 }
 
-module.exports = { workSlices, statusSpans, activeSpans, activeWork, splitEffort, intersect, union, WORK_START_H, WORK_END_H };
+/**
+ * A task's life from submission to completion, from its status spans (see statusSpans).
+ * categoryOf(label) → 'queued' | 'in_progress' | 'fixes' | 'review' | 'paused' | 'stuck' | 'delivered' | 'other'
+ * → { started_ms, completed_ms (null while open), fix_rounds, phases: { category: ms } }
+ * Phases are calendar time up to completion; the final "done" stretch isn't part of the life.
+ */
+function taskLife(spans, categoryOf, { active = ['in_progress', 'fixes'] } = {}) {
+  let started = null;
+  let doneSince = null;
+  let fixRounds = 0;
+  let prev = null;
+  const phases = {};
+  for (const s of spans) {
+    const cat = categoryOf(s.label);
+    if (started == null && active.includes(cat)) started = s.a;
+    if (cat === 'fixes' && prev !== 'fixes') fixRounds++;
+    if (cat === 'delivered') { if (prev !== 'delivered') doneSince = s.a; } else doneSince = null;
+    phases[cat] = (phases[cat] || 0) + (s.b - s.a);
+    prev = cat;
+  }
+  // The trailing "done" stretch is after completion
+  if (doneSince != null) {
+    const tail = spans.filter(s => s.a >= doneSince).reduce((a, s) => a + (s.b - s.a), 0);
+    phases.delivered -= tail;
+    if (phases.delivered <= 0) delete phases.delivered;
+  }
+  return { started_ms: started, completed_ms: doneSince, fix_rounds: fixRounds, phases };
+}
+
+module.exports = { workSlices, statusSpans, activeSpans, activeWork, splitEffort, taskLife, intersect, union, WORK_START_H, WORK_END_H };

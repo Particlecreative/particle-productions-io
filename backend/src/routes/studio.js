@@ -42,7 +42,7 @@ router.get('/dashboard', async (req, res) => {
     const from = DATE_RE.test(req.query.from || '') ? req.query.from : W.sundayOf(Date.now());
     const to = DATE_RE.test(req.query.to || '') ? req.query.to : W.addDays(from, 6);
     if (W.daysBetween(from, to) > 120) return res.status(400).json({ error: 'Pick a period of 4 months or less' });
-    const data = await getStudio({ brandId: req.brandId, from, to, force: req.query.force === '1' });
+    const data = await getStudio({ brandId: req.brandId, from, to, force: req.query.force === '1', lite: req.query.lite === '1' });
     res.json({ ...data, today });
   } catch (err) { errorJson(res, err); }
 });
@@ -78,7 +78,9 @@ router.patch('/items/:itemId', async (req, res) => {
     if (timeline && (await bamboo.configured().catch(() => false))) {
       const who = Array.isArray(people) ? people : (req.body.current_people || []);
       if (who.length) {
-        const studio = await getStudio({ brandId: req.brandId, from: timeline.from, to: timeline.to }).catch(() => null);
+        // People's names / emails don't depend on the period — reuse this week's light build (usually cached)
+        const week = W.sundayOf(Date.now());
+        const studio = await getStudio({ brandId: req.brandId, from: week, to: W.addDays(week, 6), lite: true }).catch(() => null);
         const plist = who.map(id => studio?.people?.[id]).filter(Boolean).map(p => ({ id: p.id, name: p.name, email: p.email }));
         if (plist.length) {
           const wo = await bamboo.whosOut(plist, timeline.from, timeline.to);
@@ -92,6 +94,8 @@ router.patch('/items/:itemId', async (req, res) => {
       }
     }
     await updateSchedule(config, { board, itemId: req.params.itemId, timeline, people });
+    // Next load shows the change (dashboards are cached for a few minutes)
+    monday.clearCache(`studio:${req.brandId}:`);
     res.json({ ok: true });
   } catch (err) { errorJson(res, err); }
 });

@@ -43,12 +43,14 @@ export function studioFixture({ from, to }) {
         status: { label: s.label, color: s.color, category: s.category }, group: s.category === 'queued' && r() > 0.5 ? 'Form Requests' : s.label,
         people: s.category === 'queued' && r() > 0.6 ? [] : [pid], requested_by: [REQ[Math.floor(r() * REQ.length)][0]],
         timeline: (() => { const a = Math.floor(r() * days.length); return { from: days[a], to: days[Math.min(days.length - 1, a + Math.floor(r() * 4))] }; })(),
-        deadline: add(from, Math.floor(r() * 12) - 2), versions: 1, created_at: at(add(from, -10), 10), monday_url: 'https://monday.com',
+        deadline: add(from, Math.floor(r() * 12) - 2), versions: 1, created_at: at(add(from, -2 - Math.floor(r() * 18)), 10), monday_url: 'https://monday.com',
         open: s.category !== 'delivered', active_now: ['in_progress', 'fixes'].includes(s.category),
         effort_s: effort, effort_by_person: { [pid]: effort }, effort_total_s: effort + Math.round(r() * 20 * 3600),
         timer_s: Math.round(effort * (1 + r() * 2)), timer_total_s: 0, running: r() > 0.8,
-        delivered_in_period: s.category === 'delivered', delivered_at: s.category === 'delivered' ? Date.parse(at(days[1], 15)) : undefined,
+        delivered_in_period: s.category === 'delivered' && r() > 0.4, delivered_at: s.category === 'delivered' ? Date.parse(at(days[1], 15)) : undefined,
       };
+      it.life = lifeFor(it, r);
+      it.effort_days = it.people[0] ? spreadEffort(it, pid, days, today, r) : {};
       if (tv) {
         const c = PRODUCTIONS.find(([, nm]) => nm.toLowerCase().includes(camp.toLowerCase().split(' ').pop()));
         it.tv = c ? { production_id: c[0], name: c[1], stage: c[2], source: 'auto', confidence: 'high', why: `matches “${camp}”`, suggestions: [{ id: c[0], name: c[1], score: 4 }] }
@@ -59,6 +61,10 @@ export function studioFixture({ from, to }) {
     }
   }
   for (const p of Object.values(people)) {
+    // Clock-ins for earlier days someone worked on a task shown here
+    for (const it of items) for (const d of Object.keys(it.effort_days?.[p.id] || {})) {
+      if (d < from) p.clock_by_day[d] = { in: at(d, 9), out: at(d, 18), hours: 9, open: false };
+    }
     for (const d of days) {
       const dow = new Date(`${d}T12:00:00Z`).getUTCDay();
       if (dow > 4 || d > today || p.out.some(o => o.start <= d && o.end >= d)) continue;
@@ -85,6 +91,35 @@ export function studioFixture({ from, to }) {
     boards, people, requesters, items, productions: PRODUCTIONS.map(([id, name, stage]) => ({ id, name, stage })),
     effort_source: 'bamboohr', capacity: { video: 3, design: 5 }, warnings: [],
   };
+}
+
+// Submitted → (started) → completed, with where the calendar time went
+function lifeFor(it, r) {
+  const sub = Date.parse(it.created_at);
+  const end = it.open ? Date.now() : it.delivered_at;
+  const total = Math.max(3600e3, end - sub);
+  const w = { queued: 0.05 + r() * 0.3, in_progress: 0.1 + r() * 0.25, review: r() * 0.4, fixes: r() * 0.2, paused: r() * 0.1 };
+  if (it.status.category === 'queued') { for (const k of Object.keys(w)) w[k] = 0; w.queued = 1; }
+  const sum = Object.values(w).reduce((a, v) => a + v, 0);
+  const phases = Object.fromEntries(Object.entries(w).filter(([, v]) => v).map(([k, v]) => [k, Math.round((total * v) / sum / 1000)]));
+  return {
+    submitted: it.created_at,
+    started: it.status.category === 'queued' ? null : new Date(sub + phases.queued * 1000).toISOString(),
+    completed: it.open ? null : new Date(end).toISOString(),
+    partial: false, fix_rounds: phases.fixes ? 1 + Math.floor(r() * 3) : 0, phases,
+  };
+}
+
+// Hands-on seconds per day: this period's effort on up to 3 workdays, the rest on days before the period
+function spreadEffort(it, pid, days, today, r) {
+  const out = {};
+  const put = (d, s) => { if (s > 0) out[d] = (out[d] || 0) + Math.round(s); };
+  const recent = days.filter(d => d <= today && new Date(`${d}T12:00:00Z`).getUTCDay() <= 4).slice(0, 3);
+  for (const d of recent) put(d, it.effort_s / recent.length);
+  const before = [];
+  for (let i = 1; before.length < 3 && i < 14; i++) { const d = add(days[0], -i); if (new Date(`${d}T12:00:00Z`).getUTCDay() <= 4 && r() > 0.3) before.push(d); }
+  for (const d of before) put(d, (it.effort_total_s - it.effort_s) / before.length);
+  return Object.keys(out).length ? { [pid]: out } : {};
 }
 
 export const fixtureInspiration = { date: '2026-10-21', line: 'Just keep swimming.', title: 'Finding Nemo', year: 2003, director: 'Andrew Stanton', image_url: null, source: null };

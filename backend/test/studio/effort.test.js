@@ -65,3 +65,34 @@ test('clock-ins limit effort: active but not clocked in does not count', () => {
   const r2 = splitEffort([{ id: 'B', people: ['u2'], iv: activeSpans(spans, isActive) }], { presence: {}, fallback: workSlices(at(day, 0), at(day, 24)) });
   assert.strictEqual(H(r2.task.B), 10);
 });
+
+test('per-task per-day effort adds up to the task total', () => {
+  const r = splitEffort([
+    { id: 'A', people: ['u1'], iv: [[at('2026-10-18', 9), at('2026-10-18', 12)], [at('2026-10-19', 10), at('2026-10-19', 11)]] },
+    { id: 'B', people: ['u1'], iv: [[at('2026-10-18', 9), at('2026-10-18', 10)]] },
+  ]);
+  assert.strictEqual(H(r.taskPersonDay.A.u1['2026-10-18']), 2.5);
+  assert.strictEqual(H(r.taskPersonDay.A.u1['2026-10-19']), 1);
+  assert.strictEqual(H(r.task.A), 3.5);
+});
+
+test('task life: waiting → working → review → fixes → review → done', () => {
+  const { taskLife } = require('../../src/lib/studio/effort');
+  const cat = { '': 'queued', Pending: 'queued', Working: 'in_progress', Review: 'review', 'Fixes Round': 'fixes', Completed: 'delivered' };
+  const ev = (d, h, from, to) => ({ at_ms: at(d, h), prev: { text: from }, value: { text: to } });
+  const created = at('2026-10-11', 9);
+  const spans = statusSpans([
+    ev('2026-10-12', 9, 'Pending', 'Working'),
+    ev('2026-10-13', 9, 'Working', 'Review'),
+    ev('2026-10-14', 9, 'Review', 'Fixes Round'),
+    ev('2026-10-14', 15, 'Fixes Round', 'Review'),
+    ev('2026-10-15', 9, 'Review', 'Completed'),
+  ], { fromMs: created, toMs: at('2026-10-20', 9), initialLabel: '' });
+  const life = taskLife(spans, (l) => cat[l] || 'other');
+  assert.strictEqual(life.started_ms, at('2026-10-12', 9));
+  assert.strictEqual(life.completed_ms, at('2026-10-15', 9));
+  assert.strictEqual(life.fix_rounds, 1);
+  assert.strictEqual(H(life.phases.queued * 1 / 1000), 24);
+  assert.strictEqual(H(life.phases.review / 1000), 24 + 18);
+  assert.strictEqual(life.phases.delivered, undefined);
+});

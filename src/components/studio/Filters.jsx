@@ -151,10 +151,18 @@ export default function Filters({ f, setF, range, data, loading, onRefresh, show
  * Monday's studio boards plan by TIMELINE: a task belongs to a period when its timeline overlaps it
  * (or it was delivered in it). Deadlines are shown, never used for scheduling.
  */
+/**
+ * In the period = its Monday timeline overlaps the period (the studio schedules by timeline, like Monday's
+ * Creative Control). Only a task with no timeline falls back to its deadline, then to when it was delivered.
+ */
 export function inPeriod(it, range) {
-  if (it.delivered_in_period) return true;
   const t = it.timeline;
-  return !!(t?.from && t?.to && t.from <= range.to && t.to >= range.from);
+  if (t?.from || t?.to) {
+    const [a, b] = [t.from || t.to, t.to || t.from].sort();
+    return a <= range.to && b >= range.from;
+  }
+  if (it.deadline) return it.deadline >= range.from && it.deadline <= range.to;
+  return !!it.delivered_in_period;
 }
 export function nextWindow(range) { return { from: addDays(range.to, 1), to: addDays(range.to, 7) }; }
 export function fmtRange(t) {

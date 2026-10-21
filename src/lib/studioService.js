@@ -30,7 +30,7 @@ const LIVE = !import.meta.env.DEV || import.meta.env.VITE_STUDIO_LIVE === '1';
 const fx = () => import('../components/studio/dev/fixture');
 
 export const studioApi = {
-  dashboard: async ({ from, to, force = false }) => (LIVE ? call(`/dashboard?from=${from}&to=${to}${force ? '&force=1' : ''}`) : (await fx()).studioFixture({ from, to })),
+  dashboard: async ({ from, to, force = false, lite = false }) => (LIVE ? call(`/dashboard?from=${from}&to=${to}${force ? '&force=1' : ''}${lite ? '&lite=1' : ''}`) : (await fx()).studioFixture({ from, to })),
   inspiration: async () => (LIVE ? call('/inspiration') : (await fx()).fixtureInspiration),
   setTvLink: (itemId, body) => call(`/tv-links/${itemId}`, { method: 'PUT', body }),
   patchItem: async (itemId, body) => (LIVE ? call(`/items/${itemId}`, { method: 'PATCH', body }) : { ok: true }),

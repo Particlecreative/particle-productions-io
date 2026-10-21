@@ -172,7 +172,7 @@ function BarList({ rows, onPick, empty = 'Nothing here' }) {
 
 function TaskTable({ items: periodItems, allItems, data }) {
   const [scope, setScope] = useState('period');
-  const items = scope === 'period' ? periodItems : allItems.filter(i => i.open || i.delivered_in_period);
+  const items = scope === 'period' ? periodItems : allItems.filter(i => i.open);
   const [sort, setSort] = useState(['timeline', 1]);
   const [limit, setLimit] = useState(60);
   const today = data.today;
@@ -319,14 +319,15 @@ export default function Overview({ data, items, allItems, range, emails, f, setF
   const upcomingFor = (uid) => allItems.filter(i => i.open && i.people.includes(uid) && !items.includes(i) && i.timeline?.from && i.timeline.from <= next.to && (i.timeline.to || i.timeline.from) >= next.from);
   const byRole = (role) => people.filter(p => p.role === role && (items.some(i => i.people.includes(p.id)) || upcomingFor(p.id).length))
     .sort((a, b) => items.filter(i => i.people.includes(b.id)).length - items.filter(i => i.people.includes(a.id)).length);
-  const delivered = items.filter(i => i.delivered_in_period);
+  // Done = finished tasks whose timeline is in the period (same rule as Monday's Creative Control)
+  const delivered = items.filter(i => !i.open);
   const open = items.filter(i => i.open);
   // Overdue is a "right now" view: any open task past its deadline, whatever its timeline
   const overdue = allItems.filter(i => i.open && i.deadline && i.deadline < today);
   const outToday = people.filter(p => (p.out || []).some(o => o.start <= today && o.end >= today));
   const kpis = [
     ['Scheduled', items.filter(i => i.open), 'text-[#030b2e]'],
-    ['Delivered', delivered, 'text-emerald-600'],
+    ['Completed', delivered, 'text-emerald-600'],
     ['In review', open.filter(i => i.status.category === 'review'), 'text-violet-600'],
     ['Fixes', open.filter(i => i.status.category === 'fixes'), 'text-amber-600'],
     ['Overdue', overdue, 'text-red-600'],
@@ -386,7 +387,7 @@ export default function Overview({ data, items, allItems, range, emails, f, setF
         );
       }
       case 'completed': return (
-        <Card title="Completed" subtitle="Delivered in this period · click a bar" className="h-full">
+        <Card title="Completed" subtitle="Done, with a timeline in this period · click a bar" className="h-full">
           <div className="flex flex-col gap-4 pt-2">
             {doneBy.map(({ b, list: l }) => (
               <button key={b} type="button" onClick={() => setList({ title: `${BOARD_LABEL[b]} · completed`, items: l })} className="text-left group">

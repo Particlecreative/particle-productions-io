@@ -123,7 +123,7 @@ export default function StudioPage() {
       ) : (
         <div className={loading ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
           {tab === 'overview' && <Overview data={data} items={items} allItems={allItems} range={range} emails={emails} f={f} setF={setF} />}
-          {tab === 'time' && <TimeTracking data={data} items={allItems} range={range} />}
+          {tab === 'time' && <TimeTracking data={data} items={items} allItems={allItems} range={range} f={f} setF={setF} />}
           {tab === 'tv' && <TvLinks data={data} items={applyFilters(data.items, { ...f, division: 'all' })} onChanged={() => load(true)} />}
         </div>
       )}
