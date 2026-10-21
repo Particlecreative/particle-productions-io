@@ -102,6 +102,8 @@ const DEFAULTS = {
       paused: ['On Hold'],
     },
   },
+  // AI ticket creator: write briefs in the style of these requesters' real briefs (Lilian Krumholz)
+  tickets: { style_authors: ['101019167'] },
   // Tickets whose Monday Department (or video Type) matches go to the TV & Special Productions division
   divisions: {
     tv: { departments: ['TV', 'Special Project (SP)'], types: ['TV'] },

@@ -146,8 +146,8 @@ router.get('/ticket-form', async (req, res) => {
 
 router.post('/ticket/draft', async (req, res) => {
   try {
-    const { form } = await formFor(req);
-    const out = await tickets.draftTicket({ form, messages: req.body?.messages, draft: req.body?.draft, board: req.body?.board, userName: req.user?.name });
+    const { form, config } = await formFor(req);
+    const out = await tickets.draftTicket({ form, config, messages: req.body?.messages, draft: req.body?.draft, board: req.body?.board, userName: req.user?.name });
     res.json(out);
   } catch (err) { errorJson(res, err); }
 });

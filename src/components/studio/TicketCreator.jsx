@@ -11,14 +11,17 @@ const STARTERS = [
   'Website hero banner for the Black Friday sale',
 ];
 
+// Same as the server: "Product | Campaign | Platform | AI tool | Task name"
 function itemName(f) {
   const ai = f.ai_assist && !/^(none|no|-)$/i.test(f.ai_assist) ? f.ai_assist : null;
-  return [f.product, ai, f.task_name].filter(Boolean).join(' | ');
+  const platform = f.platform && !/^(other|-)$/i.test(f.platform) ? f.platform : null;
+  return [f.product, f.campaign?.[0], platform, ai, f.task_name].filter(Boolean).join(' | ');
 }
 
-function Chips({ value, options, onChange, max }) {
+function Chips({ value, options, onChange, max, free }) {
   const [adding, setAdding] = useState(false);
   const rest = (options || []).filter(o => !value.includes(o));
+  const addFree = (t) => { const v = t.trim(); if (v && !value.includes(v)) onChange([...value, v]); setAdding(false); };
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {value.map(v => (
@@ -26,7 +29,14 @@ function Chips({ value, options, onChange, max }) {
           {v}<button type="button" onClick={() => onChange(value.filter(x => x !== v))} className="text-gray-400 hover:text-gray-700"><X size={12} /></button>
         </span>
       ))}
-      {(!max || value.length < max) && (adding ? (
+      {(!max || value.length < max) && (adding && free ? (
+        <>
+          <input autoFocus list="cp-free-options" placeholder="Type or pick…" onBlur={e => addFree(e.target.value)}
+            onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); addFree(e.currentTarget.value); } if (e.key === 'Escape') setAdding(false); }}
+            className="text-xs px-2.5 py-1 rounded-full border border-gray-200 w-[200px] outline-none focus:border-[#4a55ff]" />
+          <datalist id="cp-free-options">{rest.map(o => <option key={o} value={o} />)}</datalist>
+        </>
+      ) : adding ? (
         <select autoFocus value="" onBlur={() => setAdding(false)} onChange={(e) => { if (e.target.value) onChange([...value, e.target.value]); setAdding(false); }}
           className="text-xs px-2 py-1 rounded-full border border-gray-200 max-w-[200px]">
           <option value="">Choose…</option>
@@ -50,9 +60,9 @@ function Field({ f, value, onChange, missing }) {
       </select>
     );
   } else if (f.type === 'dropdown' || f.type === 'people') {
-    input = <Chips value={Array.isArray(value) ? value : []} options={f.options} onChange={onChange} />;
+    input = <Chips value={Array.isArray(value) ? value : []} options={f.options} onChange={onChange} free={f.free} />;
   } else if (f.type === 'long_text') {
-    input = <textarea rows={f.key === 'concept' ? 6 : 3} value={value || ''} onChange={e => onChange(e.target.value)} onKeyDown={e => e.stopPropagation()} className={`${base} leading-relaxed`} />;
+    input = <textarea rows={['concept', 'script', 'supporting_text'].includes(f.key) ? 6 : 3} value={value || ''} onChange={e => onChange(e.target.value)} onKeyDown={e => e.stopPropagation()} className={`${base} leading-relaxed`} />;
   } else if (f.type === 'date') {
     input = <input type="date" value={value || ''} onChange={e => onChange(e.target.value)} className={base} />;
   } else if (f.type === 'number') {
