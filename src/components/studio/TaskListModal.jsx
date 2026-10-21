@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, ExternalLink, Filter, ArrowUpDown, Tv, Mail } from 'lucide-react';
 import { Avatar, StatusPill, ProductTag, hrs, DIVISION, TimelinePill } from './Bits';
-import { useStudio } from './writes';
+import { useStudio, workdaysSince } from './writes';
 
 const BOARD_LABEL = { video: 'Video', design: 'Design', retention: 'Email' };
 const fmtDate = (d) => (d ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '–');
@@ -14,6 +14,8 @@ const fmtDate = (d) => (d ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US
 export default function TaskListModal({ list, data, onClose, onFilter }) {
   const { openTask } = useStudio();
   const [sort, setSort] = useState(['timeline', 1]);
+  // Lists about time in a status open longest-first
+  useEffect(() => { setSort(list?.statusAge ? ['age', -1] : ['timeline', 1]); }, [list]);
   useEffect(() => {
     // Esc closes the task panel first when one is open on top
     const onKey = (e) => { if (e.key === 'Escape' && !document.querySelector('[data-task-panel]')) onClose(); };
@@ -22,7 +24,7 @@ export default function TaskListModal({ list, data, onClose, onFilter }) {
   }, [onClose]);
   const items = useMemo(() => {
     const [k, dir] = sort;
-    const v = (it) => (k === 'deadline' ? (it.deadline || '9999') : k === 'timeline' ? (it.timeline?.from || '9999') : k === 'effort' ? (it.effort_s || 0) : k === 'status' ? it.status.label : it.name.toLowerCase());
+    const v = (it) => (k === 'age' ? -(Date.parse(it.status_since) || Date.now()) : k === 'deadline' ? (it.deadline || '9999') : k === 'timeline' ? (it.timeline?.from || '9999') : k === 'effort' ? (it.effort_s || 0) : k === 'status' ? it.status.label : it.name.toLowerCase());
     // Show each task as it is now (a change made in the task panel shows here straight away)
     const now = new Map([...(data.items || []), ...(data.emails || [])].map(i => [`${i.board}:${i.id}`, i]));
     return (list?.items || []).map(i => now.get(`${i.board}:${i.id}`) || i)
@@ -87,7 +89,14 @@ export default function TaskListModal({ list, data, onClose, onFilter }) {
                       </div>
                     </td>
                     <td className="py-2.5 px-2"><div className="flex -space-x-1.5">{it.people.map(p => data.people[p] && <Avatar key={p} person={data.people[p]} size={24} ring="#fff" />)}</div></td>
-                    <td className="py-2.5 px-2"><StatusPill status={it.status} small /></td>
+                    <td className="py-2.5 px-2">
+                      <StatusPill status={it.status} small />
+                      {list.statusAge && it.status_since && (
+                        <div className="text-[10px] text-amber-700 font-semibold mt-0.5 whitespace-nowrap" title={`Since ${new Date(it.status_since).toLocaleString('en-GB', { timeZone: 'Asia/Jerusalem' })}`}>
+                          for {workdaysSince(it.status_since, today)} workdays{it.status_since_partial ? '+' : ''}
+                        </div>
+                      )}
+                    </td>
                     <td className="py-2.5 px-2"><TimelinePill timeline={it.timeline} today={today} color={it.status.color} small /></td>
                     <td className={`py-2.5 px-2 text-xs whitespace-nowrap ${late ? 'text-red-600 font-semibold' : 'text-gray-600'}`}>{fmtDate(it.deadline)}</td>
                     <td className="py-2.5 px-2 text-xs text-right tabular-nums font-semibold text-gray-900">{hrs(it.effort_s)}</td>

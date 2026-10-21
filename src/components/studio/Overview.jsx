@@ -2,13 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { DndContext, PointerSensor, KeyboardSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, useSortable, rectSortingStrategy, arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ExternalLink, Tv, Inbox, ArrowUpDown, Plane, Mail, GripVertical, EyeOff, Eye, LayoutGrid, Check, RotateCcw, Loader2, AlertTriangle, Hourglass, CalendarX2, UserX, CalendarOff, Flame, Activity, CheckCircle2 } from 'lucide-react';
+import { ExternalLink, Tv, Inbox, ArrowUpDown, Plane, Mail, GripVertical, EyeOff, Eye, LayoutGrid, Check, RotateCcw, Loader2, AlertTriangle, Hourglass, CalendarX2, UserX, CalendarOff, Flame, Activity, CheckCircle2, Timer } from 'lucide-react';
 import { Avatar, Card, StatusPill, ProductTag, StackBar, Empty, hrs, DIVISION, TimelinePill, BalancedGrid, useWidth } from './Bits';
 import { nextWindow } from './Filters';
 import Inspiration from './Inspiration';
 import TaskListModal from './TaskListModal';
 import { studioApi } from '../../lib/studioService';
-import { useStudio, workdays, firstName } from './writes';
+import { useStudio, workdays, firstName, workdaysSince } from './writes';
 
 const BOARD_LABEL = { video: 'Video', design: 'Design' };
 const isNew = (it) => /form requests|ready for assign/i.test(it.group || '') || (it.status.category === 'queued' && !it.people.length);
@@ -317,10 +317,18 @@ const DAY_MS = 86400000;
 function needsAttention({ data, items, allItems, range, today }) {
   const now = Date.parse(data.generated_at) || Date.now();
   const open = allItems.filter(i => i.open);
+  // Non-TV tasks left in Working or Paused for too long (TV productions legitimately run for weeks)
+  const st = data.stale || { working_days: 3, paused_days: 5 };
+  const lingering = open.filter(i => {
+    if (i.division === 'tv' || i.board === 'retention' || !i.status_since) return false;
+    const n = workdaysSince(i.status_since, today);
+    return (i.status.category === 'in_progress' && n > st.working_days) || (i.status.category === 'paused' && n > st.paused_days);
+  });
   const tasks = [
     { key: 'overdue', icon: AlertTriangle, color: '#e2445c', label: 'Overdue', hint: 'past the deadline, still open', items: open.filter(i => i.deadline && i.deadline < today) },
     { key: 'past_deadline', icon: CalendarX2, color: '#ff7a1a', label: 'Planned past the deadline', hint: 'timeline ends after it’s due', items: open.filter(i => i.deadline && i.deadline >= today && i.timeline?.to && i.timeline.to > i.deadline) },
     { key: 'stuck', icon: Flame, color: '#333333', label: 'Stuck', hint: 'status is Stuck', items: open.filter(i => i.status.category === 'stuck') },
+    { key: 'lingering', icon: Timer, color: '#fdab3d', label: 'Long in Working / Paused', hint: `non-TV · Working over ${st.working_days} or Paused over ${st.paused_days} workdays`, items: lingering, statusAge: true },
     { key: 'waiting', icon: Hourglass, color: '#a25ddc', label: 'Waiting 5+ days to start', hint: 'submitted, never in Working', items: open.filter(i => i.life?.submitted && !i.life.started && now - Date.parse(i.life.submitted) > 5 * DAY_MS) },
     { key: 'unassigned', icon: UserX, color: '#579bfc', label: 'No one assigned', hint: 'open, without a designer / editor', items: open.filter(i => !i.people.length) },
     { key: 'unscheduled', icon: CalendarOff, color: '#9d99b9', label: 'Not on the timeline', hint: 'assigned, no timeline', items: open.filter(i => i.people.length && !i.timeline?.from) },
@@ -360,7 +368,7 @@ function Attention({ signals, onOpen, setF, f, goTab }) {
     <Card title={<span className="flex items-center gap-2"><Activity size={15} className="text-[#e2445c]" /> Needs attention</span>} subtitle="Right now, across everything open · click to see them">
       {tasks.length > 0 && (
         <BalancedGrid items={tasks} min={210} gap={8} render={s => (
-            <button key={s.key} type="button" onClick={() => onOpen({ title: s.label, color: s.color, items: s.items, subtitle: s.hint })}
+            <button key={s.key} type="button" onClick={() => onOpen({ title: s.label, color: s.color, items: s.items, subtitle: s.hint, statusAge: s.statusAge })}
               className="text-left rounded-xl border border-gray-200 px-3 py-2.5 hover:border-gray-400 hover:shadow-sm flex items-center gap-3">
               <span className="w-8 h-8 rounded-lg flex items-center justify-center flex-none" style={{ background: `${s.color}18`, color: s.color }}><s.icon size={16} /></span>
               <span className="min-w-0 flex-1">

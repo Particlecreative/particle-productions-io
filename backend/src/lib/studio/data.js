@@ -12,7 +12,7 @@ const W = require('../creative/week');
 const { getCreativeConfig } = require('../creative/config');
 const { classifyDeliveries } = require('../creative/classify');
 const { normalizeItem, trackedInWindow } = require('../creative/snapshot');
-const { statusSpans, activeSpans, splitEffort, workSlices, taskLife } = require('./effort');
+const { statusSpans, activeSpans, splitEffort, workSlices, taskLife, statusSince } = require('./effort');
 const bamboo = require('./bamboohr');
 const { linkTvItems } = require('./tvLinks');
 
@@ -250,6 +250,10 @@ async function buildStudio({ brandId = 'particle', from, to, now = Date.now(), f
       const startMs = Math.max(Number.isFinite(c) ? c : lifeFrom, lifeFrom);
       const spans = statusSpans(evs, { fromMs: startMs, toMs: now, initialLabel: evs.length ? '' : it.status.label });
       lifeTasks.push({ id, people: it.people, iv: activeSpans(spans, isActive) });
+      // When it entered its current status (the last unbroken stretch) — to spot tasks left in Working / Paused
+      const since = statusSince(spans, it.status.label);
+      it.status_since = since ? new Date(since).toISOString() : null;
+      it.status_since_partial = since != null && since <= lifeFrom && Number.isFinite(c) && c < lifeFrom;
       // Life: submitted → completed (or now), and where that calendar time went
       const life = taskLife(spans, lifeCategory);
       const completed = life.completed_ms ?? (it.open ? null : (it.delivered_at ?? null));
@@ -399,6 +403,7 @@ async function buildStudio({ brandId = 'particle', from, to, now = Date.now(), f
     lite,
     holidays,
     capacity: config.capacity_per_day,
+    stale: config.stale_status,
     warnings,
   };
 }

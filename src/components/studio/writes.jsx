@@ -13,6 +13,13 @@ export const fmtDay = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-U
 export const firstName = (name) => (name || '').split(' ')[0];
 export const workdays = (from, to) => { const o = []; for (let d = from; d <= to; d = addDays(d, 1)) if (dow(d) <= 4) o.push(d); return o; };
 
+/** Whole workdays (Sun–Thu) since an ISO time, up to today in Israel — "entered Working on Sunday" is 3 by Wednesday. */
+export function workdaysSince(iso, today) {
+  if (!iso) return 0;
+  const from = new Date(iso).toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
+  return from >= today ? 0 : workdays(addDays(from, 1), today).length;
+}
+
 export function outOn(person, day) {
   return (person?.out || []).find(o => o.start <= day && o.end >= day) || null;
 }

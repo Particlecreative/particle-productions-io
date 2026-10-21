@@ -172,4 +172,12 @@ function taskLife(spans, categoryOf, { active = ['in_progress', 'fixes'] } = {})
   return { started_ms: started, completed_ms: doneSince, fix_rounds: fixRounds, phases };
 }
 
-module.exports = { workSlices, statusSpans, activeSpans, activeWork, splitEffort, taskLife, intersect, union, WORK_START_H, WORK_END_H };
+/** Start of the last unbroken stretch in `label` (ms), or null if the task isn't in it at the end of the spans. */
+function statusSince(spans, label) {
+  const key = String(label || '').trim().toLowerCase();
+  let since = null;
+  for (let i = spans.length - 1; i >= 0 && key && String(spans[i].label || '').trim().toLowerCase() === key; i--) since = spans[i].a;
+  return since;
+}
+
+module.exports = { workSlices, statusSpans, activeSpans, activeWork, splitEffort, taskLife, statusSince, intersect, union, WORK_START_H, WORK_END_H };

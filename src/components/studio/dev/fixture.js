@@ -50,6 +50,7 @@ export function studioFixture({ from, to }) {
         delivered_in_period: s.category === 'delivered' && r() > 0.4, delivered_at: s.category === 'delivered' ? Date.parse(at(days[1], 15)) : undefined,
       };
       it.life = lifeFor(it, r);
+      it.status_since = new Date(Date.now() - Math.floor(r() * 12) * 86400e3 - 3600e3).toISOString();
       it.effort_days = it.people[0] ? spreadEffort(it, pid, days, today, r) : {};
       if (tv) {
         const c = PRODUCTIONS.find(([, nm]) => nm.toLowerCase().includes(camp.toLowerCase().split(' ').pop()));

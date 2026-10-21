@@ -96,3 +96,15 @@ test('task life: waiting → working → review → fixes → review → done', 
   assert.strictEqual(H(life.phases.review / 1000), 24 + 18);
   assert.strictEqual(life.phases.delivered, undefined);
 });
+
+test('status since: the last unbroken stretch of the current status', () => {
+  const { statusSince } = require('../../src/lib/studio/effort');
+  const e = (d, h, from, to) => ({ at_ms: at(d, h), prev: { text: from }, value: { text: to } });
+  const created = at('2026-10-11', 9);
+  const spans = statusSpans([e('2026-10-12', 9, '', 'Working'), e('2026-10-13', 9, 'Working', 'Paused'), e('2026-10-14', 9, 'Paused', 'Working')],
+    { fromMs: created, toMs: at('2026-10-20', 9), initialLabel: '' });
+  assert.strictEqual(statusSince(spans, 'Working'), at('2026-10-14', 9));
+  assert.strictEqual(statusSince(spans, 'Paused'), null);
+  // never changed: in it since the window started
+  assert.strictEqual(statusSince(statusSpans([], { fromMs: created, toMs: at('2026-10-20', 9), initialLabel: 'Paused' }), 'Paused'), created);
+});
