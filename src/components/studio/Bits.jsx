@@ -111,3 +111,23 @@ export function StackBar({ parts, height = 12, total, onPart, rounded = true }) 
 export function Empty({ children }) {
   return <div className="text-sm text-gray-400 text-center py-10">{children}</div>;
 }
+
+/** Monday-style timeline pill: dark track, filled for the part that has already passed. */
+export function TimelinePill({ timeline, today, color = '#e2445c', small = false }) {
+  if (!timeline?.from) return <span className="text-xs text-gray-300">No timeline</span>;
+  const f = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  const to = timeline.to || timeline.from;
+  const sameMonth = timeline.from.slice(0, 7) === to.slice(0, 7);
+  const label = to === timeline.from ? f(timeline.from) : `${f(timeline.from)} – ${sameMonth ? Number(to.slice(8)) : f(to)}`;
+  const day = (s) => Date.parse(`${s}T12:00:00Z`);
+  const total = (day(to) - day(timeline.from)) / 86400000 + 1;
+  const done = today ? Math.max(0, Math.min(total, (day(today) - day(timeline.from)) / 86400000 + 1)) : 0;
+  const pct = Math.round((done / total) * 100);
+  return (
+    <span className={`relative inline-flex items-center justify-center overflow-hidden rounded-full text-white font-semibold whitespace-nowrap ${small ? 'text-[10px] h-5 min-w-[84px] px-2' : 'text-[11px] h-6 min-w-[96px] px-2.5'}`}
+      style={{ background: '#333' }} title={`${timeline.from} → ${to}`}>
+      <span className="absolute inset-y-0 left-0" style={{ width: `${pct}%`, background: color }} />
+      <span className="relative">{label}</span>
+    </span>
+  );
+}

@@ -3,7 +3,8 @@ import { DndContext, PointerSensor, KeyboardSensor, closestCenter, useSensor, us
 import { SortableContext, useSortable, rectSortingStrategy, arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { ExternalLink, Tv, Inbox, ArrowUpDown, Plane, Mail, GripVertical, EyeOff, Eye, LayoutGrid, Check, RotateCcw, Loader2 } from 'lucide-react';
-import { Avatar, Card, StatusPill, ProductTag, StackBar, Empty, hrs, DIVISION } from './Bits';
+import { Avatar, Card, StatusPill, ProductTag, StackBar, Empty, hrs, DIVISION, TimelinePill } from './Bits';
+import { nextWindow } from './Filters';
 import Inspiration from './Inspiration';
 import TaskListModal from './TaskListModal';
 import { studioApi } from '../../lib/studioService';
@@ -95,7 +96,7 @@ function Donut({ parts, size = 92, stroke = 16, onPart }) {
 }
 
 /** "Natalie's work" — click a slice / status to see exactly those tasks. */
-function PersonCard({ person, items, boards, onOpen, today }) {
+function PersonCard({ person, items, upcoming = [], boards, onOpen, today }) {
   const counts = new Map();
   for (const it of items) {
     const st = boards[it.board]?.statuses.find(s => s.label === it.status.label);
@@ -130,11 +131,17 @@ function PersonCard({ person, items, boards, onOpen, today }) {
             </button>
           ))}
           {parts.length > 6 && <div className="text-[10px] text-gray-400">+{parts.length - 6} more</div>}
-          {!parts.length && <div className="text-[11px] text-gray-400">No tasks</div>}
+          {!parts.length && <div className="text-[11px] text-gray-400">Nothing scheduled in this period</div>}
         </div>
       </div>
+      {upcoming.length > 0 && (
+        <button type="button" onClick={() => onOpen({ title: `${first} · next week`, person, items: upcoming })}
+          className="mt-2 w-full text-left text-[11px] font-semibold text-[#0808f8] bg-[#0808f8]/5 hover:bg-[#0808f8]/10 rounded-lg px-2.5 py-1.5">
+          {upcoming.length} task{upcoming.length === 1 ? '' : 's'} next week →
+        </button>
+      )}
       <div className="flex items-center gap-3 mt-3 pt-3 border-t border-gray-100 text-[11px] text-gray-500">
-        <span><b className="text-gray-900 tabular-nums">{items.length}</b> tasks</span>
+        <span><b className="text-gray-900 tabular-nums">{items.length}</b> this period</span>
         <button type="button" onClick={() => onOpen({ title: `${first} · active now`, person, items: active })} className="hover:text-[#0808f8]"><b className="text-gray-900 tabular-nums">{active.length}</b> active</button>
         <span className="ml-auto" title="Time on active tasks this period"><b className="text-gray-900 tabular-nums">{hrs(person.effort_s)}</b> worked</span>
       </div>
@@ -163,8 +170,10 @@ function BarList({ rows, onPick, empty = 'Nothing here' }) {
   );
 }
 
-function TaskTable({ items, data }) {
-  const [sort, setSort] = useState(['deadline', 1]);
+function TaskTable({ items: periodItems, allItems, data }) {
+  const [scope, setScope] = useState('period');
+  const items = scope === 'period' ? periodItems : allItems.filter(i => i.open || i.delivered_in_period);
+  const [sort, setSort] = useState(['timeline', 1]);
   const [limit, setLimit] = useState(60);
   const today = data.today;
   const sorted = useMemo(() => {
@@ -173,18 +182,26 @@ function TaskTable({ items, data }) {
       : k === 'people' ? (data.people[it.people[0]]?.name || '~')
         : k === 'requested_by' ? (data.requesters[it.requested_by[0]]?.name || '~')
           : k === 'status' ? it.status.label
-            : k === 'deadline' ? (it.deadline || '9999') : it[k] || 0);
+            : k === 'deadline' ? (it.deadline || '9999')
+              : k === 'timeline' ? (it.timeline?.from || '9999') : it[k] || 0);
     return [...items].sort((a, b) => { const x = val(a); const y = val(b); return (x > y ? 1 : x < y ? -1 : 0) * dir; });
   }, [items, sort, data]);
-  const cols = [['name', 'Task'], ['people', 'Who'], ['requested_by', 'Requested by'], ['status', 'Status'], ['deadline', 'Deadline'], ['effort_s', 'Worked'], ['effort_total_s', 'Total']];
+  const cols = [['name', 'Task'], ['people', 'Who'], ['requested_by', 'Requested by'], ['status', 'Status'], ['timeline', 'Timeline'], ['deadline', 'Deadline'], ['effort_s', 'Worked'], ['effort_total_s', 'Total']];
   return (
     <div className="overflow-x-auto">
+      <div className="flex justify-end px-2 pb-2">
+        <div className="inline-flex p-1 rounded-xl bg-gray-100">
+          {[['period', `Timeline in this period · ${periodItems.length}`], ['all', 'Everything open']].map(([k, label]) => (
+            <button key={k} type="button" onClick={() => setScope(k)} className={`text-xs px-3 py-1.5 font-semibold rounded-lg ${scope === k ? 'bg-white shadow text-[#030b2e]' : 'text-gray-500'}`}>{label}</button>
+          ))}
+        </div>
+      </div>
       <table className="w-full text-sm">
         <thead>
           <tr className="text-left text-[11px] uppercase tracking-wider text-gray-400 border-b border-gray-100">
             {cols.map(([k, label]) => (
               <th key={k} className="py-2 px-2 font-semibold whitespace-nowrap">
-                <button type="button" onClick={() => setSort([k, sort[0] === k ? -sort[1] : (k === 'name' || k === 'deadline' ? 1 : -1)])} className="inline-flex items-center gap-1 hover:text-gray-700">
+                <button type="button" onClick={() => setSort([k, sort[0] === k ? -sort[1] : (['name', 'deadline', 'timeline'].includes(k) ? 1 : -1)])} className="inline-flex items-center gap-1 hover:text-gray-700">
                   {label}{sort[0] === k && <ArrowUpDown size={11} />}
                 </button>
               </th>
@@ -210,6 +227,7 @@ function TaskTable({ items, data }) {
                 <td className="py-2 px-2"><div className="flex -space-x-1.5">{it.people.map(p => data.people[p] && <Avatar key={p} person={data.people[p]} size={24} ring="#fff" />)}</div></td>
                 <td className="py-2 px-2 text-xs text-gray-600 whitespace-nowrap">{it.requested_by.map(r => data.requesters[r]?.name.split(' ')[0]).filter(Boolean).join(', ') || '–'}</td>
                 <td className="py-2 px-2"><StatusPill status={it.status} small /></td>
+                <td className="py-2 px-2"><TimelinePill timeline={it.timeline} today={today} color={it.status.color} small /></td>
                 <td className={`py-2 px-2 text-xs whitespace-nowrap ${late ? 'text-red-600 font-semibold' : 'text-gray-600'}`}>{fmtDate(it.deadline)}</td>
                 <td className="py-2 px-2 text-xs tabular-nums text-gray-900 font-semibold">{hrs(it.effort_s)}</td>
                 <td className="py-2 px-2 text-xs tabular-nums text-gray-500">{hrs(it.effort_total_s)}</td>
@@ -252,6 +270,7 @@ function EmailTasks({ emails, data, onOpen }) {
                 <span className="flex-1 min-w-0 truncate text-sm text-gray-900" title={e.name}>{e.name}</span>
                 <ProductTag product={e.product} />
                 <StatusPill status={e.status} small />
+                <TimelinePill timeline={e.timeline} today={today} color={e.status.color} small />
                 <span className={`text-xs flex-none w-14 text-right ${e.deadline && e.deadline < today ? 'text-red-600 font-semibold' : 'text-gray-500'}`} title={e.launch ? `Launch ${e.launch}` : 'Deadline'}>{fmtDate(e.deadline || e.launch)}</span>
                 {e.monday_url && <a href={e.monday_url} target="_blank" rel="noopener noreferrer" className="text-gray-300 hover:text-[#0808f8]"><ExternalLink size={14} /></a>}
               </div>
@@ -286,7 +305,7 @@ function SortableWidget({ w, editing, onSize, onHide, children }) {
   );
 }
 
-export default function Overview({ data, items, emails, f, setF }) {
+export default function Overview({ data, items, allItems, range, emails, f, setF }) {
   const [layout, setLayout] = useState(() => mergeLayout(null));
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -296,14 +315,17 @@ export default function Overview({ data, items, emails, f, setF }) {
 
   const today = data.today;
   const people = Object.values(data.people);
-  const byRole = (role) => people.filter(p => p.role === role && items.some(i => i.people.includes(p.id)))
+  const next = nextWindow(range);
+  const upcomingFor = (uid) => allItems.filter(i => i.open && i.people.includes(uid) && !items.includes(i) && i.timeline?.from && i.timeline.from <= next.to && (i.timeline.to || i.timeline.from) >= next.from);
+  const byRole = (role) => people.filter(p => p.role === role && (items.some(i => i.people.includes(p.id)) || upcomingFor(p.id).length))
     .sort((a, b) => items.filter(i => i.people.includes(b.id)).length - items.filter(i => i.people.includes(a.id)).length);
   const delivered = items.filter(i => i.delivered_in_period);
   const open = items.filter(i => i.open);
-  const overdue = open.filter(i => i.deadline && i.deadline < today);
+  // Overdue is a "right now" view: any open task past its deadline, whatever its timeline
+  const overdue = allItems.filter(i => i.open && i.deadline && i.deadline < today);
   const outToday = people.filter(p => (p.out || []).some(o => o.start <= today && o.end >= today));
   const kpis = [
-    ['Open', open, 'text-[#030b2e]'],
+    ['Scheduled', items.filter(i => i.open), 'text-[#030b2e]'],
     ['Delivered', delivered, 'text-emerald-600'],
     ['In review', open.filter(i => i.status.category === 'review'), 'text-violet-600'],
     ['Fixes', open.filter(i => i.status.category === 'fixes'), 'text-amber-600'],
@@ -319,7 +341,7 @@ export default function Overview({ data, items, emails, f, setF }) {
     e.value++; e.items.push(i);
     return m.set(i.product.label, e);
   }, new Map()).values()].sort((a, b) => b.value - a.value).slice(0, 10);
-  const newRequests = open.filter(isNew).sort((a, b) => (a.deadline || '9999').localeCompare(b.deadline || '9999'));
+  const newRequests = allItems.filter(i => i.open && isNew(i)).sort((a, b) => (a.deadline || '9999').localeCompare(b.deadline || '9999'));
   const doneBy = ['video', 'design'].map(b => ({ b, list: delivered.filter(i => i.board === b) }));
   const doneMax = Math.max(1, ...doneBy.map(d => d.list.length));
   const showBoard = (b) => data.boards[b] && (f.division === 'all' || f.division === b || (f.division === 'tv' && b === 'video'));
@@ -358,7 +380,7 @@ export default function Overview({ data, items, emails, f, setF }) {
           <div>
             <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2">{role === 'video' ? 'Video editors' : 'Designers'}</div>
             <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))' }}>
-              {listP.map(p => <PersonCard key={p.id} person={p} items={items.filter(i => i.people.includes(p.id))} boards={data.boards} onOpen={setList} today={today} />)}
+              {listP.map(p => <PersonCard key={p.id} person={p} items={items.filter(i => i.people.includes(p.id))} upcoming={upcomingFor(p.id)} boards={data.boards} onOpen={setList} today={today} />)}
             </div>
           </div>
         );
@@ -397,6 +419,7 @@ export default function Overview({ data, items, emails, f, setF }) {
                   <span className="text-[10px] font-bold px-1.5 py-0.5 rounded text-white flex-none" style={{ background: DIVISION[it.division]?.color }}>{it.division === 'tv' ? 'TV' : BOARD_LABEL[it.board]}</span>
                   <span className="flex-1 min-w-0 truncate text-sm text-gray-900" title={it.name}>{it.name}</span>
                   <span className="text-xs text-gray-500 flex-none">{it.requested_by.map(r => data.requesters[r]?.name.split(' ')[0]).filter(Boolean).join(', ')}</span>
+                  <TimelinePill timeline={it.timeline} today={today} color={it.status.color} small />
                   <span className={`text-xs flex-none w-16 text-right ${it.deadline && it.deadline < today ? 'text-red-600 font-semibold' : 'text-gray-500'}`}>{fmtDate(it.deadline)}</span>
                   {it.monday_url && <a href={it.monday_url} target="_blank" rel="noopener noreferrer" className="text-gray-300 hover:text-[#0808f8]"><ExternalLink size={14} /></a>}
                 </div>
@@ -407,8 +430,8 @@ export default function Overview({ data, items, emails, f, setF }) {
         </Card>
       );
       case 'tasks': return (
-        <Card title="All tasks" subtitle={`${items.length} matching · “Worked” = time active in this period, “Total” = across the task’s life`} pad={false}>
-          <div className="px-3 pb-3"><TaskTable items={items} data={data} /></div>
+        <Card title="All tasks" subtitle="Scheduled by Monday timeline · “Worked” = time active in this period, “Total” = across the task’s life" pad={false}>
+          <div className="px-3 pb-3"><TaskTable items={items} allItems={allItems} data={data} /></div>
         </Card>
       );
       default: return null;

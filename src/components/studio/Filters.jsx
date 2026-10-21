@@ -147,6 +147,22 @@ export default function Filters({ f, setF, range, data, loading, onRefresh, show
   );
 }
 
+/**
+ * Monday's studio boards plan by TIMELINE: a task belongs to a period when its timeline overlaps it
+ * (or it was delivered in it). Deadlines are shown, never used for scheduling.
+ */
+export function inPeriod(it, range) {
+  if (it.delivered_in_period) return true;
+  const t = it.timeline;
+  return !!(t?.from && t?.to && t.from <= range.to && t.to >= range.from);
+}
+export function nextWindow(range) { return { from: addDays(range.to, 1), to: addDays(range.to, 7) }; }
+export function fmtRange(t) {
+  if (!t?.from) return '–';
+  const f = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  return t.to && t.to !== t.from ? `${f(t.from)} – ${f(t.to)}` : f(t.from);
+}
+
 /** Apply the bar's filters to the item list. */
 export function applyFilters(items, f) {
   const q = f.q.trim().toLowerCase();

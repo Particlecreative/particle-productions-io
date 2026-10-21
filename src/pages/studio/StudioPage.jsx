@@ -4,7 +4,7 @@ import { LayoutDashboard, Clock, Tv, Plug, Loader2, AlertTriangle, Lock, GanttCh
 import { useAuth } from '../../context/AuthContext';
 import { useBrand } from '../../context/BrandContext';
 import { studioApi } from '../../lib/studioService';
-import Filters, { applyFilters, presetRange } from '../../components/studio/Filters';
+import Filters, { applyFilters, presetRange, inPeriod } from '../../components/studio/Filters';
 import Overview from '../../components/studio/Overview';
 import TimeTracking from '../../components/studio/TimeTracking';
 import TvLinks from '../../components/studio/TvLinks';
@@ -48,7 +48,9 @@ export default function StudioPage() {
   }, [range]);
   useEffect(() => { if (isEditor && brandId === 'particle') load(); }, [load, isEditor, brandId]);
 
-  const items = useMemo(() => (data ? applyFilters(data.items, f) : []), [data, f]);
+  // allItems = everything open now + delivered in the period; items = what the period's timeline holds
+  const allItems = useMemo(() => (data ? applyFilters(data.items, f) : []), [data, f]);
+  const items = useMemo(() => allItems.filter(it => inPeriod(it, range)), [allItems, range]);
   const emails = useMemo(() => (data?.emails || []).filter(e =>
     (!f.people.length || e.people.some(p => f.people.includes(p))) &&
     (!f.product || e.product?.label === f.product) &&
@@ -120,8 +122,8 @@ export default function StudioPage() {
         </div>
       ) : (
         <div className={loading ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
-          {tab === 'overview' && <Overview data={data} items={items} emails={emails} f={f} setF={setF} />}
-          {tab === 'time' && <TimeTracking data={data} items={items} range={range} />}
+          {tab === 'overview' && <Overview data={data} items={items} allItems={allItems} range={range} emails={emails} f={f} setF={setF} />}
+          {tab === 'time' && <TimeTracking data={data} items={allItems} range={range} />}
           {tab === 'tv' && <TvLinks data={data} items={applyFilters(data.items, { ...f, division: 'all' })} onChanged={() => load(true)} />}
         </div>
       )}

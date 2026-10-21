@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, ExternalLink, Filter, ArrowUpDown, Tv, Mail } from 'lucide-react';
-import { Avatar, StatusPill, ProductTag, hrs, DIVISION } from './Bits';
+import { Avatar, StatusPill, ProductTag, hrs, DIVISION, TimelinePill } from './Bits';
 
 const BOARD_LABEL = { video: 'Video', design: 'Design', retention: 'Email' };
 const fmtDate = (d) => (d ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '–');
@@ -11,7 +11,7 @@ const fmtDate = (d) => (d ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US
  * (e.g. Natalie → Completed, Video battery → Review, Overdue).
  */
 export default function TaskListModal({ list, data, onClose, onFilter }) {
-  const [sort, setSort] = useState(['deadline', 1]);
+  const [sort, setSort] = useState(['timeline', 1]);
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
@@ -19,7 +19,7 @@ export default function TaskListModal({ list, data, onClose, onFilter }) {
   }, [onClose]);
   const items = useMemo(() => {
     const [k, dir] = sort;
-    const v = (it) => (k === 'deadline' ? (it.deadline || '9999') : k === 'effort' ? (it.effort_s || 0) : k === 'status' ? it.status.label : it.name.toLowerCase());
+    const v = (it) => (k === 'deadline' ? (it.deadline || '9999') : k === 'timeline' ? (it.timeline?.from || '9999') : k === 'effort' ? (it.effort_s || 0) : k === 'status' ? it.status.label : it.name.toLowerCase());
     return [...(list?.items || [])].sort((a, b) => { const x = v(a); const y = v(b); return (x > y ? 1 : x < y ? -1 : 0) * dir; });
   }, [list, sort]);
   if (!list) return null;
@@ -56,6 +56,7 @@ export default function TaskListModal({ list, data, onClose, onFilter }) {
                 <th className="py-2 px-4 font-semibold"><Head k="name">Task</Head></th>
                 <th className="py-2 px-2 font-semibold">Who</th>
                 <th className="py-2 px-2 font-semibold"><Head k="status">Status</Head></th>
+                <th className="py-2 px-2 font-semibold"><Head k="timeline">Timeline</Head></th>
                 <th className="py-2 px-2 font-semibold"><Head k="deadline">Deadline</Head></th>
                 <th className="py-2 px-2 font-semibold text-right"><Head k="effort" right>Worked</Head></th>
                 <th />
@@ -81,6 +82,7 @@ export default function TaskListModal({ list, data, onClose, onFilter }) {
                     </td>
                     <td className="py-2.5 px-2"><div className="flex -space-x-1.5">{it.people.map(p => data.people[p] && <Avatar key={p} person={data.people[p]} size={24} ring="#fff" />)}</div></td>
                     <td className="py-2.5 px-2"><StatusPill status={it.status} small /></td>
+                    <td className="py-2.5 px-2"><TimelinePill timeline={it.timeline} today={today} color={it.status.color} small /></td>
                     <td className={`py-2.5 px-2 text-xs whitespace-nowrap ${late ? 'text-red-600 font-semibold' : 'text-gray-600'}`}>{fmtDate(it.deadline)}</td>
                     <td className="py-2.5 px-2 text-xs text-right tabular-nums font-semibold text-gray-900">{hrs(it.effort_s)}</td>
                     <td className="py-2.5 px-3">{it.monday_url && <a href={it.monday_url} target="_blank" rel="noopener noreferrer" className="text-gray-300 hover:text-[#0808f8]" title="Open in Monday"><ExternalLink size={14} /></a>}</td>
