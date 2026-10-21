@@ -93,7 +93,7 @@ export default function Filters({ f, setF, range, data, loading, onRefresh, show
   const products = [...new Map((data?.items || []).filter(i => i.product?.label && i.product.label !== '-').map(i => [i.product.label, i.product])).values()]
     .sort((a, b) => a.label.localeCompare(b.label));
   return (
-    <div className="sticky -top-6 z-20 -mx-6 px-6 pt-4 pb-3 flex flex-wrap items-center gap-2" style={{ background: 'var(--brand-bg, #f4f5f7)', boxShadow: '0 8px 12px -12px rgba(3,11,46,.25)' }}>
+    <div className="md:sticky md:-top-6 z-20 -mx-6 px-6 pt-4 pb-3 flex flex-wrap items-center gap-2" style={{ background: 'var(--brand-bg, #f4f5f7)', boxShadow: '0 8px 12px -12px rgba(3,11,46,.25)' }}>
       {showPeriod && <button ref={dateRef} type="button" onClick={() => setDateOpen(v => !v)}
         className="flex items-center gap-2 text-xs font-semibold px-3 py-2 rounded-xl border border-gray-200 bg-white text-gray-800 hover:border-gray-300">
         <Calendar size={14} className="text-[#0808f8]" />

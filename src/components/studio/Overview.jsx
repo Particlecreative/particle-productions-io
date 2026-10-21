@@ -265,9 +265,9 @@ function EmailTasks({ emails, data, onOpen }) {
           </div>
           <div className="divide-y divide-gray-100">
             {open.slice(0, 12).map(e => (
-              <div key={e.id} className="flex items-center gap-3 py-2">
+              <div key={e.id} className="flex flex-wrap md:flex-nowrap items-center gap-x-3 gap-y-1.5 py-2">
                 <div className="flex -space-x-1.5 flex-none">{e.people.map(p => data.people[p] && <Avatar key={p} person={data.people[p]} size={22} ring="#fff" />)}</div>
-                <span className="flex-1 min-w-0 truncate text-sm text-gray-900" title={e.name}>{e.name}</span>
+                <span className="flex-1 min-w-[60%] md:min-w-0 truncate text-sm text-gray-900" title={e.name}>{e.name}</span>
                 <ProductTag product={e.product} />
                 <StatusPill status={e.status} small />
                 <TimelinePill timeline={e.timeline} today={today} color={e.status.color} small />
@@ -415,9 +415,9 @@ export default function Overview({ data, items, allItems, range, emails, f, setF
           {newRequests.length ? (
             <div className="divide-y divide-gray-100">
               {newRequests.slice(0, 15).map(it => (
-                <div key={it.id} className="flex items-center gap-3 py-2">
+                <div key={it.id} className="flex flex-wrap md:flex-nowrap items-center gap-x-3 gap-y-1.5 py-2">
                   <span className="text-[10px] font-bold px-1.5 py-0.5 rounded text-white flex-none" style={{ background: DIVISION[it.division]?.color }}>{it.division === 'tv' ? 'TV' : BOARD_LABEL[it.board]}</span>
-                  <span className="flex-1 min-w-0 truncate text-sm text-gray-900" title={it.name}>{it.name}</span>
+                  <span className="flex-1 min-w-[60%] md:min-w-0 truncate text-sm text-gray-900" title={it.name}>{it.name}</span>
                   <span className="text-xs text-gray-500 flex-none">{it.requested_by.map(r => data.requesters[r]?.name.split(' ')[0]).filter(Boolean).join(', ')}</span>
                   <TimelinePill timeline={it.timeline} today={today} color={it.status.color} small />
                   <span className={`text-xs flex-none w-16 text-right ${it.deadline && it.deadline < today ? 'text-red-600 font-semibold' : 'text-gray-500'}`}>{fmtDate(it.deadline)}</span>
