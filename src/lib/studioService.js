@@ -34,6 +34,8 @@ export const studioApi = {
   inspiration: async () => (LIVE ? call('/inspiration') : (await fx()).fixtureInspiration),
   setTvLink: (itemId, body) => call(`/tv-links/${itemId}`, { method: 'PUT', body }),
   patchItem: async (itemId, body) => (LIVE ? call(`/items/${itemId}`, { method: 'PATCH', body }) : { ok: true }),
+  updates: async (itemId) => (LIVE ? call(`/items/${itemId}/updates`) : (await fx()).fixtureUpdates(itemId)),
+  postUpdate: async (itemId, text) => (LIVE ? call(`/items/${itemId}/updates`, { method: 'POST', body: { text } }) : { id: String(Date.now()) }),
   ticketForm: async () => (LIVE ? call('/ticket-form') : (await fx()).fixtureTicketForm),
   draftTicket: async (body) => (LIVE ? call('/ticket/draft', { method: 'POST', body }) : (await new Promise(r => setTimeout(r, 700)), (await fx()).fixtureDraft(body))),
   submitTicket: async (body) => (LIVE ? call('/ticket/submit', { method: 'POST', body: { ...body, confirm: true } }) : { ok: true, id: '1', url: 'https://monday.com', name: 'Test ticket' }),

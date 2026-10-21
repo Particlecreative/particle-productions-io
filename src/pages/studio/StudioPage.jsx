@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { LayoutDashboard, Clock, Tv, Plug, Loader2, AlertTriangle, Lock, GanttChart, Sparkles } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -11,6 +11,8 @@ import TvLinks from '../../components/studio/TvLinks';
 import Connections from '../../components/studio/Connections';
 import Workload from '../../components/studio/Workload';
 import TicketCreator from '../../components/studio/TicketCreator';
+import TaskPanel from '../../components/studio/TaskPanel';
+import { StudioCtx, useMondayWrites } from '../../components/studio/writes';
 
 const TABS = [
   ['overview', 'Creative Control', LayoutDashboard],
@@ -38,17 +40,40 @@ export default function StudioPage() {
     try { localStorage.setItem(PREF_KEY, JSON.stringify({ preset: next.preset, from: next.from, to: next.to, division: next.division })); } catch { /* ignore */ }
   }, []);
   const range = useMemo(() => (f.preset === 'custom' && f.from && f.to ? { from: f.from, to: f.to } : presetRange(f.preset)), [f.preset, f.from, f.to]);
-  const [data, setData] = useState(null);
+  const [raw, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const loadedAt = useRef(0);
 
-  const load = useCallback(async (force = false) => {
-    setLoading(true); setError(null);
-    try { setData(await studioApi.dashboard({ ...range, force })); } catch (e) { setError(e.message); } finally { setLoading(false); }
+  const load = useCallback(async (force = false, quiet = false) => {
+    if (!quiet) setLoading(true);
+    setError(null);
+    try { setData(await studioApi.dashboard({ ...range, force })); loadedAt.current = Date.now(); } catch (e) { if (!quiet) setError(e.message); } finally { setLoading(false); }
   }, [range]);
   useEffect(() => { if (isEditor && brandId === 'particle') load(); }, [load, isEditor, brandId]);
+  // Stay live: refresh quietly when you come back to the tab, and every 5 minutes while it's open
+  useEffect(() => {
+    if (!isEditor || brandId !== 'particle') return undefined;
+    const tick = () => { if (document.visibilityState === 'visible' && loadedAt.current && Date.now() - loadedAt.current > 5 * 60 * 1000) load(false, true); };
+    const t = setInterval(tick, 60 * 1000);
+    document.addEventListener('visibilitychange', tick);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', tick); };
+  }, [load, isEditor, brandId]);
 
-  // allItems = everything open now + delivered in the period; items = what the period's timeline holds
+  // Changes saved from any tab show everywhere straight away
+  const writes = useMondayWrites();
+  const data = useMemo(() => (raw ? {
+    ...raw,
+    items: raw.items.map(it => writes.merge(it, raw.generated_at)),
+    emails: (raw.emails || []).map(e => writes.merge(e, raw.generated_at)),
+  } : null), [raw, writes.merge]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [panel, setPanel] = useState(null); // { it, data }
+  const openTask = useCallback((it, d) => setPanel({ it, data: d || data }), [data]);
+  const ctx = useMemo(() => ({ writes, openTask }), [writes, openTask]);
+  // The panel follows the latest copy of its task
+  const panelIt = panel && ([...(data?.items || []), ...(data?.emails || [])].find(i => i.id === panel.it.id && i.board === panel.it.board) || panel.it);
+
+  // allItems = everything open now + finished with a timeline in the period; items = what the period's timeline holds
   const allItems = useMemo(() => (data ? applyFilters(data.items, f) : []), [data, f]);
   const items = useMemo(() => allItems.filter(it => inPeriod(it, range)), [allItems, range]);
   const emails = useMemo(() => (data?.emails || []).filter(e =>
@@ -77,6 +102,7 @@ export default function StudioPage() {
   }
 
   return (
+    <StudioCtx.Provider value={ctx}>
     <div className="max-w-[1500px] mx-auto pb-16">
       <div className="flex flex-wrap items-end gap-4 mb-4">
         <div>
@@ -122,11 +148,14 @@ export default function StudioPage() {
         </div>
       ) : (
         <div className={loading ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
-          {tab === 'overview' && <Overview data={data} items={items} allItems={allItems} range={range} emails={emails} f={f} setF={setF} />}
+          {tab === 'overview' && <Overview data={data} items={items} allItems={allItems} range={range} emails={emails} f={f} setF={setF} goTab={(k) => setParams(k === 'overview' ? {} : { tab: k })} />}
           {tab === 'time' && <TimeTracking data={data} items={items} allItems={allItems} range={range} f={f} setF={setF} />}
           {tab === 'tv' && <TvLinks data={data} items={applyFilters(data.items, { ...f, division: 'all' })} onChanged={() => load(true)} />}
         </div>
       )}
+      {panel && <TaskPanel it={panelIt} data={panel.data?.generated_at === data?.generated_at ? data : panel.data} onClose={() => setPanel(null)} />}
+      {writes.toastEl}
     </div>
+    </StudioCtx.Provider>
   );
 }

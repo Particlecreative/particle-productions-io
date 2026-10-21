@@ -10,7 +10,7 @@ const { decide } = require('../lib/studio/tvLinks');
 const { dailyInspiration, tmdbConfigured, testTmdb } = require('../lib/studio/inspiration');
 const secrets = require('../lib/studio/secrets');
 const { getCreativeConfig } = require('../lib/creative/config');
-const { updateSchedule } = require('../lib/studio/write');
+const { updateTask, getUpdates, postUpdate } = require('../lib/studio/write');
 const tickets = require('../lib/studio/tickets');
 const monday = require('../lib/monday');
 const bamboo = require('../lib/studio/bamboohr');
@@ -72,7 +72,7 @@ router.put('/tv-links/:itemId', async (req, res) => {
 // ── Workload: reschedule / reassign (writes the task's timeline + person columns on Monday) ──
 router.patch('/items/:itemId', async (req, res) => {
   try {
-    const { board, timeline, people } = req.body || {};
+    const { board, timeline, people, status, deadline } = req.body || {};
     const config = await getCreativeConfig(req.brandId);
     // Vacations layer: never schedule work onto someone's day off
     if (timeline && (await bamboo.configured().catch(() => false))) {
@@ -93,10 +93,23 @@ router.patch('/items/:itemId', async (req, res) => {
         }
       }
     }
-    await updateSchedule(config, { board, itemId: req.params.itemId, timeline, people });
-    // Next load shows the change (dashboards are cached for a few minutes)
-    monday.clearCache(`studio:${req.brandId}:`);
+    await updateTask(config, { board, itemId: req.params.itemId, timeline, people, status, deadline });
     res.json({ ok: true });
+  } catch (err) { errorJson(res, err); }
+});
+
+// Updates (comments) — read the brief and the conversation, and reply, without opening Monday
+router.get('/items/:itemId/updates', async (req, res) => {
+  try {
+    const config = await getCreativeConfig(req.brandId);
+    res.json({ updates: await getUpdates(config, req.params.itemId) });
+  } catch (err) { errorJson(res, err); }
+});
+
+router.post('/items/:itemId/updates', async (req, res) => {
+  try {
+    const config = await getCreativeConfig(req.brandId);
+    res.json(await postUpdate(config, req.params.itemId, req.body?.text, req.user?.name || req.user?.email || null));
   } catch (err) { errorJson(res, err); }
 });
 

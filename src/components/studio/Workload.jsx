@@ -1,9 +1,10 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronLeft, ChevronRight, Loader2, Plane, Mail, ExternalLink, X, Undo2, AlertTriangle, Inbox, Search, Check, PanelRightOpen, PanelRightClose, RefreshCw, Flag } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2, Plane, Mail, X, AlertTriangle, Inbox, Search, Check, PanelRightOpen, PanelRightClose, RefreshCw, Flag } from 'lucide-react';
 import { Avatar, Seg, StatusPill, ProductTag } from './Bits';
 import { applyFilters, addDays, sundayOf, ymd } from './Filters';
 import { studioApi } from '../../lib/studioService';
+import { useStudio, lastWriteAt, outOn, checkSchedule, workdays } from './writes';
 
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const LANE_H = 32;
@@ -19,15 +20,10 @@ const cache = new Map(); // `${from}:${to}` → { data, at } — kept while you 
 const dow = (d) => new Date(`${d}T12:00:00Z`).getUTCDay();
 const fmt = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 const fmtDow = (d) => `${DOW[dow(d)]} ${Number(d.slice(8))}`;
-const workdays = (from, to) => { const o = []; for (let d = from; d <= to; d = addDays(d, 1)) if (dow(d) <= 4) o.push(d); return o; };
 const first = (name) => (name || '').split(' ')[0];
 const pref = (k, def) => { try { return localStorage.getItem(k) ?? def; } catch { return def; } };
 const setPref = (k, v) => { try { localStorage.setItem(k, String(v)); } catch { /* ignore */ } };
 const roleOf = (it) => (it.board === 'video' ? 'video' : 'design');
-
-function outOn(person, day) {
-  return (person?.out || []).find(o => o.start <= day && o.end >= day) || null;
-}
 
 /** Greedy lanes so overlapping bars stack. */
 function lanes(bars) {
@@ -39,21 +35,6 @@ function lanes(bars) {
   });
 }
 
-/** Vacations layer: a task can't start or end on a day off (crossing one is fine, with a note). */
-function checkSchedule(data, peopleIds, from, to) {
-  for (const uid of peopleIds) {
-    const p = data.people[uid];
-    if (!p) continue;
-    const hit = [from, to].map(day => [day, outOn(p, day)]).find(([, o]) => o);
-    if (hit) return { error: `${first(p.name)} is ${hit[1].type === 'holiday' ? `off (${hit[1].name || 'holiday'})` : 'on vacation'} on ${fmt(hit[0])} — not moved` };
-  }
-  for (const uid of peopleIds) {
-    const crosses = workdays(from, to).find(day => outOn(data.people[uid], day));
-    if (crosses) return { note: ` · spans a day off (${fmt(crosses)})` };
-  }
-  return {};
-}
-
 export default function Workload({ f }) {
   const today = ymd(new Date());
   const [role, setRoleState] = useState(() => pref(ROLE_KEY, 'all'));
@@ -63,9 +44,7 @@ export default function Workload({ f }) {
   const [data, setData] = useState(() => cache.get(`${sundayOf(today)}:${addDays(sundayOf(today), (Number(pref(WEEKS_KEY, 2)) || 2) * 7 - 1)}`)?.data || null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [local, setLocal] = useState({}); // optimistic edits: id → { timeline, people }
-  const [toast, setToast] = useState(null);
-  const [detail, setDetail] = useState(null);
+  const { writes, openTask } = useStudio();
   const [drag, setDrag] = useState(null);
   const [hover, setHover] = useState(null);
   const [showEmails, setShowEmails] = useState(true);
@@ -86,12 +65,12 @@ export default function Workload({ f }) {
     const key = `${start}:${end}`;
     keyRef.current = key;
     const hit = cache.get(key);
-    if (hit && !force && Date.now() - hit.at < CACHE_MS) { setData(hit.data); setError(null); setLoading(false); return; }
+    if (hit && !force && Date.now() - hit.at < CACHE_MS && hit.at > lastWriteAt()) { setData(hit.data); setError(null); setLoading(false); return; }
     setLoading(true); setError(null);
     try {
       const d = await studioApi.dashboard({ from: start, to: end, force, lite: true });
       cache.set(key, { data: d, at: Date.now() });
-      if (keyRef.current === key) { setData(d); setLocal({}); }
+      if (keyRef.current === key) setData(d);
     } catch (e) { if (keyRef.current === key) setError(e.message); } finally { if (keyRef.current === key) setLoading(false); }
   }, [start, end]);
   useEffect(() => { load(); }, [load]);
@@ -118,7 +97,7 @@ export default function Workload({ f }) {
   // ── Keyboard: ← → weeks, T today ──
   useEffect(() => {
     const k = (e) => {
-      if (detail || e.metaKey || e.ctrlKey || e.altKey || e.target?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+      if (document.querySelector('[data-task-panel]') || e.metaKey || e.ctrlKey || e.altKey || e.target?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
       if (e.key === 'ArrowLeft') setStart(s => addDays(s, -7));
       else if (e.key === 'ArrowRight') setStart(s => addDays(s, 7));
       else if (e.key === 't' || e.key === 'T') setStart(sundayOf(today));
@@ -127,7 +106,7 @@ export default function Workload({ f }) {
     };
     window.addEventListener('keydown', k);
     return () => window.removeEventListener('keydown', k);
-  }, [detail, today]);
+  }, [today]);
 
   // ── Columns: workdays wide, Fri/Sat narrow ──
   const days = useMemo(() => { const o = []; for (let d = start; d <= end; d = addDays(d, 1)) o.push(d); return o; }, [start, end]);
@@ -148,9 +127,9 @@ export default function Workload({ f }) {
     if (!data) return [];
     const base = applyFilters(data.items, { ...f, division: 'all', status: null });
     const em = role !== 'video' && showEmails ? applyFilters(data.emails || [], { ...f, division: 'all', status: null, requesters: [] }) : [];
-    return [...base, ...em].map(it => (local[it.id] ? { ...it, ...local[it.id] } : it)).map(it => (
+    return [...base, ...em].map(it => writes.merge(it, data.generated_at)).map(it => (
       it.timeline?.from && it.timeline?.to && it.timeline.to < it.timeline.from ? { ...it, timeline: { from: it.timeline.to, to: it.timeline.from } } : it));
-  }, [data, f, role, showEmails, local]);
+  }, [data, f, role, showEmails, writes]);
   const people = useMemo(() => Object.values(data?.people || {})
     .filter(p => (role === 'all' ? ['design', 'video'].includes(p.role) : p.role === role) && (!f.people.length || f.people.includes(p.id)))
     .sort((a, b) => (a.role === b.role ? a.name.localeCompare(b.name) : a.role === 'design' ? -1 : 1)), [data, role, f.people]);
@@ -174,40 +153,6 @@ export default function Workload({ f }) {
   }), [people, all, start, end, days, today, data]);
   const unassigned = useMemo(() => all.filter(it => it.open && !it.people.length && (role === 'all' || roleOf(it) === role)), [all, role]);
   const toSchedule = rows.reduce((a, r) => a + r.unscheduled.length, 0) + unassigned.length;
-
-  // ── Writes (optimistic + undo) ──
-  const apply = useCallback(async (it, next, label) => {
-    const prev = { timeline: it.timeline || null, people: it.people };
-    setLocal(l => ({ ...l, [it.id]: { ...(l[it.id] || {}), ...next } }));
-    try {
-      await studioApi.patchItem(it.id, { board: it.board, ...next, current_people: it.people });
-      cache.clear(); // weeks load fresh next time (this one keeps the optimistic edit until then)
-      setToast({
-        text: label,
-        undo: async () => {
-          setToast(null);
-          setLocal(l => ({ ...l, [it.id]: prev }));
-          try { await studioApi.patchItem(it.id, { board: it.board, timeline: prev.timeline, people: prev.people }); } catch (e) { setToast({ error: true, text: e.message }); }
-        },
-      });
-    } catch (e) {
-      setLocal(l => ({ ...l, [it.id]: prev }));
-      setToast({ error: true, text: e.message });
-    }
-  }, []);
-  const save = useCallback((it, next, verb) => {
-    const ppl = next.people || it.people;
-    if (next.timeline) {
-      const chk = checkSchedule(data, ppl, next.timeline.from, next.timeline.to);
-      if (chk.error) { setToast({ error: true, text: chk.error }); return false; }
-      const reassigned = next.people && next.people.join() !== it.people.join();
-      const who = reassigned ? ` → ${next.people.map(id => first(data.people[id]?.name)).join(', ')}` : '';
-      apply(it, next, `${it.title || it.name.slice(0, 40)}: ${fmt(next.timeline.from)}${next.timeline.to !== next.timeline.from ? `–${fmt(next.timeline.to)}` : ''}${who}${chk.note || ''}`);
-    } else {
-      apply(it, next, `${it.title || it.name.slice(0, 40)}: ${verb || 'updated'}`);
-    }
-    return true;
-  }, [data, apply]);
 
   // ── Drag & drop ──
   const rowAt = (y) => {
@@ -269,7 +214,7 @@ export default function Workload({ f }) {
       dragRef.current = null;
       setDrag(null);
       if (!d) return;
-      if (!d.moved) { setDetail(d.it); return; }
+      if (!d.moved) { openTask(d.it, data); return; }
       const t = target({ ...d, x: e.clientX, y: e.clientY });
       if (!t || !data.people[t.owner]) return;
       const { it } = d;
@@ -277,15 +222,12 @@ export default function Workload({ f }) {
       if (t.from === it.timeline?.from && t.to === it.timeline?.to && !reassigned) return;
       const next = { timeline: { from: t.from, to: t.to } };
       if (reassigned) next.people = [...it.people.filter(p => p !== d.ownerId), t.owner];
-      save(it, next);
+      writes.save(it, next, data);
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
     return () => { document.body.style.cursor = ''; window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
-  }, [dragging, data, save, cols]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const [toastHover, setToastHover] = useState(false);
-  useEffect(() => { if (!toast || toastHover) return undefined; const t = setTimeout(() => setToast(null), toast.error ? 7000 : 12000); return () => clearTimeout(t); }, [toast, toastHover]);
+  }, [dragging, data, writes, cols]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const ghost = (() => {
     if (!drag?.moved) return null;
@@ -478,20 +420,6 @@ export default function Workload({ f }) {
 
       {hover && !drag && createPortal(<HoverCard it={hover.it} x={hover.x} y={hover.y} data={data} today={today} />, document.body)}
 
-      {detail && (
-        <ItemDetail it={local[detail.id] ? { ...detail, ...local[detail.id] } : detail} data={data} today={today} onClose={() => setDetail(null)}
-          onSave={(it, next) => { if (save(it, next)) setDetail(null); }}
-          onUnschedule={(it) => { save(it, { timeline: null }, 'unscheduled'); setDetail(null); }} />
-      )}
-
-      {toast && createPortal(
-        <div onMouseEnter={() => setToastHover(true)} onMouseLeave={() => setToastHover(false)}
-          className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-[95] px-4 py-2.5 rounded-full text-sm shadow-xl flex items-center gap-3 ${toast.error ? 'bg-red-600 text-white' : 'bg-[#030b2e] text-white'}`}>
-          {toast.error ? <AlertTriangle size={15} /> : null}
-          <span className="max-w-[60vw] truncate">{toast.error ? toast.text : `Updated on Monday · ${toast.text}`}</span>
-          {toast.undo && <button type="button" onClick={toast.undo} className="flex items-center gap-1 font-semibold text-[#8c93ff] hover:text-white"><Undo2 size={14} /> Undo</button>}
-          <button type="button" onClick={() => setToast(null)} className="opacity-60 hover:opacity-100"><X size={14} /></button>
-        </div>, document.body)}
     </div>
   );
 }
@@ -576,80 +504,4 @@ function HoverCard({ it, x, y, data, today }) {
       </div>
     </div>
   );
-}
-
-/** Task panel: change dates or people precisely, unschedule, or open it in Monday. */
-function ItemDetail({ it, data, today, onClose, onSave, onUnschedule }) {
-  const [from, setFrom] = useState(it.timeline?.from || '');
-  const [to, setTo] = useState(it.timeline?.to || '');
-  const [who, setWho] = useState(it.people);
-  useEffect(() => {
-    const k = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', k);
-    return () => window.removeEventListener('keydown', k);
-  }, [onClose]);
-  const team = Object.values(data.people).filter(p => p.role === roleOf(it) || it.people.includes(p.id)).sort((a, b) => a.name.localeCompare(b.name));
-  const a = from || to;
-  const b = to || from;
-  const invalid = a && b && b < a;
-  const dirty = (a || '') !== (it.timeline?.from || '') || (b || '') !== (it.timeline?.to || '') || who.join() !== it.people.join();
-  const late = it.deadline && b && b > it.deadline;
-  const toggle = (id) => setWho(w => (w.includes(id) ? w.filter(x => x !== id) : [...w, id]));
-  const shift = (n) => { if (a) { setFrom(addDays(a, n)); setTo(addDays(b, n)); } };
-  return createPortal(
-    <div className="fixed inset-0 z-[80] flex justify-end" style={{ background: 'rgba(3,11,46,.25)' }} onClick={onClose}>
-      <div className="w-full max-w-md h-full bg-white shadow-2xl p-6 flex flex-col gap-4 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-start gap-3">
-          <div className="min-w-0 flex-1">
-            <div className="text-[11px] font-bold uppercase tracking-wider text-[#0808f8]">{it.board === 'retention' ? 'Email task' : it.board === 'video' ? 'Video' : 'Design'}{it.division === 'tv' ? ' · TV' : ''}</div>
-            <div className="text-lg font-bold text-[#030b2e] leading-snug">{it.name}</div>
-          </div>
-          <button type="button" onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500"><X size={18} /></button>
-        </div>
-        <div className="flex flex-wrap items-center gap-2"><StatusPill status={it.status} /><ProductTag product={it.product} />
-          {it.deadline && <span className={`text-xs ${it.open && it.deadline < today ? 'text-red-600 font-semibold' : 'text-gray-500'}`}>Deadline {fmt(it.deadline)}</span>}
-        </div>
-
-        <div className="rounded-xl bg-gray-50 p-3 flex flex-col gap-2">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Timeline</div>
-          <div className="flex items-center gap-2">
-            <input type="date" value={from} onChange={e => { setFrom(e.target.value); if (!to || e.target.value > to) setTo(e.target.value); }} className="flex-1 min-w-0 text-sm px-2.5 py-1.5 rounded-lg border border-gray-200 bg-white" />
-            <span className="text-gray-400">→</span>
-            <input type="date" value={to} min={from || undefined} onChange={e => setTo(e.target.value)} className="flex-1 min-w-0 text-sm px-2.5 py-1.5 rounded-lg border border-gray-200 bg-white" />
-          </div>
-          <div className="flex items-center gap-1.5">
-            {[[-7, '−1 week'], [-1, '−1 day'], [1, '+1 day'], [7, '+1 week']].map(([n, l]) => (
-              <button key={l} type="button" disabled={!a} onClick={() => shift(n)} className="text-[11px] font-semibold px-2 py-1 rounded-md bg-white border border-gray-200 text-gray-600 hover:border-[#0808f8]/50 disabled:opacity-40">{l}</button>
-            ))}
-          </div>
-          {invalid && <div className="text-xs text-red-600">The end is before the start.</div>}
-          {late && !invalid && <div className="text-xs text-amber-700">Ends after the deadline ({fmt(it.deadline)}).</div>}
-        </div>
-
-        <div className="rounded-xl bg-gray-50 p-3 flex flex-col gap-2">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">{it.board === 'video' ? 'Editor' : 'Designer'}</div>
-          <div className="flex flex-wrap gap-1.5">
-            {team.map(p => (
-              <button key={p.id} type="button" onClick={() => toggle(p.id)}
-                className={`flex items-center gap-1.5 text-xs font-semibold pl-1 pr-2.5 py-1 rounded-full border ${who.includes(p.id) ? 'bg-[#030b2e] text-white border-[#030b2e]' : 'bg-white text-gray-700 border-gray-200 hover:border-[#0808f8]/50'}`}>
-                <Avatar person={p} size={20} /> {first(p.name)}
-                {a && b && workdays(a, b).some(d => outOn(p, d)) && <Plane size={11} className={who.includes(p.id) ? 'text-white/70' : 'text-gray-400'} />}
-              </button>
-            ))}
-          </div>
-          {it.requested_by?.length > 0 && <div className="text-xs text-gray-500">Requested by {it.requested_by.map(r => data.requesters[r]?.name).filter(Boolean).join(', ')}</div>}
-        </div>
-
-        <div className="mt-auto flex flex-col gap-2">
-          <button type="button" disabled={!dirty || invalid || !who.length} onClick={() => onSave(it, { timeline: a ? { from: a, to: b } : null, ...(who.join() !== it.people.join() ? { people: who } : {}) })}
-            className="w-full text-sm font-semibold px-4 py-2.5 rounded-xl text-white disabled:opacity-40" style={{ background: '#0808f8' }}>
-            Save to Monday
-          </button>
-          <div className="flex gap-2">
-            {it.monday_url && <a href={it.monday_url} target="_blank" rel="noopener noreferrer" className="flex-1 text-center text-sm font-semibold px-4 py-2.5 rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-50 flex items-center justify-center gap-1.5">Open in Monday <ExternalLink size={14} /></a>}
-            {it.timeline && <button type="button" onClick={() => onUnschedule(it)} className="text-sm font-semibold px-4 py-2.5 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50">Unschedule</button>}
-          </div>
-        </div>
-      </div>
-    </div>, document.body);
 }

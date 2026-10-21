@@ -2,12 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { DndContext, PointerSensor, KeyboardSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, useSortable, rectSortingStrategy, arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ExternalLink, Tv, Inbox, ArrowUpDown, Plane, Mail, GripVertical, EyeOff, Eye, LayoutGrid, Check, RotateCcw, Loader2 } from 'lucide-react';
+import { ExternalLink, Tv, Inbox, ArrowUpDown, Plane, Mail, GripVertical, EyeOff, Eye, LayoutGrid, Check, RotateCcw, Loader2, AlertTriangle, Hourglass, CalendarX2, UserX, CalendarOff, Flame, Activity, CheckCircle2 } from 'lucide-react';
 import { Avatar, Card, StatusPill, ProductTag, StackBar, Empty, hrs, DIVISION, TimelinePill } from './Bits';
 import { nextWindow } from './Filters';
 import Inspiration from './Inspiration';
 import TaskListModal from './TaskListModal';
 import { studioApi } from '../../lib/studioService';
+import { useStudio, workdays, firstName } from './writes';
 
 const BOARD_LABEL = { video: 'Video', design: 'Design' };
 const isNew = (it) => /form requests|ready for assign/i.test(it.group || '') || (it.status.category === 'queued' && !it.people.length);
@@ -17,6 +18,7 @@ const fmtDate = (d) => (d ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US
 const WIDGETS = [
   { id: 'inspiration', label: 'Line of the day', size: 'full' },
   { id: 'kpis', label: 'Key numbers', size: 'full' },
+  { id: 'attention', label: 'Needs attention', size: 'full' },
   { id: 'out', label: 'Out today', size: 'full' },
   { id: 'battery_video', label: 'Video battery', size: 'half' },
   { id: 'battery_design', label: 'Design battery', size: 'half' },
@@ -39,7 +41,13 @@ function mergeLayout(saved) {
     if (!s?.id || !known.has(s.id) || out.some(o => o.id === s.id)) continue;
     out.push({ id: s.id, size: SPAN[s.size] ? s.size : known.get(s.id).size, hidden: !!s.hidden });
   }
-  for (const w of WIDGETS) if (!out.some(o => o.id === w.id)) out.push({ id: w.id, size: w.size, hidden: false });
+  // Widgets added since the layout was saved go after the widget they follow by default
+  WIDGETS.forEach((w, i) => {
+    if (out.some(o => o.id === w.id)) return;
+    const prev = WIDGETS.slice(0, i).reverse().find(p => out.some(o => o.id === p.id));
+    const at = prev ? out.findIndex(o => o.id === prev.id) + 1 : 0;
+    out.splice(at, 0, { id: w.id, size: w.size, hidden: false });
+  });
   return out;
 }
 
@@ -171,6 +179,7 @@ function BarList({ rows, onPick, empty = 'Nothing here' }) {
 }
 
 function TaskTable({ items: periodItems, allItems, data }) {
+  const { openTask } = useStudio();
   const [scope, setScope] = useState('period');
   const items = scope === 'period' ? periodItems : allItems.filter(i => i.open);
   const [sort, setSort] = useState(['timeline', 1]);
@@ -213,7 +222,7 @@ function TaskTable({ items: periodItems, allItems, data }) {
           {sorted.slice(0, limit).map(it => {
             const late = it.open && it.deadline && it.deadline < today;
             return (
-              <tr key={it.id} className="border-b border-gray-50 hover:bg-gray-50/60">
+              <tr key={it.id} onClick={() => openTask(it)} className="border-b border-gray-50 hover:bg-gray-50/60 cursor-pointer">
                 <td className="py-2 px-2 max-w-[420px]">
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="text-[10px] font-bold px-1.5 py-0.5 rounded flex-none text-white" style={{ background: DIVISION[it.division]?.color || '#888' }}>{it.division === 'tv' ? 'TV' : BOARD_LABEL[it.board]}</span>
@@ -231,7 +240,7 @@ function TaskTable({ items: periodItems, allItems, data }) {
                 <td className={`py-2 px-2 text-xs whitespace-nowrap ${late ? 'text-red-600 font-semibold' : 'text-gray-600'}`}>{fmtDate(it.deadline)}</td>
                 <td className="py-2 px-2 text-xs tabular-nums text-gray-900 font-semibold">{hrs(it.effort_s)}</td>
                 <td className="py-2 px-2 text-xs tabular-nums text-gray-500">{hrs(it.effort_total_s)}</td>
-                <td className="py-2 px-2">{it.monday_url && <a href={it.monday_url} target="_blank" rel="noopener noreferrer" className="text-gray-300 hover:text-[#0808f8]" title="Open in Monday"><ExternalLink size={14} /></a>}</td>
+                <td className="py-2 px-2">{it.monday_url && <a href={it.monday_url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-gray-300 hover:text-[#0808f8]" title="Open in Monday"><ExternalLink size={14} /></a>}</td>
               </tr>
             );
           })}
@@ -245,6 +254,7 @@ function TaskTable({ items: periodItems, allItems, data }) {
 
 /** Email tasks from Retention Projects 3.0 (only Dan, Natalie and Kerry's). */
 function EmailTasks({ emails, data, onOpen }) {
+  const { openTask } = useStudio();
   const today = data.today;
   const open = emails.filter(e => e.open).sort((a, b) => (a.deadline || a.launch || '9999').localeCompare(b.deadline || b.launch || '9999'));
   const done = emails.filter(e => !e.open);
@@ -265,20 +275,105 @@ function EmailTasks({ emails, data, onOpen }) {
           </div>
           <div className="divide-y divide-gray-100">
             {open.slice(0, 12).map(e => (
-              <div key={e.id} className="flex flex-wrap md:flex-nowrap items-center gap-x-3 gap-y-1.5 py-2">
+              <div key={e.id} onClick={() => openTask(e)} className="flex flex-wrap md:flex-nowrap items-center gap-x-3 gap-y-1.5 py-2 cursor-pointer hover:bg-gray-50 rounded-lg px-1 -mx-1">
                 <div className="flex -space-x-1.5 flex-none">{e.people.map(p => data.people[p] && <Avatar key={p} person={data.people[p]} size={22} ring="#fff" />)}</div>
                 <span className="flex-1 min-w-[60%] md:min-w-0 truncate text-sm text-gray-900" title={e.name}>{e.name}</span>
                 <ProductTag product={e.product} />
                 <StatusPill status={e.status} small />
                 <TimelinePill timeline={e.timeline} today={today} color={e.status.color} small />
                 <span className={`text-xs flex-none w-14 text-right ${e.deadline && e.deadline < today ? 'text-red-600 font-semibold' : 'text-gray-500'}`} title={e.launch ? `Launch ${e.launch}` : 'Deadline'}>{fmtDate(e.deadline || e.launch)}</span>
-                {e.monday_url && <a href={e.monday_url} target="_blank" rel="noopener noreferrer" className="text-gray-300 hover:text-[#0808f8]"><ExternalLink size={14} /></a>}
+                {e.monday_url && <a href={e.monday_url} target="_blank" rel="noopener noreferrer" onClick={ev => ev.stopPropagation()} className="text-gray-300 hover:text-[#0808f8]"><ExternalLink size={14} /></a>}
               </div>
             ))}
             {open.length > 12 && <button type="button" onClick={() => onOpen({ title: 'Email tasks · open', items: open })} className="text-xs font-semibold text-gray-500 hover:text-gray-800 pt-2">+{open.length - 12} more</button>}
           </div>
         </>
       ) : <Empty>No open email tasks for the studio’s designers.</Empty>}
+    </Card>
+  );
+}
+
+const DAY_MS = 86400000;
+
+/** What a studio manager should look at now — each signal opens the exact tasks or people. */
+function needsAttention({ data, items, allItems, range, today }) {
+  const now = Date.parse(data.generated_at) || Date.now();
+  const open = allItems.filter(i => i.open);
+  const tasks = [
+    { key: 'overdue', icon: AlertTriangle, color: '#e2445c', label: 'Overdue', hint: 'past the deadline, still open', items: open.filter(i => i.deadline && i.deadline < today) },
+    { key: 'past_deadline', icon: CalendarX2, color: '#ff7a1a', label: 'Planned past the deadline', hint: 'timeline ends after it’s due', items: open.filter(i => i.deadline && i.deadline >= today && i.timeline?.to && i.timeline.to > i.deadline) },
+    { key: 'stuck', icon: Flame, color: '#333333', label: 'Stuck', hint: 'status is Stuck', items: open.filter(i => i.status.category === 'stuck') },
+    { key: 'waiting', icon: Hourglass, color: '#a25ddc', label: 'Waiting 5+ days to start', hint: 'submitted, never in Working', items: open.filter(i => i.life?.submitted && !i.life.started && now - Date.parse(i.life.submitted) > 5 * DAY_MS) },
+    { key: 'unassigned', icon: UserX, color: '#579bfc', label: 'No one assigned', hint: 'open, without a designer / editor', items: open.filter(i => !i.people.length) },
+    { key: 'unscheduled', icon: CalendarOff, color: '#9d99b9', label: 'Not on the timeline', hint: 'assigned, no timeline', items: open.filter(i => i.people.length && !i.timeline?.from) },
+  ].filter(s => s.items.length);
+
+  // People: overbooked days this period, and clocked-in time with nothing in Working (statuses not updated)
+  const people = [];
+  const cap = data.capacity || {};
+  for (const p of Object.values(data.people)) {
+    if (p.role !== 'design' && p.role !== 'video') continue;
+    const capacity = cap[p.role] || (p.role === 'video' ? 3 : 5);
+    const load = {};
+    for (const it of items) {
+      if (!it.open || !it.people.includes(p.id) || !it.timeline?.from || !it.timeline?.to) continue;
+      const wd = workdays(it.timeline.from, it.timeline.to);
+      for (const d of wd) if (d >= range.from && d <= range.to) load[d] = (load[d] || 0) + 1 / Math.max(1, wd.length);
+    }
+    const over = Object.entries(load).filter(([, v]) => v > capacity).map(([d]) => d).sort();
+    if (over.length) people.push({ key: `over:${p.id}`, kind: 'over', person: p, days: over });
+    if (p.clocked_s > 4 * 3600 && p.unassigned_s / p.clocked_s > 0.35) people.push({ key: `idle:${p.id}`, kind: 'idle', person: p, pct: Math.round((p.unassigned_s / p.clocked_s) * 100) });
+  }
+  const tvAsk = allItems.filter(i => i.tv?.source === 'ask').length;
+  return { tasks, people, tvAsk, range };
+}
+
+function Attention({ signals, onOpen, setF, f, goTab }) {
+  const { tasks, people, tvAsk } = signals;
+  const dayName = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' });
+  if (!tasks.length && !people.length && !tvAsk) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-emerald-700 bg-white rounded-2xl border border-gray-200 px-4 py-3">
+        <CheckCircle2 size={16} /> Nothing needs your attention right now.
+      </div>
+    );
+  }
+  return (
+    <Card title={<span className="flex items-center gap-2"><Activity size={15} className="text-[#e2445c]" /> Needs attention</span>} subtitle="Right now, across everything open · click to see them">
+      {tasks.length > 0 && (
+        <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }}>
+          {tasks.map(s => (
+            <button key={s.key} type="button" onClick={() => onOpen({ title: s.label, color: s.color, items: s.items, subtitle: s.hint })}
+              className="text-left rounded-xl border border-gray-200 px-3 py-2.5 hover:border-gray-400 hover:shadow-sm flex items-center gap-3">
+              <span className="w-8 h-8 rounded-lg flex items-center justify-center flex-none" style={{ background: `${s.color}18`, color: s.color }}><s.icon size={16} /></span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-xs font-semibold text-gray-800 leading-tight">{s.label}</span>
+                <span className="block text-[11px] text-gray-400 truncate">{s.hint}</span>
+              </span>
+              <b className="text-2xl font-black tabular-nums leading-none flex-none" style={{ fontFamily: '"Sofia Sans Extra Condensed", sans-serif', color: s.color }}>{s.items.length}</b>
+            </button>
+          ))}
+        </div>
+      )}
+      {(people.length > 0 || tvAsk > 0) && (
+        <div className={`flex flex-col gap-1.5 ${tasks.length ? 'mt-3 pt-3 border-t border-gray-100' : ''}`}>
+          {people.map(x => (
+            <button key={x.key} type="button" onClick={() => { setF({ ...f, people: [x.person.id] }); goTab?.(x.kind === 'over' ? 'workload' : 'time'); }}
+              className="flex items-center gap-2 text-sm text-gray-700 text-left rounded-lg px-1 py-0.5 hover:bg-gray-50">
+              <Avatar person={x.person} size={22} />
+              {x.kind === 'over'
+                ? <span><b>{firstName(x.person.name)}</b> is overbooked on {x.days.map(dayName).join(', ')} <span className="text-gray-400">· open the Workload to move something</span></span>
+                : <span><b>{firstName(x.person.name)}</b> spent {x.pct}% of clocked-in time with nothing in Working <span className="text-gray-400">· statuses may not be updated</span></span>}
+            </button>
+          ))}
+          {tvAsk > 0 && (
+            <button type="button" onClick={() => goTab?.('tv')} className="flex items-center gap-2 text-sm text-gray-700 text-left rounded-lg px-1 py-0.5 hover:bg-gray-50">
+              <span className="w-[22px] h-[22px] rounded-full bg-[#ff7a1a]/15 text-[#ff7a1a] flex items-center justify-center"><Tv size={12} /></span>
+              <span><b>{tvAsk}</b> TV task{tvAsk === 1 ? '' : 's'} need a production picked</span>
+            </button>
+          )}
+        </div>
+      )}
     </Card>
   );
 }
@@ -305,7 +400,8 @@ function SortableWidget({ w, editing, onSize, onHide, children }) {
   );
 }
 
-export default function Overview({ data, items, allItems, range, emails, f, setF }) {
+export default function Overview({ data, items, allItems, range, emails, f, setF, goTab }) {
+  const { openTask } = useStudio();
   const [layout, setLayout] = useState(() => mergeLayout(null));
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -343,6 +439,7 @@ export default function Overview({ data, items, allItems, range, emails, f, setF
     return m.set(i.product.label, e);
   }, new Map()).values()].sort((a, b) => b.value - a.value).slice(0, 10);
   const newRequests = allItems.filter(i => i.open && isNew(i)).sort((a, b) => (a.deadline || '9999').localeCompare(b.deadline || '9999'));
+  const attention = useMemo(() => needsAttention({ data, items, allItems, range, today }), [data, items, allItems, range, today]);
   const doneBy = ['video', 'design'].map(b => ({ b, list: delivered.filter(i => i.board === b) }));
   const doneMax = Math.max(1, ...doneBy.map(d => d.list.length));
   const showBoard = (b) => data.boards[b] && (f.division === 'all' || f.division === b || (f.division === 'tv' && b === 'video'));
@@ -410,19 +507,20 @@ export default function Overview({ data, items, allItems, range, emails, f, setF
           <BarList rows={productRows} onPick={(r) => setList({ title: r.label, color: r.color, items: r.items, filter: { product: r.label } })} />
         </Card>
       );
+      case 'attention': return <Attention signals={attention} onOpen={setList} setF={setF} f={f} goTab={goTab} />;
       case 'emails': return <EmailTasks emails={emails} data={data} onOpen={setList} />;
       case 'new_requests': return (
         <Card title={<span className="flex items-center gap-2"><Inbox size={15} className="text-[#0808f8]" /> New requests</span>} subtitle="Form requests and tasks waiting for someone">
           {newRequests.length ? (
             <div className="divide-y divide-gray-100">
               {newRequests.slice(0, 15).map(it => (
-                <div key={it.id} className="flex flex-wrap md:flex-nowrap items-center gap-x-3 gap-y-1.5 py-2">
+                <div key={it.id} onClick={() => openTask(it)} className="flex flex-wrap md:flex-nowrap items-center gap-x-3 gap-y-1.5 py-2 cursor-pointer hover:bg-gray-50 rounded-lg px-1 -mx-1">
                   <span className="text-[10px] font-bold px-1.5 py-0.5 rounded text-white flex-none" style={{ background: DIVISION[it.division]?.color }}>{it.division === 'tv' ? 'TV' : BOARD_LABEL[it.board]}</span>
                   <span className="flex-1 min-w-[60%] md:min-w-0 truncate text-sm text-gray-900" title={it.name}>{it.name}</span>
                   <span className="text-xs text-gray-500 flex-none">{it.requested_by.map(r => data.requesters[r]?.name.split(' ')[0]).filter(Boolean).join(', ')}</span>
                   <TimelinePill timeline={it.timeline} today={today} color={it.status.color} small />
                   <span className={`text-xs flex-none w-16 text-right ${it.deadline && it.deadline < today ? 'text-red-600 font-semibold' : 'text-gray-500'}`}>{fmtDate(it.deadline)}</span>
-                  {it.monday_url && <a href={it.monday_url} target="_blank" rel="noopener noreferrer" className="text-gray-300 hover:text-[#0808f8]"><ExternalLink size={14} /></a>}
+                  {it.monday_url && <a href={it.monday_url} target="_blank" rel="noopener noreferrer" onClick={ev => ev.stopPropagation()} className="text-gray-300 hover:text-[#0808f8]"><ExternalLink size={14} /></a>}
                 </div>
               ))}
               {newRequests.length > 15 && <button type="button" onClick={() => setList({ title: 'New requests', items: newRequests })} className="text-xs font-semibold text-gray-500 hover:text-gray-800 pt-2">+{newRequests.length - 15} more</button>}

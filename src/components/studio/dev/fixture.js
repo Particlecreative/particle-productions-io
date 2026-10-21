@@ -122,6 +122,14 @@ function spreadEffort(it, pid, days, today, r) {
   return Object.keys(out).length ? { [pid]: out } : {};
 }
 
+export function fixtureUpdates(itemId) {
+  const at = (h) => new Date(Date.now() - h * 3600e3).toISOString();
+  return { updates: [
+    { id: `${itemId}-2`, text: 'First cut is up on Frame.io — please check the hook in the first 3 seconds.', at: at(5), by: { id: '102', name: 'Itai Cohen' }, replies: [{ id: `${itemId}-r`, text: 'Looks great, just tighten the end card.', at: at(3), by: { id: '301', name: 'Avi Levi' } }] },
+    { id: `${itemId}-1`, text: 'Department: Marketing/Media | Product: Face Cream | Versions Needed: 2 | Sizes Needed: 9x16, 4x5\n\nConcept\n-------\n\nA 15s cut of the Hunt spot for Meta, opening on the close-up of the fox.\n\nKeep the end card from the TV version.', at: at(50), by: { id: '301', name: 'Avi Levi' }, replies: [] },
+  ] };
+}
+
 export const fixtureInspiration = { date: '2026-10-21', line: 'Just keep swimming.', title: 'Finding Nemo', year: 2003, director: 'Andrew Stanton', image_url: null, source: null };
 export const fixtureConnections = { monday: { connected: true }, bamboohr: { connected: false }, tmdb: { connected: false } };
 

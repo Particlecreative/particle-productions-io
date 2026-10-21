@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, ExternalLink, Filter, ArrowUpDown, Tv, Mail } from 'lucide-react';
 import { Avatar, StatusPill, ProductTag, hrs, DIVISION, TimelinePill } from './Bits';
+import { useStudio } from './writes';
 
 const BOARD_LABEL = { video: 'Video', design: 'Design', retention: 'Email' };
 const fmtDate = (d) => (d ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '–');
@@ -11,17 +12,22 @@ const fmtDate = (d) => (d ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US
  * (e.g. Natalie → Completed, Video battery → Review, Overdue).
  */
 export default function TaskListModal({ list, data, onClose, onFilter }) {
+  const { openTask } = useStudio();
   const [sort, setSort] = useState(['timeline', 1]);
   useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    // Esc closes the task panel first when one is open on top
+    const onKey = (e) => { if (e.key === 'Escape' && !document.querySelector('[data-task-panel]')) onClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
   const items = useMemo(() => {
     const [k, dir] = sort;
     const v = (it) => (k === 'deadline' ? (it.deadline || '9999') : k === 'timeline' ? (it.timeline?.from || '9999') : k === 'effort' ? (it.effort_s || 0) : k === 'status' ? it.status.label : it.name.toLowerCase());
-    return [...(list?.items || [])].sort((a, b) => { const x = v(a); const y = v(b); return (x > y ? 1 : x < y ? -1 : 0) * dir; });
-  }, [list, sort]);
+    // Show each task as it is now (a change made in the task panel shows here straight away)
+    const now = new Map([...(data.items || []), ...(data.emails || [])].map(i => [`${i.board}:${i.id}`, i]));
+    return (list?.items || []).map(i => now.get(`${i.board}:${i.id}`) || i)
+      .sort((a, b) => { const x = v(a); const y = v(b); return (x > y ? 1 : x < y ? -1 : 0) * dir; });
+  }, [list, sort, data]);
   if (!list) return null;
   const today = data.today;
   const totalEffort = items.reduce((a, i) => a + (i.effort_s || 0), 0);
@@ -66,7 +72,7 @@ export default function TaskListModal({ list, data, onClose, onFilter }) {
               {items.map(it => {
                 const late = it.open && it.deadline && it.deadline < today;
                 return (
-                  <tr key={`${it.board}:${it.id}`} className="border-b border-gray-50 hover:bg-gray-50/70">
+                  <tr key={`${it.board}:${it.id}`} onClick={() => openTask(it)} className="border-b border-gray-50 hover:bg-gray-50/70 cursor-pointer">
                     <td className="py-2.5 px-4 max-w-[440px]">
                       <div className="flex items-center gap-2 min-w-0">
                         <span className="text-[10px] font-bold px-1.5 py-0.5 rounded flex-none text-white" style={{ background: it.board === 'retention' ? '#00a9a5' : DIVISION[it.division]?.color || '#888' }}>
@@ -85,7 +91,7 @@ export default function TaskListModal({ list, data, onClose, onFilter }) {
                     <td className="py-2.5 px-2"><TimelinePill timeline={it.timeline} today={today} color={it.status.color} small /></td>
                     <td className={`py-2.5 px-2 text-xs whitespace-nowrap ${late ? 'text-red-600 font-semibold' : 'text-gray-600'}`}>{fmtDate(it.deadline)}</td>
                     <td className="py-2.5 px-2 text-xs text-right tabular-nums font-semibold text-gray-900">{hrs(it.effort_s)}</td>
-                    <td className="py-2.5 px-3">{it.monday_url && <a href={it.monday_url} target="_blank" rel="noopener noreferrer" className="text-gray-300 hover:text-[#0808f8]" title="Open in Monday"><ExternalLink size={14} /></a>}</td>
+                    <td className="py-2.5 px-3">{it.monday_url && <a href={it.monday_url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-gray-300 hover:text-[#0808f8]" title="Open in Monday"><ExternalLink size={14} /></a>}</td>
                   </tr>
                 );
               })}

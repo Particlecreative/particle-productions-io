@@ -2,6 +2,7 @@ import { Fragment, useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, Clock, Plane, Info, ExternalLink, Users, Sparkles, ArrowUpDown, Hourglass } from 'lucide-react';
 import { Avatar, Card, ProductTag, StatusPill, Empty, hrs, Seg, CATEGORY } from './Bits';
 import { addDays } from './Filters';
+import { useStudio } from './writes';
 
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAY_MS = 86400000;
@@ -133,6 +134,7 @@ function DayCell({ date, person, today, bamboo }) {
 }
 
 function PersonTasks({ person, items }) {
+  const { openTask } = useStudio();
   const rows = items
     .map(it => ({ it, mine: it.effort_by_person?.[person.id] || 0 }))
     .filter(r => r.mine > 0 || r.it.active_now)
@@ -142,7 +144,7 @@ function PersonTasks({ person, items }) {
   return (
     <div className="divide-y divide-gray-50">
       {rows.map(({ it, mine }) => (
-        <div key={it.id} className="grid grid-cols-[minmax(0,1fr)_160px_64px_64px_20px] items-center gap-3 py-2 px-2 text-xs">
+        <div key={it.id} onClick={() => openTask(it)} className="grid grid-cols-[minmax(0,1fr)_160px_64px_64px_20px] items-center gap-3 py-2 px-2 text-xs cursor-pointer rounded-lg hover:bg-white">
           <div className="min-w-0">
             <div className="truncate text-gray-900" title={it.name}>{it.name}</div>
             <div className="flex items-center gap-2 mt-0.5"><ProductTag product={it.product} /><StatusPill status={it.status} small /></div>
@@ -150,7 +152,7 @@ function PersonTasks({ person, items }) {
           <div className="h-2 rounded-full bg-gray-100 overflow-hidden"><div className="h-full rounded-full bg-[#0808f8]" style={{ width: `${(mine / max) * 100}%` }} /></div>
           <div className="text-right font-bold text-gray-900 tabular-nums" title="This person’s time on the task in this period">{hrs(mine)}</div>
           <div className="text-right text-gray-500 tabular-nums" title="All hands-on time on the task (everyone, whole life)">{hrs(it.effort_total_s)}</div>
-          <div>{it.monday_url && <a href={it.monday_url} target="_blank" rel="noopener noreferrer" className="text-gray-300 hover:text-[#0808f8]"><ExternalLink size={13} /></a>}</div>
+          <div>{it.monday_url && <a href={it.monday_url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-gray-300 hover:text-[#0808f8]"><ExternalLink size={13} /></a>}</div>
         </div>
       ))}
     </div>
@@ -352,6 +354,7 @@ function workdaysBetween(aIso, bMs) {
 
 /** A task's whole story: when it was asked for, when work started, where the time went, and each day's hands-on hours vs. hours clocked in. */
 function TaskLifeDetail({ it, life, data, who, bamboo }) {
+  const { openTask } = useStudio();
   const rows = [];
   for (const [uid, byDay] of Object.entries(it.effort_days || {})) {
     if (who && uid !== who) continue;
@@ -425,9 +428,10 @@ function TaskLifeDetail({ it, life, data, who, bamboo }) {
         ) : <div className="text-xs text-gray-400">No hands-on time recorded — it was never in Working / Fixes Round while {who ? first(data.people[who]?.name) : 'its person'} was {bamboo ? 'clocked in' : 'within work hours'}.</div>}
       </div>
 
-      {it.monday_url && (
-        <a href={it.monday_url} target="_blank" rel="noopener noreferrer" className="self-start text-xs font-semibold text-[#0808f8] flex items-center gap-1 hover:underline">Open in Monday <ExternalLink size={12} /></a>
-      )}
+      <div className="flex items-center gap-4">
+        <button type="button" onClick={() => openTask(it)} className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white" style={{ background: '#0808f8' }}>Open task — status, dates, updates</button>
+        {it.monday_url && <a href={it.monday_url} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-gray-500 flex items-center gap-1 hover:text-[#0808f8]">Open in Monday <ExternalLink size={12} /></a>}
+      </div>
     </div>
   );
 }
