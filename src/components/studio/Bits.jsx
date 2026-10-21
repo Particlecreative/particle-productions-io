@@ -1,4 +1,43 @@
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
+
+/** [ref, width] — an element's width, kept up to date (fallback until it's measured). */
+export function useWidth(fallback = 1200) {
+  const ref = useRef(null);
+  const [w, setW] = useState(0);
+  // Measure before the first paint, then follow resizes (window resize too, in case the observer is throttled)
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const measure = () => setW(el.getBoundingClientRect().width);
+    measure();
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    ro?.observe(el);
+    window.addEventListener('resize', measure);
+    return () => { ro?.disconnect(); window.removeEventListener('resize', measure); };
+  }, []);
+  return [ref, w || fallback];
+}
+
+/** Cards per row so every row is full: as many as fit (each ≥ min px), rows balanced (7 → 4 + 3, never 6 + 1). */
+export function perRow(n, width, min, gap) {
+  const fit = Math.max(1, Math.floor((width + gap) / (min + gap)));
+  return Math.ceil(n / Math.max(1, Math.ceil(n / fit)));
+}
+
+/** A grid with no half-empty rows — each row is stretched edge to edge and its cards share one height. */
+export function BalancedGrid({ items, min = 230, gap = 12, render }) {
+  const [ref, w] = useWidth();
+  const per = perRow(items.length, w, min, gap);
+  const rows = [];
+  for (let i = 0; i < items.length; i += per) rows.push(items.slice(i, i + per));
+  return (
+    <div ref={ref} className="flex flex-col" style={{ gap }}>
+      {rows.map((row, r) => (
+        <div key={r} className="grid" style={{ gap, gridTemplateColumns: `repeat(${row.length}, minmax(0, 1fr))` }}>{row.map(render)}</div>
+      ))}
+    </div>
+  );
+}
 
 export const ELECTRIC = '#0808f8';
 export const NAVY = '#030b2e';

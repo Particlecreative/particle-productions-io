@@ -103,7 +103,7 @@ export default function StudioPage() {
 
   return (
     <StudioCtx.Provider value={ctx}>
-    <div className="max-w-[1500px] mx-auto pb-16">
+    <div className="max-w-[2400px] mx-auto pb-16">
       <div className="flex flex-wrap items-end gap-4 mb-4">
         <div>
           <h1 className="brand-title text-4xl" style={{ color: 'var(--brand-primary)' }}>Studio</h1>

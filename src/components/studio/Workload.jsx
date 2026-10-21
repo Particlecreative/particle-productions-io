@@ -89,9 +89,12 @@ export default function Workload({ f }) {
   useEffect(() => {
     const el = gridRef.current;
     if (!el) return undefined;
-    const ro = new ResizeObserver(([e]) => setWidth(e.contentRect.width));
+    const measure = () => setWidth(el.clientWidth);
+    measure();
+    const ro = new ResizeObserver(measure);
     ro.observe(el);
-    return () => ro.disconnect();
+    window.addEventListener('resize', measure);
+    return () => { ro.disconnect(); window.removeEventListener('resize', measure); };
   }, [data, panel]);
 
   // ── Keyboard: ← → weeks, T today ──

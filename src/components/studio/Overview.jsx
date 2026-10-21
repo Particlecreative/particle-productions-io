@@ -3,7 +3,7 @@ import { DndContext, PointerSensor, KeyboardSensor, closestCenter, useSensor, us
 import { SortableContext, useSortable, rectSortingStrategy, arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { ExternalLink, Tv, Inbox, ArrowUpDown, Plane, Mail, GripVertical, EyeOff, Eye, LayoutGrid, Check, RotateCcw, Loader2, AlertTriangle, Hourglass, CalendarX2, UserX, CalendarOff, Flame, Activity, CheckCircle2 } from 'lucide-react';
-import { Avatar, Card, StatusPill, ProductTag, StackBar, Empty, hrs, DIVISION, TimelinePill } from './Bits';
+import { Avatar, Card, StatusPill, ProductTag, StackBar, Empty, hrs, DIVISION, TimelinePill, BalancedGrid, useWidth } from './Bits';
 import { nextWindow } from './Filters';
 import Inspiration from './Inspiration';
 import TaskListModal from './TaskListModal';
@@ -22,8 +22,7 @@ const WIDGETS = [
   { id: 'out', label: 'Out today', size: 'full' },
   { id: 'battery_video', label: 'Video battery', size: 'half' },
   { id: 'battery_design', label: 'Design battery', size: 'half' },
-  { id: 'people_video', label: 'Video editors', size: 'full' },
-  { id: 'people_design', label: 'Designers', size: 'full' },
+  { id: 'people', label: 'Team (video editors + designers)', size: 'full' },
   { id: 'completed', label: 'Completed', size: 'third' },
   { id: 'requesters', label: 'By requester', size: 'third' },
   { id: 'products', label: 'By product', size: 'third' },
@@ -31,15 +30,33 @@ const WIDGETS = [
   { id: 'new_requests', label: 'New requests', size: 'full' },
   { id: 'tasks', label: 'All tasks', size: 'full' },
 ];
-const SPAN = { full: 'md:col-span-6', half: 'md:col-span-3', third: 'md:col-span-2' };
+const SPAN_N = { third: 2, half: 3, full: 6 };
+const COLSPAN = ['', 'md:col-span-1', 'md:col-span-2', 'md:col-span-3', 'md:col-span-4', 'md:col-span-5', 'md:col-span-6'];
+const ALIAS = { people_video: 'people', people_design: 'people' }; // older saved layouts
+
+/** Every dashboard row filled edge to edge: the last block in a row widens into whatever space is left. */
+function packRows(list) {
+  const span = new Map();
+  let row = [];
+  let used = 0;
+  const close = () => { if (row.length) { const last = row[row.length - 1]; span.set(last.id, span.get(last.id) + (6 - used)); } row = []; used = 0; };
+  for (const w of list) {
+    const n = SPAN_N[w.size] || 6;
+    if (used + n > 6) close();
+    row.push(w); used += n; span.set(w.id, n);
+  }
+  close();
+  return span;
+}
 const SIZES = [['third', '⅓'], ['half', '½'], ['full', 'Full']];
 
 function mergeLayout(saved) {
   const known = new Map(WIDGETS.map(w => [w.id, w]));
   const out = [];
-  for (const s of Array.isArray(saved) ? saved : []) {
+  for (const raw of Array.isArray(saved) ? saved : []) {
+    const s = raw && ALIAS[raw.id] ? { ...raw, id: ALIAS[raw.id], size: 'full' } : raw;
     if (!s?.id || !known.has(s.id) || out.some(o => o.id === s.id)) continue;
-    out.push({ id: s.id, size: SPAN[s.size] ? s.size : known.get(s.id).size, hidden: !!s.hidden });
+    out.push({ id: s.id, size: SPAN_N[s.size] ? s.size : known.get(s.id).size, hidden: !!s.hidden });
   }
   // Widgets added since the layout was saved go after the widget they follow by default
   WIDGETS.forEach((w, i) => {
@@ -119,7 +136,7 @@ function PersonCard({ person, items, upcoming = [], boards, onOpen, today }) {
   const first = person.name.split(' ')[0];
   const openPart = (p) => onOpen({ title: `${first} · ${p.label}`, person, color: p.color, items: items.filter(i => i.status.label === p.label), filter: { people: [person.id] } });
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 p-4 hover:shadow-md transition-shadow">
+    <div className="h-full flex flex-col bg-white rounded-2xl border border-gray-200 p-4 hover:shadow-md transition-shadow min-w-0">
       <button type="button" onClick={() => onOpen({ title: `${first}’s work`, person, items, filter: { people: [person.id] } })} className="flex items-center gap-2.5 mb-3 w-full text-left">
         <Avatar person={person} size={34} />
         <div className="min-w-0 flex-1">
@@ -148,7 +165,8 @@ function PersonCard({ person, items, upcoming = [], boards, onOpen, today }) {
           {upcoming.length} task{upcoming.length === 1 ? '' : 's'} next week →
         </button>
       )}
-      <div className="flex items-center gap-3 mt-3 pt-3 border-t border-gray-100 text-[11px] text-gray-500">
+      <div className="mt-auto pt-3" />
+      <div className="flex items-center gap-3 pt-3 border-t border-gray-100 text-[11px] text-gray-500">
         <span><b className="text-gray-900 tabular-nums">{items.length}</b> this period</span>
         <button type="button" onClick={() => onOpen({ title: `${first} · active now`, person, items: active })} className="hover:text-[#0808f8]"><b className="text-gray-900 tabular-nums">{active.length}</b> active</button>
         <span className="ml-auto" title="Time on active tasks this period"><b className="text-gray-900 tabular-nums">{hrs(person.effort_s)}</b> worked</span>
@@ -341,8 +359,7 @@ function Attention({ signals, onOpen, setF, f, goTab }) {
   return (
     <Card title={<span className="flex items-center gap-2"><Activity size={15} className="text-[#e2445c]" /> Needs attention</span>} subtitle="Right now, across everything open · click to see them">
       {tasks.length > 0 && (
-        <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }}>
-          {tasks.map(s => (
+        <BalancedGrid items={tasks} min={210} gap={8} render={s => (
             <button key={s.key} type="button" onClick={() => onOpen({ title: s.label, color: s.color, items: s.items, subtitle: s.hint })}
               className="text-left rounded-xl border border-gray-200 px-3 py-2.5 hover:border-gray-400 hover:shadow-sm flex items-center gap-3">
               <span className="w-8 h-8 rounded-lg flex items-center justify-center flex-none" style={{ background: `${s.color}18`, color: s.color }}><s.icon size={16} /></span>
@@ -352,8 +369,7 @@ function Attention({ signals, onOpen, setF, f, goTab }) {
               </span>
               <b className="text-2xl font-black tabular-nums leading-none flex-none" style={{ fontFamily: '"Sofia Sans Extra Condensed", sans-serif', color: s.color }}>{s.items.length}</b>
             </button>
-          ))}
-        </div>
+          )} />
       )}
       {(people.length > 0 || tvAsk > 0) && (
         <div className={`flex flex-col gap-1.5 ${tasks.length ? 'mt-3 pt-3 border-t border-gray-100' : ''}`}>
@@ -378,11 +394,43 @@ function Attention({ signals, onOpen, setF, f, goTab }) {
   );
 }
 
-function SortableWidget({ w, editing, onSize, onHide, children }) {
+/**
+ * Video editors and designers. When everyone fits, both groups share one row (cards the same width);
+ * otherwise each group gets its own rows, always filled edge to edge.
+ */
+function Team({ groups, render }) {
+  const [ref, w] = useWidth();
+  const MIN = 200;
+  const GAP = 12;
+  const GROUP_GAP = 20;
+  const total = groups.reduce((a, g) => a + g.people.length, 0);
+  const oneRow = total * MIN + (total - groups.length) * GAP + (groups.length - 1) * GROUP_GAP <= w;
+  const heading = (g) => <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2">{g.title}</div>;
+  return (
+    <div ref={ref}>
+      {oneRow ? (
+        <div className="grid" style={{ gap: GROUP_GAP, gridTemplateColumns: groups.map(g => `minmax(0, ${g.people.length}fr)`).join(' ') }}>
+          {groups.map(g => (
+            <div key={g.key} className="min-w-0 flex flex-col">
+              {heading(g)}
+              <div className="grid flex-1" style={{ gap: GAP, gridTemplateColumns: `repeat(${g.people.length}, minmax(0, 1fr))` }}>{g.people.map(render)}</div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-5">
+          {groups.map(g => <div key={g.key}>{heading(g)}<BalancedGrid items={g.people} min={MIN} gap={GAP} render={render} /></div>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SortableWidget({ w, span, editing, onSize, onHide, children }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: w.id, disabled: !editing });
   return (
     <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 30 : undefined }}
-      className={`col-span-6 ${SPAN[w.size]} relative min-w-0 ${editing ? 'rounded-2xl ring-2 ring-dashed ring-[#0808f8]/30 p-1' : ''} ${w.hidden ? 'opacity-40' : ''} ${isDragging ? 'shadow-2xl' : ''}`}>
+      className={`col-span-6 ${COLSPAN[span]} relative min-w-0 ${editing ? 'rounded-2xl ring-2 ring-dashed ring-[#0808f8]/30 p-1' : ''} ${w.hidden ? 'opacity-40' : ''} ${isDragging ? 'shadow-2xl' : ''}`}>
       {editing && (
         <div className="flex items-center gap-1 mb-1 px-1">
           <button type="button" {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing p-1 rounded-md bg-white shadow text-gray-500" title="Drag to move"><GripVertical size={14} /></button>
@@ -395,7 +443,7 @@ function SortableWidget({ w, editing, onSize, onHide, children }) {
           <button type="button" onClick={onHide} className="p-1 rounded-md bg-white shadow text-gray-500" title={w.hidden ? 'Show' : 'Hide'}>{w.hidden ? <Eye size={14} /> : <EyeOff size={14} />}</button>
         </div>
       )}
-      <div className={editing ? 'pointer-events-none select-none' : ''}>{children}</div>
+      <div className={editing ? 'pointer-events-none select-none' : 'h-full [&>*]:h-full'}>{children}</div>
     </div>
   );
 }
@@ -469,19 +517,10 @@ export default function Overview({ data, items, allItems, range, emails, f, setF
       ) : (editing ? <div className="text-xs text-gray-400 bg-white rounded-2xl border border-dashed border-gray-200 px-4 py-2.5">Out today — shows when someone is off</div> : null);
       case 'battery_video': return showBoard('video') ? <Battery board={data.boards.video} items={items.filter(i => i.board === 'video')} onOpen={setList} /> : null;
       case 'battery_design': return showBoard('design') ? <Battery board={data.boards.design} items={items.filter(i => i.board === 'design')} onOpen={setList} /> : null;
-      case 'people_video':
-      case 'people_design': {
-        const role = id === 'people_video' ? 'video' : 'design';
-        const listP = byRole(role);
-        if (!listP.length) return null;
-        return (
-          <div>
-            <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2">{role === 'video' ? 'Video editors' : 'Designers'}</div>
-            <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))' }}>
-              {listP.map(p => <PersonCard key={p.id} person={p} items={items.filter(i => i.people.includes(p.id))} upcoming={upcomingFor(p.id)} boards={data.boards} onOpen={setList} today={today} />)}
-            </div>
-          </div>
-        );
+      case 'people': {
+        const groups = [['video', 'Video editors'], ['design', 'Designers']].map(([role, title]) => ({ key: role, title, people: byRole(role) })).filter(g => g.people.length);
+        if (!groups.length) return null;
+        return <Team groups={groups} render={p => <PersonCard key={p.id} person={p} items={items.filter(i => i.people.includes(p.id))} upcoming={upcomingFor(p.id)} boards={data.boards} onOpen={setList} today={today} />} />;
       }
       case 'completed': return (
         <Card title="Completed" subtitle="Done, with a timeline in this period · click a bar" className="h-full">
@@ -542,6 +581,9 @@ export default function Overview({ data, items, allItems, range, emails, f, setF
     try { await studioApi.saveLayout(layout); setEditing(false); } finally { setSaving(false); }
   };
   const shown = editing ? layout : layout.filter(w => !w.hidden);
+  // Blocks with something to show; rows are packed so the edges line up (sizes stay as chosen while arranging)
+  const blocks = shown.map(w => ({ w, content: render(w.id) })).filter(b => b.content || editing);
+  const spans = editing ? new Map(blocks.map(b => [b.w.id, SPAN_N[b.w.size] || 6])) : packRows(blocks.map(b => b.w));
 
   return (
     <div>
@@ -561,12 +603,10 @@ export default function Overview({ data, items, allItems, range, emails, f, setF
       <DndContext sensors={sensors} collisionDetection={closestCenter}
         onDragEnd={({ active, over }) => { if (over && active.id !== over.id) setLayout(l => arrayMove(l, l.findIndex(x => x.id === active.id), l.findIndex(x => x.id === over.id))); }}>
         <SortableContext items={shown.map(w => w.id)} strategy={rectSortingStrategy}>
-          <div className="grid grid-cols-6 gap-5 items-start">
-            {shown.map(w => {
-              const content = render(w.id);
-              if (!content && !editing) return null;
+          <div className={`grid grid-cols-6 gap-5 ${editing ? 'items-start' : 'items-stretch'}`}>
+            {blocks.map(({ w, content }) => {
               return (
-                <SortableWidget key={w.id} w={w} editing={editing}
+                <SortableWidget key={w.id} w={w} span={spans.get(w.id)} editing={editing}
                   onSize={(size) => setLayout(l => l.map(x => (x.id === w.id ? { ...x, size } : x)))}
                   onHide={() => setLayout(l => l.map(x => (x.id === w.id ? { ...x, hidden: !x.hidden } : x)))}>
                   {content || <div className="text-xs text-gray-400 bg-white rounded-2xl border border-dashed border-gray-200 px-4 py-6 text-center">{WIDGETS.find(x => x.id === w.id)?.label} — nothing for these filters</div>}
