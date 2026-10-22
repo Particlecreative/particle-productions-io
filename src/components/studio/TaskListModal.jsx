@@ -12,7 +12,7 @@ const fmtDate = (d) => (d ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US
  * (e.g. Natalie → Completed, Video battery → Review, Overdue).
  */
 export default function TaskListModal({ list, data, onClose, onFilter }) {
-  const { openTask } = useStudio();
+  const { openTask, writes } = useStudio();
   const [sort, setSort] = useState(['timeline', 1]);
   // Lists about time in a status open longest-first
   useEffect(() => { setSort(list?.statusAge ? ['age', -1] : ['timeline', 1]); }, [list]);
@@ -27,9 +27,9 @@ export default function TaskListModal({ list, data, onClose, onFilter }) {
     const v = (it) => (k === 'age' ? -(Date.parse(it.status_since) || Date.now()) : k === 'deadline' ? (it.deadline || '9999') : k === 'timeline' ? (it.timeline?.from || '9999') : k === 'effort' ? (it.effort_s || 0) : k === 'status' ? it.status.label : it.name.toLowerCase());
     // Show each task as it is now (a change made in the task panel shows here straight away)
     const now = new Map([...(data.items || []), ...(data.emails || [])].map(i => [`${i.board}:${i.id}`, i]));
-    return (list?.items || []).map(i => now.get(`${i.board}:${i.id}`) || i)
+    return (list?.items || []).map(i => now.get(`${i.board}:${i.id}`) || writes.merge(i)).filter(i => !i.archived)
       .sort((a, b) => { const x = v(a); const y = v(b); return (x > y ? 1 : x < y ? -1 : 0) * dir; });
-  }, [list, sort, data]);
+  }, [list, sort, data, writes]);
   if (!list) return null;
   const today = data.today;
   const totalEffort = items.reduce((a, i) => a + (i.effort_s || 0), 0);

@@ -98,6 +98,21 @@ export function useMondayWrites() {
     }
   }, []);
 
+  /** Archive on Monday (after the user confirmed). Hidden in every tab at once; Monday's API has no un-archive. */
+  const archive = useCallback(async (it) => {
+    put(it.id, { archived: true });
+    try {
+      await studioApi.archiveItem(it.id);
+      lastWrite = Date.now();
+      setToast({ head: 'Archived on Monday', text: `${it.title || it.name.slice(0, 50)} · restore it from the board’s Archive on Monday if needed` });
+      return true;
+    } catch (e) {
+      put(it.id, { archived: false });
+      setToast({ error: true, text: e.message });
+      return false;
+    }
+  }, []);
+
   /** Save a change to Monday. next: { timeline?, people?, status? (board status object), deadline? }. Returns false if blocked. */
   const save = useCallback((it, next, data) => {
     const title = it.title || it.name.slice(0, 40);
@@ -124,10 +139,10 @@ export function useMondayWrites() {
     <div onMouseEnter={() => setToastHover(true)} onMouseLeave={() => setToastHover(false)}
       className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-[95] px-4 py-2.5 rounded-full text-sm shadow-xl flex items-center gap-3 max-w-[92vw] ${toast.error ? 'bg-red-600 text-white' : 'bg-[#030b2e] text-white'}`}>
       {toast.error ? <AlertTriangle size={15} className="flex-none" /> : null}
-      <span className="truncate">{toast.error ? toast.text : `Updated on Monday · ${toast.text}`}</span>
+      <span className="truncate">{toast.error ? toast.text : `${toast.head || 'Updated on Monday'} · ${toast.text}`}</span>
       {toast.undo && <button type="button" onClick={toast.undo} className="flex items-center gap-1 font-semibold text-[#8c93ff] hover:text-white flex-none"><Undo2 size={14} /> Undo</button>}
       <button type="button" onClick={() => setToast(null)} className="opacity-60 hover:opacity-100 flex-none"><X size={14} /></button>
     </div>, document.body) : null;
 
-  return useMemo(() => ({ merge, save, setToast, toastEl }), [merge, save, toastEl]);
+  return useMemo(() => ({ merge, save, archive, setToast, toastEl }), [merge, save, archive, toastEl]);
 }

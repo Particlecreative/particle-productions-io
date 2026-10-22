@@ -330,6 +330,36 @@ async function boardMeta(boardId, { force = false } = {}) {
   }, { force });
 }
 
+/** Upload a file through Monday's file endpoint (multipart; the mutation's $file is the uploaded part). */
+async function uploadFile(query, { name, mime, buffer }) {
+  const token = process.env.MONDAY_API_TOKEN;
+  if (!token) throw new MondayError('Monday.com API token not configured (MONDAY_API_TOKEN)', { code: 'NO_TOKEN' });
+  const form = new FormData();
+  form.append('query', query);
+  form.append('map', JSON.stringify({ file: 'variables.file' }));
+  form.append('file', new Blob([buffer], { type: mime || 'application/octet-stream' }), name);
+  const res = await fetch('https://api.monday.com/v2/file', {
+    method: 'POST', headers: { Authorization: token, 'API-Version': API_VERSION() }, body: form, signal: AbortSignal.timeout(180000),
+  });
+  const body = await res.json().catch(() => null);
+  if (!res.ok || body?.errors?.length || body?.error_message) {
+    throw new MondayError(body?.errors?.[0]?.message || body?.error_message || `Monday upload failed (${res.status})`);
+  }
+  return body?.data;
+}
+
+/** Attach a file to an update — it shows in the update and in the item's Files tab. */
+function addFileToUpdate(updateId, file) {
+  if (!/^\d+$/.test(String(updateId))) throw new MondayError('Bad update id');
+  return uploadFile(`mutation ($file: File!) { add_file_to_update(update_id: ${updateId}, file: $file) { id } }`, file);
+}
+
+/** Attach a file to an item's file column. */
+function addFileToColumn(itemId, columnId, file) {
+  if (!/^\d+$/.test(String(itemId)) || !/^\w+$/.test(String(columnId))) throw new MondayError('Bad item or column');
+  return uploadFile(`mutation ($file: File!) { add_file_to_column(item_id: ${itemId}, column_id: "${columnId}", file: $file) { id } }`, file);
+}
+
 /** Monday users by id (cached 1h per id set). */
 async function usersByIds(ids) {
   const unique = [...new Set((ids || []).map(String))].filter(Boolean).sort();
@@ -372,4 +402,6 @@ module.exports = {
   usersByIds,
   assetsByIds,
   normLabel,
+  addFileToUpdate,
+  addFileToColumn,
 };

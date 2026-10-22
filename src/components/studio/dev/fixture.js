@@ -158,7 +158,7 @@ export const fixtureTicketForm = {
   empty: Object.fromEntries(['department', 'product', 'type', 'task_name', 'concept', 'script', 'hook', 'requested_by', 'assignee', 'versions', 'priority', 'sizes', 'deadline', 'ai_assist', 'platform', 'campaign', 'duration', 'supporting_text', 'other_sizes', 'website_task']
     .map(k => [k, ['sizes', 'campaign', 'requested_by', 'assignee'].includes(k) ? [] : ''])),
 };
-export function fixtureDraft({ messages, draft }) {
+export function fixtureDraft({ messages, draft, files }) {
   const last = messages[messages.length - 1]?.content || '';
   const design = /static|banner|website|design/i.test(last);
   const product = PRODUCTS.map(p => p[0]).find(p => last.toLowerCase().includes(p.toLowerCase().split(' ')[0])) || draft.product || '';
@@ -166,5 +166,7 @@ export function fixtureDraft({ messages, draft }) {
     task_name: draft.task_name || last.slice(0, 60), concept: draft.concept || last, versions: draft.versions || '1', priority: draft.priority || 'Medium',
     sizes: draft.sizes?.length ? draft.sizes : ['9x16'].filter(s => last.includes(s)) };
   const missing = (design ? ['department', 'product', 'task_name', 'concept'] : ['department', 'product', 'type', 'task_name', 'concept']).filter(k => !fields[k]);
-  return { reply: missing.length ? `Got it. Which ${missing[0]}?` : 'Ready — review the form and submit.', board: design ? 'design' : 'video', fields, missing, ready: !missing.length };
+  const links = (last.match(/https?:\/\/[^\s<>"']+/g) || []).map(url => ({ type: 'link', url, title: null, ok: !/fail/.test(url), note: /fail/.test(url) ? 'The page answered 403' : null }));
+  const sources = [...(files || []).map(id => ({ type: 'file', id, name: 'attached file', ok: true })), ...links];
+  return { reply: missing.length ? `Got it. Which ${missing[0]}?` : 'Ready — review the form and submit.', board: design ? 'design' : 'video', fields, missing, ready: !missing.length, sources };
 }

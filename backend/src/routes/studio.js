@@ -10,10 +10,15 @@ const { decide } = require('../lib/studio/tvLinks');
 const { dailyInspiration, tmdbConfigured, testTmdb } = require('../lib/studio/inspiration');
 const secrets = require('../lib/studio/secrets');
 const { getCreativeConfig } = require('../lib/creative/config');
-const { updateTask, getUpdates, postUpdate } = require('../lib/studio/write');
+const { updateTask, getUpdates, postUpdate, archiveTask } = require('../lib/studio/write');
 const tickets = require('../lib/studio/tickets');
 const monday = require('../lib/monday');
 const bamboo = require('../lib/studio/bamboohr');
+const sources = require('../lib/studio/sources');
+const multer = require('multer');
+
+// Ticket creator files: one per request, kept in memory then stored in Postgres
+const ticketUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024, files: 1 } });
 
 const RANK = { Viewer: 0, Accounting: 1, Studio: 1, Editor: 2, Admin: 3 };
 const DEFAULT_BRAND = 'particle';
@@ -98,6 +103,15 @@ router.patch('/items/:itemId', async (req, res) => {
   } catch (err) { errorJson(res, err); }
 });
 
+// Archive a task — only after the user confirmed it in the CP
+router.post('/items/:itemId/archive', async (req, res) => {
+  try {
+    if (req.body?.confirm !== true) return res.status(400).json({ error: 'Confirm the archive first' });
+    const config = await getCreativeConfig(req.brandId);
+    res.json(await archiveTask(config, req.params.itemId));
+  } catch (err) { errorJson(res, err); }
+});
+
 // Updates (comments) — read the brief and the conversation, and reply, without opening Monday
 router.get('/items/:itemId/updates', async (req, res) => {
   try {
@@ -147,16 +161,29 @@ router.get('/ticket-form', async (req, res) => {
 router.post('/ticket/draft', async (req, res) => {
   try {
     const { form, config } = await formFor(req);
-    const out = await tickets.draftTicket({ form, config, messages: req.body?.messages, draft: req.body?.draft, board: req.body?.board, userName: req.user?.name });
+    const out = await tickets.draftTicket({ form, config, messages: req.body?.messages, draft: req.body?.draft, board: req.body?.board, userName: req.user?.name, files: req.body?.files });
     res.json(out);
   } catch (err) { errorJson(res, err); }
+});
+
+// A file for the ticket: Claude can read it for the brief, and/or it's attached to the Monday ticket
+router.post('/ticket/files', (req, res) => {
+  ticketUpload.single('file')(req, res, async (err) => {
+    try {
+      if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'Files can be up to 50 MB' : err.message });
+      if (!req.file) return res.status(400).json({ error: 'No file' });
+      // Browsers send UTF-8 names that multer reads as latin1 (Hebrew names, dashes…)
+      const name = Buffer.from(req.file.originalname || 'file', 'latin1').toString('utf8');
+      res.json(await sources.saveUpload({ name, mime: req.file.mimetype, buffer: req.file.buffer, user: req.user }));
+    } catch (e) { errorJson(res, e); }
+  });
 });
 
 router.post('/ticket/submit', async (req, res) => {
   try {
     if (req.body?.confirm !== true) return res.status(400).json({ error: 'Confirm the ticket first' });
     const { config, people, form } = await formFor(req);
-    const out = await tickets.submitTicket({ config, form, board: req.body.board, fields: req.body.fields, people, user: req.user, conversation: req.body.conversation });
+    const out = await tickets.submitTicket({ config, form, board: req.body.board, fields: req.body.fields, people, user: req.user, conversation: req.body.conversation, files: req.body.files });
     res.json({ ok: true, ...out });
   } catch (err) { errorJson(res, err); }
 });

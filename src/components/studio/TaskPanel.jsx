@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, ExternalLink, Plane, Loader2, Send, MessageSquare, Film, Folder, PenTool, Link2, CornerDownRight } from 'lucide-react';
+import { X, ExternalLink, Plane, Loader2, Send, MessageSquare, Film, Folder, PenTool, Link2, CornerDownRight, Archive } from 'lucide-react';
 import { Avatar, ProductTag, hrs } from './Bits';
 import { addDays, ymd } from './Filters';
 import { studioApi } from '../../lib/studioService';
@@ -105,6 +105,8 @@ export default function TaskPanel({ it: base, data, onClose }) {
   const [to, setTo] = useState('');
   const [deadline, setDeadline] = useState('');
   const [who, setWho] = useState([]);
+  const [askArchive, setAskArchive] = useState(false);
+  const [archiving, setArchiving] = useState(false);
   const saved = `${it.id}|${it.timeline?.from || ''}|${it.timeline?.to || ''}|${it.deadline || ''}|${it.people.join()}`;
   useEffect(() => {
     setFrom(it.timeline?.from || ''); setTo(it.timeline?.to || ''); setDeadline(it.deadline || ''); setWho(it.people);
@@ -239,11 +241,27 @@ export default function TaskPanel({ it: base, data, onClose }) {
           <Updates it={it} data={data} />
         </div>
 
-        {it.monday_url && (
-          <div className="px-6 py-3 border-t border-gray-100">
-            <a href={it.monday_url} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-gray-500 hover:text-[#0808f8] flex items-center gap-1.5">Open in Monday <ExternalLink size={12} /></a>
-          </div>
-        )}
+        <div className="px-6 py-3 border-t border-gray-100">
+          {askArchive ? (
+            <div className="rounded-xl bg-red-50 border border-red-100 p-3.5">
+              <div className="text-sm font-bold text-red-800">Are you sure you want to archive this task?</div>
+              <div className="text-xs text-red-700/80 mt-1">“{it.name}” will be archived on Monday and leave the {BOARD[it.board] || 'board'} board and the Studio. You can restore it from the board’s Archive on Monday.</div>
+              <div className="flex justify-end gap-2 mt-3">
+                <button type="button" disabled={archiving} onClick={() => setAskArchive(false)} className="text-xs font-semibold px-3 py-2 rounded-lg text-gray-600 hover:bg-white">Cancel</button>
+                <button type="button" disabled={archiving}
+                  onClick={async () => { setArchiving(true); const ok = await writes.archive(it); setArchiving(false); if (ok) onClose(); else setAskArchive(false); }}
+                  className="text-xs font-semibold px-3.5 py-2 rounded-lg text-white bg-red-600 hover:bg-red-700 flex items-center gap-1.5 disabled:opacity-60">
+                  {archiving ? <Loader2 size={13} className="animate-spin" /> : <Archive size={13} />} Yes, archive it
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center">
+              {it.monday_url && <a href={it.monday_url} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-gray-500 hover:text-[#0808f8] flex items-center gap-1.5">Open in Monday <ExternalLink size={12} /></a>}
+              <button type="button" onClick={() => setAskArchive(true)} className="ml-auto text-xs font-semibold text-gray-500 hover:text-red-600 flex items-center gap-1.5"><Archive size={13} /> Archive</button>
+            </div>
+          )}
+        </div>
       </div>
     </div>, document.body);
 }

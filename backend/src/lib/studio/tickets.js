@@ -8,6 +8,7 @@ const monday = require('../monday');
 const W = require('../creative/week');
 const { getAnthropic } = require('../anthropic');
 const { createItem, addUpdate } = require('./write');
+const sources = require('./sources');
 
 const MODEL = 'claude-opus-5-5';
 const FORM_GROUP = 'new_group__1'; // "Form Requests" on both boards
@@ -123,6 +124,7 @@ Rules:
 - supporting_text (design): the exact copy per version — "V1: …", "V2: …", "V3: …" (as many as versions), shared lines marked "(all versions)", FRONT / BACK sections for two-sided pieces.
 - When the user gives no copy, hooks or script but the piece needs them, write proposed ones in the team's voice (short, specific, human, true to the product) — never placeholders like "[headline]" — and say in the reply that they're proposals to check. Don't invent claims, ratings, prices, discounts or codes.
 - Simple requests (a resize, a new size, a text swap) stay short — a few clear lines, no script.
+- <sources> holds the files the user shared and the content of every link in their messages. Use them: take the concept, copy, specs, sizes, dates, names and references from them; quote supplied copy exactly; for reference images, say precisely what to take from each (layout, framing, colours, mood) in the concept. Keep every link in the brief. If a link couldn't be read, mention it in a few words in the reply. Files the user attaches are added to the Monday ticket automatically.
 - Keep what the user already set or edited in the form unless they ask to change it.
 - requested_by defaults to the person you're talking to when they are in the requesters list.
 - Simple requests (a resize, a new size, a text swap) should be ready in one turn: infer sensible defaults (versions 1, priority Medium if available) instead of asking.
@@ -195,9 +197,11 @@ function referenceBlock(examples) {
   return body ? `<reference_briefs>\nRecent real briefs from the team — imitate their style, never their facts.\n${body}\n</reference_briefs>` : '';
 }
 
-async function draftTicket({ form, messages, draft, board, userName, config }) {
+async function draftTicket({ form, messages, draft, board, userName, config, files }) {
   const client = getAnthropic();
   const refs = config ? referenceBlock(await styleExamples(config).catch(() => null)) : '';
+  // Files to read + every link in the chat, placed in the first message so later turns reuse the cache
+  const src = await sources.gather({ messages, fileIds: files }).catch(() => ({ blocks: [], summary: [] }));
   const context = {
     today: W.localDate(Date.now()),
     today_weekday: new Date().toLocaleDateString('en-US', { weekday: 'long', timeZone: 'Asia/Jerusalem' }),
@@ -210,6 +214,13 @@ async function draftTicket({ form, messages, draft, board, userName, config }) {
     .filter(m => m.content);
   if (!convo.length || convo[convo.length - 1].role !== 'user') throw Object.assign(new Error('Say what the ticket is about'), { status: 400 });
   convo[convo.length - 1] = { role: 'user', content: `${convo[convo.length - 1].content}\n\n<context>${JSON.stringify(context)}</context>` };
+  if (src.blocks.length) {
+    convo[0] = { role: 'user', content: [
+      { type: 'text', text: '<sources>' }, ...src.blocks,
+      { type: 'text', text: '</sources>', cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: convo[0].content },
+    ] };
+  }
 
   const stream = client.beta.messages.stream({
     model: MODEL,
@@ -229,6 +240,7 @@ async function draftTicket({ form, messages, draft, board, userName, config }) {
   out.fields = sanitize(form, out.board, out.fields);
   out.missing = missingRequired(form, out.board, out.fields);
   out.ready = !out.missing.length;
+  out.sources = src.summary;
   return out;
 }
 
@@ -289,7 +301,7 @@ function briefText(board, f) {
 }
 
 /** Create the ticket on Monday (after the user approved it in the UI). */
-async function submitTicket({ config, form, board, fields, people, user, conversation }) {
+async function submitTicket({ config, form, board, fields, people, user, conversation, files }) {
   const def = form.boards[board];
   if (!def) throw Object.assign(new Error('Unknown board'), { status: 400 });
   const clean = sanitize(form, board, fields);
@@ -319,15 +331,29 @@ async function submitTicket({ config, form, board, fields, people, user, convers
   const item = await createItem({ boardId: config.boards[board].board_id, groupId: FORM_GROUP, name, columnValues: values });
   if (!item?.id) throw new Error('Monday did not return the new item');
   // Same shape as the team's briefs (starts with "Department:"); who wrote it goes at the end
-  const html = briefText(board, clean).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\n/g, '<br>');
-  try { await addUpdate(item.id, `${html}<br><br><em>— brief from CP Studio, by ${(user?.name || 'the studio').replace(/</g, '&lt;')}</em>`); } catch { /* the item exists; the update is a nicety */ }
+  const attach = await sources.filesForMonday(files).catch(() => []);
+  const html = briefText(board, clean).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\n/g, '<br>')
+    + (attach.length ? '<br><br>📎 Reference files are attached — check the Files tab on this task.' : '');
+  let updateId = null;
+  try {
+    const u = await addUpdate(item.id, `${html}<br><br><em>— brief from CP Studio, by ${(user?.name || 'the studio').replace(/</g, '&lt;')}</em>`);
+    updateId = u?.create_update?.id || null;
+  } catch { /* the item exists; the update is a nicety */ }
+  // Files go on the brief update (they show in it and in the Files tab); without an update, on the files column
+  const failed = [];
+  for (const f of attach) {
+    try {
+      if (updateId) await monday.addFileToUpdate(updateId, f);
+      else await monday.addFileToColumn(item.id, config.boards[board].columns.files, f);
+    } catch (e) { failed.push(`${f.name} (${e.message})`); }
+  }
   try {
     await db.query(
       `INSERT INTO studio_tickets (board, item_id, item_url, name, fields, conversation, created_by_name) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [board, String(item.id), item.url || null, name, JSON.stringify(clean), JSON.stringify((conversation || []).slice(-30)), user?.name || user?.email || null]
     );
   } catch { /* history is best-effort */ }
-  return { id: String(item.id), url: item.url || null, name };
+  return { id: String(item.id), url: item.url || null, name, attached: attach.length - failed.length, failed };
 }
 
 async function recentTickets(limit = 20) {

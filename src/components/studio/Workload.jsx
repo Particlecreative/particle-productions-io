@@ -130,7 +130,7 @@ export default function Workload({ f }) {
     if (!data) return [];
     const base = applyFilters(data.items, { ...f, division: 'all', status: null });
     const em = role !== 'video' && showEmails ? applyFilters(data.emails || [], { ...f, division: 'all', status: null, requesters: [] }) : [];
-    return [...base, ...em].map(it => writes.merge(it, data.generated_at)).map(it => (
+    return [...base, ...em].map(it => writes.merge(it, data.generated_at)).filter(it => !it.archived).map(it => (
       it.timeline?.from && it.timeline?.to && it.timeline.to < it.timeline.from ? { ...it, timeline: { from: it.timeline.to, to: it.timeline.from } } : it));
   }, [data, f, role, showEmails, writes]);
   const people = useMemo(() => Object.values(data?.people || {})

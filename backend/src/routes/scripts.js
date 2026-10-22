@@ -2602,4 +2602,5 @@ router.get('/:id/duration', async (req, res) => {
   }
 });
 
+router.getGoogleDrive = getGoogleDrive; // the Studio ticket creator reads Google Docs links through it
 module.exports = router;

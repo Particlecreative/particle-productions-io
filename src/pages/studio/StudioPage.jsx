@@ -64,8 +64,8 @@ export default function StudioPage() {
   const writes = useMondayWrites();
   const data = useMemo(() => (raw ? {
     ...raw,
-    items: raw.items.map(it => writes.merge(it, raw.generated_at)),
-    emails: (raw.emails || []).map(e => writes.merge(e, raw.generated_at)),
+    items: raw.items.map(it => writes.merge(it, raw.generated_at)).filter(it => !it.archived),
+    emails: (raw.emails || []).map(e => writes.merge(e, raw.generated_at)).filter(e => !e.archived),
   } : null), [raw, writes.merge]); // eslint-disable-line react-hooks/exhaustive-deps
   const [panel, setPanel] = useState(null); // { it, data }
   const openTask = useCallback((it, d) => setPanel({ it, data: d || data }), [data]);

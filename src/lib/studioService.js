@@ -34,8 +34,24 @@ export const studioApi = {
   inspiration: async () => (LIVE ? call('/inspiration') : (await fx()).fixtureInspiration),
   setTvLink: (itemId, body) => call(`/tv-links/${itemId}`, { method: 'PUT', body }),
   patchItem: async (itemId, body) => (LIVE ? call(`/items/${itemId}`, { method: 'PATCH', body }) : { ok: true }),
+  archiveItem: async (itemId) => (LIVE ? call(`/items/${itemId}/archive`, { method: 'POST', body: { confirm: true } }) : { ok: true }),
   updates: async (itemId) => (LIVE ? call(`/items/${itemId}/updates`) : (await fx()).fixtureUpdates(itemId)),
   postUpdate: async (itemId, text) => (LIVE ? call(`/items/${itemId}/updates`, { method: 'POST', body: { text } }) : { id: String(Date.now()) }),
+  /** A file for the ticket creator (multipart) → { id, name, mime, size, kind, readable } */
+  uploadTicketFile: async (file) => {
+    if (!LIVE) {
+      await new Promise(r => setTimeout(r, 500));
+      const kind = file.type.startsWith('image/') ? 'image' : /pdf/.test(file.type) ? 'pdf' : file.type.startsWith('video/') ? 'video' : /word|text/.test(file.type) ? 'text' : 'other';
+      return { id: crypto.randomUUID(), name: file.name, mime: file.type, size: file.size, kind, readable: kind !== 'video' && kind !== 'other' };
+    }
+    const t = localStorage.getItem('cp_auth_token');
+    const fd = new FormData();
+    fd.append('file', file, file.name || 'pasted-image.png');
+    const res = await fetch(`${BASE}/ticket/files`, { method: 'POST', headers: t ? { Authorization: `Bearer ${t}` } : {}, body: fd });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new StudioError(data.error || (res.status === 413 ? 'That file is too large' : `Upload failed (${res.status})`), res.status);
+    return data;
+  },
   ticketForm: async () => (LIVE ? call('/ticket-form') : (await fx()).fixtureTicketForm),
   draftTicket: async (body) => (LIVE ? call('/ticket/draft', { method: 'POST', body }) : (await new Promise(r => setTimeout(r, 700)), (await fx()).fixtureDraft(body))),
   submitTicket: async (body) => (LIVE ? call('/ticket/submit', { method: 'POST', body: { ...body, confirm: true } }) : { ok: true, id: '1', url: 'https://monday.com', name: 'Test ticket' }),

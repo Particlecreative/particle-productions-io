@@ -2,6 +2,7 @@
  * Studio → Monday writes (the only place the Studio changes Monday).
  *  - a task's timeline, people, status and deadline (Workload + the task panel)
  *  - updates (comments) on a task
+ *  - archive a task (restorable from the board's Archive on Monday)
  *  - create a ticket from the AI ticket creator (in the board's "Form Requests" group)
  * Boards and columns are allow-listed; nothing else can be written from here.
  */
@@ -75,6 +76,14 @@ async function updateTask(config, { board, itemId, timeline, people, status, dea
   return { ok: true };
 }
 
+/** Archive a task on Monday — it leaves the board (and the Studio); it can be restored from the board's Archive. */
+async function archiveTask(config, itemId) {
+  await boardOf(config, itemId);
+  await mondayQuery('mutation ($item: ID!) { archive_item(item_id: $item) { id state } }', { item: String(itemId) }, { retries: 0 });
+  clearCache('studio:');
+  return { ok: true };
+}
+
 const esc = (t) => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 /** A task's latest updates (comments), newest first. */
@@ -118,4 +127,4 @@ async function addUpdate(itemId, body) {
 
 const updateSchedule = updateTask; // older name
 
-module.exports = { updateTask, updateSchedule, createItem, addUpdate, getUpdates, postUpdate, boardsFor, boardOf };
+module.exports = { updateTask, updateSchedule, createItem, addUpdate, getUpdates, postUpdate, archiveTask, boardsFor, boardOf };
