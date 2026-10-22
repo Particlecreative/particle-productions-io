@@ -76,6 +76,8 @@ export default function StudioPage() {
   // allItems = everything open now + finished with a timeline in the period; items = what the period's timeline holds
   const allItems = useMemo(() => (data ? applyFilters(data.items, f) : []), [data, f]);
   const items = useMemo(() => allItems.filter(it => inPeriod(it, range)), [allItems, range]);
+  // The period without the bar's filters — so a card can say what the filters are hiding
+  const periodAll = useMemo(() => (data ? data.items.filter(it => inPeriod(it, range)) : []), [data, range]);
   const emails = useMemo(() => (data?.emails || []).filter(e =>
     (!f.people.length || e.people.some(p => f.people.includes(p))) &&
     (!f.product || e.product?.label === f.product) &&
@@ -148,7 +150,7 @@ export default function StudioPage() {
         </div>
       ) : (
         <div className={loading ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
-          {tab === 'overview' && <Overview data={data} items={items} allItems={allItems} range={range} emails={emails} f={f} setF={setF} goTab={(k) => setParams(k === 'overview' ? {} : { tab: k })} />}
+          {tab === 'overview' && <Overview data={data} items={items} allItems={allItems} periodAll={periodAll} range={range} emails={emails} f={f} setF={setF} goTab={(k) => setParams(k === 'overview' ? {} : { tab: k })} />}
           {tab === 'time' && <TimeTracking data={data} items={items} allItems={allItems} range={range} f={f} setF={setF} />}
           {tab === 'tv' && <TvLinks data={data} items={applyFilters(data.items, { ...f, division: 'all' })} onChanged={() => load(true)} />}
         </div>

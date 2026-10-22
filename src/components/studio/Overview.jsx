@@ -121,7 +121,7 @@ function Donut({ parts, size = 92, stroke = 16, onPart }) {
 }
 
 /** "Natalie's work" — click a slice / status to see exactly those tasks. */
-function PersonCard({ person, items, upcoming = [], boards, onOpen, today }) {
+function PersonCard({ person, items, upcoming = [], boards, onOpen, today, hidden = 0, onShowAll }) {
   const counts = new Map();
   for (const it of items) {
     const st = boards[it.board]?.statuses.find(s => s.label === it.status.label);
@@ -156,7 +156,11 @@ function PersonCard({ person, items, upcoming = [], boards, onOpen, today }) {
             </button>
           ))}
           {parts.length > 6 && <div className="text-[10px] text-gray-400">+{parts.length - 6} more</div>}
-          {!parts.length && <div className="text-[11px] text-gray-400">Nothing scheduled in this period</div>}
+          {!parts.length && <div className="text-[11px] text-gray-400">{hidden ? 'Nothing that matches the filters' : 'Nothing scheduled in this period'}</div>}
+          {hidden > 0 && (
+            <button type="button" onClick={onShowAll} title="Some of this person's tasks this period don't match the filters at the top"
+              className="text-[10px] text-left text-amber-700 hover:text-[#0808f8] mt-0.5">+{hidden} more hidden by filters · show all</button>
+          )}
         </div>
       </div>
       {upcoming.length > 0 && (
@@ -456,7 +460,7 @@ function SortableWidget({ w, span, editing, onSize, onHide, children }) {
   );
 }
 
-export default function Overview({ data, items, allItems, range, emails, f, setF, goTab }) {
+export default function Overview({ data, items, allItems, periodAll = [], range, emails, f, setF, goTab }) {
   const { openTask } = useStudio();
   const [layout, setLayout] = useState(() => mergeLayout(null));
   const [editing, setEditing] = useState(false);
@@ -498,7 +502,7 @@ export default function Overview({ data, items, allItems, range, emails, f, setF
   const attention = useMemo(() => needsAttention({ data, items, allItems, range, today }), [data, items, allItems, range, today]);
   const doneBy = ['video', 'design'].map(b => ({ b, list: delivered.filter(i => i.board === b) }));
   const doneMax = Math.max(1, ...doneBy.map(d => d.list.length));
-  const showBoard = (b) => data.boards[b] && (f.division === 'all' || f.division === b || (f.division === 'tv' && b === 'video'));
+  const showBoard = (b) => data.boards[b] && (f.division === 'all' || f.division === b || (f.division === 'tv' && items.some(i => i.board === b)));
 
   const render = (id) => {
     switch (id) {
@@ -528,7 +532,12 @@ export default function Overview({ data, items, allItems, range, emails, f, setF
       case 'people': {
         const groups = [['video', 'Video editors'], ['design', 'Designers']].map(([role, title]) => ({ key: role, title, people: byRole(role) })).filter(g => g.people.length);
         if (!groups.length) return null;
-        return <Team groups={groups} render={p => <PersonCard key={p.id} person={p} items={items.filter(i => i.people.includes(p.id))} upcoming={upcomingFor(p.id)} boards={data.boards} onOpen={setList} today={today} />} />;
+        const showAll = () => setF({ ...f, division: 'all', requesters: [], product: '', q: '', status: null });
+        return <Team groups={groups} render={p => {
+          const mine = items.filter(i => i.people.includes(p.id));
+          const hidden = periodAll.filter(i => i.people.includes(p.id)).length - mine.length;
+          return <PersonCard key={p.id} person={p} items={mine} upcoming={upcomingFor(p.id)} boards={data.boards} onOpen={setList} today={today} hidden={Math.max(0, hidden)} onShowAll={showAll} />;
+        }} />;
       }
       case 'completed': return (
         <Card title="Completed" subtitle="Done, with a timeline in this period · click a bar" className="h-full">

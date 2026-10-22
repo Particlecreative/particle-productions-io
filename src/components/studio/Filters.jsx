@@ -121,7 +121,12 @@ export default function Filters({ f, setF, range, data, loading, onRefresh, show
 
       {showDivision && (
         <Seg value={f.division} onChange={(v) => setF({ ...f, division: v })}
-          options={[['all', 'All'], ['design', 'Design'], ['video', 'Video'], ['tv', <span key="tv" className="inline-flex items-center gap-1"><Tv size={12} /> TV</span>]]} />
+          options={[
+            ['all', 'All'],
+            ['design', <span key="d" title="Everything on the Design Projects board (TV design work included)">Design</span>],
+            ['video', <span key="v" title="Everything on the Video Projects board (TV included) — same as Monday">Video</span>],
+            ['tv', <span key="tv" className="inline-flex items-center gap-1" title="TV & Special Projects only, from both boards"><Tv size={12} /> TV</span>],
+          ]} />
       )}
       <PeoplePicker label="People" icon={UserRound} people={people} value={f.people} onChange={(v) => setF({ ...f, people: v })} />
       <PeoplePicker label="Requesters" icon={Users} people={requesters} value={f.requesters} onChange={(v) => setF({ ...f, requesters: v })} />
@@ -175,7 +180,9 @@ export function fmtRange(t) {
 export function applyFilters(items, f) {
   const q = f.q.trim().toLowerCase();
   return items.filter(it => {
-    if (f.division !== 'all' && it.division !== f.division && !(f.division === 'video' && it.board === 'video' && it.division !== 'tv')) return false;
+    // Video / Design = the whole Monday board, as on Monday (TV tasks included); TV = TV & SP from both boards
+    if ((f.division === 'video' || f.division === 'design') && it.board !== f.division) return false;
+    if (f.division === 'tv' && it.division !== 'tv') return false;
     if (f.people.length && !it.people.some(p => f.people.includes(p))) return false;
     if (f.requesters.length && !it.requested_by.some(p => f.requesters.includes(p))) return false;
     if (f.product && it.product?.label !== f.product) return false;
