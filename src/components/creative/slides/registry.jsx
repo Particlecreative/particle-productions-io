@@ -1,11 +1,11 @@
 import {
   Presentation, Sparkles, Gauge, Star, BarChart3, PieChart, Bookmark, UserRound, Grid3x3,
-  Clapperboard, Megaphone, CalendarDays, AlertTriangle, Type, Flag, LayoutDashboard, Layers3, CalendarRange, Film, Images,
+  Clapperboard, Megaphone, CalendarDays, AlertTriangle, Type, Flag, LayoutDashboard, Layers3, CalendarRange, Film, Images, Timer,
 } from 'lucide-react';
 import { CoverSlide, ExecSummarySlide, SectionSlide, CustomSlide, ClosingSlide } from './StorySlides';
 import { KpisSlide, ByProductSlide, ByTypeSlide } from './NumberSlides';
 import { HighlightsSlide, PersonSlide } from './WorkSlides';
-import { WorkloadSlide, PlannedNextSlide, RisksSlide, CpProductionsSlide, CpUpdatesSlide } from './TeamSlides';
+import { WorkloadSlide, PlannedNextSlide, RisksSlide, CpProductionsSlide, CpUpdatesSlide, StudioStatsSlide } from './TeamSlides';
 import { DeptOverviewSlide, DivisionOverviewSlide, DivisionNextSlide, ProductionSlide, ShowcaseSlide } from './DivisionSlides';
 
 export const SLIDE_COMPONENTS = {
@@ -23,6 +23,7 @@ export const SLIDE_COMPONENTS = {
   section: { Component: SectionSlide, icon: Bookmark },
   person: { Component: PersonSlide, icon: UserRound },
   workload: { Component: WorkloadSlide, icon: Grid3x3 },
+  studio_stats: { Component: StudioStatsSlide, icon: Timer },
   cp_productions: { Component: CpProductionsSlide, icon: Clapperboard },
   cp_updates: { Component: CpUpdatesSlide, icon: Megaphone },
   planned_next: { Component: PlannedNextSlide, icon: CalendarDays },

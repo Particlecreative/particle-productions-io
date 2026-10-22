@@ -115,10 +115,14 @@ export function buildFixtureSnapshot(weekStart, seed = 7) {
       planned_next: sections.planned_next_week.filter(id => items[id].people.includes(pid)).length,
       fixes: mine.reduce((s, i) => s + (i.fixes_in_week || 0), 0), stuck: 0, overdue: 0,
       median_turnaround_days: Math.round((3 + r() * 9) * 10) / 10, avg_versions: 2, tracked_hours: Math.round(r() * 300) / 10,
+      hours: (() => { const c = 28 + Math.round(r() * 12); const o = Math.round(c * (0.55 + r() * 0.35)); return { on_tasks: o, clocked: c, not_on_task: c - o }; })(),
       products: count(mine, it => it.product).slice(0, 6),
     };
   }
-  const workload = { days: [...days, ...nextDays], this_week: days, next_week: nextDays, capacity: { video: 3, design: 5 }, people: {} };
+  const workload = { days: [...days, ...nextDays], this_week: days, next_week: nextDays, capacity: { video: 3, design: 5 }, people: {}, hours: {},
+    // One person off two days next week, and a company holiday (as the Studio sends from BambooHR)
+    out: { [PEOPLE[0][0]]: { [nextDays[1]]: { type: 'time_off', name: 'Vacation' }, [nextDays[2]]: { type: 'time_off', name: 'Vacation' } },
+      ...Object.fromEntries(PEOPLE.slice(1).map(([pid]) => [pid, { [nextDays[3]]: { type: 'holiday', name: 'Company holiday' } }])) } };
   for (const [pid] of PEOPLE) {
     workload.people[pid] = Object.fromEntries([...days, ...nextDays].map(d => [d, { planned: [], active: [] }]));
     for (const it of Object.values(items).filter(i => i.people.includes(pid))) {
@@ -138,7 +142,7 @@ export function buildFixtureSnapshot(weekStart, seed = 7) {
     schema_version: 1, generated_at: new Date().toISOString(),
     week: { start: weekStart, end: addDays(weekStart, 7), last_day: addDays(weekStart, 6), label: `${shortDate(weekStart)} – ${shortDate(addDays(weekStart, 4))}`, number: 43, year: Number(weekStart.slice(0, 4)), workdays: days, partial: weekStart === sundayOf(), next: { start: addDays(weekStart, 7), label: `${shortDate(addDays(weekStart, 7))} – ${shortDate(addDays(weekStart, 11))}` } },
     boards: { video: { board_id: '5433027071', label: 'Video' }, design: { board_id: '8036329818', label: 'Design' } },
-    people, items, sections, workload,
+    people, items, sections, workload, sources: { studio: true, hours: 'bamboohr' },
     metrics: {
       totals: { delivered: del.length, video, design, in_progress: sections.in_progress.length + sections.review.length + sections.fixes.length, in_review: sections.review.length, fixes: sections.fixes.length, stuck: sections.stuck.length, overdue: sections.overdue.length, planned_next: sections.planned_next_week.length, reopened: 0, people: PEOPLE.length, fixes_rounds_in_week: del.reduce((s, i) => s + i.fixes_in_week, 0) },
       turnaround: { median_days: 6.4, p75_days: 11.2, sample: del.length },
@@ -148,6 +152,13 @@ export function buildFixtureSnapshot(weekStart, seed = 7) {
       by_department: count(del, it => it.department),
       by_platform: count(del, it => ({ label: it.platform })),
       by_person,
+      hours: { source: 'bamboohr', on_tasks: 0, clocked: 0 },
+      studio: {
+        hands_on_hours: 212, delivered: del.length, median_life_days: 6.8, avg_fix_rounds: 1.3, waiting_5d: 4,
+        life_mix: { queued: 180000, in_progress: 140000, fixes: 60000, review: 210000, paused: 40000 },
+        by_requester: [['Avi Levi', 18, 64, 5.2, 1.1], ['Maya Ron', 11, 48, 8.4, 2.3], ['Gil Adar', 7, 33, 6.1, 0.9], ['Rina Sol', 5, 21, 4.0, 1.4], ['Tal Noy', 2, 9, 3.2, 0]]
+          .map(([name, delivered, hours, life, fix], i) => ({ id: String(900 + i), name, photo: null, delivered, hours, share: Math.round((hours / 212) * 100), median_life_days: life, avg_fix_rounds: fix })),
+      },
       vs_last_week: { video: video - trend[6].video, design: design - trend[6].design, delivered: del.length - trend[6].video - trend[6].design },
     },
     trend,

@@ -481,9 +481,12 @@ export default function Overview({ data, items, allItems, periodAll = [], range,
   // Overdue is a "right now" view: any open task past its deadline, whatever its timeline
   const overdue = allItems.filter(i => i.open && i.deadline && i.deadline < today);
   const outToday = people.filter(p => (p.out || []).some(o => o.start <= today && o.end >= today));
+  // Shipped this week (moved to Approved / Completed) — the same number as the Creative Weekly deck
+  const shipped = allItems.filter(i => i.delivered_in_period);
   const kpis = [
-    ['Scheduled', items.filter(i => i.open), 'text-[#030b2e]'],
-    ['Completed', delivered, 'text-emerald-600'],
+    ['Scheduled', items.filter(i => i.open), 'text-[#030b2e]', 'Open tasks with a timeline in this period'],
+    ['Completed', delivered, 'text-emerald-600', 'Done, with a timeline in this period'],
+    ['Delivered', shipped, 'text-[#0808f8]', 'Shipped in this period (moved to Approved / Completed), whatever the timeline — the Creative Weekly number'],
     ['In review', open.filter(i => i.status.category === 'review'), 'text-violet-600'],
     ['Fixes', open.filter(i => i.status.category === 'fixes'), 'text-amber-600'],
     ['Overdue', overdue, 'text-red-600'],
@@ -508,9 +511,9 @@ export default function Overview({ data, items, allItems, periodAll = [], range,
     switch (id) {
       case 'inspiration': return <Inspiration />;
       case 'kpis': return (
-        <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
-          {kpis.map(([label, l, cls]) => (
-            <button key={label} type="button" onClick={() => setList({ title: label, items: l })} className="text-left bg-white rounded-2xl border border-gray-200 px-4 py-3 hover:border-[#0808f8]/40 hover:shadow-sm">
+        <div className="grid grid-cols-3 md:grid-cols-7 gap-3">
+          {kpis.map(([label, l, cls, hint]) => (
+            <button key={label} type="button" title={hint} onClick={() => setList({ title: label, items: l, subtitle: hint })} className="text-left bg-white rounded-2xl border border-gray-200 px-4 py-3 hover:border-[#0808f8]/40 hover:shadow-sm">
               <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">{label}</div>
               <div className={`text-3xl font-black tabular-nums leading-tight ${cls}`} style={{ fontFamily: '"Sofia Sans Extra Condensed", sans-serif' }}>{l.length}</div>
             </button>

@@ -1,8 +1,8 @@
-import { AlertOctagon, CalendarClock, CheckCircle2, RefreshCcw, Wrench } from 'lucide-react';
+import { AlertOctagon, CalendarClock, CheckCircle2, Plane, RefreshCcw, Sparkles, Wrench } from 'lucide-react';
 import { useDeck } from '../deck/DeckContext';
-import { Reveal, CountUp, m, EASE } from '../motion/Motion';
+import { Reveal, CountUp, GrowBar, m, EASE } from '../motion/Motion';
 import { Avatar, ProductChip } from '../ui/Bits';
-import { dayLabel, shortDate, displayName, withAlpha, ensureContrast } from '../deck/format';
+import { dayLabel, shortDate, displayName, withAlpha, ensureContrast, fmtDays } from '../deck/format';
 import { SlideFrame, SlideHeader } from './SlideFrame';
 import { decorate } from './specs';
 import { BulletList } from './StorySlides';
@@ -41,6 +41,14 @@ export function WorkloadSlide({ slide, active }) {
               </div>
               {r.cells.map((c, ci) => {
                 const load = c.count / r.capacity;
+                if (c.out && !c.count) {
+                  return (
+                    <div key={c.date} className="cr-heat-cell" title={c.out.name || ''} style={{ background: 'repeating-linear-gradient(135deg, rgba(255,255,255,.05) 0 7px, rgba(255,255,255,.11) 7px 14px)', color: 'var(--cr-faint)', flexDirection: 'column', gap: 2 }}>
+                      <Plane size={canvas ? 16 : 12} />
+                      {canvas && <span style={{ fontSize: 'calc(var(--t-small) * .6)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em' }}>{c.out.type === 'holiday' ? 'Holiday' : 'Off'}</span>}
+                    </div>
+                  );
+                }
                 return (
                   <m.div
                     key={c.date}
@@ -65,6 +73,91 @@ export function WorkloadSlide({ slide, active }) {
               })}
             </Reveal>
           ))}
+        </div>
+      </div>
+    </SlideFrame>
+  );
+}
+
+// ── Studio stats: who asked, how much hands-on time it took, and where a task's life went ─────────────
+export function StudioStatsSlide({ slide, active }) {
+  const { vm } = slide;
+  const { layout } = useDeck();
+  const canvas = layout === 'canvas';
+  const st = vm.st || {};
+  const maxH = Math.max(1, ...vm.rows.map(r => r.hours || 0));
+  const tile = (label, value, i) => (
+    <Reveal i={i} className="cr-col" style={{ gap: 4 }}>
+      <span className="cr-small" style={{ fontSize: 'calc(var(--t-small) * .78)', letterSpacing: '.08em', textTransform: 'uppercase', fontWeight: 600 }}>{label}</span>
+      <span className="cr-num" style={{ fontFamily: 'var(--cr-font-display)', fontWeight: 800, fontSize: 'var(--t-h2)', color: '#fff', lineHeight: 1 }}>{value}</span>
+    </Reveal>
+  );
+  return (
+    <SlideFrame slide={slide} active={active}>
+      <div className="cr-col" style={{ height: '100%', gap: 36 }}>
+        <SlideHeader slide={slide} subtitle={false} />
+        <div className="cr-grid cr-fill cr-one-sm" style={{ gridTemplateColumns: canvas ? 'minmax(0,1.35fr) minmax(0,1fr)' : '1fr', gap: 32, minHeight: 0 }}>
+          <Reveal i={2} y={30} className="cr-card" style={{ padding: canvas ? '26px 30px' : 16, display: 'flex', flexDirection: 'column', gap: canvas ? Math.max(14, Math.min(34, Math.floor(300 / Math.max(vm.rows.length, 1)))) : 10, minHeight: 0, overflow: 'hidden' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: canvas ? 'minmax(0,1.3fr) 90px minmax(0,1.4fr) 110px 90px' : 'minmax(0,1fr) 44px minmax(0,1fr) 54px', gap: 14, alignItems: 'end' }} className="cr-small">
+              <span style={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.08em', fontSize: 'calc(var(--t-small) * .75)' }}>Requested by</span>
+              <span style={{ fontWeight: 600, textAlign: 'right', fontSize: 'calc(var(--t-small) * .75)' }}>Delivered</span>
+              <span style={{ fontWeight: 600, fontSize: 'calc(var(--t-small) * .75)' }}>Hands-on time</span>
+              <span style={{ fontWeight: 600, textAlign: 'right', fontSize: 'calc(var(--t-small) * .75)' }}>Request → done</span>
+              {canvas && <span style={{ fontWeight: 600, textAlign: 'right', fontSize: 'calc(var(--t-small) * .75)' }}>Fix rounds</span>}
+            </div>
+            {vm.rows.map((r, i) => (
+              <Reveal key={r.id} i={3 + i} x={-14} y={0} style={{ display: 'grid', gridTemplateColumns: canvas ? 'minmax(0,1.3fr) 90px minmax(0,1.4fr) 110px 90px' : 'minmax(0,1fr) 44px minmax(0,1fr) 54px', gap: 14, alignItems: 'center' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                  <Avatar person={r} size={canvas ? 40 : 24} />
+                  <span className="cr-clamp-1" style={{ fontWeight: 600, fontSize: 'var(--t-small)' }}>{r.name}</span>
+                </span>
+                <span className="cr-num" style={{ textAlign: 'right', fontFamily: 'var(--cr-font-display)', fontWeight: 800, fontSize: canvas ? 'var(--t-h3)' : 16 }}>{r.delivered}</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ flex: 1, height: canvas ? 14 : 8, borderRadius: 99, background: 'rgba(255,255,255,.06)', overflow: 'hidden', display: 'flex' }}>
+                    <GrowBar pct={(r.hours / maxH) * 100} color="#4a55ff" delay={0.3 + i * 0.05} style={{ borderRadius: 99 }} />
+                  </span>
+                  <span className="cr-small cr-num" style={{ minWidth: canvas ? 96 : 40, textAlign: 'right' }}>{Math.round(r.hours)}h{canvas && r.share ? ` · ${r.share}%` : ''}</span>
+                </span>
+                <span className="cr-small cr-num" style={{ textAlign: 'right' }}>{r.median_life_days != null ? fmtDays(r.median_life_days) : '–'}</span>
+                {canvas && <span className="cr-small cr-num" style={{ textAlign: 'right', color: r.avg_fix_rounds >= 2 ? '#fdab3d' : undefined }}>{r.avg_fix_rounds != null ? r.avg_fix_rounds : '–'}</span>}
+              </Reveal>
+            ))}
+            <span className="cr-small" style={{ marginTop: 'auto', fontSize: 'calc(var(--t-small) * .7)' }}>
+              A ticket with two requesters counts for both · its hours are split between them · hands-on = clocked in on BambooHR while the ticket was in Working
+            </span>
+          </Reveal>
+          <div className="cr-col" style={{ gap: canvas ? 30 : 18, minHeight: 0 }}>
+            <div className="cr-grid" style={{ gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: canvas ? 26 : 14 }}>
+              {tile('Hands-on hours', <CountUp value={Math.round(st.hands_on_hours || 0)} delay={0.3} format={(n) => `${Math.round(n)}h`} />, 3)}
+              {tile('Delivered', <CountUp value={st.delivered || 0} delay={0.35} />, 4)}
+              {tile('Request → done', st.median_life_days != null ? fmtDays(st.median_life_days) : '–', 5)}
+              {tile('Fix rounds / task', st.avg_fix_rounds != null ? st.avg_fix_rounds : '–', 6)}
+            </div>
+            {vm.mix.length > 0 && (
+              <Reveal i={7} className="cr-col" style={{ gap: 12 }}>
+                <span className="cr-small" style={{ fontSize: 'calc(var(--t-small) * .78)', letterSpacing: '.08em', textTransform: 'uppercase', fontWeight: 600 }}>Where a delivered task's life went</span>
+                <div style={{ display: 'flex', height: canvas ? 18 : 12, borderRadius: 99, overflow: 'hidden', gap: 3 }}>
+                  {vm.mix.map((p, i) => <GrowBar key={p.key} pct={p.pct} color={p.color} delay={0.4 + i * 0.05} />)}
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 16px' }}>
+                  {vm.mix.map(p => (
+                    <span key={p.key} className="cr-small" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'calc(var(--t-small) * .8)' }}>
+                      <span style={{ width: 10, height: 10, borderRadius: 3, background: p.color }} />{p.label} <b>{p.pct}%</b>
+                    </span>
+                  ))}
+                </div>
+              </Reveal>
+            )}
+            {vm.notes.length > 0 && (
+              <Reveal i={8} className="cr-col" style={{ gap: 10, marginTop: 'auto' }}>
+                {vm.notes.map(n => (
+                  <span key={n} className="cr-small" style={{ display: 'flex', gap: 10, alignItems: 'flex-start', color: '#fff' }}>
+                    <Sparkles size={canvas ? 18 : 14} color="#8c93ff" style={{ flex: 'none', marginTop: 4 }} />{n}
+                  </span>
+                ))}
+              </Reveal>
+            )}
+          </div>
         </div>
       </div>
     </SlideFrame>

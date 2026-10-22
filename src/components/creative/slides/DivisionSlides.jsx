@@ -1,4 +1,4 @@
-import { CalendarDays, Clapperboard, Film, PenTool, Sparkles, Tv, UserRound } from 'lucide-react';
+import { CalendarDays, Clapperboard, Film, PenTool, Plane, Sparkles, Tv, UserRound } from 'lucide-react';
 import { useDeck } from '../deck/DeckContext';
 import { Reveal, CountUp, GrowBar, m, EASE } from '../motion/Motion';
 import { Avatar, DeltaBadge, EditableText, ProductButton, ProductChip, Sparkline, TicketTile, SourceButtons } from '../ui/Bits';
@@ -327,6 +327,15 @@ export function DivisionNextSlide({ slide, active }) {
                 </div>
                 {r.cells.map((c, ci) => {
                   const load = c.load / vm.capacity;
+                  if (c.out && !c.count) {
+                    return (
+                      <div key={c.date} className="cr-heat-cell" title={c.out.name || (c.out.type === 'holiday' ? 'Holiday' : 'Off')}
+                        style={{ background: 'repeating-linear-gradient(135deg, rgba(255,255,255,.05) 0 7px, rgba(255,255,255,.11) 7px 14px)', color: 'var(--cr-faint)', flexDirection: 'column', gap: 2 }}>
+                        <Plane size={canvas ? 16 : 12} />
+                        {canvas && <span style={{ fontSize: 'calc(var(--t-small) * .6)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em' }}>{c.out.type === 'holiday' ? 'Holiday' : 'Off'}</span>}
+                      </div>
+                    );
+                  }
                   return (
                     <m.div key={c.date} className={`cr-heat-cell ${drill && c.count ? 'cr-clickable' : ''}`} data-no-advance
                       onClick={drill && c.count ? (e) => { e.stopPropagation(); drill({ ids: c.ids, uid: r.person.id, title: `${r.person.name.split(' ')[0]} · ${dayLabel(c.date)} ${shortDate(c.date).split(' ')[1]}` }); } : undefined}

@@ -96,8 +96,14 @@ export function autoProductionTickets(snapshot, production) {
   const S = snapshot.sections || {};
   const pool = new Set([...(S.delivered || []), ...(S.review || []), ...(S.in_progress || []), ...(S.fixes || []), ...(S.stuck || []),
     ...(S.active_this_week || []), ...(S.planned_next_week || [])]);
+  // The Studio's TV ↔ production link (auto or decided by hand in TV ↔ Productions) wins over name matching
+  const score = (it) => {
+    if (it.tv?.production_id) return String(it.tv.production_id) === String(production.production_id) ? 1000 : 0;
+    if (it.tv?.source === 'none') return 0;
+    return productionMatchScore(production, it);
+  };
   return [...pool]
-    .map(id => ({ id, it: snapshot.items?.[id], score: snapshot.items?.[id] ? productionMatchScore(production, snapshot.items[id]) : 0 }))
+    .map(id => ({ id, it: snapshot.items?.[id], score: snapshot.items?.[id] ? score(snapshot.items[id]) : 0 }))
     .filter(x => x.score > 0)
     .sort((a, b) => (b.score - a.score) || (Number(isTv(b.it)) - Number(isTv(a.it))) || ((b.it.delivered_at || 0) - (a.it.delivered_at || 0)))
     .slice(0, 12)

@@ -68,20 +68,28 @@ async function clockFor(people, from, to) {
     bhr('/time_tracking/timesheet_entries', { start: from, end: to, employeeIds: ids.join(',') }));
   const toMonday = {};
   for (const [mid, bid] of Object.entries(matched)) (toMonday[bid] = toMonday[bid] || []).push(mid);
+  const today = W.localDate(Date.now());
   for (const e of Array.isArray(entries) ? entries : []) {
     if (e.date && (!out.since || e.date < out.since)) out.since = e.date;
     const date = e.date || (e.start ? W.localDate(Date.parse(e.start)) : null);
     if (!date) continue;
     const startMs = e.start ? Date.parse(e.start) : NaN;
-    const endMs = e.end ? Date.parse(e.end) : NaN;
-    const hours = Number.isFinite(e.hours) ? e.hours
-      : (Number.isFinite(startMs) && Number.isFinite(endMs) ? (endMs - startMs) / 3600000 : 0);
+    let endMs = e.end ? Date.parse(e.end) : NaN;
+    // No clock-out: today it's still running; on a past day they forgot — count until 19:00, at most 10 hours.
+    // Hours and presence use the same span, so time on tasks can never exceed time clocked.
+    const forgot = Number.isFinite(startMs) && !Number.isFinite(endMs) && e.type === 'clock' && date < today;
+    if (Number.isFinite(startMs) && !Number.isFinite(endMs)) {
+      endMs = date < today ? Math.max(startMs, Math.min(W.zonedMidnightUtc(date) + 19 * 3600000, startMs + 10 * 3600000)) : Date.now();
+    }
+    const hours = Number.isFinite(startMs) && Number.isFinite(endMs) && (!e.end || !Number.isFinite(e.hours)) ? (endMs - startMs) / 3600000
+      : (Number.isFinite(e.hours) ? e.hours : 0);
     for (const mid of toMonday[String(e.employeeId)] || []) {
-      const day = ((out.days[mid] = out.days[mid] || {})[date] = out.days[mid][date] || { in: null, out: null, hours: 0, open: false, intervals: [] });
-      if (Number.isFinite(startMs)) day.intervals.push([startMs, Number.isFinite(endMs) ? endMs : Math.min(Date.now(), startMs + 14 * 3600000)]);
+      const day = ((out.days[mid] = out.days[mid] || {})[date] = out.days[mid][date] || { in: null, out: null, hours: 0, open: false, no_out: false, intervals: [] });
+      if (Number.isFinite(startMs)) day.intervals.push([startMs, endMs]);
       if (Number.isFinite(startMs) && (!day.in || startMs < Date.parse(day.in))) day.in = new Date(startMs).toISOString();
-      if (Number.isFinite(endMs) && (!day.out || endMs > Date.parse(day.out))) day.out = new Date(endMs).toISOString();
-      if (e.type === 'clock' && e.start && !e.end) day.open = true;
+      if (e.end && Number.isFinite(endMs) && (!day.out || endMs > Date.parse(day.out))) day.out = new Date(endMs).toISOString();
+      if (e.type === 'clock' && e.start && !e.end && !forgot) day.open = true;
+      if (forgot) day.no_out = true;
       day.hours = Math.round((day.hours + hours) * 100) / 100;
     }
   }

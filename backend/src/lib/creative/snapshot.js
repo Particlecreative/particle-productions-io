@@ -378,13 +378,21 @@ function mergeCounts(a = {}, b = {}) {
 }
 
 // ── Main ────────────────────────────────────────────────────────────────────
-async function buildSnapshot({ brandId = 'particle', weekStart, force = false, now = Date.now(), budgetMs = 60000, includeTrend = true, includeCp = true } = {}) {
+async function buildSnapshot({ brandId = 'particle', weekStart, force = false, now = Date.now(), budgetMs = 60000, includeTrend = true, includeCp = true, includeStudio = true } = {}) {
   const t0 = Date.now();
   const deadline = t0 + budgetMs;
   const config = await getCreativeConfig(brandId);
   const bounds = W.weekBounds(weekStart, { now });
   const warnings = [];
   if (force) monday.clearCache('meta:');
+
+  // The Studio's dataset for the same week, built alongside: one source for people, hours (BambooHR clock-ins ×
+  // Working), time off and TV ↔ production links, so the deck and Creative Control show the same numbers.
+  // (Required here, not at the top: the Studio module itself uses this file's normalizeItem.)
+  const studioP = includeStudio
+    ? require('../studio/data').getStudio({ brandId, from: bounds.start, to: W.addDays(bounds.start, 6), force })
+      .catch((e) => { warnings.push(`Studio data unavailable (${e.message}) — hours from Monday timers`); return null; })
+    : Promise.resolve(null);
 
   const boardKeys = Object.keys(config.boards);
   const metas = {};
@@ -487,6 +495,18 @@ async function buildSnapshot({ brandId = 'particle', weekStart, force = false, n
 
   for (const it of Object.values(items)) registerMedia(it, mediaRefs);
 
+  // Studio facts on each ticket: hands-on hours, its life (turnaround, fix rounds), the TV production it belongs to
+  const studio = await studioP;
+  const sItems = new Map((studio?.items || []).map(i => [i.id, i]));
+  for (const it of Object.values(items)) {
+    const si = sItems.get(it.id);
+    if (!si) continue;
+    it.effort_s = si.effort_s || 0;
+    it.effort_total_s = si.effort_total_s || 0;
+    if (si.life) it.life = si.life;
+    if (si.tv) it.tv = { production_id: si.tv.production_id || null, name: si.tv.name || null, source: si.tv.source };
+  }
+
   // ── Sections ──
   const todayIl = W.localDate(now);
   const asOf = todayIl < bounds.lastDay ? todayIl : bounds.lastDay;
@@ -535,12 +555,15 @@ async function buildSnapshot({ brandId = 'particle', weekStart, force = false, n
     const u = userMap[uid] || {};
     const t = config.team?.[uid] || {};
     if (t.hidden) continue;
+    // Former accounts Monday no longer returns: their tickets still count, but no person slide (same as the Studio)
+    if (!userMap[uid] && !t.display_name && users.length) continue;
+    const sp = studio?.people?.[uid];
     people[uid] = {
       id: uid,
-      name: t.display_name || u.name || `User ${uid}`,
+      name: t.display_name || sp?.name || u.name || `User ${uid}`,
       title: u.title || '',
-      photo: u.photo_small || u.photo_thumb_small || null,
-      role: t.role || (rc.video >= rc.design ? (rc.video ? 'video' : 'design') : 'design'),
+      photo: u.photo_small || u.photo_thumb_small || sp?.photo || null,
+      role: t.role || sp?.role || (rc.video >= rc.design ? (rc.video ? 'video' : 'design') : 'design'),
       order: t.order ?? null,
       enabled: u.enabled !== false,
     };
@@ -548,7 +571,9 @@ async function buildSnapshot({ brandId = 'particle', weekStart, force = false, n
 
   // ── Workload ──
   const days = [...bounds.workdays, ...bounds.next.workdays];
-  const workload = { days, this_week: bounds.workdays, next_week: bounds.next.workdays, capacity: config.capacity_per_day, people: {} };
+  const workload = { days, this_week: bounds.workdays, next_week: bounds.next.workdays, capacity: config.capacity_per_day, people: {}, out: {}, hours: {}, holidays: studio?.holidays || [] };
+  // Worked on a day = hands-on time that day (Studio), else the Monday timer ran that day
+  const workedOn = (it, uid, d) => (studio ? (sItems.get(it.id)?.effort_days?.[uid]?.[d] || 0) >= 900 : it.tracked_days.includes(d));
   const consider = new Set([...sections.delivered, ...sections.active_this_week, ...sections.planned_next_week,
     ...sections.in_progress, ...sections.review, ...sections.fixes, ...sections.stuck]);
   for (const uid of Object.keys(people)) workload.people[uid] = Object.fromEntries(days.map(d => [d, { planned: [], active: [] }]));
@@ -559,9 +584,27 @@ async function buildSnapshot({ brandId = 'particle', weekStart, force = false, n
       if (!row) continue;
       for (const d of days) {
         if (it.timeline && W.rangesOverlap(it.timeline.from, it.timeline.to, d, d)) row[d].planned.push(id);
-        if (it.tracked_days.includes(d)) row[d].active.push(id);
+        if (workedOn(it, uid, d)) row[d].active.push(id);
       }
     }
+  }
+  // Time off and holidays (BambooHR), and each day's hands-on hours vs. hours clocked in
+  for (const uid of Object.keys(people)) {
+    const sp = studio?.people?.[uid];
+    if (!sp) continue;
+    const off = {};
+    for (const d of days) {
+      const o = (sp.out || []).find(x => x.start <= d && x.end >= d);
+      if (o) off[d] = { type: o.type || 'time_off', name: o.name || null };
+    }
+    if (Object.keys(off).length) workload.out[uid] = off;
+    const hrs = {};
+    for (const d of bounds.workdays) {
+      const on = sp.effort_by_day?.[d] || 0;
+      const clocked = sp.clock_by_day?.[d]?.hours;
+      if (on || clocked) hrs[d] = { on_tasks: round1(on / 3600), clocked: clocked != null ? clocked : null };
+    }
+    workload.hours[uid] = hrs;
   }
 
   // ── Metrics ──
@@ -593,6 +636,12 @@ async function buildSnapshot({ brandId = 'particle', weekStart, force = false, n
     // Wall-clock time with at least one of their tickets in Working (parallel timers aren't double-counted)
     const trackedS = unionIntervals(Object.values(items).filter(it => it.people.includes(uid)).flatMap(it => it._iv || []))
       .reduce((s, [a, b]) => s + (b - a), 0) / 1000;
+    const sp = studio?.people?.[uid];
+    const hours = sp ? {
+      on_tasks: round1((sp.effort_s || 0) / 3600),
+      clocked: sp.clocked_s != null ? round1(sp.clocked_s / 3600) : null,
+      not_on_task: sp.unassigned_s != null ? round1(sp.unassigned_s / 3600) : null,
+    } : null;
     byPerson[uid] = {
       delivered: d.length,
       video: d.filter(id => items[id].board === 'video').length,
@@ -604,7 +653,9 @@ async function buildSnapshot({ brandId = 'particle', weekStart, force = false, n
       overdue: mine(sections.overdue).length,
       median_turnaround_days: round1(median(tt)),
       avg_versions: vers.length ? round1(vers.reduce((a, b) => a + b, 0) / vers.length) : null,
-      tracked_hours: round1(trackedS / 3600),
+      // Hands-on hours (clocked in × Working, split between parallel tasks); Monday's timer only without the Studio
+      tracked_hours: hours ? hours.on_tasks : round1(trackedS / 3600),
+      hours,
       products: countBy(d.map(id => items[id]), it => it.product.label, it => it.product.color).slice(0, 6),
     };
   }
@@ -632,6 +683,13 @@ async function buildSnapshot({ brandId = 'particle', weekStart, force = false, n
     by_platform: countBy(del, it => it.platform || null),
     by_person: byPerson,
   };
+
+  metrics.hours = {
+    source: studio ? studio.effort_source : 'monday_timer',
+    on_tasks: round1(Object.values(byPerson).reduce((a, p) => a + (p.hours?.on_tasks || 0), 0)),
+    clocked: studio ? round1(Object.values(byPerson).reduce((a, p) => a + (p.hours?.clocked || 0), 0)) : null,
+  };
+  if (studio) metrics.studio = studioStats({ studio, items, delivered, sections });
 
   // ── Per division (Design / Video / TV & Special Productions) ──
   const inDiv = (dv) => (list) => list.filter(id => items[id]?.division === dv);
@@ -702,9 +760,65 @@ async function buildSnapshot({ brandId = 'particle', weekStart, force = false, n
     trend,
     cp_weekly,
     media_refs: mediaRefs,
+    sources: { studio: !!studio, hours: metrics.hours.source },
     warnings,
   };
   return snapshot;
+}
+
+/**
+ * The studio-stats slide: who asked for what this week, how much hands-on time it took, how long a delivered
+ * task lived from request to done and where that time went. Hours come from every task worked this week.
+ */
+function studioStats({ studio, items, delivered, sections }) {
+  const del = sections.delivered.map(id => items[id]).filter(Boolean);
+  const mix = {};
+  const lives = [];
+  const fixes = [];
+  const lifeDays = (l) => (Date.parse(l.completed) - Date.parse(l.submitted)) / DAY_MS - (l.phases?.delivered || 0) / 86400;
+  for (const it of del) {
+    const l = it.life;
+    if (!l?.submitted || !l.completed || l.partial) continue;
+    for (const [k, v] of Object.entries(l.phases || {})) if (k !== 'delivered') mix[k] = (mix[k] || 0) + v;
+    lives.push(lifeDays(l));
+    fixes.push(l.fix_rounds || 0);
+  }
+  const reqs = new Map();
+  const row = (r) => reqs.get(r) || { id: r, delivered: 0, hours_s: 0, lives: [], fixes: [] };
+  // A shared request splits its hours between its requesters, so the shares add up to 100%
+  for (const si of studio.items) {
+    const rs = si.requested_by || [];
+    for (const r of rs) { const e = row(r); e.hours_s += (si.effort_s || 0) / rs.length; reqs.set(r, e); }
+  }
+  for (const it of del) {
+    for (const r of it.requested_by || []) {
+      const e = row(r);
+      e.delivered++;
+      if (it.life?.completed && it.life.submitted && !it.life.partial) { e.lives.push(lifeDays(it.life)); e.fixes.push(it.life.fix_rounds || 0); }
+      reqs.set(r, e);
+    }
+  }
+  const avg = (xs) => (xs.length ? round1(xs.reduce((a, b) => a + b, 0) / xs.length) : null);
+  const hoursTotal = studio.items.reduce((a, i) => a + (i.effort_s || 0), 0);
+  const nowMs = Date.parse(studio.generated_at) || Date.now();
+  return {
+    hands_on_hours: round1(hoursTotal / 3600),
+    delivered: del.length,
+    median_life_days: round1(median(lives)),
+    avg_fix_rounds: avg(fixes),
+    life_mix: mix,
+    waiting_5d: studio.items.filter(i => i.open && i.life?.submitted && !i.life.started && nowMs - Date.parse(i.life.submitted) > 5 * DAY_MS).length,
+    by_requester: [...reqs.values()]
+      .map(e => ({
+        id: e.id, name: studio.requesters?.[e.id]?.name || studio.people?.[e.id]?.name || 'Unknown',
+        photo: studio.requesters?.[e.id]?.photo || null,
+        delivered: e.delivered, hours: round1(e.hours_s / 3600), share: hoursTotal ? Math.round((e.hours_s / hoursTotal) * 100) : 0,
+        median_life_days: round1(median(e.lives)), avg_fix_rounds: avg(e.fixes),
+      }))
+      .filter(r => r.delivered || r.hours >= 0.5)
+      .sort((a, b) => (b.hours - a.hours) || (b.delivered - a.delivered))
+      .slice(0, 8),
+  };
 }
 
 function hashSnapshot(snapshot) {

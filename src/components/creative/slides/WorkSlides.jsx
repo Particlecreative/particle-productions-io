@@ -1,4 +1,4 @@
-import { Film, PenTool } from 'lucide-react';
+import { Film, PenTool, Plane } from 'lucide-react';
 import { useDeck } from '../deck/DeckContext';
 import { Reveal, CountUp, GrowBar, m, EASE } from '../motion/Motion';
 import { Avatar, EditableText, ProductButton, SourceLinks, StatusChip, TicketTile } from '../ui/Bits';
@@ -68,6 +68,18 @@ function WeekStrip({ days, capacity, accent, i }) {
         {days.map(d => {
           const n = d.load;
           const over = n > capacity;
+          if (d.out && !n) {
+            // A day off / holiday (BambooHR)
+            return (
+              <div key={d.date} className="cr-col" style={{ gap: 6, alignItems: 'center' }}>
+                <div style={{ height: 64, width: '100%', borderRadius: 10, background: 'repeating-linear-gradient(135deg, rgba(255,255,255,.05) 0 7px, rgba(255,255,255,.11) 7px 14px)', border: '1px solid var(--cr-hair)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, color: 'var(--cr-faint)' }}>
+                  <Plane size={16} />
+                  <span style={{ fontSize: 'calc(var(--t-small) * .62)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em' }}>{d.out.type === 'holiday' ? 'Holiday' : 'Off'}</span>
+                </div>
+                <span className="cr-small" style={{ fontSize: 'calc(var(--t-small) * .78)', fontWeight: 600 }}>{dayLabel(d.date)}</span>
+              </div>
+            );
+          }
           return (
             <div key={d.date} className="cr-col" style={{ gap: 6, alignItems: 'center' }}>
               <div style={{ height: 64, width: '100%', borderRadius: 10, background: 'rgba(255,255,255,.04)', border: '1px solid var(--cr-hair)', display: 'flex', alignItems: 'flex-end', overflow: 'hidden', position: 'relative' }}>
@@ -122,6 +134,7 @@ export function PersonSlide({ slide, active }) {
                 <MiniStat i={3} label="Delivered" value={<CountUp value={vm.deliveredCount} delay={0.5} />} />
                 <MiniStat i={4} label="In progress" value={vm.activeCount} />
                 {vm.tvCount > 0 && <MiniStat i={5} label="TV" value={vm.tvCount} accent="#ff8a3d" />}
+                {vm.hours?.on_tasks > 0 && <MiniStat i={5} label="Hands-on" value={`${Math.round(vm.hours.on_tasks)}h`} />}
               </div>
               {vm.products.length > 0 && (
                 <Reveal i={6} className="cr-col" style={{ gap: 12 }}>

@@ -119,10 +119,10 @@ function DayCell({ date, person, today, bamboo }) {
   if (weekend && !clock && !work) return <div className="h-[58px] rounded-lg" style={{ background: 'repeating-linear-gradient(135deg,#fafafa 0 6px,#f3f4f6 6px 12px)' }} />;
   if (future) return <div className="h-[58px] rounded-lg bg-gray-50" />;
   return (
-    <div className={`h-[58px] rounded-lg border px-2 py-1.5 flex flex-col justify-between ${clock?.open ? 'border-emerald-300 bg-emerald-50/40' : 'border-gray-100 bg-white'}`}
-      title={bamboo ? `Clocked ${hrs(clocked, { zero: '0' })} · on active tasks ${hrs(work, { zero: '0' })}` : `On active tasks ${hrs(work, { zero: '0' })}`}>
+    <div className={`h-[58px] rounded-lg border px-2 py-1.5 flex flex-col justify-between ${clock?.open ? 'border-emerald-300 bg-emerald-50/40' : clock?.no_out ? 'border-amber-300 bg-amber-50/40' : 'border-gray-100 bg-white'}`}
+      title={`${bamboo ? `Clocked ${hrs(clocked, { zero: '0' })} · on active tasks ${hrs(work, { zero: '0' })}` : `On active tasks ${hrs(work, { zero: '0' })}`}${clock?.no_out ? ' · no clock-out recorded — counted until 19:00 (at most 10h)' : ''}`}>
       <div className="text-[10px] text-gray-500 tabular-nums truncate">
-        {clock ? `${time(clock.in)}–${clock.open ? 'now' : time(clock.out)}` : bamboo ? <span className="text-amber-600">no clock-in</span> : ' '}
+        {clock ? (clock.no_out ? <>{time(clock.in)}–<span className="text-amber-700">no clock-out</span></> : `${time(clock.in)}–${clock.open ? 'now' : time(clock.out)}`) : bamboo ? <span className="text-amber-600">no clock-in</span> : ' '}
       </div>
       <div className="flex items-end justify-between gap-1">
         <span className="text-sm font-bold text-gray-900 tabular-nums leading-none">{hrs(work, { zero: '0' })}</span>
@@ -463,10 +463,12 @@ function GroupStats({ items, data, who, f, setF }) {
         for (const [k, v] of Object.entries(life.phases)) if (k !== 'delivered') mix[k] = (mix[k] || 0) + v;
         allFix.push(life.fixes);
       }
-      for (const k of groupKeys(it, by)) {
+      const keys = groupKeys(it, by);
+      for (const k of keys) {
         const g = m.get(k) || { key: k, items: [], hours: 0, worked: [], life: [], wait: [], fixes: [], done: 0 };
         g.items.push(it);
-        g.hours += p;
+        // Shares add up to 100%: a person gets their own hours; a shared request splits its hours between requesters
+        g.hours += by === 'person' ? (it.effort_by_person?.[k] || 0) : by === 'requester' ? p / keys.length : p;
         if (life?.done) {
           g.done++;
           if (!life.partial) { g.life.push(life.ms); g.fixes.push(life.fixes); }
@@ -611,7 +613,7 @@ function GroupStats({ items, data, who, f, setF }) {
           </tbody>
         </table>
       </div>
-      {by === 'requester' && <div className="text-[11px] text-gray-400">A task with two requesters counts for both. Turnaround and fix rounds use finished tasks only.</div>}
+      {by === 'requester' && <div className="text-[11px] text-gray-400">A task with two requesters counts for both, and its hours are split between them. Turnaround and fix rounds use finished tasks only.</div>}
     </div>
   );
 }

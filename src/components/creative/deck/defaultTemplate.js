@@ -19,5 +19,6 @@ export const DEFAULT_TEMPLATE = {
     { id: 'productions', type: 'production', enabled: true, repeat: 'perProduction', options: {} },
     { id: 'tv_next', type: 'division_next', enabled: true, options: { division: 'tv' } },
     { id: 'cp_updates', type: 'cp_updates', enabled: true, options: {} },
+    { id: 'studio_stats', type: 'studio_stats', enabled: true, options: {} },
   ],
 };

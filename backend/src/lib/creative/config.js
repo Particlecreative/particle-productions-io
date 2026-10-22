@@ -9,6 +9,7 @@ const SLIDE_TYPES = [
   'cover', 'exec_summary', 'dept_overview', 'division_overview', 'division_next', 'production', 'showcase',
   'kpis', 'highlights', 'by_product', 'by_type', 'section',
   'person', 'workload', 'cp_productions', 'cp_updates', 'planned_next', 'risks', 'custom', 'closing',
+  'studio_stats',
 ];
 
 /**
@@ -37,6 +38,7 @@ const DEFAULT_TEMPLATE = {
     { id: 'productions',     type: 'production',        enabled: true, repeat: 'perProduction', options: {} },
     { id: 'tv_next',         type: 'division_next',     enabled: true, options: { division: 'tv' } },
     { id: 'cp_updates',      type: 'cp_updates',        enabled: true, options: {} },
+    { id: 'studio_stats',    type: 'studio_stats',      enabled: true, options: {} },
   ],
 };
 

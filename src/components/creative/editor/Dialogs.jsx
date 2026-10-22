@@ -154,7 +154,7 @@ export function DiffToast({ diff, onClose }) {
 
 // ── Add slide ───────────────────────────────────────────────────────────────
 export function AddSlideMenu({ onClose, onAdd, onAddTemplateType, existingTypes }) {
-  const addable = ['dept_overview', 'cp_updates', 'exec_summary', 'workload', 'planned_next', 'risks', 'kpis', 'by_product', 'by_type', 'highlights', 'cp_productions', 'closing']
+  const addable = ['dept_overview', 'cp_updates', 'exec_summary', 'studio_stats', 'workload', 'planned_next', 'risks', 'kpis', 'by_product', 'by_type', 'highlights', 'cp_productions', 'closing']
     .filter(t => !existingTypes.has(t));
   return (
     <Modal title="Add a slide" onClose={onClose} width={480}>

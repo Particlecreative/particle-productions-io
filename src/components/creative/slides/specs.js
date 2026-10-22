@@ -443,6 +443,8 @@ export const SPECS = {
         activeCount: active.length,
         tvCount: delivered.filter(id => divisionOf(snapshot.items[id]) === 'tv').length,
         products,
+        // Hands-on hours: clocked in on BambooHR × the task in Working (from the Studio)
+        hours: stats.hours || null,
         nextWeek,
         nextWeekTotal: new Set(nextWeek.flatMap(d => d.ids)).size,
         capacity: snapshot.workload?.capacity?.[p.role] || 4,
@@ -456,6 +458,35 @@ export const SPECS = {
       title: vm.person.name,
       subtitle: vm.oneLiner || '',
     }),
+  },
+
+  studio_stats: {
+    label: 'Studio stats (requesters, turnaround)',
+    category: 'Team',
+    defaults: {},
+    schema: [],
+    textSlots: ['eyebrow', 'title'],
+    select(snapshot) {
+      const st = snapshot.metrics?.studio;
+      if (!st) return { st: null };
+      const mixTotal = Object.values(st.life_mix || {}).reduce((a, v) => a + v, 0);
+      const PHASE = { queued: ['Waiting', '#c4c4c4'], in_progress: ['Working', '#579bfc'], fixes: ['Fixes', '#fdab3d'], review: ['Review / approval', '#a25ddc'], paused: ['Paused', '#9d99b9'], stuck: ['Stuck', '#e2445c'], other: ['Other', '#8c93ff'] };
+      const mix = Object.entries(st.life_mix || {}).filter(([k, v]) => v > 0 && PHASE[k])
+        .map(([k, v]) => ({ key: k, label: PHASE[k][0], color: PHASE[k][1], pct: mixTotal ? Math.round((v / mixTotal) * 100) : 0 }))
+        .sort((a, b) => b.pct - a.pct);
+      const rows = (st.by_requester || []).map(r => ({ ...r, name: displayName(r.name) }));
+      // Plain findings, only when the numbers support them
+      const notes = [];
+      const top = rows[0];
+      if (top?.share >= 25) notes.push(`${top.name.split(' ')[0]}'s requests took ${top.share}% of the studio's hands-on time.`);
+      const working = mix.filter(m => ['in_progress', 'fixes'].includes(m.key)).reduce((a, m) => a + m.pct, 0);
+      const biggest = mix.find(m => !['in_progress', 'fixes'].includes(m.key));
+      if (biggest && biggest.pct >= 25) notes.push(`A delivered task spent ${biggest.pct}% of its life ${biggest.key === 'queued' ? 'waiting to start' : biggest.key === 'review' ? 'in review / approval' : biggest.label.toLowerCase()} — ${working}% being worked on.`);
+      if (st.waiting_5d) notes.push(`${plural(st.waiting_5d, 'open task')} waited more than 5 days without being started.`);
+      return { st, mix, rows, notes };
+    },
+    isEmpty: (vm) => !vm.st || (!vm.rows.length && !vm.mix.length),
+    defaultText: () => ({ eyebrow: 'Studio stats · last week', title: 'Who asked, and where the time went' }),
   },
 
   workload: {
@@ -473,7 +504,7 @@ export const SPECS = {
         const cells = days.map(d => {
           const c = wl.people?.[p.id]?.[d] || { planned: [], active: [] };
           const ids = [...new Set([...(c.planned || []), ...(c.active || [])])].filter(id => !isHidden(overrides, id));
-          return { date: d, count: ids.length, active: (c.active || []).length, products: ids.slice(0, 5).map(id => snapshot.items[id]?.product?.color).filter(Boolean) };
+          return { date: d, count: ids.length, active: (c.active || []).length, out: wl.out?.[p.id]?.[d] || null, products: ids.slice(0, 5).map(id => snapshot.items[id]?.product?.color).filter(Boolean) };
         });
         return { person: { ...p, name: displayName(p.name) }, cells, capacity: wl.capacity?.[p.role] || 4 };
       }).filter(r => r.cells.some(c => c.count));
@@ -619,6 +650,7 @@ function workdaysIn(from, to) {
  */
 export function workloadFor(snapshot, overrides, uid, days) {
   const wl = snapshot.workload?.people?.[uid] || {};
+  const offs = snapshot.workload?.out?.[uid] || {};
   const share = new Map();
   const cells = days.map(d => {
     const ids = [...new Set(wl[d]?.planned || [])].filter(id => !isHidden(overrides, id));
@@ -627,7 +659,8 @@ export function workloadFor(snapshot, overrides, uid, days) {
       if (!share.has(id)) { const tl = snapshot.items?.[id]?.timeline; share.set(id, 1 / workdaysIn(tl?.from, tl?.to)); }
       load += share.get(id);
     }
-    return { date: d, ids, count: ids.length, load: Math.round(load * 10) / 10 };
+    // out: a day off or a holiday (BambooHR, through the Studio)
+    return { date: d, ids, count: ids.length, load: Math.round(load * 10) / 10, out: offs[d] || null };
   });
   const ids = [...new Set(cells.flatMap(c => c.ids))];
   const multiDay = ids.filter(id => share.get(id) < 1).length;

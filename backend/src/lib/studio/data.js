@@ -179,7 +179,8 @@ async function buildStudio({ brandId = 'particle', from, to, now = Date.now(), f
 
     const cls = lite ? { delivered: {} } : classifyDeliveries(logs.events, {
       statusColumn: board.columns.status, delivered: board.statuses.delivered, fixes: board.statuses.fixes,
-      fromMs: P.fromMs, toMs: P.toMs, rule: { ...config.delivery_rule, exclude_reopened_in_week: false },
+      // Exactly Creative Weekly's rule, so "Delivered this week" is the same number in both
+      fromMs: P.fromMs, toMs: P.toMs, rule: config.delivery_rule,
     });
 
     const have = new Set(open.items.map(r => String(r.id)));
@@ -359,7 +360,7 @@ async function buildStudio({ brandId = 'particle', from, to, now = Date.now(), f
     it.effort_days = life.taskPersonDay[it.id] || {};
     for (const [uid, byDay] of Object.entries(it.effort_days)) for (const d of Object.keys(byDay)) (workedDays[uid] = workedDays[uid] || new Set()).add(d);
   }
-  const dayClock = (v) => ({ in: v.in, out: v.out, hours: v.hours, open: v.open });
+  const dayClock = (v) => ({ in: v.in, out: v.out, hours: v.hours, open: v.open, no_out: !!v.no_out });
   for (const [uid, p] of Object.entries(people)) {
     p.effort_s = period.person[uid] || 0;
     p.effort_by_day = period.personDay[uid] || {};
