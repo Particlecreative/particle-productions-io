@@ -58,6 +58,8 @@ export const creativeApi = {
   async restoreVersion(id, vid) { return LIVE ? crFetch(`/${id}/versions/${vid}/restore`, { method: 'POST', body: {} }) : (await fx()).restore(id, vid); },
   async share(id, { days = 30, rotate = false } = {}) { return LIVE ? crFetch(`/${id}/share`, { method: 'POST', body: { expires_in_days: days, rotate } }) : (await fx()).share(id, days); },
   async unshare(id) { return LIVE ? crFetch(`/${id}/share`, { method: 'DELETE' }) : (await fx()).unshare(id); },
+  /** Register a Frame.io / Dropbox link as media for this deck → { report, media, refId, entries, error } */
+  async linkMedia(id, url) { return LIVE ? crFetch(`/${id}/link-media`, { method: 'POST', body: { url } }) : (await fx()).linkMedia(id, url); },
   async mediaListing(id, refId, refresh = false) { return LIVE ? crFetch(`/${id}/media/${refId}${refresh ? '?refresh=1' : ''}`) : (await fx()).listing(id, refId); },
   async picks(id) { return LIVE ? crFetch(`/${id}/picks`) : { picks: {}, complete: true }; },
   async warm(id, itemIds) { return LIVE ? crFetch(`/${id}/media/warm`, { method: 'POST', body: itemIds ? { item_ids: itemIds } : {} }) : { warmed: 0 }; },

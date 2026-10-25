@@ -88,4 +88,31 @@ function classifyDeliveries(events, { statusColumn = 'status', delivered = [], f
   return result;
 }
 
-module.exports = { classifyDeliveries, BULK_THRESHOLD };
+/**
+ * Sunday review. The deck is presented on Sunday about the week that just ended, and that week's work is often
+ * approved the same morning. Classify deliveries over [first day, the day after the last day], then:
+ *  - a delivery on the Sunday right after the period counts only if the task's timeline (else deadline) ended
+ *    inside the period or before it — last week's work approved on review day;
+ *  - a delivery on the period's own first day (a Sunday) whose task ended before the period belongs to the previous
+ *    period (it was counted there), so nothing is counted twice.
+ * delivered: { id: { delivered_at } } · endOf(id) → 'YYYY-MM-DD' | null
+ */
+function sundayReview(delivered, { firstDay, lastDay, endOf }) {
+  const W = require('./week');
+  const reviewDay = W.addDays(lastDay, 1);
+  const out = {};
+  for (const [id, info] of Object.entries(delivered || {})) {
+    const day = W.localDate(info.delivered_at);
+    const end = endOf(id);
+    if (day < firstDay) continue;
+    if (day > lastDay) {
+      if (day === reviewDay && W.dow(reviewDay) === 0 && end && end <= lastDay) out[id] = { ...info, review_day: true };
+      continue;
+    }
+    if (day === firstDay && W.dow(firstDay) === 0 && end && end < firstDay) continue;
+    out[id] = info;
+  }
+  return out;
+}
+
+module.exports = { classifyDeliveries, sundayReview, BULK_THRESHOLD };

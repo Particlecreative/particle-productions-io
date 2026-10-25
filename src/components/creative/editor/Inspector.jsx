@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   Star, EyeOff, Eye, ImageIcon, RotateCcw, Trash2, Sparkles, Loader2, Search, Link2, Save, RefreshCw, UserX, UserCheck, AlertTriangle,
-  ArrowUp, ArrowDown, Minus, Plus, ListChecks, Images, LayoutGrid,
+  ArrowUp, ArrowDown, Minus, Plus, ListChecks, Images, LayoutGrid, Film, Clapperboard, Ban,
 } from 'lucide-react';
 import { SPECS, COMMON_SCHEMA, decorate, personShown } from '../slides/specs';
 import { DIVISIONS, divisionOf, personCandidates, productionMatchScore } from '../slides/divisions';
@@ -332,7 +332,9 @@ function ProductionTickets({ slide, ctx }) {
           {pov.hidden ? <Eye size={13} /> : <EyeOff size={13} />} {pov.hidden ? 'Bring back into the deck' : 'Leave out of this deck'}
         </button>
       </div>
-      <Section title={`Linked tickets · ${linked.length}`}>
+      <ProductionMedia slide={slide} ctx={ctx} p={p} pov={pov} ro={ro} />
+      {(pov.show || (pov.media?.refId ? 'media' : 'tickets')) === 'tickets' && <>
+      <Section title={`Linked TV tickets · ${linked.length}`}>
         {linked.map((id, i) => (
           <TicketRow key={id} it={decorate(snapshot, overrides, id)} ctx={ctx} slideKey={slide.key}
             extra={<OrderBtns ro={ro} onUp={i > 0 ? () => move(id, -1) : null} onDown={i < linked.length - 1 ? () => move(id, 1) : null} onRemove={() => set(linked.filter(x => x !== id))} />} />
@@ -347,7 +349,100 @@ function ProductionTickets({ slide, ctx }) {
         {results.map(({ it }) => <TicketRow key={it.id} it={decorate(snapshot, overrides, it.id)} ctx={ctx} slideKey={slide.key} muted extra={<AddBtn ro={ro} onClick={() => set([...linked, String(it.id)])} />} />)}
         {!results.length && <div className="text-xs text-gray-400 py-2">{needle ? 'No matching tickets.' : 'No close matches — search by campaign or product.'}</div>}
       </Section>
+      </>}
     </div>
+  );
+}
+
+/** What fills the right side of a production slide: TV tickets, a video / image (Frame.io or Dropbox), or nothing. */
+function ProductionMedia({ slide, ctx, p, pov, ro }) {
+  const pid = p.production_id;
+  const show = pov.show || (pov.media?.refId ? 'media' : 'tickets');
+  const [url, setUrl] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const [pick, setPick] = useState(null); // { refId, entries }
+  const cur = pov.media;
+  // Links the producer already put in the CP weekly, and the linked TV tickets' Frame.io / Dropbox
+  const suggestions = [
+    ...(p.bullets || []).filter(b => b.link).map(b => ({ url: b.link, label: b.text })),
+    ...(p.links || []).map(l => ({ url: l.url, label: l.title })),
+    ...(slide.vm.linked || []).flatMap(id => {
+      const it = ctx.snapshot.items?.[id];
+      return [it?.links?.frame, it?.links?.dropbox].filter(Boolean).map(u => ({ url: u, label: it.title || it.name }));
+    }),
+  ].filter((s, i, a) => /frame\.io|f\.io|dropbox\.com/i.test(s.url) && a.findIndex(x => x.url === s.url) === i).slice(0, 6);
+  const choose = (refId, e) => { ctx.setProduction(pid, { show: 'media', media: { refId, key: e.key, kind: e.kind === 'video' ? 'video' : 'image', name: e.name } }); setPick(null); };
+  const add = async (link) => {
+    setBusy(true); setErr(null);
+    try {
+      const r = await ctx.addLinkMedia(link);
+      const usable = (r.entries || []).filter(e => e.kind === 'video' || e.kind === 'image');
+      if (r.error && !usable.length) setErr(r.error);
+      else if (usable.length === 1) choose(r.refId, usable[0]);
+      else if (usable.length) setPick({ refId: r.refId, entries: usable });
+      else setErr('No video or image found at that link');
+      setUrl('');
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+  const Opt = ({ k, icon: Icon, label }) => (
+    <button type="button" disabled={ro} onClick={() => ctx.setProduction(pid, { show: k })}
+      className={`flex-1 text-[11px] font-semibold px-2 py-1.5 rounded-lg flex items-center justify-center gap-1 ${show === k ? 'bg-white shadow text-gray-900' : 'text-gray-500'}`}><Icon size={12} /> {label}</button>
+  );
+  return (
+    <Section title="Right side of the slide">
+      <div className="flex p-1 rounded-xl bg-gray-100 mb-3">
+        <Opt k="tickets" icon={Clapperboard} label="TV tickets" />
+        <Opt k="media" icon={Film} label="Video / image" />
+        <Opt k="none" icon={Ban} label="Nothing" />
+      </div>
+      {show === 'media' && (
+        <div className="flex flex-col gap-2.5">
+          {cur?.refId && (
+            <div className="flex items-center gap-2 rounded-xl border border-gray-200 p-2">
+              <div className="w-16 h-10 rounded-lg bg-gray-900 overflow-hidden flex-none">
+                <img src={ctx.media.ref(cur.refId, cur.key, 'thumb')} alt="" className="w-full h-full object-cover" onError={(ev) => { ev.currentTarget.style.display = 'none'; }} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-semibold text-gray-900 truncate">{cur.name || (cur.kind === 'video' ? 'Video' : 'Image')}</div>
+                <div className="text-[11px] text-gray-500">{cur.kind === 'video' ? 'Plays muted on the slide' : 'Shown uncropped'}</div>
+              </div>
+              <button type="button" disabled={ro} onClick={() => ctx.setProduction(pid, { media: null })} className="p-1.5 rounded-md text-gray-400 hover:text-red-600" title="Remove"><Trash2 size={13} /></button>
+            </div>
+          )}
+          {pick && (
+            <div className="grid grid-cols-3 gap-1.5">
+              {pick.entries.slice(0, 12).map(e => (
+                <button key={e.key} type="button" onClick={() => choose(pick.refId, e)} className="relative rounded-lg overflow-hidden border border-gray-200 hover:border-[#0808f8] aspect-video bg-gray-900" title={e.name}>
+                  <img src={ctx.media.ref(pick.refId, e.key, 'thumb')} alt="" className="w-full h-full object-cover" onError={(ev) => { ev.currentTarget.style.display = 'none'; }} />
+                  <span className="absolute bottom-0 inset-x-0 text-[9px] text-white bg-black/50 px-1 truncate">{e.kind === 'video' ? '▶ ' : ''}{e.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-1.5">
+            <input value={url} onChange={e => setUrl(e.target.value)} onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter' && url.trim()) add(url.trim()); }}
+              disabled={ro || busy} placeholder="Paste a Frame.io or Dropbox link" className="flex-1 min-w-0 text-xs px-2.5 py-2 rounded-lg border border-gray-200 outline-none focus:border-[#4a55ff]" />
+            <button type="button" disabled={ro || busy || !url.trim()} onClick={() => add(url.trim())} className="text-xs font-semibold px-3 rounded-lg text-white disabled:opacity-40" style={{ background: '#0808f8' }}>
+              {busy ? <Loader2 size={13} className="animate-spin" /> : 'Add'}
+            </button>
+          </div>
+          {err && <div className="text-[11px] text-red-600">{err}</div>}
+          {suggestions.length > 0 && (
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">From the CP weekly and TV tickets</div>
+              {suggestions.map(s => (
+                <button key={s.url} type="button" disabled={ro || busy} onClick={() => add(s.url)}
+                  className="w-full text-left text-xs px-2 py-1.5 rounded-lg hover:bg-gray-50 flex items-center gap-1.5 text-gray-700">
+                  <Link2 size={12} className="text-gray-400 flex-none" /><span className="truncate">{s.label || s.url}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          <p className="text-[11px] text-gray-400">Until you add one, the slide shows a placeholder while editing; when presenting, the production details take the full width.</p>
+        </div>
+      )}
+    </Section>
   );
 }
 

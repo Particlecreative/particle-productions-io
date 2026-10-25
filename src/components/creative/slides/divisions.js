@@ -102,8 +102,10 @@ export function autoProductionTickets(snapshot, production) {
     if (it.tv?.source === 'none') return 0;
     return productionMatchScore(production, it);
   };
+  // Only TV & SP tickets — digital pieces made from the same footage don't belong on a production slide
   return [...pool]
-    .map(id => ({ id, it: snapshot.items?.[id], score: snapshot.items?.[id] ? score(snapshot.items[id]) : 0 }))
+    .filter(id => snapshot.items?.[id] && isTv(snapshot.items[id]))
+    .map(id => ({ id, it: snapshot.items[id], score: score(snapshot.items[id]) }))
     .filter(x => x.score > 0)
     .sort((a, b) => (b.score - a.score) || (Number(isTv(b.it)) - Number(isTv(a.it))) || ((b.it.delivered_at || 0) - (a.it.delivered_at || 0)))
     .slice(0, 12)

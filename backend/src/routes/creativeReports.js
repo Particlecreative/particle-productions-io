@@ -19,6 +19,7 @@ const service = require('../lib/creative/service');
 const media = require('../lib/creative/media');
 const { publicReport, allowedMediaRefs, visibleTicketIds, coverSummary } = require('../lib/creative/deck');
 const { importCpWeekly, cpWeeklyUpdatedAt, cpWeekFor } = require('../lib/creative/cpWeekly');
+const { canonicalUrl, linkKind } = require('../lib/creative/snapshot');
 
 const RANK = { Viewer: 0, Accounting: 1, Studio: 1, Editor: 2, Admin: 3 };
 const DEFAULT_BRAND = 'particle';
@@ -395,6 +396,26 @@ router.post('/:id/refresh', async (req, res) => {
     invalidateMedia(req.report.id);
     res.json(withMedia(report, { diff }));
   } catch (err) { errorJson(res, err, 'Refresh failed'); }
+});
+
+// A Frame.io / Dropbox link added by hand (e.g. the cut for a production slide). Stored as a media ref in the
+// snapshot (marked custom, kept on refresh) so it plays through the same signed media route as ticket media.
+router.post('/:id/link-media', async (req, res) => {
+  try {
+    const url = canonicalUrl(String(req.body?.url || '').trim());
+    const kind = linkKind(url);
+    if (!url || !['frameio', 'dropbox_file', 'dropbox_folder'].includes(kind)) return res.status(400).json({ error: 'Paste a Frame.io or Dropbox link' });
+    const refId = crypto.createHash('sha1').update(`${kind}|${url}`).digest('hex').slice(0, 16);
+    let report = req.report;
+    if (!report.snapshot?.media_refs?.[refId]) {
+      const snapshot = { ...report.snapshot, media_refs: { ...(report.snapshot?.media_refs || {}), [refId]: { kind, url, item_id: null, custom: true } } };
+      const r = await service.updateReport(report.id, report.revision, { snapshot });
+      if (r.conflict != null) return res.status(409).json({ error: 'Edited elsewhere — reload and try again', revision: r.conflict });
+      report = r.report;
+    }
+    const { entries, error } = await media.getListing(report.snapshot.media_refs[refId]);
+    res.json({ ...withMedia(report), refId, entries, error: error || null });
+  } catch (err) { errorJson(res, err); }
 });
 
 router.post('/:id/import-weekly', async (req, res) => {

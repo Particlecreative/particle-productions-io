@@ -89,3 +89,19 @@ test('Bulk move guard warns when one user moves >15 items within 3 minutes', () 
   assert.equal(r.warnings.length, 1);
   assert.match(r.warnings[0], /Bulk move/);
 });
+
+test('Sunday review: last week’s work approved on review Sunday counts for last week only', () => {
+  const { sundayReview } = require('../../src/lib/creative/classify');
+  const W = require('../../src/lib/creative/week');
+  const at = (d, h) => W.zonedMidnightUtc(d) + h * 3600000;
+  const delivered = {
+    yael: { delivered_at: at('2026-10-25', 12) },   // timeline Oct 18–22, approved Sunday Oct 25
+    kerry: { delivered_at: at('2026-10-25', 11) },  // timeline Oct 25 — new week's work
+    mid: { delivered_at: at('2026-10-21', 15) },    // ordinary mid-week delivery
+  };
+  const ends = { yael: '2026-10-22', kerry: '2026-10-25', mid: '2026-10-21' };
+  const last = sundayReview(delivered, { firstDay: '2026-10-18', lastDay: '2026-10-24', endOf: (id) => ends[id] });
+  assert.deepStrictEqual(Object.keys(last).sort(), ['mid', 'yael']);
+  const next = sundayReview(delivered, { firstDay: '2026-10-25', lastDay: '2026-10-31', endOf: (id) => ends[id] });
+  assert.deepStrictEqual(Object.keys(next), ['kerry']); // yael was counted last week
+});

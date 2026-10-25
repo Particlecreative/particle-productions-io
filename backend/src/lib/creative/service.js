@@ -113,6 +113,10 @@ async function refreshReport(report, { user, dryRun = false } = {}) {
   return singleFlight(`${report.brand_id}|${report.week_start}|refresh`, async () => {
     const t0 = Date.now();
     const snapshot = await buildSnapshot({ brandId: report.brand_id, weekStart: report.week_start, force: true });
+    // Links added by hand (production videos / images) aren't on any ticket — keep them
+    for (const [refId, ref] of Object.entries(report.snapshot?.media_refs || {})) {
+      if (ref?.custom && !snapshot.media_refs[refId]) snapshot.media_refs[refId] = ref;
+    }
     const diff = diffSnapshots(report.snapshot || {}, snapshot, report.overrides || {});
     if (dryRun) return { report, diff };
     await saveVersion(report, { reason: 'pre_refresh', user });

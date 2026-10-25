@@ -18,7 +18,7 @@ const DIVISIONS = [
   { key: 'video', label: 'Video' },
   { key: 'tv', label: 'TV & Special Productions' },
 ];
-const { classifyDeliveries } = require('./classify');
+const { classifyDeliveries, sundayReview } = require('./classify');
 const { importCpWeekly, cpWeekFor } = require('./cpWeekly');
 
 const SCHEMA_VERSION = 1;
@@ -426,8 +426,10 @@ async function buildSnapshot({ brandId = 'particle', weekStart, force = false, n
       .map(l => sm.byLabel[norm(l)]).filter(i => i != null)
       .concat(Object.entries(sm.byIndex).filter(([, v]) => /^(done|completed)$/i.test(v.label)).map(([i]) => Number(i)));
 
+    // One extra day: the review Sunday (see sundayReview)
+    const reviewToMs = W.zonedMidnightUtc(W.addDays(bounds.end, 1));
     const [logs, open] = await Promise.all([
-      monday.activityLogs(board.board_id, { fromIso: bounds.fromIso, toIso: bounds.toIso, columnIds: [board.columns.status], deadline }),
+      monday.activityLogs(board.board_id, { fromIso: bounds.fromIso, toIso: new Date(reviewToMs).toISOString(), columnIds: [board.columns.status], deadline }),
       monday.fetchAllItems(board.board_id, {
         cols,
         queryParams: deliveredIdx.length
@@ -441,7 +443,7 @@ async function buildSnapshot({ brandId = 'particle', weekStart, force = false, n
 
     const cls = classifyDeliveries(logs.events, {
       statusColumn: board.columns.status, delivered: board.statuses.delivered, fixes: board.statuses.fixes,
-      fromMs: bounds.fromMs, toMs: bounds.toMs, rule: config.delivery_rule,
+      fromMs: bounds.fromMs, toMs: reviewToMs, rule: config.delivery_rule,
     });
     warnings.push(...cls.warnings.map(w => `${board.label}: ${w}`));
     reopened.push(...cls.reopened);
@@ -459,6 +461,9 @@ async function buildSnapshot({ brandId = 'particle', weekStart, force = false, n
       const it = normalizeItem(raw, ctx);
       items[it.id] = it;
     }
+    // Review Sunday: last week's work approved that morning counts here; this week's own Sunday deliveries of work
+    // that ended before the week were counted in the previous deck
+    cls.delivered = sundayReview(cls.delivered, { firstDay: bounds.start, lastDay: bounds.lastDay, endOf: (id) => items[id]?.timeline?.to || items[id]?.deadline || null });
     for (const [id, info] of Object.entries(cls.delivered)) {
       if (!items[id]) {
         // Deleted since delivery — keep a minimal record from the log

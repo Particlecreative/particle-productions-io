@@ -36,6 +36,10 @@ function allowedMediaRefs(report, audience = 'internal') {
     if (it.people?.length && it.people.every(p => hiddenPeople.has(String(p)))) continue;
     for (const r of it.media_refs || []) refs.add(r);
   }
+  // The video / image chosen for a production slide that's in the deck
+  for (const pov of Object.values(ov.productions || {})) {
+    if (!pov?.hidden && pov?.show !== 'tickets' && pov?.show !== 'none' && pov?.media?.refId) refs.add(pov.media.refId);
+  }
   return refs;
 }
 

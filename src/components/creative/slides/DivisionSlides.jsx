@@ -1,8 +1,8 @@
-import { CalendarDays, Clapperboard, Film, PenTool, Plane, Sparkles, Tv, UserRound } from 'lucide-react';
+import { CalendarDays, Clapperboard, ExternalLink, Film, ImagePlus, Link2, PenTool, Plane, Sparkles, Tv, UserRound } from 'lucide-react';
 import { useDeck } from '../deck/DeckContext';
 import { Reveal, CountUp, GrowBar, m, EASE } from '../motion/Motion';
 import { Avatar, DeltaBadge, EditableText, ProductButton, ProductChip, Sparkline, TicketTile, SourceButtons } from '../ui/Bits';
-import { MediaImage, FallbackTile } from '../ui/Media';
+import { MediaImage, MediaVideo, FallbackTile } from '../ui/Media';
 import { dayLabel, shortDate, withAlpha, ensureContrast, fmtDays } from '../deck/format';
 import { SlideFrame, SlideHeader } from './SlideFrame';
 import { BulletList } from './StorySlides';
@@ -366,7 +366,7 @@ export function DivisionNextSlide({ slide, active }) {
 // ── One slide per production (from the CP — the core — with its Monday tickets) ──
 export function ProductionSlide({ slide, active }) {
   const { vm } = slide;
-  const { snapshot, overrides, layout, onTicket, editText } = useDeck();
+  const { snapshot, overrides, layout, onTicket, editText, media, mode } = useDeck();
   const canvas = layout === 'canvas';
   const p = vm.p;
   if (!p) return <SlideFrame slide={slide} active={active}><SlideHeader slide={slide} /></SlideFrame>;
@@ -381,7 +381,11 @@ export function ProductionSlide({ slide, active }) {
     p.shoot_dates?.length && { label: p.shoot_dates.length > 1 ? 'Shoot days' : 'Shoot', value: p.shoot_dates.slice(0, 3).map(d => shortDate(d)).join(', ') + (p.shoot_dates.length > 3 ? ` +${p.shoot_dates.length - 3}` : '') },
     p.delivery_date && { label: 'Delivery', value: shortDate(p.delivery_date) },
   ].filter(Boolean);
-  const hasWork = tickets.length > 0;
+  const editing = !!editText;
+  // A media slot shows when something is chosen — or, while editing, as a placeholder to fill
+  const showMedia = vm.show === 'media' && (vm.media?.refId || editing);
+  const hasWork = tickets.length > 0 || showMedia;
+  const linkOut = (url) => ({ href: url, target: '_blank', rel: 'noopener noreferrer', 'data-no-advance': true, onClick: (e) => e.stopPropagation() });
   return (
     <SlideFrame slide={slide} active={active}>
       <div className="cr-row" style={{ gap: 56, height: '100%' }}>
@@ -423,14 +427,44 @@ export function ProductionSlide({ slide, active }) {
             <Reveal i={6} className="cr-col" style={{ gap: 10 }}>
               {p.bullets.slice(0, hasWork ? 4 : 8).map((b, bi) => (
                 <div key={bi} style={{ display: 'flex', gap: 14, fontSize: 'var(--t-body)' }} dir="auto">
-                  <span style={{ color: '#ff8a3d' }}>•</span><span className="cr-clamp-2">{b.text}</span>
+                  <span style={{ color: '#ff8a3d' }}>•</span>
+                  {b.link && mode !== 'thumb'
+                    ? <a {...linkOut(b.link)} className="cr-clamp-2" style={{ color: '#fff', textDecoration: 'underline', textDecorationColor: 'rgba(255,138,61,.6)', textUnderlineOffset: 6 }}>{b.text} <ExternalLink size={18} style={{ display: 'inline', verticalAlign: 'baseline', opacity: 0.7 }} /></a>
+                    : <span className="cr-clamp-2">{b.text}</span>}
                 </div>
+              ))}
+            </Reveal>
+          )}
+          {p.links?.length > 0 && (
+            <Reveal i={7} style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              {p.links.slice(0, 6).map(l => (
+                <a key={l.url} {...(mode !== 'thumb' ? linkOut(l.url) : {})} className="cr-chip" style={{ gap: 8, color: '#fff', textDecoration: 'none', maxWidth: 520 }}>
+                  <Link2 size={16} color="#ff8a3d" /><span className="cr-clamp-1">{l.title || l.url}</span>
+                </a>
               ))}
             </Reveal>
           )}
         </div>
 
-        {hasWork && (
+        {showMedia && (
+          <Reveal i={3} y={30} className="cr-col cr-fill" style={{ minHeight: 0 }}>
+            {vm.media?.refId ? (
+              <div className="cr-card" style={{ position: 'relative', flex: 1, minHeight: 0, overflow: 'hidden', padding: 0, borderRadius: 28 }}>
+                {vm.media.kind === 'video'
+                  ? <MediaVideo src={media.ref(vm.media.refId, vm.media.key, 'play')} poster={media.ref(vm.media.refId, vm.media.key, 'poster')} active={active} controls={mode !== 'thumb'} className="cr-tile-media" style={{ objectFit: 'contain', background: '#000' }} />
+                  : <MediaImage src={media.ref(vm.media.refId, vm.media.key, 'full')} className="cr-tile-media" style={{ objectFit: 'contain' }} />}
+              </div>
+            ) : (
+              <div className="cr-card" style={{ flex: 1, minHeight: 0, borderRadius: 28, border: '2px dashed rgba(255,255,255,.18)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, textAlign: 'center' }}>
+                <ImagePlus size={44} color="var(--cr-faint)" />
+                <span className="cr-sub" style={{ fontSize: 'calc(var(--t-sub) * .7)' }}>Video or image for this production</span>
+                <span className="cr-small">Paste a Frame.io or Dropbox link in the panel on the right — only shown here while editing</span>
+              </div>
+            )}
+          </Reveal>
+        )}
+
+        {tickets.length > 0 && (
           <div className="cr-col cr-fill" style={{ gap: 14 }}>
             <Reveal i={3} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <Clapperboard size={22} color="var(--cr-electric-soft)" />

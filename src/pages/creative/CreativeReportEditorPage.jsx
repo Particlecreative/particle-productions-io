@@ -206,6 +206,15 @@ export default function CreativeReportEditorPage() {
     },
     setShareLinks: (v) => applyOv(ov => ({ ...ov, share: { ...(ov.share || {}), show_links: !!v } })),
     openMediaPicker: (tid) => setPickerFor(tid),
+    /** Add a Frame.io / Dropbox link as media (the server stores it in the snapshot) → { refId, entries, error } */
+    addLinkMedia: async (url) => {
+      await autosave.flush();
+      const r = await creativeApi.linkMedia(id, url);
+      setPayload(prev => ({ ...prev, report: { ...prev.report, snapshot: r.report.snapshot, revision: r.report.revision }, media: r.media || prev.media }));
+      revision.current = r.report.revision;
+      return { refId: r.refId, entries: r.entries || [], error: r.error || null };
+    },
+    mediaListing: (refId) => creativeApi.mediaListing(id, refId),
     openProjectChooser: (uid) => setChooserFor(uid || '__first'),
     setTemplateEnabled: (specId, enabled) => {
       if (!editable) return;

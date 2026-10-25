@@ -243,10 +243,18 @@ export const SPECS = {
     select(snapshot, { overrides, params }) {
       const p = (snapshot.cp_weekly?.productions || []).find(x => x.production_id === params.pid) || null;
       if (!p) return { p: null, tickets: [] };
-      const tickets = productionTickets(snapshot, overrides, p);
-      const manual = Array.isArray(overrides?.productions?.[p.production_id]?.tickets);
+      const pov = overrides?.productions?.[p.production_id] || {};
+      const linked = productionTickets(snapshot, overrides, p);
+      const manual = Array.isArray(pov.tickets);
       const from = snapshot.week?.next?.start || '';
-      return { p, tickets, manual, thisWeek: productionDatesIn(p, from, addDaysStr(from, 4)), hiddenProduction: !!overrides?.productions?.[p.production_id]?.hidden };
+      // Right side: the linked TV tickets, a video / image chosen for this production, or nothing
+      const show = pov.show || (pov.media?.refId ? 'media' : 'tickets');
+      return {
+        p, show, manual, linked,
+        tickets: show === 'tickets' ? linked : [],
+        media: show === 'media' ? (pov.media || null) : null,
+        thisWeek: productionDatesIn(p, from, addDaysStr(from, 4)), hiddenProduction: !!pov.hidden,
+      };
     },
     isEmpty: (vm) => !vm.p || vm.hiddenProduction,
     defaultText: (vm) => ({

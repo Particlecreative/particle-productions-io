@@ -290,6 +290,15 @@ export async function listing(id, refId) {
   if (String(refId).endsWith('v')) return { entries: [], error: 'Your Frame user is not linked to an Adobe ID' };
   return { entries: Array.from({ length: 6 }, (_, i) => ({ key: `k${i}`, name: `${String(refId).endsWith('f') ? 'Frame' : 'Export'} ${i + 1}.png`, kind: 'image', ext: 'png', preferred: i === 0 })) };
 }
+export async function linkMedia(id, url) {
+  await delay(400);
+  if (!/frame\.io|f\.io|dropbox\.com/i.test(url)) throw Object.assign(new Error('Paste a Frame.io or Dropbox link'), { status: 400 });
+  const r = read().find(x => x.id === id);
+  const refId = `fx${Math.abs([...url].reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 7))}`;
+  r.snapshot.media_refs = { ...(r.snapshot.media_refs || {}), [refId]: { kind: /dropbox/.test(url) ? 'dropbox_file' : 'frameio', url, item_id: null, custom: true } };
+  write(read().map(x => (x.id === id ? r : x)));
+  return { report: r, media: { token: 'fixture' }, refId, entries: [{ key: '_', name: 'TV commercial 30s.mp4', kind: 'video', ext: 'mp4', preferred: true }, { key: 'still', name: 'Hero still.jpg', kind: 'image', ext: 'jpg' }] };
+}
 export async function remove(id) { write(read().filter(x => x.id !== id)); return { ok: true }; }
 export async function config() { return { config: { default_template: DEFAULT_TEMPLATE } }; }
 export async function saveTemplate() { return { template: DEFAULT_TEMPLATE }; }

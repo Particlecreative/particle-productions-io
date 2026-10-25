@@ -10,7 +10,7 @@
 const monday = require('../monday');
 const W = require('../creative/week');
 const { getCreativeConfig } = require('../creative/config');
-const { classifyDeliveries } = require('../creative/classify');
+const { classifyDeliveries, sundayReview } = require('../creative/classify');
 const { normalizeItem, trackedInWindow } = require('../creative/snapshot');
 const { statusSpans, activeSpans, splitEffort, workSlices, taskLife, statusSince } = require('./effort');
 const bamboo = require('./bamboohr');
@@ -152,7 +152,8 @@ async function buildStudio({ brandId = 'particle', from, to, now = Date.now(), f
     const tl = board.columns.timeline;
     const doneIdx = [...new Set(deliveredIdx)];
     const [logs, open, finished] = await Promise.all([
-      lite ? { events: [] } : monday.activityLogs(board.board_id, { fromIso: P.fromIso, toIso: P.toIso, columnIds: [board.columns.status], deadline }),
+      // One extra day for the review Sunday (same rule as Creative Weekly)
+      lite ? { events: [] } : monday.activityLogs(board.board_id, { fromIso: P.fromIso, toIso: new Date(W.zonedMidnightUtc(W.addDays(P.to, 2))).toISOString(), columnIds: [board.columns.status], deadline }),
       // Open tasks are the same for every period — shared for a minute so moving between weeks is quick
       monday.cached(`studio:${brandId}:open:${board.board_id}`, 60 * 1000, () => monday.fetchAllItems(board.board_id, {
         cols,
@@ -180,7 +181,7 @@ async function buildStudio({ brandId = 'particle', from, to, now = Date.now(), f
     const cls = lite ? { delivered: {} } : classifyDeliveries(logs.events, {
       statusColumn: board.columns.status, delivered: board.statuses.delivered, fixes: board.statuses.fixes,
       // Exactly Creative Weekly's rule, so "Delivered this week" is the same number in both
-      fromMs: P.fromMs, toMs: P.toMs, rule: config.delivery_rule,
+      fromMs: P.fromMs, toMs: W.zonedMidnightUtc(W.addDays(P.to, 2)), rule: config.delivery_rule,
     });
 
     const have = new Set(open.items.map(r => String(r.id)));
@@ -209,6 +210,10 @@ async function buildStudio({ brandId = 'particle', from, to, now = Date.now(), f
         it.delivered_in_period = true;
       }
     }
+
+    // Review Sunday (same rule as Creative Weekly): last period's work approved the Sunday after counts there
+    const kept = sundayReview(cls.delivered, { firstDay: P.from, lastDay: P.to, endOf: (id) => items[id]?.timeline?.to || items[id]?.deadline || null });
+    for (const id of ids) if (items[id].delivered_in_period && !kept[id]) { delete items[id].delivered_at; items[id].delivered_in_period = false; }
 
     if (lite) return;
 
