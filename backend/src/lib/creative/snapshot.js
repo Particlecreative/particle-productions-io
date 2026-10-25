@@ -19,7 +19,7 @@ const DIVISIONS = [
   { key: 'tv', label: 'TV & Special Productions' },
 ];
 const { classifyDeliveries } = require('./classify');
-const { importCpWeekly } = require('./cpWeekly');
+const { importCpWeekly, cpWeekFor } = require('./cpWeekly');
 
 const SCHEMA_VERSION = 1;
 const DAY_MS = 86400000;
@@ -736,7 +736,8 @@ async function buildSnapshot({ brandId = 'particle', weekStart, force = false, n
   // ── CP weekly ──
   let cp_weekly = { found: false, productions: [], general_updates: [] };
   if (includeCp) {
-    try { cp_weekly = await importCpWeekly(brandId, bounds.start); } catch (e) { warnings.push(`CP weekly import failed (${e.message})`); }
+    // TV & productions show the coming week's CP weekly (deck Oct 18–22 → weekly of Oct 25)
+    try { cp_weekly = await importCpWeekly(brandId, cpWeekFor(bounds.start)); } catch (e) { warnings.push(`CP weekly import failed (${e.message})`); }
   }
 
   for (const it of Object.values(items)) delete it._iv;

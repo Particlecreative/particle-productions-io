@@ -200,7 +200,7 @@ function TvOverview({ slide, active }) {
             {list.map((p, i) => <ProductionCard key={p.production_id} p={p} i={3 + i} canvas={canvas} />)}
             {!list.length && (
               <Reveal i={3} className="cr-card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 30 }}>
-                <span className="cr-sub">No productions in the CP weekly for this week.</span>
+                <span className="cr-sub">No productions in the coming week’s CP weekly.</span>
               </Reveal>
             )}
           </div>

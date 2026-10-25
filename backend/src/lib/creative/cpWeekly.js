@@ -3,6 +3,13 @@
  * Never writes weekly_reports — the existing Weekly feature stays untouched.
  */
 const db = require('../../db');
+const W = require('./week');
+
+/**
+ * Which CP weekly a deck shows: the FOLLOWING week's. The deck is presented on Sunday about the Sun–Thu that just
+ * ended (e.g. Oct 18–22), while TV & productions look ahead — that's the weekly of Oct 25.
+ */
+const cpWeekFor = (deckWeekStart) => W.addDays(deckWeekStart, 7);
 
 async function importCpWeekly(brandId, weekStart) {
   const { rows } = await db.query(
@@ -11,7 +18,7 @@ async function importCpWeekly(brandId, weekStart) {
     [brandId, weekStart]
   );
   const wr = rows[0];
-  if (!wr) return { found: false, weekly_report_id: null, updated_at: null, productions: [], general_updates: [] };
+  if (!wr) return { found: false, week_start: weekStart, weekly_report_id: null, updated_at: null, productions: [], general_updates: [] };
 
   const entries = Array.isArray(wr.entries) ? wr.entries : [];
   const prodIds = [...new Set(entries.map(e => e.production_id).filter(Boolean))];
@@ -68,6 +75,7 @@ async function importCpWeekly(brandId, weekStart) {
 
   return {
     found: true,
+    week_start: weekStart,
     weekly_report_id: wr.id,
     updated_at: wr.updated_at ? new Date(wr.updated_at).toISOString() : null,
     creative_link: wr.creative_link || null,
@@ -85,4 +93,4 @@ async function cpWeeklyUpdatedAt(brandId, weekStart) {
   return rows[0]?.updated_at ? new Date(rows[0].updated_at).toISOString() : null;
 }
 
-module.exports = { importCpWeekly, cpWeeklyUpdatedAt };
+module.exports = { importCpWeekly, cpWeeklyUpdatedAt, cpWeekFor };

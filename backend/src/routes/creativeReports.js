@@ -18,7 +18,7 @@ const { getCreativeConfig, saveCreativeConfig, validateTemplate, validateConfig 
 const service = require('../lib/creative/service');
 const media = require('../lib/creative/media');
 const { publicReport, allowedMediaRefs, visibleTicketIds, coverSummary } = require('../lib/creative/deck');
-const { importCpWeekly, cpWeeklyUpdatedAt } = require('../lib/creative/cpWeekly');
+const { importCpWeekly, cpWeeklyUpdatedAt, cpWeekFor } = require('../lib/creative/cpWeekly');
 
 const RANK = { Viewer: 0, Accounting: 1, Studio: 1, Editor: 2, Admin: 3 };
 const DEFAULT_BRAND = 'particle';
@@ -361,7 +361,7 @@ router.get('/:id', async (req, res) => {
     const r = req.report;
     let cpStale = false;
     try {
-      const cur = await cpWeeklyUpdatedAt(r.brand_id, r.week_start);
+      const cur = await cpWeeklyUpdatedAt(r.brand_id, cpWeekFor(r.week_start));
       cpStale = (cur || null) !== (r.snapshot?.cp_weekly?.updated_at || null);
     } catch { cpStale = false; }
     res.json(withMedia(r, { cp_weekly_stale: cpStale }));
@@ -399,7 +399,7 @@ router.post('/:id/refresh', async (req, res) => {
 
 router.post('/:id/import-weekly', async (req, res) => {
   try {
-    const cp = await importCpWeekly(req.report.brand_id, req.report.week_start);
+    const cp = await importCpWeekly(req.report.brand_id, cpWeekFor(req.report.week_start));
     const snapshot = { ...req.report.snapshot, cp_weekly: cp };
     const r = await service.updateReport(req.report.id, req.report.revision, { snapshot });
     if (r.conflict != null) return res.status(409).json({ error: 'Edited elsewhere — reload and try again', revision: r.conflict });
