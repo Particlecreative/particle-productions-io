@@ -215,6 +215,23 @@ export default function CreativeReportEditorPage() {
       return { refId: r.refId, entries: r.entries || [], error: r.error || null };
     },
     mediaListing: (refId) => creativeApi.mediaListing(id, refId),
+    /** Save edits to the CP weekly (production update or general updates); the old Weekly gets them too */
+    saveCpWeekly: async (body) => {
+      await autosave.flush();
+      const adopt = (r) => {
+        setPayload(prev => ({ ...prev, report: { ...prev.report, snapshot: r.report.snapshot, revision: r.report.revision }, media: r.media || prev.media, cp_weekly_stale: false }));
+        revision.current = r.report.revision;
+      };
+      try {
+        adopt(await creativeApi.saveCpWeekly(id, body));
+        flash('Saved to the CP weekly');
+        return true;
+      } catch (e) {
+        if (e.status === 409 && e.data?.report) adopt(e.data);
+        flash(e.message);
+        return false;
+      }
+    },
     openProjectChooser: (uid) => setChooserFor(uid || '__first'),
     setTemplateEnabled: (specId, enabled) => {
       if (!editable) return;

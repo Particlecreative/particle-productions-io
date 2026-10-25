@@ -18,7 +18,7 @@ const { getCreativeConfig, saveCreativeConfig, validateTemplate, validateConfig 
 const service = require('../lib/creative/service');
 const media = require('../lib/creative/media');
 const { publicReport, allowedMediaRefs, visibleTicketIds, coverSummary } = require('../lib/creative/deck');
-const { importCpWeekly, cpWeeklyUpdatedAt, cpWeekFor } = require('../lib/creative/cpWeekly');
+const { importCpWeekly, cpWeeklyUpdatedAt, cpWeekFor, saveCpWeekly } = require('../lib/creative/cpWeekly');
 const { canonicalUrl, linkKind } = require('../lib/creative/snapshot');
 
 const RANK = { Viewer: 0, Accounting: 1, Studio: 1, Editor: 2, Admin: 3 };
@@ -415,6 +415,32 @@ router.post('/:id/link-media', async (req, res) => {
     }
     const { entries, error } = await media.getListing(report.snapshot.media_refs[refId]);
     res.json({ ...withMedia(report), refId, entries, error: error || null });
+  } catch (err) { errorJson(res, err); }
+});
+
+// Edit the CP weekly from the deck: written back to weekly_reports (the old Weekly shows it), then re-imported here
+router.put('/:id/cp-weekly', async (req, res) => {
+  const reimport = async (report) => {
+    const cp = await importCpWeekly(report.brand_id, cpWeekFor(report.week_start));
+    const r = await service.updateReport(report.id, report.revision, { snapshot: { ...report.snapshot, cp_weekly: cp } });
+    return r.conflict != null ? null : r.report;
+  };
+  try {
+    const { production = null, general_updates: generalUpdates = null } = req.body || {};
+    if (!production && !Array.isArray(generalUpdates)) return res.status(400).json({ error: 'Nothing to save' });
+    try {
+      await saveCpWeekly(req.report.brand_id, cpWeekFor(req.report.week_start), {
+        baseUpdatedAt: req.report.snapshot?.cp_weekly?.updated_at || null, production, generalUpdates,
+      });
+    } catch (e) {
+      if (e.code !== 'CP_WEEKLY_CHANGED') throw e;
+      // Someone edited the weekly — bring the latest into the deck so the edit can be re-applied on top
+      const fresh = await reimport(req.report);
+      return res.status(409).json({ error: 'The CP weekly was edited elsewhere — I loaded the latest version; please re-apply your change', ...(fresh ? withMedia(fresh) : {}) });
+    }
+    const report = await reimport(req.report);
+    if (!report) return res.status(409).json({ error: 'Edited elsewhere — reload and try again' });
+    res.json(withMedia(report));
   } catch (err) { errorJson(res, err); }
 });
 

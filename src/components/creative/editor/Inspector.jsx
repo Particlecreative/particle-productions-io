@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Star, EyeOff, Eye, ImageIcon, RotateCcw, Trash2, Sparkles, Loader2, Search, Link2, Save, RefreshCw, UserX, UserCheck, AlertTriangle,
   ArrowUp, ArrowDown, Minus, Plus, ListChecks, Images, LayoutGrid, Film, Clapperboard, Ban,
@@ -94,7 +94,8 @@ function SchemaControl({ def, value, onChange, disabled }) {
 function SlideTab({ slide, ctx }) {
   const spec = SPECS[slide.type];
   const ro = !ctx.editable;
-  const hasBullets = ['exec_summary', 'cp_updates', 'closing', 'division_next'].includes(slide.type);
+  // General updates are edited in the CP weekly itself (below), not as deck-only text
+  const hasBullets = ['exec_summary', 'closing', 'division_next'].includes(slide.type);
   const bullets = slide.type === 'division_next' ? (slide.vm.focus || [])
     : (slide.type === 'exec_summary' || slide.type === 'closing') ? slide.vm.bullets : (slide.vm.updates || []).map(u => u.text);
   return (
@@ -136,6 +137,8 @@ function SlideTab({ slide, ctx }) {
           )}
         </Field>
       )}
+
+      {slide.type === 'cp_updates' && <CpGeneralUpdates slide={slide} ctx={ctx} ro={ro} />}
 
       {slide.type === 'custom' && (
         <Field label="Body">
@@ -332,6 +335,7 @@ function ProductionTickets({ slide, ctx }) {
           {pov.hidden ? <Eye size={13} /> : <EyeOff size={13} />} {pov.hidden ? 'Bring back into the deck' : 'Leave out of this deck'}
         </button>
       </div>
+      <CpWeeklyEntry p={p} ctx={ctx} ro={ro} />
       <ProductionMedia slide={slide} ctx={ctx} p={p} pov={pov} ro={ro} />
       {(pov.show || (pov.media?.refId ? 'media' : 'tickets')) === 'tickets' && <>
       <Section title={`Linked TV tickets · ${linked.length}`}>
@@ -351,6 +355,106 @@ function ProductionTickets({ slide, ctx }) {
       </Section>
       </>}
     </div>
+  );
+}
+
+const cpWeekLabel = (ctx) => (ctx.snapshot.cp_weekly?.week_start ? shortDate(ctx.snapshot.cp_weekly.week_start) : 'next week');
+const inputCls = 'w-full min-w-0 text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 outline-none focus:border-[#4a55ff] disabled:bg-gray-50';
+
+/** Rows of { id, …fields } with add / remove — used for bullets, links and general updates. */
+function RowsEditor({ rows, setRows, fields, addLabel, ro }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      {rows.map((r, i) => (
+        <div key={r.id || `n${i}`} className="flex items-start gap-1.5">
+          <div className="flex-1 min-w-0 flex flex-col gap-1">
+            {fields.map(f => (
+              f.multiline
+                ? <textarea key={f.key} rows={2} disabled={ro} value={r[f.key] || ''} placeholder={f.placeholder} onKeyDown={e => e.stopPropagation()}
+                  onChange={e => setRows(rows.map((x, j) => (j === i ? { ...x, [f.key]: e.target.value } : x)))} className={`${inputCls} resize-y`} dir="auto" />
+                : <input key={f.key} disabled={ro} value={r[f.key] || ''} placeholder={f.placeholder} onKeyDown={e => e.stopPropagation()}
+                  onChange={e => setRows(rows.map((x, j) => (j === i ? { ...x, [f.key]: e.target.value } : x)))} className={inputCls} dir={f.key === 'text' || f.key === 'title' ? 'auto' : undefined} />
+            ))}
+          </div>
+          <button type="button" disabled={ro} onClick={() => setRows(rows.filter((_, j) => j !== i))} className="p-1.5 mt-0.5 rounded-md text-gray-400 hover:text-red-600" title="Remove"><Trash2 size={13} /></button>
+        </div>
+      ))}
+      <button type="button" disabled={ro} onClick={() => setRows([...rows, Object.fromEntries([['id', null], ...fields.map(f => [f.key, ''])])])}
+        className="self-start text-[11px] font-semibold text-[#0808f8] flex items-center gap-1 px-1 py-0.5"><Plus size={12} /> {addLabel}</button>
+    </div>
+  );
+}
+
+function SaveBar({ dirty, busy, ro, onSave, onCancel, note }) {
+  return (
+    <div className="flex items-center gap-2 mt-2">
+      <button type="button" disabled={ro || busy || !dirty} onClick={onSave} className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white disabled:opacity-40 flex items-center gap-1.5" style={{ background: '#0808f8' }}>
+        {busy ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Save to CP weekly
+      </button>
+      {dirty && !busy && <button type="button" onClick={onCancel} className="text-xs font-semibold text-gray-500 px-2">Cancel</button>}
+      <span className="text-[10px] text-gray-400 ml-auto">{note}</span>
+    </div>
+  );
+}
+
+/** A production's update in the CP weekly — edited here, saved back so the old Weekly shows the same. */
+function CpWeeklyEntry({ p, ctx, ro }) {
+  const init = () => ({
+    long_text: p.note || '',
+    bullets: (p.bullets || []).map(b => ({ id: b.id, text: b.text, link: b.link || '' })),
+    links: (p.links || []).map(l => ({ id: l.id, title: l.title, url: l.url })),
+  });
+  const [d, setD] = useState(init);
+  const [busy, setBusy] = useState(false);
+  const sig = JSON.stringify([p.production_id, p.note, p.bullets, p.links]);
+  useEffect(() => { setD(init()); }, [sig]); // eslint-disable-line react-hooks/exhaustive-deps
+  const dirty = JSON.stringify(d) !== JSON.stringify(init());
+  const save = async () => { setBusy(true); await ctx.saveCpWeekly({ production: { production_id: p.production_id, ...d } }); setBusy(false); };
+  return (
+    <Section title={`Weekly update · CP weekly of ${cpWeekLabel(ctx)}`}>
+      <div className="flex flex-col gap-2.5">
+        <textarea rows={3} disabled={ro} value={d.long_text} onKeyDown={e => e.stopPropagation()} onChange={e => setD({ ...d, long_text: e.target.value })}
+          placeholder="Notes" className={`${inputCls} resize-y`} dir="auto" />
+        <div>
+          <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Bullets</div>
+          <RowsEditor rows={d.bullets} setRows={(bullets) => setD({ ...d, bullets })} ro={ro} addLabel="Add bullet"
+            fields={[{ key: 'text', placeholder: 'What happened' }, { key: 'link', placeholder: 'Link (optional) — https://…' }]} />
+        </div>
+        <div>
+          <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Links</div>
+          <RowsEditor rows={d.links} setRows={(links) => setD({ ...d, links })} ro={ro} addLabel="Add link"
+            fields={[{ key: 'title', placeholder: 'Title' }, { key: 'url', placeholder: 'https://…' }]} />
+        </div>
+        <SaveBar dirty={dirty} busy={busy} ro={ro} onSave={save} onCancel={() => setD(init())} note="Also updates the old Weekly" />
+      </div>
+    </Section>
+  );
+}
+
+/** The CP weekly's general updates — edited here, saved back to the old Weekly. */
+function CpGeneralUpdates({ slide, ctx, ro }) {
+  const source = ctx.snapshot.cp_weekly?.general_updates || [];
+  const init = () => source.map(u => ({ id: u.id, text: u.text || '', link: u.link || '', file: u.file || null }));
+  const [rows, setRows] = useState(init);
+  const [busy, setBusy] = useState(false);
+  const sig = JSON.stringify(source);
+  useEffect(() => { setRows(init()); }, [sig]); // eslint-disable-line react-hooks/exhaustive-deps
+  const dirty = JSON.stringify(rows) !== JSON.stringify(init());
+  const custom = Array.isArray(ctx.overrides?.slides?.[slide.key]?.bullets);
+  const save = async () => { setBusy(true); await ctx.saveCpWeekly({ general_updates: rows.map(({ id, text, link }) => ({ id, text, link })) }); setBusy(false); };
+  return (
+    <Field label={`General updates · CP weekly of ${cpWeekLabel(ctx)}`}>
+      {custom && (
+        <div className="mb-2 text-[11px] px-2.5 py-2 rounded-lg bg-amber-50 text-amber-800 flex items-center gap-2">
+          This deck shows its own text for this slide.
+          <button type="button" disabled={ro} onClick={() => ctx.resetSlide(slide.key)} className="font-semibold underline ml-auto">Use the CP weekly</button>
+        </div>
+      )}
+      <RowsEditor rows={rows} setRows={setRows} ro={ro} addLabel="Add update"
+        fields={[{ key: 'text', placeholder: 'Update', multiline: true }, { key: 'link', placeholder: 'Link (optional) — https://…' }]} />
+      {rows.some(r => r.file) && <div className="text-[10px] text-gray-400 mt-1">Files attached in the old Weekly stay as they are.</div>}
+      <SaveBar dirty={dirty} busy={busy} ro={ro} onSave={save} onCancel={() => setRows(init())} note="Also updates the old Weekly" />
+    </Field>
   );
 }
 

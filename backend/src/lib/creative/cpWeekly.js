@@ -1,7 +1,8 @@
 /**
- * Read-only import of the CP weekly report (productions + general updates) for a week.
- * Never writes weekly_reports — the existing Weekly feature stays untouched.
+ * The CP weekly report (productions + general updates) for a week: imported into decks, and — when edited from a
+ * deck — written back field by field (saveCpWeekly), so the old Weekly shows the same text.
  */
+const crypto = require('crypto');
 const db = require('../../db');
 const W = require('./week');
 
@@ -58,16 +59,17 @@ async function importCpWeekly(brandId, weekStart) {
         note: (e.long_text ?? e.note ?? '').toString(),
         bullets: (Array.isArray(e.bullets) ? e.bullets : [])
           .filter(x => x && (x.text || '').trim())
-          .map(x => ({ text: x.text, link: x.link || null })),
+          .map(x => ({ id: x.id || null, text: x.text, link: x.link || null })),
         links: (Array.isArray(e.weekly_links) ? e.weekly_links : [])
           .filter(l => l && l.url)
-          .map(l => ({ title: l.title || l.url, url: l.url })),
+          .map(l => ({ id: l.id || null, title: l.title || l.url, url: l.url })),
       };
     });
 
   const general_updates = (Array.isArray(wr.general_updates) ? wr.general_updates : [])
     .filter(u => u && ((u.text || '').trim() || u.file))
     .map(u => ({
+      id: u.id || null,
       text: u.text || '',
       link: u.link || null,
       file: u.file ? { name: u.file.name, view_url: u.file.view_url || null, mime_type: u.file.mime_type || null } : null,
@@ -93,4 +95,69 @@ async function cpWeeklyUpdatedAt(brandId, weekStart) {
   return rows[0]?.updated_at ? new Date(rows[0].updated_at).toISOString() : null;
 }
 
-module.exports = { importCpWeekly, cpWeeklyUpdatedAt, cpWeekFor };
+const safeUrl = (u) => (/^https?:\/\/\S+$/i.test(String(u || '').trim()) ? String(u).trim().slice(0, 2000) : '');
+const clip = (t, n) => String(t ?? '').slice(0, n);
+const conflict = () => Object.assign(new Error('The CP weekly was edited elsewhere since this deck imported it'), { status: 409, code: 'CP_WEEKLY_CHANGED' });
+
+/**
+ * Write a deck's edits back to the CP weekly — only the fields edited, on the latest saved version, in one
+ * transaction — and refuse when the weekly changed after the deck imported it (baseUpdatedAt), so nobody's edit in
+ * the old Weekly is overwritten.
+ *  production: { production_id, long_text?, bullets?: [{ id, text, link }], links?: [{ id, title, url }] }
+ *  generalUpdates: [{ id, text, link }] — files on existing updates are kept
+ */
+async function saveCpWeekly(brandId, weekStart, { baseUpdatedAt = null, production = null, generalUpdates = null } = {}) {
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      'SELECT id, entries, general_updates, updated_at FROM weekly_reports WHERE brand_id = $1 AND week_start = $2 FOR UPDATE', [brandId, weekStart]);
+    let wr = rows[0];
+    const current = wr?.updated_at ? new Date(wr.updated_at).toISOString() : null;
+    if ((baseUpdatedAt || null) !== current) throw conflict();
+    if (!wr) {
+      if (production) throw Object.assign(new Error('There is no CP weekly for that week yet'), { status: 404 });
+      const ins = await client.query(
+        `INSERT INTO weekly_reports (id, brand_id, week_start, entries, general_updates, title, updated_at)
+         VALUES ($1, $2, $3, '[]', '[]', '', NOW()) RETURNING id, entries, general_updates, updated_at`,
+        [crypto.randomUUID(), brandId, weekStart]);
+      wr = ins.rows[0];
+    }
+    let entries = Array.isArray(wr.entries) ? wr.entries : [];
+    if (production) {
+      const i = entries.findIndex(e => e.production_id === production.production_id);
+      if (i < 0) throw Object.assign(new Error('That production is no longer in the CP weekly'), { status: 404 });
+      const e = { ...entries[i] };
+      if (production.long_text !== undefined) e.long_text = clip(production.long_text, 8000);
+      if (Array.isArray(production.bullets)) {
+        e.bullets = production.bullets.filter(b => b && String(b.text || '').trim()).slice(0, 40)
+          .map(b => ({ id: b.id || crypto.randomUUID(), text: clip(b.text, 1000), link: safeUrl(b.link) }));
+      }
+      if (Array.isArray(production.links)) {
+        const old = Array.isArray(e.weekly_links) ? e.weekly_links : [];
+        e.weekly_links = production.links.map(l => ({ ...l, url: safeUrl(l.url) })).filter(l => l.url).slice(0, 30).map(l => {
+          const prev = old.find(o => o.id && o.id === l.id);
+          return prev ? { ...prev, title: clip(l.title || l.url, 300), url: l.url }
+            : { id: `wl-${crypto.randomUUID().slice(0, 8)}`, type: 'custom', link_id: null, title: clip(l.title || l.url, 300), url: l.url, approved: false };
+        });
+      }
+      entries = entries.map((x, j) => (j === i ? e : x));
+    }
+    let general = Array.isArray(wr.general_updates) ? wr.general_updates : [];
+    if (Array.isArray(generalUpdates)) {
+      const old = general;
+      general = generalUpdates.slice(0, 40).map(u => {
+        const prev = old.find(o => o.id && o.id === u.id);
+        return { ...(prev || { id: crypto.randomUUID(), file: null }), text: clip(u.text, 4000), link: safeUrl(u.link) };
+      }).filter(u => u.text.trim() || u.link || u.file);
+    }
+    await client.query('UPDATE weekly_reports SET entries = $2, general_updates = $3, updated_at = NOW() WHERE id = $1',
+      [wr.id, JSON.stringify(entries), JSON.stringify(general)]);
+    await client.query('COMMIT');
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch { /* already rolled back */ }
+    throw e;
+  } finally { client.release(); }
+}
+
+module.exports = { importCpWeekly, cpWeeklyUpdatedAt, cpWeekFor, saveCpWeekly };

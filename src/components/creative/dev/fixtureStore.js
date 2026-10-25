@@ -290,6 +290,22 @@ export async function listing(id, refId) {
   if (String(refId).endsWith('v')) return { entries: [], error: 'Your Frame user is not linked to an Adobe ID' };
   return { entries: Array.from({ length: 6 }, (_, i) => ({ key: `k${i}`, name: `${String(refId).endsWith('f') ? 'Frame' : 'Export'} ${i + 1}.png`, kind: 'image', ext: 'png', preferred: i === 0 })) };
 }
+export async function saveCpWeekly(id, { production, general_updates }) {
+  await delay(300);
+  const r = read().find(x => x.id === id);
+  const cp = r.snapshot.cp_weekly || { found: true, productions: [], general_updates: [] };
+  if (production) {
+    cp.productions = (cp.productions || []).map(p => (p.production_id === production.production_id ? {
+      ...p, note: production.long_text ?? p.note, bullets: (production.bullets || p.bullets).filter(b => b.text?.trim()).map(b => ({ id: b.id || String(Math.random()), text: b.text, link: b.link || null })),
+      links: (production.links || p.links).filter(l => l.url).map(l => ({ id: l.id || String(Math.random()), title: l.title || l.url, url: l.url })),
+    } : p));
+  }
+  if (general_updates) cp.general_updates = general_updates.filter(u => u.text?.trim() || u.link).map(u => ({ id: u.id || String(Math.random()), text: u.text, link: u.link || null, file: null }));
+  cp.updated_at = new Date().toISOString();
+  r.snapshot.cp_weekly = cp;
+  write(read().map(x => (x.id === id ? r : x)));
+  return { report: r, media: { token: 'fixture' } };
+}
 export async function linkMedia(id, url) {
   await delay(400);
   if (!/frame\.io|f\.io|dropbox\.com/i.test(url)) throw Object.assign(new Error('Paste a Frame.io or Dropbox link'), { status: 400 });

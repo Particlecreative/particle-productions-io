@@ -48,6 +48,8 @@ export const creativeApi = {
   async generate(weekStart) { return LIVE ? crFetch('/generate', { method: 'POST', body: { week_start: weekStart } }) : (await fx()).generate(weekStart); },
   async save(id, patch, { keepalive = false } = {}) { return LIVE ? crFetch(`/${id}`, { method: 'PUT', body: patch, keepalive }) : (await fx()).save(id, patch); },
   async refresh(id) { return LIVE ? crFetch(`/${id}/refresh`, { method: 'POST', body: {} }) : (await fx()).refresh(id); },
+  /** Edit the CP weekly from the deck (written back to the old Weekly) → { report, media } */
+  async saveCpWeekly(id, body) { return LIVE ? crFetch(`/${id}/cp-weekly`, { method: 'PUT', body }) : (await fx()).saveCpWeekly(id, body); },
   async importWeekly(id) { return LIVE ? crFetch(`/${id}/import-weekly`, { method: 'POST', body: {} }) : (await fx()).get(id); },
   async narrative(id, force = false) { return LIVE ? crFetch(`/${id}/narrative`, { method: 'POST', body: { force } }) : (await fx()).narrative(id); },
   async finalize(id) { return LIVE ? crFetch(`/${id}/finalize`, { method: 'POST', body: {} }) : (await fx()).setStatus(id, 'final'); },
