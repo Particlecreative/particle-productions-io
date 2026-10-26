@@ -3,7 +3,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, ReferenceLine,
 } from 'recharts';
 import { Pencil, Check, X, ArrowUpRight, Info, Search } from 'lucide-react';
-import { buildSpend, MONTHS, OTHER } from './spend';
+import { buildSpend, MONTHS, OTHER, LENSES, lensOf, LENS_KINDS } from './spend';
 import { CountUp, stageColor } from '../tracker/parts';
 import '../tracker/tracker.css';
 
@@ -11,6 +11,8 @@ const INK = '#e8ecff';
 const MUTED = '#8b93c7';
 const GRID = 'rgba(232,236,255,.07)';
 const SURFACE = '#0b1546';
+// Planned money not spent yet: a light hatch, so it reads as "not real yet" next to paid / owed
+const PLANNED_FILL = 'repeating-linear-gradient(90deg, rgba(232,236,255,.28) 0 2px, rgba(232,236,255,.08) 2px 6px)';
 
 /**
  * Budget Overview's main view, in the Creative Weekly look: what the year has cost so far next to the budget,
@@ -18,10 +20,10 @@ const SURFACE = '#0b1546';
  */
 export default function BudgetDashboard({ productions, lineItems, getAmt, getPlanned, toDisplay, currency, year, budget, isEditor, onEditBudget, onDrill, onDetails, overdueCount, brandName }) {
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
-  const [mode, setMode] = useState('spent'); // spent | paid
+  const [lens, setLens] = useState('planned'); // planned | spent | unpaid | paid — see LENSES
   const [overOnly, setOverOnly] = useState(false);
   const [listQ, setListQ] = useState('');
-  const [listSort, setListSort] = useState('spent'); // spent | budget | left | id
+  const [listSort, setListSort] = useState('amount'); // amount | budget | left | id
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const sym = currency === 'ILS' ? '₪' : '$';
@@ -37,33 +39,49 @@ export default function BudgetDashboard({ productions, lineItems, getAmt, getPla
     productions, lineItems, getAmt, getPlanned, usd: (v) => toDisplay(v, 'USD'), year, budget, today,
   }), [productions, lineItems, getAmt, getPlanned, toDisplay, year, budget, today]);
   const t = d.totals;
-  const key = mode === 'paid' ? 'p_' : 's_';
-  const val = (cell) => (mode === 'paid' ? cell.paid : cell.spent);
+  const key = `${lens}_`;
+  const val = (cell) => lensOf(lens, cell);
+  const [, lensLabel, lensHint] = LENSES.find(l => l[0] === lens);
+  const withEst = LENS_KINDS[lens].includes('est');
+  const notPlanned = budget - t.all;
 
-  const scale = Math.max(budget, t.spent, t.projected, 1);
+  const scale = Math.max(budget, t.all, t.projected, 1);
   const pct = (v) => `${Math.min(100, (v / scale) * 100)}%`;
   const used = budget > 0 ? t.spent / budget : 0;
   const paceGap = t.pace - t.spent;
   const isCurrent = Number(today.slice(0, 4)) === year;
 
+  // A cell's line items in this view (estimated budgets have no lines — they're named in the subtitle)
+  const itemsOf = (cell) => LENS_KINDS[lens].filter(k => k !== 'est').flatMap(k => cell.items?.[k] || []);
+  const estNote = (v) => (withEst && v > 0.5 ? ` · plus ${full(v)} of budget not broken into lines yet` : '');
   const drillMonth = (i) => {
-    const items = d.prods.flatMap(r => r.months[i].items || []);
-    onDrill({ type: 'items', title: `${MONTHS[i]} ${year} — ${mode === 'paid' ? 'paid' : 'spent'}`, subtitle: `${items.length} items`, items: mode === 'paid' ? items.filter(li => li.payment_status === 'Paid') : items });
+    const items = d.prods.flatMap(r => itemsOf(r.months[i]));
+    const est = d.prods.reduce((a, r) => a + r.months[i].est, 0);
+    onDrill({ type: 'items', title: `${MONTHS[i]} ${year} — ${lensLabel.toLowerCase()}`, subtitle: `${items.length} items${estNote(est)}`, items });
   };
   const drillCell = (r, i) => {
-    const items = r.months[i].items || [];
-    if (items.length) onDrill({ type: 'items', title: `${r.name} · ${MONTHS[i]} ${year}`, subtitle: `${r.id} · ${items.length} items`, items });
+    const c = r.months[i];
+    const items = itemsOf(c);
+    if (items.length || (withEst && c.est > 0.5)) onDrill({ type: 'items', title: `${r.name} · ${MONTHS[i]} ${year}`, subtitle: `${r.id} · ${items.length} items${estNote(c.est)}`, items });
   };
 
   // Every production of the year — ones with nothing budgeted or spent yet too
   const lq = listQ.trim().toLowerCase();
-  const SORTS = { spent: (a, b) => b.spent - a.spent || b.planned - a.planned, budget: (a, b) => b.planned - a.planned || b.spent - a.spent, left: (a, b) => (a.planned - a.spent) - (b.planned - b.spent), id: (a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }) };
+  const SORTS = { amount: (a, b) => lensOf(lens, b) - lensOf(lens, a) || b.planned - a.planned, budget: (a, b) => b.planned - a.planned || b.spent - a.spent, left: (a, b) => (a.planned - a.spent) - (b.planned - b.spent), id: (a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }) };
   const list = d.prods
     .filter(r => (!overOnly || r.over) && (!lq || `${r.id} ${r.name} ${r.stage}`.toLowerCase().includes(lq)))
-    .sort(SORTS[listSort] || SORTS.spent);
-  const listMax = Math.max(1, ...list.map(r => Math.max(r.spent, r.planned)));
+    .sort(SORTS[listSort] || SORTS.amount);
+  const listMax = Math.max(1, ...list.map(r => Math.max(r.all, r.planned)));
   const matrix = d.prods.filter(r => r.months.some(c => val(c) > 0));
   const cellMax = Math.max(1, ...matrix.flatMap(r => r.months.map(val)));
+  // Running total in this view: spent / paid stop at today; plans run to December. Projected only for spent.
+  const running = d.cumulative.map(c => ({
+    ...c,
+    actual: (lens === 'spent' || lens === 'paid') && c.i > t.curMonth && t.curMonth >= 0 ? null : Math.round(lensOf(lens, c)),
+    projected: lens === 'spent' ? c.projected : null,
+  }));
+  const outBefore = lensOf(lens, d.outside.before);
+  const outAfter = lensOf(lens, d.outside.after);
 
   return (
     <div className="trk">
@@ -96,27 +114,23 @@ export default function BudgetDashboard({ productions, lineItems, getAmt, getPla
         <div className="mt-6">
           <div className="relative h-7 rounded-full overflow-visible" style={{ background: 'rgba(255,255,255,.07)' }}>
             <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: pct(budget), boxShadow: 'inset 0 0 0 1px rgba(232,236,255,.22)' }} />
-            <div className="absolute inset-y-0 left-0 rounded-l-full flex" style={{ width: pct(t.spent) }}>
-              <div className="h-full rounded-l-full" style={{ width: `${t.spent ? (t.paid / t.spent) * 100 : 0}%`, background: '#4a55ff' }} title={`Paid ${full(t.paid)}`} />
-              <div className="h-full" style={{ flex: 1, background: 'repeating-linear-gradient(45deg, rgba(74,85,255,.55) 0 6px, rgba(74,85,255,.3) 6px 12px)', borderRadius: t.paid ? '0 999px 999px 0' : 999 }} title={`Owed ${full(t.owed)}`} />
+            <div className="absolute inset-y-0 left-0 rounded-full flex overflow-hidden" style={{ width: pct(t.all) }}>
+              <div className="h-full" style={{ width: `${t.all ? (t.paid / t.all) * 100 : 0}%`, background: '#4a55ff' }} title={`Paid ${full(t.paid)}`} />
+              <div className="h-full" style={{ width: `${t.all ? (t.owed / t.all) * 100 : 0}%`, background: 'repeating-linear-gradient(45deg, rgba(74,85,255,.55) 0 6px, rgba(74,85,255,.3) 6px 12px)' }} title={`Owed ${full(t.owed)}`} />
+              <div className="h-full" style={{ flex: 1, background: PLANNED_FILL }} title={`Planned, not spent yet ${full(t.plan + t.est)}`} />
             </div>
             {isCurrent && budget > 0 && (
               <div className="absolute -top-2 -bottom-2" style={{ left: pct(t.pace) }} title={`Budget pace by today: ${full(t.pace)}`}>
                 <div className="w-0.5 h-full bg-white rounded" />
               </div>
             )}
-            {t.projected > t.spent && (
-              <div className="absolute -top-2 -bottom-2" style={{ left: pct(t.projected) }} title={`Projected year end: ${full(t.projected)}`}>
-                <div className="w-0 h-full" style={{ borderLeft: '2px dashed #ffb547' }} />
-              </div>
-            )}
           </div>
           <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-[13px]">
             <Legend swatch={{ background: '#4a55ff' }} label="Paid" value={full(t.paid)} />
             <Legend swatch={{ background: 'repeating-linear-gradient(45deg, rgba(74,85,255,.75) 0 3px, rgba(74,85,255,.35) 3px 6px)' }} label="Owed (invoice in / cost entered)" value={full(t.owed)} />
-            <Legend swatch={{ boxShadow: 'inset 0 0 0 1px rgba(232,236,255,.4)' }} label={budget >= t.spent ? 'Left' : 'Over'} value={full(Math.abs(budget - t.spent))} tone={budget < t.spent ? '#ff5c7a' : undefined} />
-            {isCurrent && budget > 0 && <Legend swatch={{ background: '#fff', width: 2 }} label="Pace by today" value={`${full(t.pace)} · ${paceGap >= 0 ? `${short(paceGap)} under` : `${short(-paceGap)} ahead`}`} />}
-            <Legend swatch={{ borderLeft: '2px dashed #ffb547', width: 0 }} label="If live productions land on budget" value={full(t.projected)} tone={t.projected > budget ? '#ffb547' : undefined} />
+            <Legend swatch={{ background: PLANNED_FILL }} label="Planned, not spent yet" value={full(t.plan + t.est)} />
+            <Legend swatch={{ boxShadow: 'inset 0 0 0 1px rgba(232,236,255,.4)' }} label={notPlanned >= 0 ? 'Budget not planned yet' : 'Planned over the budget'} value={full(Math.abs(notPlanned))} tone={notPlanned < 0 ? '#ff5c7a' : undefined} />
+            {isCurrent && budget > 0 && <Legend swatch={{ background: '#fff', width: 2 }} label="Spent vs pace by today" value={`${full(t.pace)} · ${paceGap >= 0 ? `${short(paceGap)} under` : `${short(-paceGap)} ahead`}`} />}
           </div>
         </div>
 
@@ -124,16 +138,16 @@ export default function BudgetDashboard({ productions, lineItems, getAmt, getPla
         <div className="mt-8 grid grid-cols-2 lg:grid-cols-4 gap-3">
           <Tile label={isCurrent ? `${MONTHS[t.curMonth]} so far` : 'Last month'} value={short(t.thisMonth)} sub={t.avgMonth ? `vs ${short(t.avgMonth)} a month on average` : 'No spend dated this year yet'} onClick={t.curMonth >= 0 ? () => drillMonth(t.curMonth) : undefined} />
           <Tile label="Monthly average" value={short(t.avgMonth)} sub={budget ? `Budget allows ${short(budget / 12)} a month` : ''} />
-          <Tile label="Productions with spend" value={`${t.withSpend}`} sub={`of ${productions.length} in ${year}`} />
+          <Tile label="Productions with spend" value={`${t.withSpend}`} sub={`of ${productions.length} in ${year}${t.withAnything > t.withSpend ? ` · ${t.withAnything - t.withSpend} more only planned` : ''}`} />
           <Tile label="Over their budget" value={`${t.overCount}`} tone={t.overCount ? '#ff5c7a' : undefined} sub={overOnly ? 'Showing only these — click to show all' : t.overCount ? 'Click to show only these' : 'Every production is within budget'} onClick={t.overCount ? () => setOverOnly(v => !v) : undefined} active={overOnly} />
         </div>
 
         {/* Mode */}
         <div className="mt-10 flex flex-wrap items-center gap-3">
-          <div className="trk-seg">
-            <button type="button" className={mode === 'spent' ? 'on' : ''} onClick={() => setMode('spent')}>Spent (paid + owed)</button>
-            <button type="button" className={mode === 'paid' ? 'on' : ''} onClick={() => setMode('paid')}>Paid only</button>
+          <div className="trk-seg overflow-x-auto max-w-full">
+            {LENSES.map(([k, l]) => <button key={k} type="button" className={lens === k ? 'on' : ''} onClick={() => setLens(k)}>{l}</button>)}
           </div>
+          <span className="text-[12px] trk-muted">{lensLabel}: {lensHint}.</span>
           <span className="text-[12px] trk-dim">Click a month, a production or a cell to see its line items.</span>
         </div>
 
@@ -141,7 +155,7 @@ export default function BudgetDashboard({ productions, lineItems, getAmt, getPla
         <div className="mt-4 grid xl:grid-cols-[1.35fr_1fr] gap-4">
           <div className="trk-glass p-5">
             <div className="flex items-baseline gap-3">
-              <div className="trk-label">{mode === 'paid' ? 'Paid' : 'Spent'} by month</div>
+              <div className="trk-label">{lensLabel} · by month</div>
               <div className="ml-auto text-[12px] trk-muted">by production</div>
             </div>
             <div className="h-[300px] mt-3">
@@ -175,7 +189,7 @@ export default function BudgetDashboard({ productions, lineItems, getAmt, getPla
             </div>
             <div className="h-[300px] mt-3">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={d.cumulative} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                <LineChart data={running} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                   <CartesianGrid vertical={false} stroke={GRID} />
                   <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fill: MUTED, fontSize: 11 }} />
                   <YAxis tickLine={false} axisLine={false} width={52} tick={{ fill: MUTED, fontSize: 11 }} tickFormatter={short} domain={[0, (max) => Math.max(max, budget) * 1.05]} />
@@ -183,12 +197,12 @@ export default function BudgetDashboard({ productions, lineItems, getAmt, getPla
                   {budget > 0 && <ReferenceLine y={budget} stroke="rgba(232,236,255,.45)" strokeDasharray="2 4" label={{ value: `Budget ${short(budget)}`, fill: MUTED, fontSize: 11, position: 'insideTopLeft' }} />}
                   <Line dataKey="pace" name="Budget pace" stroke="rgba(232,236,255,.35)" strokeWidth={2} strokeDasharray="5 5" dot={false} />
                   <Line dataKey="projected" name="Projected" stroke="#ffb547" strokeWidth={2} strokeDasharray="4 4" dot={false} connectNulls={false} />
-                  <Line dataKey="actual" name={mode === 'paid' ? 'Spent' : 'Spent'} stroke="#4a55ff" strokeWidth={3} dot={{ r: 4, fill: '#4a55ff', stroke: SURFACE, strokeWidth: 2 }} activeDot={{ r: 6 }} connectNulls={false} />
+                  <Line dataKey="actual" name={lensLabel} stroke="#4a55ff" strokeWidth={3} dot={{ r: 4, fill: '#4a55ff', stroke: SURFACE, strokeWidth: 2 }} activeDot={{ r: 6 }} connectNulls={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
             <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-[12px]">
-              <span className="flex items-center gap-1.5"><span className="w-4 h-[3px] rounded" style={{ background: '#4a55ff' }} />Spent</span>
+              <span className="flex items-center gap-1.5"><span className="w-4 h-[3px] rounded" style={{ background: '#4a55ff' }} />{lensLabel}</span>
               <span className="flex items-center gap-1.5"><span className="w-4" style={{ borderTop: '2px dashed rgba(232,236,255,.5)' }} />Even pace to the budget</span>
               <span className="flex items-center gap-1.5"><span className="w-4" style={{ borderTop: '2px dashed #ffb547' }} />Projected</span>
             </div>
@@ -205,12 +219,13 @@ export default function BudgetDashboard({ productions, lineItems, getAmt, getPla
               <input className="trk-input !pl-8 !py-1.5 !rounded-full !text-[12px]" placeholder="Find a production…" value={listQ} onChange={(e) => setListQ(e.target.value)} />
             </div>
             <div className="trk-seg">
-              {[['spent', 'Spent'], ['budget', 'Budget'], ['left', 'Over / left'], ['id', 'PRD']].map(([k, l]) => <button key={k} type="button" className={listSort === k ? 'on' : ''} onClick={() => setListSort(k)}>{l}</button>)}
+              {[['amount', 'Amount'], ['budget', 'Budget'], ['left', 'Over / left'], ['id', 'PRD']].map(([k, l]) => <button key={k} type="button" className={listSort === k ? 'on' : ''} onClick={() => setListSort(k)}>{l}</button>)}
             </div>
             <div className="ml-auto flex items-center gap-4 text-[12px] trk-muted">
               <span className="flex items-center gap-1.5"><span className="w-4 h-2.5 rounded-sm" style={{ boxShadow: 'inset 0 0 0 1px rgba(232,236,255,.45)' }} />Budget</span>
               <span className="flex items-center gap-1.5"><span className="w-4 h-2.5 rounded-sm" style={{ background: '#4a55ff' }} />Paid</span>
               <span className="flex items-center gap-1.5"><span className="w-4 h-2.5 rounded-sm" style={{ background: 'rgba(74,85,255,.45)' }} />Owed</span>
+              <span className="flex items-center gap-1.5"><span className="w-4 h-2.5 rounded-sm" style={{ background: PLANNED_FILL }} />Planned</span>
             </div>
           </div>
           <div className="flex flex-col">
@@ -227,14 +242,15 @@ export default function BudgetDashboard({ productions, lineItems, getAmt, getPla
                 </span>
                 <span className="relative h-3.5 rounded-full" style={{ background: 'rgba(255,255,255,.04)' }}>
                   {r.planned > 0 && <span className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${(r.planned / listMax) * 100}%`, boxShadow: 'inset 0 0 0 1px rgba(232,236,255,.38)' }} />}
-                  <span className="absolute inset-y-0 left-0 flex rounded-full overflow-hidden" style={{ width: `${(r.spent / listMax) * 100}%` }}>
-                    <span style={{ width: `${r.spent ? (r.paid / r.spent) * 100 : 0}%`, background: r.over ? '#ff5c7a' : '#4a55ff' }} />
-                    <span style={{ flex: 1, background: r.over ? 'rgba(255,92,122,.5)' : 'rgba(74,85,255,.45)' }} />
+                  <span className="absolute inset-y-0 left-0 flex rounded-full overflow-hidden" style={{ width: `${(r.all / listMax) * 100}%` }}>
+                    <span style={{ width: `${r.all ? (r.paid / r.all) * 100 : 0}%`, background: r.over ? '#ff5c7a' : '#4a55ff' }} />
+                    <span style={{ width: `${r.all ? (r.owed / r.all) * 100 : 0}%`, background: r.over ? 'rgba(255,92,122,.5)' : 'rgba(74,85,255,.45)' }} />
+                    <span style={{ flex: 1, background: PLANNED_FILL }} />
                   </span>
                   {r.over && <span className="absolute -top-1 -bottom-1 w-0.5 rounded bg-white" style={{ left: `${(r.planned / listMax) * 100}%` }} title={`Budget ${full(r.planned)}`} />}
                 </span>
-                {!r.spent && !r.planned ? <span className="text-[12px] trk-dim md:text-right">No budget or spend yet</span> : <span className="flex items-baseline gap-2 md:justify-end text-[13px] tabular-nums">
-                  <b>{short(r.spent)}</b>
+                {!r.all && !r.planned ? <span className="text-[12px] trk-dim md:text-right">No budget or spend yet</span> : <span className="flex items-baseline gap-2 md:justify-end text-[13px] tabular-nums">
+                  <b>{short(lensOf(lens, r))}</b>
                   <span className="trk-dim">/ {r.planned ? short(r.planned) : 'no budget'}</span>
                   {r.over
                     ? <span className="trk-chip red">+{short(r.spent - r.planned)}</span>
@@ -250,7 +266,7 @@ export default function BudgetDashboard({ productions, lineItems, getAmt, getPla
         <div className="mt-4 trk-glass p-5">
           <div className="flex flex-wrap items-baseline gap-3 mb-4">
             <div className="trk-label">Month by month · per production</div>
-            <div className="ml-auto text-[12px] trk-muted">{mode === 'paid' ? 'Paid' : 'Spent'} in each month · darker = more</div>
+            <div className="ml-auto text-[12px] trk-muted">{lensLabel} in each month · darker = more</div>
           </div>
           <div className="overflow-x-auto trk-scroll">
             <table className="w-full min-w-[980px] text-[12px] tabular-nums border-separate" style={{ borderSpacing: '3px' }}>
@@ -286,7 +302,7 @@ export default function BudgetDashboard({ productions, lineItems, getAmt, getPla
                     </tr>
                   );
                 })}
-                {!matrix.length && <tr><td colSpan={15} className="py-8 text-center trk-muted">Nothing {mode === 'paid' ? 'paid' : 'spent'} in {year} yet.</td></tr>}
+                {!matrix.length && <tr><td colSpan={15} className="py-8 text-center trk-muted">Nothing in this view for {year} yet.</td></tr>}
               </tbody>
               {matrix.length > 0 && (
                 <tfoot>
@@ -302,13 +318,13 @@ export default function BudgetDashboard({ productions, lineItems, getAmt, getPla
               )}
             </table>
           </div>
-          {(d.outside.before > 0 || d.outside.after > 0 || d.undated > 0) && (
+          {(outBefore > 0.5 || outAfter > 0.5 || d.undated > 0) && (
             <div className="mt-3 flex items-start gap-2 text-[12px] trk-muted">
               <Info size={13} className="flex-none mt-0.5" />
               <span>
-                {d.outside.before > 0 && <>{full(d.outside.before)} of {year}’s productions was dated in {year - 1}. </>}
-                {d.outside.after > 0 && <>{full(d.outside.after)} is dated in {year + 1}. </>}
-                {(d.outside.before > 0 || d.outside.after > 0) && 'It counts in the totals above, not in these months. '}
+                {outBefore > 0.5 && <>{full(outBefore)} of {year}’s productions is dated in {year - 1}. </>}
+                {outAfter > 0.5 && <>{full(outAfter)} is dated in {year + 1}. </>}
+                {(outBefore > 0.5 || outAfter > 0.5) && 'It counts in the totals above, not in these months. '}
                 {d.undated > 0 && <>{d.undated} cost{d.undated > 1 ? 's have' : ' has'} no paid or work date, so {d.undated > 1 ? 'they sit' : 'it sits'} in the production’s month.</>}
               </span>
             </div>
@@ -382,7 +398,7 @@ function RunTip({ active, payload, label, fmt }) {
   return (
     <div className="trk rounded-2xl px-4 py-3 text-[12px] shadow-2xl" style={{ background: '#030b2e', border: '1px solid rgba(232,236,255,.15)' }}>
       <b className="text-[13px]">End of {label}</b>
-      {row.actual != null && <div className="flex justify-between gap-6 mt-1"><span className="trk-muted">Spent so far</span><b>{fmt(row.actual)}</b></div>}
+      {row.actual != null && <div className="flex justify-between gap-6 mt-1"><span className="trk-muted">Running total</span><b>{fmt(row.actual)}</b></div>}
       {row.projected != null && row.actual == null && <div className="flex justify-between gap-6 mt-1"><span className="trk-muted">Projected</span><b style={{ color: '#ffb547' }}>{fmt(row.projected)}</b></div>}
       <div className="flex justify-between gap-6 mt-1"><span className="trk-muted">Even pace</span><span>{fmt(row.pace)}</span></div>
     </div>
