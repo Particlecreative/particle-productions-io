@@ -96,7 +96,7 @@ export function FileRow({ item, canEdit, onRemove, onError }) {
 
 export function MarketTag({ item }) {
   return (
-    <span className="trk-chip !text-[10px] !px-2 !py-0.5" title={item.on_air ? 'Checked in the sheet' : undefined}>
+    <span className="trk-chip !text-[10px] !px-2 !py-0.5" title={item.on_air ? 'On air' : undefined}>
       {item.on_air && <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#2fd38a' }} />}{item.market}
     </span>
   );
@@ -118,7 +118,7 @@ export function CommercialRow({ group, onError, right }) {
         {group.items.map(it => (
           <div key={it.id} className="flex items-center gap-2 rounded-xl px-2.5 py-1.5" style={{ background: 'rgba(255,255,255,.05)', border: '1px solid var(--trk-line)' }}>
             <span className="flex items-center gap-1.5 text-[12px] font-bold">
-              {it.on_air && <span className="w-2 h-2 rounded-full" style={{ background: '#2fd38a' }} title="Checked in the sheet" />}
+              {it.on_air && <span className="w-2 h-2 rounded-full" style={{ background: '#2fd38a' }} title="On air" />}
               {it.market || '—'}
             </span>
             {it.code && <span className="text-[11px] font-mono trk-muted">{it.code}</span>}

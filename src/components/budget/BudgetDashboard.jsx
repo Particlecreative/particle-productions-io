@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, ReferenceLine,
 } from 'recharts';
-import { Pencil, Check, X, ArrowUpRight, Info } from 'lucide-react';
+import { Pencil, Check, X, ArrowUpRight, Info, Search } from 'lucide-react';
 import { buildSpend, MONTHS, OTHER } from './spend';
 import { CountUp, stageColor } from '../tracker/parts';
 import '../tracker/tracker.css';
@@ -20,6 +20,8 @@ export default function BudgetDashboard({ productions, lineItems, getAmt, getPla
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
   const [mode, setMode] = useState('spent'); // spent | paid
   const [overOnly, setOverOnly] = useState(false);
+  const [listQ, setListQ] = useState('');
+  const [listSort, setListSort] = useState('spent'); // spent | budget | left | id
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const sym = currency === 'ILS' ? '₪' : '$';
@@ -53,7 +55,12 @@ export default function BudgetDashboard({ productions, lineItems, getAmt, getPla
     if (items.length) onDrill({ type: 'items', title: `${r.name} · ${MONTHS[i]} ${year}`, subtitle: `${r.id} · ${items.length} items`, items });
   };
 
-  const list = d.prods.filter(r => (r.spent > 0 || r.planned > 0) && (!overOnly || r.over));
+  // Every production of the year — ones with nothing budgeted or spent yet too
+  const lq = listQ.trim().toLowerCase();
+  const SORTS = { spent: (a, b) => b.spent - a.spent || b.planned - a.planned, budget: (a, b) => b.planned - a.planned || b.spent - a.spent, left: (a, b) => (a.planned - a.spent) - (b.planned - b.spent), id: (a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }) };
+  const list = d.prods
+    .filter(r => (!overOnly || r.over) && (!lq || `${r.id} ${r.name} ${r.stage}`.toLowerCase().includes(lq)))
+    .sort(SORTS[listSort] || SORTS.spent);
   const listMax = Math.max(1, ...list.map(r => Math.max(r.spent, r.planned)));
   const matrix = d.prods.filter(r => r.months.some(c => val(c) > 0));
   const cellMax = Math.max(1, ...matrix.flatMap(r => r.months.map(val)));
@@ -191,8 +198,15 @@ export default function BudgetDashboard({ productions, lineItems, getAmt, getPla
         {/* Planned vs actual by production */}
         <div className="mt-4 trk-glass p-5">
           <div className="flex flex-wrap items-baseline gap-3 mb-4">
-            <div className="trk-label">Planned vs actual · by production</div>
+            <div className="trk-label">Planned vs actual · all {d.prods.length} productions</div>
             {overOnly && <button type="button" className="trk-chip red" onClick={() => setOverOnly(false)}><X size={11} /> Over budget only</button>}
+            <div className="relative w-full sm:w-[220px]">
+              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 trk-dim" />
+              <input className="trk-input !pl-8 !py-1.5 !rounded-full !text-[12px]" placeholder="Find a production…" value={listQ} onChange={(e) => setListQ(e.target.value)} />
+            </div>
+            <div className="trk-seg">
+              {[['spent', 'Spent'], ['budget', 'Budget'], ['left', 'Over / left'], ['id', 'PRD']].map(([k, l]) => <button key={k} type="button" className={listSort === k ? 'on' : ''} onClick={() => setListSort(k)}>{l}</button>)}
+            </div>
             <div className="ml-auto flex items-center gap-4 text-[12px] trk-muted">
               <span className="flex items-center gap-1.5"><span className="w-4 h-2.5 rounded-sm" style={{ boxShadow: 'inset 0 0 0 1px rgba(232,236,255,.45)' }} />Budget</span>
               <span className="flex items-center gap-1.5"><span className="w-4 h-2.5 rounded-sm" style={{ background: '#4a55ff' }} />Paid</span>
@@ -219,16 +233,16 @@ export default function BudgetDashboard({ productions, lineItems, getAmt, getPla
                   </span>
                   {r.over && <span className="absolute -top-1 -bottom-1 w-0.5 rounded bg-white" style={{ left: `${(r.planned / listMax) * 100}%` }} title={`Budget ${full(r.planned)}`} />}
                 </span>
-                <span className="flex items-baseline gap-2 md:justify-end text-[13px] tabular-nums">
+                {!r.spent && !r.planned ? <span className="text-[12px] trk-dim md:text-right">No budget or spend yet</span> : <span className="flex items-baseline gap-2 md:justify-end text-[13px] tabular-nums">
                   <b>{short(r.spent)}</b>
                   <span className="trk-dim">/ {r.planned ? short(r.planned) : 'no budget'}</span>
                   {r.over
                     ? <span className="trk-chip red">+{short(r.spent - r.planned)}</span>
                     : r.pct != null && <span className="trk-chip gray">{Math.round(r.pct * 100)}%</span>}
-                </span>
+                </span>}
               </button>
             ))}
-            {!list.length && <div className="py-8 text-center text-sm trk-muted">No productions with a budget or spend in {year}.</div>}
+            {!list.length && <div className="py-8 text-center text-sm trk-muted">{lq || overOnly ? 'No production matches.' : `No productions in ${year}.`}</div>}
           </div>
         </div>
 

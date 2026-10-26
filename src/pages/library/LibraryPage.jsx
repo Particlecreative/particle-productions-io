@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Search, RefreshCw, Loader2, AlertTriangle, Check, Download, Archive, Sheet, Plus, X, Film, Music, Clock } from 'lucide-react';
+import { Search, RefreshCw, Loader2, AlertTriangle, Check, Sheet, Plus, X, Clock, Radio, Tag } from 'lucide-react';
 import { useBrand } from '../../context/BrandContext';
-import { libraryApi, download, CATEGORY, PROMPT_BOXES } from '../../lib/libraryService';
-import { Poster, posterOf } from '../../components/library/parts';
+import { libraryApi, PROMPT_BOXES } from '../../lib/libraryService';
+import { buildCatalog, CatalogRow, onAir, lengthBucket } from '../../components/library/Catalog';
 import ProductionDrawer from '../../components/library/ProductionDrawer';
-import BeforeModal from '../../components/library/BeforeModal';
 import AddFiles from '../../components/library/AddFiles';
 import { CountUp } from '../../components/tracker/parts';
 import '../../components/tracker/tracker.css';
 
-const FILTERS = [['', 'Everything'], ['tv_master', 'TV masters'], ['digital', 'Digital'], ['sound', 'Sound stems']];
+const ERAS = [['all', 'All commercials'], ['cp', '2026 productions'], ['before', 'Before 2026']];
+const LENGTHS = ['15s', '30s', '60s', '90s+'];
+const SALES = '__sales';
 const shortDate = (d) => (d ? new Date(`${String(d).slice(0, 10)}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : '');
 const relTime = (iso) => {
   if (!iso) return 'never';
@@ -22,7 +23,11 @@ const relTime = (iso) => {
 };
 const isDone = (stage) => /^completed/i.test(stage || '');
 
-/** The Library — where the final files live: every commercial's TV master, digital versions and sound stems. */
+/**
+ * The Library — every TV commercial's final files in one list. Pick a product (or Sales), narrow by market,
+ * length or what's on air, then click a market to download its file. A production's digital versions and
+ * sound stems are one click away.
+ */
 export default function LibraryPage() {
   const { brandId, brand } = useBrand();
   const [params, setParams] = useSearchParams();
@@ -31,11 +36,16 @@ export default function LibraryPage() {
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState(null);
   const [q, setQ] = useState('');
-  const [cat, setCat] = useState('');
+  const [era, setEra] = useState(() => (params.get('view') === 'before' ? 'before' : 'all'));
+  const [product, setProduct] = useState('');
+  const [market, setMarket] = useState('');
+  const [length, setLength] = useState('');
+  const [liveOnly, setLiveOnly] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [connect, setConnect] = useState(false);
   const [sheetUrl, setSheetUrl] = useState('');
-  const [adding, setAdding] = useState(null); // production waiting for files
+  const [missingOpen, setMissingOpen] = useState(false);
+  const [adding, setAdding] = useState(null);
 
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -46,35 +56,57 @@ export default function LibraryPage() {
   useEffect(() => { if (!toast) return undefined; const t = setTimeout(() => setToast(null), 4500); return () => clearTimeout(t); }, [toast]);
   const fail = (m) => setToast({ text: m, error: true });
 
-  const productions = data?.productions || [];
-  const before = data?.before || [];
+  const productions = useMemo(() => data?.productions || [], [data]);
+  const before = useMemo(() => data?.before || [], [data]);
   const canEdit = !!data?.can_edit;
   const all = data?.all_productions || productions;
-  const openId = params.get('p');
-  const open = productions.find(p => p.id === openId) || null;
-  const beforeOpen = params.get('view') === 'before';
+  const source = data?.sources?.[0] || null;
+  const open = productions.find(p => p.id === params.get('p')) || null;
+  const missing = productions.filter(p => isDone(p.stage) && !p.items.some(i => i.category === 'tv_master' || i.category === 'digital'));
+
+  const catalog = useMemo(() => buildCatalog(productions, before), [productions, before]);
+  const inEra = useMemo(() => catalog.filter(e => era === 'all' || (era === 'cp' ? !!e.production : !e.production)), [catalog, era]);
+  // Product chips (with Sales), counted inside the chosen era
+  const productChips = useMemo(() => {
+    const m = new Map();
+    for (const e of inEra) if (e.productKey) { const c = m.get(e.productKey) || { key: e.productKey, label: e.product, n: 0 }; c.n++; m.set(e.productKey, c); }
+    return [...m.values()].sort((a, b) => b.n - a.n);
+  }, [inEra]);
+  const salesCount = inEra.filter(e => e.sale).length;
+  const markets = useMemo(() => [...new Set(inEra.flatMap(e => e.items.map(i => i.market)).filter(Boolean))], [inEra]);
 
   const needle = q.trim().toLowerCase();
-  const match = (p) => !needle || [p.id, p.name, ...(p.product_type || []), ...p.items.flatMap(i => [i.title, i.code, i.file_name, i.market])]
-    .filter(Boolean).some(v => String(v).toLowerCase().includes(needle));
-  const shelf = productions.filter(p => p.items.length && (!cat || p.items.some(i => i.category === cat)) && match(p));
-  const waiting = productions.filter(p => isDone(p.stage) && !p.items.some(i => i.category === 'tv_master' || i.category === 'digital'));
-  const files = productions.reduce((a, p) => a + p.items.length, 0) + before.length;
-  const commercials = useMemo(() => {
-    const keys = new Set();
-    for (const it of [...productions.flatMap(p => p.items), ...before]) if (it.category === 'tv_master') keys.add(it.specs?.group || it.id);
-    return keys.size;
-  }, [productions, before]);
-  const source = data?.sources?.[0] || null;
+  const shown = inEra.filter(e =>
+    (!product || (product === SALES ? e.sale : e.productKey === product)) &&
+    (!market || e.items.some(i => i.market === market)) &&
+    (!length || lengthBucket(e.duration) === length) &&
+    (!liveOnly || onAir(e)) &&
+    (!needle || [e.title, e.product, e.notes, e.production?.id, e.production?.name, ...e.items.flatMap(i => [i.code, i.vanity, i.file_name])]
+      .filter(Boolean).some(v => String(v).toLowerCase().includes(needle))))
+    .sort((a, b) => (onAir(b) - onAir(a)) || String(b.date || '').localeCompare(String(a.date || '')) || a.title.localeCompare(b.title));
+  const filtered = !!(product || market || length || liveOnly || needle);
+  // Grouped by product while no product is picked
+  const sections = useMemo(() => {
+    if (product) return [[null, shown]];
+    const m = new Map();
+    for (const e of shown) {
+      const k = e.product || 'Sales & all products';
+      if (!m.has(k)) m.set(k, []);
+      m.get(k).push(e);
+    }
+    return [...m.entries()].sort((a, b) => b[1].length - a[1].length);
+  }, [shown, product]);
+  const liveCount = inEra.filter(onAir).length;
 
-  const moveGroup = async (group, productionId) => {
+  const moveEntry = async (e, productionId) => {
     try {
-      for (const it of group.items) await libraryApi.updateItem(it.id, { production_id: productionId });
+      for (const it of e.items) await libraryApi.updateItem(it.id, { production_id: productionId });
       const to = all.find(x => x.id === productionId);
-      setToast({ text: productionId ? `“${group.title}” is now in ${to?.name || productionId}` : `“${group.title}” moved to Before 2026` });
+      setToast({ text: `“${e.title}” is now in ${to ? `${to.id} ${to.name}` : productionId}` });
       load(true);
-    } catch (e) { fail(e.message); }
+    } catch (err) { fail(err.message); }
   };
+  const moveGroup = (group, productionId) => moveEntry({ title: group.title, items: group.items }, productionId);
   const removeItem = async (it) => {
     if (!window.confirm(`Remove “${it.title}” from the Library? The file stays in Dropbox.`)) return;
     try { await libraryApi.removeItem(it.id); setToast({ text: 'Removed from the Library' }); load(true); } catch (e) { fail(e.message); }
@@ -84,9 +116,7 @@ export default function LibraryPage() {
     setSyncing(true);
     try {
       const { result } = await libraryApi.syncSheet(source.id);
-      setToast(result.ok
-        ? { text: `Synced · ${result.files} files · ${result.added} new · ${result.updated} updated · ${result.removed} removed` }
-        : { text: `Sync failed: ${result.error}`, error: true });
+      setToast(result.ok ? { text: `Synced · ${result.added} new · ${result.updated} updated · ${result.removed} removed` } : { text: `Sync failed: ${result.error}`, error: true });
       await load(true);
     } catch (e) { fail(e.message); } finally { setSyncing(false); }
   };
@@ -99,22 +129,20 @@ export default function LibraryPage() {
       await load(true);
     } catch (e) { fail(e.message); } finally { setSyncing(false); }
   };
+  const clear = () => { setProduct(''); setMarket(''); setLength(''); setLiveOnly(false); setQ(''); };
+  const chip = (on) => `trk-chip !py-1.5 !px-3 !text-[12px] cursor-pointer ${on ? '!bg-white !text-[#030b2e]' : 'hover:!bg-white/15'}`;
 
   return (
     <div className="trk max-w-[2400px] mx-auto pb-16">
       <div className="trk-canvas p-5 sm:p-8 md:p-10">
         {/* Hero */}
-        <div className="flex flex-wrap items-end gap-6">
+        <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
           <div className="min-w-0">
-            <div className="trk-eyebrow">The Library · {brand?.name || brandId} · final files, ready to pull</div>
-            <h1 className="trk-title text-[52px] sm:text-[88px] md:text-[112px] mt-3">
-              {data ? <><CountUp value={commercials} /> commercial{commercials === 1 ? '' : 's'}</> : 'The Library'}
+            <div className="trk-eyebrow">The Library · {brand?.name || brandId}</div>
+            <h1 className="trk-title text-[48px] sm:text-[72px] md:text-[88px] mt-2">
+              {data ? <><CountUp value={catalog.filter(e => !e.productionOnly).length} /> commercials</> : 'The Library'}
             </h1>
-            {data && (
-              <div className="mt-3 text-[15px] trk-muted">
-                {files} files · {shelf.length} productions · {before.length ? `${new Set(before.map(i => i.specs?.group || i.id)).size} from before 2026` : 'nothing from before 2026 yet'}
-              </div>
-            )}
+            <p className="mt-2 text-[15px] trk-muted">Every TV commercial’s final files. Pick a product, then click a market to download its file.</p>
           </div>
           <div className="ml-auto flex flex-col items-end gap-2">
             {source ? (
@@ -128,6 +156,11 @@ export default function LibraryPage() {
             ) : canEdit && data && (
               <button type="button" className="trk-btn" onClick={() => setConnect(true)}><Sheet size={14} /> Sync from a Google Sheet</button>
             )}
+            {missing.length > 0 && (
+              <button type="button" onClick={() => setMissingOpen(true)} className="trk-btn !py-1.5" style={{ borderColor: 'rgba(255,181,71,.5)', background: 'rgba(255,181,71,.1)', color: '#ffd699' }}>
+                <Clock size={13} /> {missing.length} completed production{missing.length > 1 ? 's' : ''} missing their finals
+              </button>
+            )}
           </div>
         </div>
 
@@ -138,7 +171,6 @@ export default function LibraryPage() {
             <input className="trk-input flex-1 min-w-[240px]" placeholder="https://docs.google.com/spreadsheets/d/…" value={sheetUrl} onChange={(e) => setSheetUrl(e.target.value)} />
             <button type="button" className="trk-btn primary" disabled={!sheetUrl.trim() || syncing} onClick={connectSheet}>{syncing ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Connect &amp; sync</button>
             <button type="button" className="trk-btn !p-2" onClick={() => setConnect(false)} aria-label="Cancel"><X size={14} /></button>
-            <div className="w-full text-[11px] trk-dim">A tab per product, a row per commercial, and per market a checkbox, the file link, the landing URL and the code. New rows show up here every 15 minutes.</div>
           </div>
         )}
 
@@ -153,58 +185,63 @@ export default function LibraryPage() {
           <div className="py-28 text-center trk-muted flex flex-col items-center gap-3">{!error && <><Loader2 className="animate-spin" /><span className="text-sm">Opening the Library…</span></>}</div>
         ) : (
           <>
-            {/* Waiting for files */}
-            {waiting.length > 0 && (
-              <div className="mt-8">
-                <div className="flex items-center gap-2 mb-3"><Clock size={14} style={{ color: '#ffb547' }} /><span className="trk-label" style={{ color: '#ffd699' }}>Completed — waiting for the finals · {waiting.length}</span></div>
-                <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))' }}>
-                  {waiting.map(p => (
-                    <div key={p.id} className="trk-glass p-4 flex items-center gap-3" style={{ borderColor: 'rgba(255,181,71,.35)' }}>
-                      <div className="min-w-0 flex-1">
-                        <div className="text-[11px] trk-muted">{p.id}{p.completed_at ? ` · completed ${shortDate(p.completed_at)}` : ''}</div>
-                        <div className="trk-title text-[22px] truncate">{p.name}</div>
-                      </div>
-                      {canEdit && <button type="button" className="trk-btn primary !py-1.5" onClick={() => setAdding(p)}><Plus size={13} /> Add files</button>}
-                    </div>
-                  ))}
+            {/* Filters */}
+            <div className="mt-8 flex flex-col gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="trk-seg overflow-x-auto max-w-full">
+                  {ERAS.map(([k, l]) => <button key={k} type="button" className={era === k ? 'on' : ''} onClick={() => { setEra(k); setProduct(''); }}>{l}</button>)}
                 </div>
+                <div className="relative flex-1 min-w-[200px] max-w-[420px]">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 trk-dim" />
+                  <input className="trk-input !pl-9 !rounded-full" placeholder="Search names, codes, landing pages…" value={q} onChange={(e) => setQ(e.target.value)} />
+                </div>
+                <button type="button" className="trk-btn" onClick={() => setLiveOnly(v => !v)} style={liveOnly ? { background: 'rgba(47,211,138,.2)', borderColor: 'rgba(47,211,138,.6)' } : undefined}>
+                  <Radio size={14} style={{ color: '#2fd38a' }} /> On air now · {liveCount}
+                </button>
               </div>
-            )}
 
-            {/* Toolbar */}
-            <div className="mt-8 flex flex-wrap items-center gap-2">
-              <div className="trk-seg overflow-x-auto max-w-full">
-                {FILTERS.map(([k, l]) => <button key={k} type="button" className={cat === k ? 'on' : ''} onClick={() => setCat(k)}>{l}</button>)}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button type="button" className={chip(!product)} onClick={() => setProduct('')}>All products · {inEra.length}</button>
+                {productChips.map(c => <button key={c.key} type="button" className={chip(product === c.key)} onClick={() => setProduct(product === c.key ? '' : c.key)}>{c.label} · {c.n}</button>)}
+                {salesCount > 0 && <button type="button" className={chip(product === SALES)} onClick={() => setProduct(product === SALES ? '' : SALES)}><Tag size={11} /> Sales · {salesCount}</button>}
               </div>
-              <div className="relative flex-1 min-w-[200px] max-w-[380px]">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 trk-dim" />
-                <input className="trk-input !pl-9 !rounded-full" placeholder="Search productions, files, codes…" value={q} onChange={(e) => setQ(e.target.value)} />
+
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[12px]">
+                {markets.length > 1 && (
+                  <span className="flex items-center gap-1.5 flex-wrap"><span className="trk-label">Market</span>
+                    {markets.map(m => <button key={m} type="button" className={chip(market === m)} onClick={() => setMarket(market === m ? '' : m)}>{m}</button>)}
+                  </span>
+                )}
+                <span className="flex items-center gap-1.5 flex-wrap"><span className="trk-label">Length</span>
+                  {LENGTHS.map(l => <button key={l} type="button" className={chip(length === l)} onClick={() => setLength(length === l ? '' : l)}>{l}</button>)}
+                </span>
+                <span className="ml-auto trk-muted">{shown.length} shown{filtered && <> · <button type="button" className="trk-link" onClick={clear}>clear filters</button></>}</span>
               </div>
-              <button type="button" className="trk-btn ml-auto" onClick={() => load(false)} disabled={loading}>{loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Refresh</button>
             </div>
 
-            {/* Shelf */}
-            <div className="mt-5 grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>
-              {shelf.map(p => <ProductionCard key={p.id} p={p} onOpen={() => setParams({ p: p.id })} onError={fail} />)}
-              {/* Before 2026 */}
-              {(before.length > 0 || source) && (!needle || before.some(i => [i.title, i.code, i.product].filter(Boolean).some(v => v.toLowerCase().includes(needle)))) && (
-                <button type="button" onClick={() => setParams({ view: 'before' })} className="trk-card overflow-hidden flex flex-col text-left" style={{ minHeight: 260 }}>
-                  <div className="relative flex-1 flex items-end p-5" style={{ background: 'radial-gradient(500px 260px at 100% 0%, rgba(8,8,248,.65), transparent 70%), linear-gradient(160deg, #0b1546, #030b2e)' }}>
-                    <Archive size={88} className="absolute right-4 top-4 opacity-15" />
-                    <div>
-                      <div className="trk-eyebrow">Archive</div>
-                      <div className="trk-title text-[56px] mt-1">Before 2026</div>
-                      <div className="text-[13px] trk-muted mt-1">{new Set(before.map(i => i.specs?.group || i.id)).size} commercials · {[...new Set(before.map(i => i.product).filter(Boolean))].length} products · every market’s link in one place</div>
-                    </div>
+            {era === 'before' && (
+              <div className="mt-4 text-[12px] trk-muted">Commercials from the TV Commercials sheet with no CP production — mostly before 2026.{canEdit ? ' If one belongs to a production, link it: the sync keeps your choice.' : ''}</div>
+            )}
+
+            {/* The list */}
+            <div className="mt-5 flex flex-col gap-6">
+              {sections.map(([title, list]) => (
+                <section key={title || 'all'}>
+                  {title && <div className="trk-label mb-2">{title} · {list.length}</div>}
+                  <div className="flex flex-col gap-2">
+                    {list.map(e => (
+                      <CatalogRow key={e.key} e={e} canEdit={canEdit} productions={all} onError={fail}
+                        onOpenProduction={(p) => setParams({ p: p.id })} onMove={moveEntry} />
+                    ))}
                   </div>
-                </button>
+                </section>
+              ))}
+              {!shown.length && (
+                <div className="py-16 text-center trk-muted text-sm">
+                  {filtered ? <>Nothing matches. <button type="button" className="trk-link" onClick={clear}>Clear filters</button></> : 'Nothing here yet — files arrive when a production is completed, or from the TV Commercials sheet.'}
+                </div>
               )}
             </div>
-            {!shelf.length && !before.length && (
-              <div className="py-16 text-center trk-muted text-sm">
-                {needle || cat ? 'Nothing matches.' : 'Nothing in the Library yet — files arrive when a production is completed, or connect the TV Commercials sheet.'}
-              </div>
-            )}
           </>
         )}
       </div>
@@ -213,18 +250,32 @@ export default function LibraryPage() {
         <ProductionDrawer p={open} productions={all} canEdit={canEdit} onClose={() => setParams({}, { replace: true })}
           onSaved={() => { setToast({ text: 'Added to the Library' }); load(true); }} onMove={moveGroup} onRemove={removeItem} onError={fail} />
       )}
-      {beforeOpen && data && (
-        <BeforeModal items={before} productions={all} canEdit={canEdit} onClose={() => setParams({}, { replace: true })} onMove={moveGroup} onError={fail} />
+
+      {missingOpen && (
+        <Modal onClose={() => setMissingOpen(false)} wide>
+          <div className="trk-eyebrow">The Library</div>
+          <h2 className="trk-title text-[44px] md:text-[56px] mt-2">Missing their finals · {missing.length}</h2>
+          <p className="mt-1 text-[14px] trk-muted">Completed productions with no TV master or digital versions in the Library yet.</p>
+          <div className="mt-5 flex flex-col gap-2">
+            {missing.map(p => (
+              <div key={p.id} className="trk-glass px-4 py-3 flex flex-wrap items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="text-[14px] font-semibold">{p.name}</div>
+                  <div className="text-[11px] trk-muted">{[p.id, p.product_type?.join(' · '), p.completed_at && `completed ${shortDate(p.completed_at)}`].filter(Boolean).join(' · ')}</div>
+                </div>
+                {canEdit && <button type="button" className="trk-btn primary !py-1.5" onClick={() => { setMissingOpen(false); setAdding(p); }}><Plus size={13} /> Add files</button>}
+              </div>
+            ))}
+          </div>
+        </Modal>
       )}
       {adding && (
-        <div className="fixed inset-0 z-[75] flex items-center justify-center p-4" style={{ background: 'rgba(3,11,46,.7)' }} onClick={() => setAdding(null)}>
-          <div className="trk trk-canvas w-full max-w-[720px] max-h-[92vh] overflow-y-auto trk-scroll p-6 md:p-8" onClick={e => e.stopPropagation()}>
-            <div className="trk-eyebrow">{adding.id} · add the finals</div>
-            <h2 className="trk-title text-5xl mt-2 mb-5">{adding.name}</h2>
-            <AddFiles productionId={adding.id} boxes={PROMPT_BOXES} onCancel={() => setAdding(null)}
-              onSaved={() => { setAdding(null); setToast({ text: `Added to the Library — ${adding.name}` }); load(true); }} />
-          </div>
-        </div>
+        <Modal onClose={() => setAdding(null)}>
+          <div className="trk-eyebrow">{adding.id} · add the finals</div>
+          <h2 className="trk-title text-5xl mt-2 mb-5">{adding.name}</h2>
+          <AddFiles productionId={adding.id} boxes={PROMPT_BOXES} onCancel={() => setAdding(null)}
+            onSaved={() => { setAdding(null); setToast({ text: `Added to the Library — ${adding.name}` }); load(true); }} />
+        </Modal>
       )}
       {toast && (
         <div className="trk fixed bottom-6 left-1/2 -translate-x-1/2 z-[90] flex items-center gap-3 px-5 py-3 rounded-full text-sm shadow-2xl max-w-[92vw]"
@@ -236,39 +287,17 @@ export default function LibraryPage() {
   );
 }
 
-function ProductionCard({ p, onOpen, onError }) {
-  const masters = p.items.filter(i => i.category === 'tv_master');
-  const lead = posterOf(masters) || posterOf(p.items) || masters[0] || p.items[0];
-  const count = (c) => p.items.filter(i => i.category === c).length;
-  const masterGroups = new Set(masters.map(i => i.specs?.group || i.id)).size;
-  const markets = [...new Set(p.items.map(i => i.market).filter(Boolean))];
-  const live = p.items.some(i => i.on_air);
+function Modal({ children, onClose, wide }) {
+  useEffect(() => {
+    const k = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, [onClose]);
   return (
-    <div role="button" tabIndex={0} onClick={onOpen} onKeyDown={(e) => e.key === 'Enter' && onOpen()} className="trk-card overflow-hidden flex flex-col">
-      <div className="relative aspect-video">
-        <Poster item={lead} className="absolute inset-0 w-full h-full" icon={Film} />
-        <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, transparent 35%, rgba(3,11,46,.92))' }} />
-        <div className="absolute left-4 right-4 bottom-3">
-          <div className="text-[11px] trk-muted flex items-center gap-2">
-            {p.id}{p.air_date ? ` · on air ${shortDate(p.air_date)}` : p.delivery_date ? ` · delivered ${shortDate(p.delivery_date)}` : ''}
-            {live && <span className="trk-chip green !py-0 !px-1.5 !text-[10px]">checked</span>}
-          </div>
-          <div className="trk-title text-[30px] truncate">{p.name}</div>
-        </div>
-      </div>
-      <div className="p-4 flex flex-col gap-3">
-        <div className="flex flex-wrap gap-1.5">
-          {masterGroups > 0 && <span className="trk-chip"><Film size={11} />{masterGroups} TV {masterGroups > 1 ? 'masters' : 'master'}</span>}
-          {count('digital') > 0 && <span className="trk-chip">{count('digital')} digital</span>}
-          {count('sound') > 0 && <span className="trk-chip"><Music size={11} />{count('sound')} stems</span>}
-          {markets.length > 0 && <span className="trk-chip gray">{markets.join(' · ')}</span>}
-          {!masters.length && <span className="trk-chip amber">No TV master</span>}
-        </div>
-        {masters[0] && (
-          <button type="button" className="trk-btn primary self-start !py-1.5" onClick={async (e) => { e.stopPropagation(); try { await download(masters[0]); } catch (err) { onError(err.message); } }}>
-            <Download size={13} /> {CATEGORY.tv_master.label}{masters[0].market ? ` · ${masters[0].market}` : ''}
-          </button>
-        )}
+    <div className="fixed inset-0 z-[75] flex items-center justify-center p-4" style={{ background: 'rgba(3,11,46,.7)' }} onClick={onClose}>
+      <div className={`trk trk-canvas w-full ${wide ? 'max-w-[860px]' : 'max-w-[720px]'} max-h-[92vh] overflow-y-auto trk-scroll p-6 md:p-8 relative`} onClick={e => e.stopPropagation()} role="dialog">
+        <button type="button" onClick={onClose} className="trk-btn !p-2 absolute right-5 top-5" aria-label="Close"><X size={16} /></button>
+        {children}
       </div>
     </div>
   );
