@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, lazy, Suspense } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   ComposedChart, Line, Legend,
@@ -15,6 +15,9 @@ import { useAuth } from '../context/AuthContext';
 import { getProductions, getAllLineItems } from '../lib/dataService';
 import { EXPENSE_CATEGORIES } from '../lib/mockData';
 import clsx from 'clsx';
+
+// The overview is a lazy chunk (navy dashboard + its styles), so the rest of the app doesn't load it
+const BudgetDashboard = lazy(() => import('../components/budget/BudgetDashboard'));
 
 const YEARS = [2024, 2025, 2026, 2027, 2028];
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -160,6 +163,10 @@ function DrillDownPanel({ drillDown, lineItems, productionRows, fmt, getAmt, onC
     const prod = productions.find(p => p.id === drillDown.id);
     title = prod ? prod.project_name : drillDown.id;
     subtitle = `${drillDown.id} · ${items.length} items`;
+  } else if (drillDown.type === 'items') {
+    items = drillDown.items || [];
+    title = drillDown.title;
+    subtitle = drillDown.subtitle || `${items.length} items`;
   } else if (drillDown.type === 'category') {
     items = lineItems.filter(li => mapTypeToCategory(li.type) === drillDown.cat);
     title = drillDown.cat;
@@ -300,11 +307,11 @@ function MonthTooltip({ active, payload, label, fmt }) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function Financial() {
-  const { brandId } = useBrand();
+  const { brandId, brand } = useBrand();
   const { fmt, currency, rate } = useCurrency();
   const { isEditor } = useAuth();
 
-  const [tab, setTab] = useState('cashflow');
+  const [tab, setTab] = useState('overview');
   const [selectedYear, setSelectedYear] = useState(2026);
   const [productions, setProductions] = useState([]);
   const [lineItems, setLineItems] = useState([]);
@@ -328,7 +335,7 @@ export default function Financial() {
   const [stageFilter, setStageFilter] = useState('');
 
   // Currency helpers
-  const { getAmt, getPlanned } = useMemo(() => makeHelpers(currency, rate), [currency, rate]);
+  const { getAmt, getPlanned, toDisplay } = useMemo(() => makeHelpers(currency, rate), [currency, rate]);
 
   useEffect(() => {
     async function load() {
@@ -655,7 +662,7 @@ export default function Financial() {
         <h1 className="text-2xl font-black brand-title tracking-tight" style={{ color: 'var(--brand-primary)', letterSpacing: '-0.03em' }}>
           Budget Overview
         </h1>
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-3 flex-wrap min-w-0 max-w-full">
           {/* Year switcher */}
           <div className="flex items-center gap-0 border rounded-xl overflow-hidden bg-white" style={{ borderColor: 'var(--brand-border)' }}>
             {YEARS.map(y => (
@@ -667,10 +674,10 @@ export default function Financial() {
             ))}
           </div>
           {/* Tab switcher */}
-          <div className="flex gap-1 bg-white rounded-xl p-1 border" style={{ borderColor: 'var(--brand-border)' }}>
-            {[{ id: 'cashflow', label: 'Cash Flow' }, { id: 'productions', label: 'Productions' }, { id: 'categories', label: 'Categories' }].map(t => (
+          <div className="flex gap-1 bg-white rounded-xl p-1 border max-w-full overflow-x-auto" style={{ borderColor: 'var(--brand-border)' }}>
+            {[{ id: 'overview', label: 'Overview' }, { id: 'cashflow', label: 'Cash Flow' }, { id: 'productions', label: 'Productions' }, { id: 'categories', label: 'Categories' }].map(t => (
               <button key={t.id} onClick={() => setTab(t.id)}
-                className={clsx('px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all', tab === t.id ? 'text-white' : 'text-gray-500 hover:text-gray-700')}
+                className={clsx('px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap', tab === t.id ? 'text-white' : 'text-gray-500 hover:text-gray-700')}
                 style={tab === t.id ? { background: 'var(--brand-accent)' } : {}}>
                 {t.label}
               </button>
@@ -690,10 +697,10 @@ export default function Financial() {
       </div>
 
       {/* ── VAT info strip ── */}
-      <div className="mb-4 flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-700">
+      {tab !== 'overview' && <div className="mb-4 flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-700">
         <span className="font-bold shrink-0">₪ VAT</span>
         <span>All ILS (₪) amounts are <strong>excl. VAT</strong>. Israeli VAT rate: <strong>18%</strong>. Multiply by 1.18 for gross. Hover KPI cards for incl. VAT figures.</span>
-      </div>
+      </div>}
 
       {/* ── Budget confirm strip ── */}
       {pendingBudget && (
@@ -707,8 +714,20 @@ export default function Financial() {
         </div>
       )}
 
-      {/* ── 6 KPI Cards (always visible) ── */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+      {/* ── Overview: the year so far vs the budget, by month and production ── */}
+      {tab === 'overview' && (
+        <Suspense fallback={<div className="brand-card"><div className="skeleton h-96 w-full rounded" /></div>}>
+          <BudgetDashboard
+            productions={productions} lineItems={lineItems} getAmt={getAmt} getPlanned={getPlanned} toDisplay={toDisplay}
+            currency={currency} year={selectedYear} budget={yearlyBudget} isEditor={isEditor} brandName={brand?.name || brandId}
+            onEditBudget={(n) => setPendingBudget({ newVal: n })} onDrill={setDrillDown} onDetails={() => setTab('cashflow')}
+            overdueCount={overdueItems.length}
+          />
+        </Suspense>
+      )}
+
+      {/* ── 6 KPI Cards (detail tabs) ── */}
+      {tab !== 'overview' && <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
         <KPICard
           label="Cash Out"
           value={fmt(totalPaid)}
@@ -756,7 +775,7 @@ export default function Financial() {
           signal={overdueItems.length > 0 ? 'red' : null}
           onClick={overdueItems.length > 0 ? () => { setTab('productions'); setDrillDown({ type: 'filter', filter: 'overdue' }); } : undefined}
         />
-      </div>
+      </div>}
 
       {/* ═══════════════════ CASH FLOW TAB ═══════════════════ */}
       {tab === 'cashflow' && (
