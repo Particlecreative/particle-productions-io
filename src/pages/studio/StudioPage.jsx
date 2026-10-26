@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { LayoutDashboard, Clock, Tv, Plug, Loader2, AlertTriangle, Lock, GanttChart, Sparkles } from 'lucide-react';
+import { LayoutDashboard, Clock, Plug, Loader2, AlertTriangle, Lock, GanttChart, Sparkles } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useBrand } from '../../context/BrandContext';
 import { studioApi } from '../../lib/studioService';
 import Filters, { applyFilters, presetRange, inPeriod } from '../../components/studio/Filters';
 import Overview from '../../components/studio/Overview';
 import TimeTracking from '../../components/studio/TimeTracking';
-import TvLinks from '../../components/studio/TvLinks';
 import Connections from '../../components/studio/Connections';
 import Workload from '../../components/studio/Workload';
 import TicketCreator from '../../components/studio/TicketCreator';
@@ -19,7 +18,6 @@ const TABS = [
   ['workload', 'Workload', GanttChart],
   ['ticket', 'New ticket', Sparkles],
   ['time', 'Time tracking', Clock],
-  ['tv', 'TV ↔ Productions', Tv],
   ['connections', 'Connections', Plug],
 ];
 const PREF_KEY = 'cp_studio_filters_v1';
@@ -117,14 +115,13 @@ export default function StudioPage() {
               className={`flex items-center gap-1.5 text-sm font-semibold px-3.5 py-2 rounded-xl transition-colors ${tab === k ? 'text-white shadow' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'}`}
               style={tab === k ? { background: '#030b2e' } : undefined}>
               <Icon size={15} /> {label}
-              {k === 'tv' && data && data.items.some(i => i.tv?.source === 'ask') && <span className="w-2 h-2 rounded-full bg-[#ff7a1a]" />}
             </button>
           ))}
         </nav>
       </div>
 
       {!['connections', 'ticket'].includes(tab) && (
-        <Filters f={f} setF={setF} range={range} data={data} loading={loading} onRefresh={() => load(true)} showDivision={!['tv', 'workload'].includes(tab)} showPeriod={tab !== 'workload'} />
+        <Filters f={f} setF={setF} range={range} data={data} loading={loading} onRefresh={() => load(true)} showDivision={tab !== 'workload'} showPeriod={tab !== 'workload'} />
       )}
 
       {error && (
@@ -152,7 +149,6 @@ export default function StudioPage() {
         <div className={loading ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
           {tab === 'overview' && <Overview data={data} items={items} allItems={allItems} periodAll={periodAll} range={range} emails={emails} f={f} setF={setF} goTab={(k) => setParams(k === 'overview' ? {} : { tab: k })} />}
           {tab === 'time' && <TimeTracking data={data} items={items} allItems={allItems} range={range} f={f} setF={setF} />}
-          {tab === 'tv' && <TvLinks data={data} items={applyFilters(data.items, { ...f, division: 'all' })} onChanged={() => load(true)} />}
         </div>
       )}
       {panel && <TaskPanel it={panelIt} data={panel.data?.generated_at === data?.generated_at ? data : panel.data} onClose={() => setPanel(null)} />}

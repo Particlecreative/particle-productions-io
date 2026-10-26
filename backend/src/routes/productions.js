@@ -149,7 +149,7 @@ router.patch('/:id', requireEditor, async (req, res) => {
 
   // Tables that store production_id as plain TEXT (no FK), so ON UPDATE CASCADE
   // does not reach them. They must be updated explicitly when renaming a PRD code.
-  const NON_FK_TABLES = ['cc_purchases', 'call_sheets', 'casting', 'notifications', 'gantt_phases', 'supplier_submissions'];
+  const NON_FK_TABLES = ['cc_purchases', 'call_sheets', 'casting', 'notifications', 'gantt_phases', 'supplier_submissions', 'studio_ticket_links'];
 
   try {
     let rows;

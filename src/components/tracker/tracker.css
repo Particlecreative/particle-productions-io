@@ -1,0 +1,140 @@
+/* Production Tracker — Creative Weekly's look (navy, electric glows, glass, Sofia Sans). Scoped to .trk so the
+   app's dark-mode overrides never recolour it. */
+.trk {
+  --trk-navy: #030b2e;
+  --trk-navy-2: #0b1546;
+  --trk-electric: #0808f8;
+  --trk-ink: #4a55ff;
+  --trk-text: #e8ecff;
+  --trk-muted: #8b93c7;
+  --trk-dim: #5c6596;
+  --trk-line: rgba(232, 236, 255, 0.11);
+  --trk-glass: rgba(255, 255, 255, 0.045);
+  --trk-glass-hi: rgba(255, 255, 255, 0.08);
+  --trk-violet: #8c93ff;
+  --trk-red: #ff5c7a;
+  --trk-amber: #ffb547;
+  --trk-green: #2fd38a;
+  color: var(--trk-text);
+  font-family: Inter, system-ui, sans-serif;
+}
+.trk-canvas {
+  background:
+    radial-gradient(1100px 620px at 92% -12%, rgba(8, 8, 248, 0.6), transparent 60%),
+    radial-gradient(760px 520px at -12% 112%, rgba(8, 8, 248, 0.28), transparent 60%),
+    var(--trk-navy);
+  border-radius: 32px;
+  position: relative;
+  overflow: hidden;
+}
+.trk-canvas::before {
+  /* 4% grain, like the deck */
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.05;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.trk-canvas > * { position: relative; }
+.trk-title {
+  font-family: 'Sofia Sans Extra Condensed', sans-serif;
+  font-weight: 900;
+  text-transform: uppercase;
+  line-height: 0.86;
+  letter-spacing: -0.005em;
+  color: #fff;
+}
+.trk-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--trk-violet);
+}
+.trk-muted { color: var(--trk-muted); }
+.trk-dim { color: var(--trk-dim); }
+.trk-glass {
+  background: var(--trk-glass);
+  border: 1px solid var(--trk-line);
+  border-radius: 22px;
+}
+.trk-card {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.035));
+  border: 1px solid var(--trk-line);
+  border-radius: 20px;
+  transition: border-color 0.18s, transform 0.18s, box-shadow 0.18s;
+  cursor: pointer;
+  text-align: left;
+}
+.trk-card:hover { border-color: rgba(140, 147, 255, 0.5); transform: translateY(-1px); box-shadow: 0 12px 30px -16px rgba(8, 8, 248, 0.8); }
+.trk-card.is-dragging { opacity: 0.45; }
+.trk-col { border-radius: 24px; transition: background 0.15s, box-shadow 0.15s; }
+.trk-col.is-over { background: rgba(74, 85, 255, 0.12); box-shadow: inset 0 0 0 1.5px rgba(140, 147, 255, 0.6); }
+.trk-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--trk-text);
+  white-space: nowrap;
+}
+.trk-chip.red { background: rgba(255, 92, 122, 0.16); color: #ffb3c2; }
+.trk-chip.amber { background: rgba(255, 181, 71, 0.15); color: #ffd699; }
+.trk-chip.gray { background: rgba(255, 255, 255, 0.06); color: var(--trk-muted); }
+.trk-chip.green { background: rgba(47, 211, 138, 0.14); color: #9ff0c8; }
+.trk-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 999px;
+  color: var(--trk-text);
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--trk-line);
+}
+.trk-btn:hover { background: rgba(255, 255, 255, 0.12); }
+.trk-btn.primary { background: var(--trk-electric); border-color: var(--trk-electric); color: #fff; }
+.trk-btn.primary:hover { filter: brightness(1.15); }
+.trk-btn:disabled { opacity: 0.5; cursor: default; }
+.trk-seg { display: inline-flex; padding: 3px; border-radius: 999px; background: rgba(255, 255, 255, 0.06); border: 1px solid var(--trk-line); }
+.trk-seg button { font-size: 12px; font-weight: 600; padding: 6px 12px; border-radius: 999px; color: var(--trk-muted); display: inline-flex; align-items: center; gap: 6px; }
+.trk-seg button.on { background: #fff; color: var(--trk-navy); }
+.trk-input {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--trk-line);
+  color: var(--trk-text);
+  border-radius: 12px;
+  padding: 8px 12px;
+  font-size: 13px;
+  width: 100%;
+}
+.trk-input::placeholder { color: var(--trk-dim); }
+.trk-input:focus { outline: none; border-color: var(--trk-ink); background: rgba(255, 255, 255, 0.09); }
+.trk-input[type='date'] { color-scheme: dark; }
+select.trk-input option { color: #030b2e; }
+.trk-link { color: #aab0ff; }
+.trk-link:hover { color: #fff; text-decoration: underline; }
+.trk-scroll::-webkit-scrollbar { height: 8px; width: 8px; }
+.trk-scroll::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.14); border-radius: 8px; }
+.trk-drawer {
+  background:
+    radial-gradient(700px 400px at 100% -10%, rgba(8, 8, 248, 0.45), transparent 60%),
+    var(--trk-navy-2);
+  border-left: 1px solid var(--trk-line);
+}
+.trk-section { border-top: 1px solid var(--trk-line); padding-top: 18px; margin-top: 18px; }
+.trk-label { font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--trk-muted); }
+.trk-tl-grid { background-image: linear-gradient(to right, rgba(232, 236, 255, 0.06) 1px, transparent 1px); }
+@keyframes trk-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+.trk-pulse { animation: trk-pulse 1.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .trk-card, .trk-card:hover { transition: none; transform: none; }
+  .trk-pulse { animation: none; }
+}
