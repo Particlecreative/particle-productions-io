@@ -542,7 +542,7 @@ const EMPTY_GROUP = { name: '', description: '', role: 'Editor', members: [], pa
 const ALL_PAGES = [
   { to: '/',               label: 'Productions' },
   { to: '/tracker',        label: 'Production Tracker' },
-  { to: '/links',          label: 'Links' },
+  { to: '/library',        label: 'The Library (replaces Links)' },
   { to: '/contracts',      label: 'Contracts' },
   { to: '/suppliers',      label: 'Suppliers' },
   { to: '/studio', label: 'Studio (control panel)' },

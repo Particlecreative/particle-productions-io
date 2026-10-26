@@ -2,6 +2,7 @@ import { useState } from 'react';
 import Sidebar from './Sidebar';
 import Header from './Header';
 import ToastContainer from '../ui/ToastContainer';
+import CompletionPromptHost from '../library/CompletionPromptHost';
 
 export default function AppShell({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -19,6 +20,7 @@ export default function AppShell({ children }) {
         </main>
       </div>
       <ToastContainer />
+      <CompletionPromptHost />
     </div>
   );
 }

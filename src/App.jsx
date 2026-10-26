@@ -20,7 +20,6 @@ import Invoices from './pages/Invoices';
 import Settings from './pages/Settings';
 import Users from './pages/Users';
 import History from './pages/History';
-import Links from './pages/Links';
 import Contracts from './pages/Contracts';
 import Suppliers from './pages/Suppliers';
 import StudioTickets from './pages/StudioTickets';
@@ -52,6 +51,7 @@ function lazyPage(loader) {
 }
 const StudioPage = lazyPage(() => import('./pages/studio/StudioPage'));
 const TrackerPage = lazyPage(() => import('./pages/tracker/TrackerPage'));
+const LibraryPage = lazyPage(() => import('./pages/library/LibraryPage'));
 const CreativeReportsPage = lazyPage(() => import('./pages/creative/CreativeReportsPage'));
 const CreativeReportEditorPage = lazyPage(() => import('./pages/creative/CreativeReportEditorPage'));
 const CreativeReportPresentPage = lazyPage(() => import('./pages/creative/CreativeReportPresentPage'));
@@ -145,10 +145,12 @@ function AppRoutes() {
         <Route path="/settings" element={<ProtectedRoute adminOnly><AppShell><ErrorBoundary><Settings /></ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="/users" element={<ProtectedRoute adminOnly><AppShell><ErrorBoundary><Users /></ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="/history" element={<ProtectedRoute blockForStudio><AppShell><ErrorBoundary><History /></ErrorBoundary></AppShell></ProtectedRoute>} />
-        <Route path="/links" element={<ProtectedRoute><AppShell><ErrorBoundary><Links /></ErrorBoundary></AppShell></ProtectedRoute>} />
+        {/* The Library replaced Links */}
+        <Route path="/links" element={<Navigate to="/library" replace />} />
         <Route path="/contracts" element={<ProtectedRoute blockForStudio><AppShell><ErrorBoundary><Contracts /></ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="/suppliers" element={<ProtectedRoute blockForStudio><AppShell><ErrorBoundary><Suppliers /></ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="/studio-tickets" element={<ProtectedRoute><AppShell><ErrorBoundary><StudioTickets /></ErrorBoundary></AppShell></ProtectedRoute>} />
+        <Route path="/library" element={<ProtectedRoute blockForAccounting><AppShell><ErrorBoundary>{lazyEl(<LibraryPage />)}</ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="/tracker" element={<ProtectedRoute blockForAccounting blockForStudio><AppShell><ErrorBoundary>{lazyEl(<TrackerPage />)}</ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="/studio" element={<ProtectedRoute blockForAccounting blockForStudio><AppShell><ErrorBoundary>{lazyEl(<StudioPage />)}</ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="/gantts" element={<ProtectedRoute blockForAccounting blockForStudio><AppShell><ErrorBoundary><Gantts /></ErrorBoundary></AppShell></ProtectedRoute>} />

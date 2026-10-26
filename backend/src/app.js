@@ -102,6 +102,7 @@ app.use('/api/taxi',           require('./routes/taxi'));
 app.use('/api/creative-reports', require('./routes/creativeReports'));
 app.use('/api/studio', require('./routes/studio'));
 app.use('/api/tracker', require('./routes/tracker'));
+app.use('/api/library', require('./routes/library'));
 
 // Google OAuth callback redirect — the callback URL registered with Google
 // points to /api/auth/google/callback, so we redirect to the drive router
@@ -139,6 +140,11 @@ cron.schedule('0 21 * * *', async () => {
       }
     }
   }
+}, { timezone: 'Asia/Jerusalem' });
+
+// ── The Library: sync connected Google Sheets every 15 minutes ───
+cron.schedule('*/15 * * * *', () => {
+  require('./lib/librarySheet').syncAll().catch(err => console.error('[CRON] Library sheet sync failed:', err.message));
 }, { timezone: 'Asia/Jerusalem' });
 
 // ── Casting automation cron (8 AM Israel time) ───

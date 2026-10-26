@@ -109,8 +109,15 @@ export function createProduction(prod) {
   return apiPost('/productions', prod);
 }
 
+// Moving a production to Completed asks for its finals (The Library's prompt listens for this)
+function announceIfCompleted(id, updates) {
+  if (!/^completed/i.test(String(updates?.stage || ''))) return;
+  try { window.dispatchEvent(new CustomEvent('cp:production-completed', { detail: { id } })); } catch { /* ignore */ }
+}
+
 export function updateProduction(id, updates, userId, userName) {
   if (IS_DEV) {
+    announceIfCompleted(id, updates);
     const all = read('cp_productions', PARTICLE_PRODUCTIONS);
     const idx = all.findIndex(p => p.id === id);
     if (idx === -1) return null;
@@ -124,7 +131,7 @@ export function updateProduction(id, updates, userId, userName) {
     });
     return all[idx];
   }
-  return apiPatch(`/productions/${encodeURIComponent(id)}`, updates);
+  return apiPatch(`/productions/${encodeURIComponent(id)}`, updates).then((r) => { announceIfCompleted(id, updates); return r; });
 }
 
 // ========== LINE ITEMS ==========

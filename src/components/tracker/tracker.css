@@ -104,7 +104,7 @@
 .trk-btn.primary:hover { filter: brightness(1.15); }
 .trk-btn:disabled { opacity: 0.5; cursor: default; }
 .trk-seg { display: inline-flex; padding: 3px; border-radius: 999px; background: rgba(255, 255, 255, 0.06); border: 1px solid var(--trk-line); }
-.trk-seg button { font-size: 12px; font-weight: 600; padding: 6px 12px; border-radius: 999px; color: var(--trk-muted); display: inline-flex; align-items: center; gap: 6px; }
+.trk-seg button { font-size: 12px; font-weight: 600; padding: 6px 12px; border-radius: 999px; color: var(--trk-muted); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; flex: none; }
 .trk-seg button.on { background: #fff; color: var(--trk-navy); }
 .trk-input {
   background: rgba(255, 255, 255, 0.06);

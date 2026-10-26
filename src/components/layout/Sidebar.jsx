@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, DollarSign, BookOpen, Settings, Users, ChevronLeft, ChevronRight,
-  History, FileText, Link, FileSignature, Clapperboard, Users2, GripVertical,
-  GanttChartSquare, Check, Star, Sun, Moon, Grid3x3, X as XIcon, Scroll, CheckSquare, Presentation, Radar,
+  History, FileText, FileSignature, Clapperboard, Users2, GripVertical,
+  GanttChartSquare, Check, Star, Sun, Moon, Grid3x3, X as XIcon, Scroll, CheckSquare, Presentation, Radar, Library,
 } from 'lucide-react';
 import {
   DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors,
@@ -25,7 +25,7 @@ const DEFAULT_NAV_ITEMS = [
   { to: '/',               icon: LayoutDashboard,  label: 'Productions', exact: true, accountingHide: true },
   { to: '/tracker',        icon: Radar,            label: 'Tracker',     accountingHide: true, studioHide: true, editorOnly: true },
   { to: '/tasks',          icon: CheckSquare,      label: 'Tasks',       accountingHide: true },
-  { to: '/links',          icon: Link,             label: 'Links',       accountingHide: true },
+  { to: '/library',        icon: Library,          label: 'Library',     accountingHide: true },
   { to: '/contracts',      icon: FileSignature,    label: 'Contracts',   accountingHide: true, studioHide: true },
   { to: '/suppliers',      icon: Users2,           label: 'Suppliers',   accountingHide: true, studioHide: true },
   { to: '/studio',         icon: Clapperboard,     label: 'Studio',      accountingHide: true, studioHide: true, particleOnly: true, editorOnly: true },
@@ -126,7 +126,8 @@ export default function Sidebar({ open, onToggle }) {
     .filter(i => !i.particleOnly || brand.id === 'particle')
     .filter(i => !i.editorOnly || isEditor)
     .filter(i => !i.nonEditorOnly || !isEditor)
-    .filter(i => !pageAccess || isAdmin || pageAccess.includes(i.to));
+    // The Library replaced Links: groups that had Links get the Library
+    .filter(i => !pageAccess || isAdmin || pageAccess.includes(i.to) || (i.to === '/library' && pageAccess.includes('/links')));
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -331,7 +332,7 @@ export default function Sidebar({ open, onToggle }) {
               {[
                 ...(isEditor && !isAccounting ? [{ to: '/tracker', icon: Radar, label: 'Tracker' }] : []),
                 { to: '/tasks',          icon: CheckSquare,      label: 'Tasks' },
-                { to: '/links',          icon: Link,             label: 'Links' },
+                { to: '/library',        icon: Library,          label: 'Library' },
                 { to: '/gantts',         icon: GanttChartSquare, label: 'Gantts' },
                 { to: '/call-sheets',    icon: FileText,         label: 'Call Sheets' },
                 { to: '/suppliers',      icon: Users2,           label: 'Suppliers' },
