@@ -17,6 +17,7 @@ const norm = monday.normLabel;
 const DAY = 86400000;
 const ACTIVE_STAGES = ['Pre Production', 'Production', 'Post'];
 const isDone = (stage) => /^(completed|cancel)/i.test(stage || '');
+const chunk = (list, n) => Array.from({ length: Math.ceil(list.length / n) }, (_, i) => list.slice(i * n, i * n + n));
 
 /** The word a production's tickets are searched by on Monday: its longest distinctive name word ("The Bumper Project" → bumper). */
 function searchWord(p) {
@@ -33,7 +34,8 @@ function searchWord(p) {
 async function studioTickets(brandId, { force = false, words = [], decidedIds = [] } = {}) {
   const key = `tracker:${brandId}:tickets:${crypto.createHash('sha1').update(JSON.stringify([words, decidedIds])).digest('hex').slice(0, 12)}`;
   if (force) monday.clearCache(`tracker:${brandId}:tickets`);
-  return monday.cached(key, 3 * 60 * 1000, async () => {
+  // 10 minutes: Refresh and linking a ticket by hand both read Monday again straight away
+  return monday.cached(key, 10 * 60 * 1000, async () => {
     const config = await getCreativeConfig(brandId);
     const rule = config.divisions?.tv || {};
     const now = Date.now();
@@ -72,7 +74,9 @@ async function studioTickets(brandId, { force = false, words = [], decidedIds = 
         statusCategory: (label) => catOf[norm(label)] || 'other',
       };
       ctxByBoard[String(board.board_id)] = ctx;
-      const cols = [...new Set(Object.values(c).filter(Boolean))].filter(id => meta.columns[id]);
+      // Timers and file lists are the heavy columns — the tracker uses neither
+      const skip = new Set([c.working_time, c.files]);
+      const cols = [...new Set(Object.values(c).filter(Boolean))].filter(id => meta.columns[id] && !skip.has(id));
       cols.forEach(id => allCols.add(id));
 
       const rules = [];
@@ -85,17 +89,16 @@ async function studioTickets(brandId, { force = false, words = [], decidedIds = 
           ? monday.fetchAllItems(board.board_id, { cols, maxPages: 4, queryParams: { operator: 'or', rules } })
             .catch((e) => { warnings.push(`${board.label}: TV tickets unavailable (${e.message})`); return { items: [] }; })
           : { items: [] },
-        // One request: a name search per production word (words are [a-z0-9] only)
-        words.length
-          ? monday.mondayQuery(
-            `query ($cols: [String!]) { ${words.map((w, i) => `w${i}: boards(ids: [${Number(board.board_id)}]) { items_page(limit: 100, query_params: { rules: [{ column_id: "name", compare_value: ["${w}"], operator: contains_text }] }) { items { ${monday.ITEM_FIELDS} } } }`).join('\n')} }`,
-            { cols },
-          ).catch((e) => { warnings.push(`${board.label}: ticket search unavailable (${e.message})`); return {}; })
-          : {},
+        // A name search per production word, a few per request, requests in parallel (words are [a-z0-9] only)
+        Promise.all(chunk(words, 4).map(ws => monday.mondayQuery(
+          `query ($cols: [String!]) { ${ws.map((w, i) => `w${i}: boards(ids: [${Number(board.board_id)}]) { items_page(limit: 60, query_params: { rules: [{ column_id: "name", compare_value: ["${w}"], operator: contains_text }] }) { items { ${monday.ITEM_FIELDS} } } }`).join('\n')} }`,
+          { cols },
+        ).catch((e) => { warnings.push(`${board.label}: ticket search unavailable (${e.message})`); return {}; })))
+          .then(parts => parts.flatMap(r => Object.values(r || {}).flatMap(v => v?.[0]?.items_page?.items || []))),
       ]);
       if (tv.truncated) warnings.push(`${board.label}: TV tickets truncated`);
       for (const raw of tv.items) add(raw, ctx);
-      for (const v of Object.values(found || {})) for (const raw of v?.[0]?.items_page?.items || []) add(raw, ctx);
+      for (const raw of found) add(raw, ctx);
     }));
 
     // Linked by hand but not found above (another department, renamed…)
@@ -196,10 +199,8 @@ async function buildTracker({ brandId, force = false, now = Date.now() }) {
   ).then(r => r.rows);
   const ids = prods.map(p => p.id);
 
-  const recentCutoff = W.addDays(today, -60);
-  const words = [...new Set(prods
-    .filter(p => !isDone(p.stage) || W.localDate(new Date(p.updated_at || p.created_at || 0).getTime()) >= recentCutoff)
-    .map(searchWord).filter(Boolean))].sort().slice(0, 40);
+  // Live productions only — finished ones keep their TV tickets and anything linked by hand
+  const words = [...new Set(prods.filter(p => !isDone(p.stage)).map(searchWord).filter(Boolean))].sort().slice(0, 30);
   const ticketsP = brandId === 'particle'
     ? rowsOf(`SELECT item_id FROM studio_ticket_links WHERE decision = 'linked' AND production_id = ANY($1)`, [ids], warnings, 'Ticket links')
       .then(rows => studioTickets(brandId, { force, words, decidedIds: rows.map(r => r.item_id).sort() }))
