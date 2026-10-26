@@ -57,3 +57,24 @@ test('tracker patch: only web links, named team, known health', () => {
   assert.throws(() => cleanPatch({ deadline: 'soon' }), /date/);
   assert.deepStrictEqual(Object.keys(cleanPatch({ notes: 'x' })), ['notes']);
 });
+
+const { searchWord, inWindow } = require('../../src/lib/tracker/data');
+
+test('a production is searched on Monday by its most distinctive word', () => {
+  assert.strictEqual(searchWord({ project_name: 'The Bumper Project', product_type: ['Face Cream'] }), 'bumper');
+  assert.strictEqual(searchWord({ project_name: 'Black Friday 2026', product_type: [] }), 'friday');
+  assert.strictEqual(searchWord({ project_name: 'Face Cream', product_type: ['Face Cream'] }), null);
+});
+
+test('automatic matches must be from the production’s time', () => {
+  const p = { stage: 'Production', planned_start: '2026-10-01', planned_end: '2026-11-30', created_at: '2026-09-20T10:00:00Z' };
+  assert.ok(inWindow({ timeline: { from: '2026-10-25' } }, p, '2026-10-26'));
+  assert.ok(!inWindow({ timeline: { from: '2025-11-20' } }, p, '2026-10-26'), 'last year’s Black Friday ticket');
+  assert.ok(inWindow({ created_at: '2026-10-25T09:10:33Z' }, p, '2026-10-26'));
+  // A live production past its planned end still collects new tickets
+  assert.ok(inWindow({ timeline: { from: '2027-03-01' } }, { ...p, planned_end: '2026-12-01' }, '2027-02-15'));
+});
+
+test('a deadline that isn’t a date never breaks the tracker', () => {
+  assert.doesNotThrow(() => signalsFor(base({ tracker: { deadline: 'Tue Dec 15' } }), '2026-10-26'));
+});

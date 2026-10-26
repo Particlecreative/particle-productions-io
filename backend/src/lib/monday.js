@@ -389,6 +389,7 @@ async function assetsByIds(ids) {
 }
 
 module.exports = {
+  ITEM_FIELDS,
   MondayError,
   mondayQuery,
   cached,

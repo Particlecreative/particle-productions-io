@@ -24,12 +24,14 @@ function Section({ icon: Icon, title, right, children }) {
 }
 
 /** Everything about one production; the tracker fields save as you go. */
-export default function Drawer({ p, data, today, canEdit, isAdmin, onClose, onSave, onStage, onTicket }) {
+export default function Drawer({ p, data, today, canEdit, isAdmin, onClose, onSave, onStage, onTicket, onLinkById }) {
   const tr = p.tracker || {};
   const [notes, setNotes] = useState(tr.notes || '');
   const [label, setLabel] = useState(tr.deadline_label || '');
   const [newLink, setNewLink] = useState({ title: '', url: '' });
   const [member, setMember] = useState({ kind: 'internal', name: '', role: '' });
+  const [paste, setPaste] = useState('');
+  const [linking, setLinking] = useState(false);
   const [saving, setSaving] = useState(null);
   const [err, setErr] = useState(null);
   useEffect(() => { setNotes(p.tracker?.notes || ''); setLabel(p.tracker?.deadline_label || ''); setErr(null); }, [p.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -239,7 +241,7 @@ export default function Drawer({ p, data, today, canEdit, isAdmin, onClose, onSa
             <Section icon={Clapperboard} title={`Monday tickets · ${p.tickets?.length || 0}`}>
               <div className="flex flex-col gap-2">
                 {(p.tickets || []).map(t => <TicketRow key={t.id} t={t} p={p} data={data} editable={editable} onTicket={onTicket} />)}
-                {!p.tickets?.length && <div className="text-[12px] trk-dim">No TV &amp; SP tickets linked yet.</div>}
+                {!p.tickets?.length && <div className="text-[12px] trk-dim">No Monday tickets linked yet.</div>}
               </div>
               {editable && data.ask?.length > 0 && (
                 <select className="trk-input mt-3" value="" onChange={(e) => { const t = data.ask.find(x => x.id === e.target.value); if (t) onTicket(t, { production_id: p.id }); }}>
@@ -247,6 +249,14 @@ export default function Drawer({ p, data, today, canEdit, isAdmin, onClose, onSa
                   {data.ask.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
               )}
+              {editable && (
+                <form className="mt-2 grid gap-2 sm:grid-cols-[1fr_auto]"
+                  onSubmit={async (e) => { e.preventDefault(); if (!paste.trim()) return; setLinking(true); if (await onLinkById(p, paste)) setPaste(''); setLinking(false); }}>
+                  <input className="trk-input" placeholder="Paste a Monday ticket link to link it here" value={paste} onChange={(e) => setPaste(e.target.value)} />
+                  <button type="submit" className="trk-btn" disabled={!paste.trim() || linking}>{linking ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Link</button>
+                </form>
+              )}
+              <div className="mt-2 text-[11px] trk-dim">TV &amp; SP tickets and tickets named after the production link themselves; anything else, paste it here.</div>
             </Section>
           )}
 

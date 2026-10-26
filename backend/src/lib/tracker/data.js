@@ -2,7 +2,7 @@
  * Production Tracker — every production of a brand with what it takes to track it:
  *  - stage + how long it's been there (change_history), the deadline we chose, notes / links / team (production_tracker)
  *  - CP facts: budget, crew, contract, open tasks, next Gantt milestone, shoot days, casting rights, latest update, weekly
- *  - the Monday TV & SP tickets linked to it (same matching as the Studio: auto by name, human decisions win)
+ *  - the Monday tickets linked to it: TV & SP by name like the Studio, any other ticket named after it, or linked by hand
  * Read live, never stored (except the tracker's own fields).
  */
 const db = require('../../db');
@@ -10,23 +10,50 @@ const monday = require('../monday');
 const W = require('../creative/week');
 const { getCreativeConfig } = require('../creative/config');
 const { normalizeItem } = require('../creative/snapshot');
-const { linkTvItems } = require('../studio/tvLinks');
+const crypto = require('crypto');
+const { linkTvItems, tokens } = require('../studio/tvLinks');
 
 const norm = monday.normLabel;
 const DAY = 86400000;
 const ACTIVE_STAGES = ['Pre Production', 'Production', 'Post'];
 const isDone = (stage) => /^(completed|cancel)/i.test(stage || '');
 
-/** Every TV & SP ticket on the studio boards (open and finished — ~350, one page per board). Particle only. */
-async function tvTickets(brandId, { force = false } = {}) {
-  const key = `tracker:${brandId}:tickets`;
-  if (force) monday.clearCache(key);
+/** The word a production's tickets are searched by on Monday: its longest distinctive name word ("The Bumper Project" → bumper). */
+function searchWord(p) {
+  const product = new Set((p.product_type || []).flatMap(tokens));
+  return tokens(p.project_name || p.name).filter(t => !product.has(t)).sort((a, b) => b.length - a.length)[0] || null;
+}
+
+/**
+ * Studio tickets that can belong to a production (Particle only), from the Video + Design boards:
+ *  - every TV & SP ticket (open and finished — ~350, one page per board)
+ *  - tickets from any department whose name has a production's word (words)
+ *  - tickets someone linked by hand (decidedIds)
+ */
+async function studioTickets(brandId, { force = false, words = [], decidedIds = [] } = {}) {
+  const key = `tracker:${brandId}:tickets:${crypto.createHash('sha1').update(JSON.stringify([words, decidedIds])).digest('hex').slice(0, 12)}`;
+  if (force) monday.clearCache(`tracker:${brandId}:tickets`);
   return monday.cached(key, 3 * 60 * 1000, async () => {
     const config = await getCreativeConfig(brandId);
     const rule = config.divisions?.tv || {};
     const now = Date.now();
     const warnings = [];
-    const items = [];
+    const byId = new Map();
+    const ctxByBoard = {};
+    const allCols = new Set();
+    const add = (raw, ctx) => {
+      if (!raw || byId.has(String(raw.id))) return;
+      const it = normalizeItem(raw, ctx);
+      byId.set(it.id, {
+        id: it.id, board: ctx.boardKey, name: it.name, title: it.title, subtitle: it.subtitle,
+        status: it.status, open: it.status.category !== 'delivered', tv_division: it.division === 'tv',
+        product: it.product, people: it.people, requested_by: it.requested_by,
+        timeline: it.timeline, deadline: it.deadline, monday_url: it.monday_url,
+        links: { frame: it.links.frame, dropbox: it.links.dropbox, figma: it.links.figma },
+        campaign: it.campaign, created_at: it.created_at, updated_at: raw.updated_at || null,
+      });
+    };
+
     await Promise.all(Object.entries(config.boards || {}).map(async ([bk, board]) => {
       const meta = await monday.boardMeta(board.board_id, { force });
       const c = board.columns;
@@ -36,13 +63,6 @@ async function tvTickets(brandId, { force = false } = {}) {
         const want = new Set((labels || []).map(norm));
         return Object.entries(sm.byIndex).filter(([, v]) => want.has(norm(v.label))).map(([i]) => Number(i));
       };
-      const rules = [];
-      const dept = indexesOf(c.department, rule.departments);
-      if (dept.length) rules.push({ column_id: c.department, compare_value: dept, operator: 'any_of' });
-      const type = indexesOf(c.type, rule.types);
-      if (type.length) rules.push({ column_id: c.type, compare_value: type, operator: 'any_of' });
-      if (!rules.length) return;
-
       const catOf = {};
       for (const [cat, labels] of Object.entries(board.statuses)) for (const l of labels) catOf[norm(l)] = cat;
       const knownProducts = new Set(Object.values(meta.statusMaps[c.product]?.byIndex || {}).map(v => norm(v.label)).filter(Boolean));
@@ -51,23 +71,44 @@ async function tvTickets(brandId, { force = false } = {}) {
         bounds: { fromMs: now - 7 * DAY, toMs: now, partial: false },
         statusCategory: (label) => catOf[norm(label)] || 'other',
       };
+      ctxByBoard[String(board.board_id)] = ctx;
       const cols = [...new Set(Object.values(c).filter(Boolean))].filter(id => meta.columns[id]);
-      const res = await monday.fetchAllItems(board.board_id, { cols, maxPages: 4, queryParams: { operator: 'or', rules } })
-        .catch((e) => { warnings.push(`${board.label}: TV tickets unavailable (${e.message})`); return { items: [] }; });
-      if (res.truncated) warnings.push(`${board.label}: TV tickets truncated`);
-      for (const raw of res.items) {
-        const it = normalizeItem(raw, ctx);
-        if (it.division !== 'tv') continue;
-        items.push({
-          id: it.id, board: bk, name: it.name, title: it.title, subtitle: it.subtitle,
-          status: it.status, open: it.status.category !== 'delivered',
-          product: it.product, people: it.people, requested_by: it.requested_by,
-          timeline: it.timeline, deadline: it.deadline, monday_url: it.monday_url,
-          links: { frame: it.links.frame, dropbox: it.links.dropbox, figma: it.links.figma },
-          campaign: it.campaign, created_at: it.created_at, updated_at: raw.updated_at || null,
-        });
-      }
+      cols.forEach(id => allCols.add(id));
+
+      const rules = [];
+      const dept = indexesOf(c.department, rule.departments);
+      if (dept.length) rules.push({ column_id: c.department, compare_value: dept, operator: 'any_of' });
+      const type = indexesOf(c.type, rule.types);
+      if (type.length) rules.push({ column_id: c.type, compare_value: type, operator: 'any_of' });
+      const [tv, found] = await Promise.all([
+        rules.length
+          ? monday.fetchAllItems(board.board_id, { cols, maxPages: 4, queryParams: { operator: 'or', rules } })
+            .catch((e) => { warnings.push(`${board.label}: TV tickets unavailable (${e.message})`); return { items: [] }; })
+          : { items: [] },
+        // One request: a name search per production word (words are [a-z0-9] only)
+        words.length
+          ? monday.mondayQuery(
+            `query ($cols: [String!]) { ${words.map((w, i) => `w${i}: boards(ids: [${Number(board.board_id)}]) { items_page(limit: 100, query_params: { rules: [{ column_id: "name", compare_value: ["${w}"], operator: contains_text }] }) { items { ${monday.ITEM_FIELDS} } } }`).join('\n')} }`,
+            { cols },
+          ).catch((e) => { warnings.push(`${board.label}: ticket search unavailable (${e.message})`); return {}; })
+          : {},
+      ]);
+      if (tv.truncated) warnings.push(`${board.label}: TV tickets truncated`);
+      for (const raw of tv.items) add(raw, ctx);
+      for (const v of Object.values(found || {})) for (const raw of v?.[0]?.items_page?.items || []) add(raw, ctx);
     }));
+
+    // Linked by hand but not found above (another department, renamed…)
+    const missing = decidedIds.filter(id => !byId.has(String(id)));
+    if (missing.length) {
+      try {
+        for (const raw of await monday.itemsByIds(missing, { cols: [...allCols] })) {
+          const ctx = ctxByBoard[String(raw.board?.id)];
+          if (ctx) add(raw, ctx);
+        }
+      } catch (e) { warnings.push(`Linked tickets unavailable (${e.message})`); }
+    }
+    const items = [...byId.values()];
 
     // People on those tickets (designers / editors / requesters)
     const ids = [...new Set(items.flatMap(it => [...it.people, ...it.requested_by]))];
@@ -83,6 +124,20 @@ async function tvTickets(brandId, { force = false } = {}) {
   });
 }
 
+/**
+ * An automatic match only counts when the ticket is from the production's time — so last year's
+ * "Black Friday" tickets don't land on Black Friday 2026. Window: 60 days around the production's dates.
+ */
+function inWindow(ticket, p, today) {
+  const at = ticket.timeline?.from || ticket.deadline || (ticket.created_at ? W.localDate(Date.parse(ticket.created_at)) : null);
+  if (!at) return true;
+  const created = p.created_at ? W.localDate(new Date(p.created_at).getTime()) : null;
+  const from = p.planned_start || created;
+  let to = p.planned_end || p.delivery_date || p.air_date || today;
+  if (!isDone(p.stage) && to < today) to = today;
+  return (!from || at >= W.addDays(from, -60)) && at <= W.addDays(to, 60);
+}
+
 async function rowsOf(sql, params, warnings, label) {
   try { return (await db.query(sql, params)).rows; } catch (e) { warnings.push(`${label} unavailable (${e.message})`); return []; }
 }
@@ -93,6 +148,7 @@ const groupBy = (rows, key = 'production_id') => {
 };
 const num = (v) => (v == null || v === '' ? 0 : Number(v) || 0);
 const day = (v) => (v ? String(v).slice(0, 10) : null);
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const daysBetween = (a, b) => Math.round((W.zonedMidnightUtc(b) - W.zonedMidnightUtc(a)) / DAY);
 
 /**
@@ -103,11 +159,11 @@ function signalsFor(p, today) {
   const out = [];
   if (isDone(p.stage)) return out;
   const active = ACTIVE_STAGES.includes(p.stage);
-  const dl = p.tracker?.deadline;
+  const dl = DATE_RE.test(p.tracker?.deadline || '') ? p.tracker.deadline : null;
   if (dl && dl < today) out.push({ kind: 'overdue', level: 'red', text: `Deadline passed ${daysBetween(dl, today)}d ago` });
   if (p.tracker?.health === 'blocked') out.push({ kind: 'blocked', level: 'red', text: 'Marked blocked' });
   if (dl && dl >= today && daysBetween(today, dl) <= 7) out.push({ kind: 'due_soon', level: 'amber', text: daysBetween(today, dl) === 0 ? 'Due today' : `Due in ${daysBetween(today, dl)}d` });
-  const nextShoot = p.shoot?.next;
+  const nextShoot = DATE_RE.test(p.shoot?.next || '') ? p.shoot.next : null;
   if (nextShoot && daysBetween(today, nextShoot) <= 14 && p.contract && p.contract.status !== 'signed') {
     out.push({ kind: 'shoot_no_contract', level: 'red', text: `Shoot in ${daysBetween(today, nextShoot)}d — contract ${p.contract.status || 'not sent'}` });
   }
@@ -140,11 +196,18 @@ async function buildTracker({ brandId, force = false, now = Date.now() }) {
   ).then(r => r.rows);
   const ids = prods.map(p => p.id);
 
+  const recentCutoff = W.addDays(today, -60);
+  const words = [...new Set(prods
+    .filter(p => !isDone(p.stage) || W.localDate(new Date(p.updated_at || p.created_at || 0).getTime()) >= recentCutoff)
+    .map(searchWord).filter(Boolean))].sort().slice(0, 40);
   const ticketsP = brandId === 'particle'
-    ? tvTickets(brandId, { force }).catch((e) => { warnings.push(`Monday tickets unavailable (${e.message})`); return null; })
+    ? rowsOf(`SELECT item_id FROM studio_ticket_links WHERE decision = 'linked' AND production_id = ANY($1)`, [ids], warnings, 'Ticket links')
+      .then(rows => studioTickets(brandId, { force, words, decidedIds: rows.map(r => r.item_id).sort() }))
+      .catch((e) => { warnings.push(`Monday tickets unavailable (${e.message})`); return null; })
     : Promise.resolve(null);
   const [tracker, lines, contracts, links, comments, tasks, gantt, sheets, casting, stageRows, touched, weeklies, users, suppliers] = await Promise.all([
-    rowsOf('SELECT * FROM production_tracker WHERE production_id = ANY($1)', [ids], warnings, 'Tracker fields'),
+    rowsOf(`SELECT production_id, deadline::text AS deadline, deadline_label, notes, links, team, health, updated_by, updated_at
+              FROM production_tracker WHERE production_id = ANY($1)`, [ids], warnings, 'Tracker fields'),
     rowsOf(`SELECT production_id, item, full_name, supplier, type, payment_status, actual_spent
               FROM production_line_items WHERE production_id = ANY($1) ORDER BY created_at`, [ids], warnings, 'Line items'),
     rowsOf('SELECT production_id, status, provider_name, sent_at, signed_at FROM contracts WHERE production_id = ANY($1)', [ids], warnings, 'Contracts'),
@@ -194,11 +257,16 @@ async function buildTracker({ brandId, force = false, now = Date.now() }) {
   if (tickets) {
     try {
       const r = await linkTvItems(brandId, tickets.items);
+      const prodById = Object.fromEntries(prods.map(p => [p.id, p]));
       for (const it of tickets.items) {
-        const link = r.links[it.id];
+        let link = r.links[it.id];
+        // Automatic matches must be from the production's time; anything else needs a human (TV) or is left alone
+        if (link?.source === 'auto' && !inWindow(it, prodById[link.production_id] || {}, today)) {
+          link = { ...link, production_id: null, name: null, stage: null, source: 'ask', confidence: 'low' };
+        }
         const t = { ...it, tv: link };
         if (link?.production_id) (ticketsBy[link.production_id] = ticketsBy[link.production_id] || []).push(t);
-        else if (link?.source === 'ask' && it.open) ask.push(t); // finished ones don't need a decision any more
+        else if (link?.source === 'ask' && it.open && it.tv_division) ask.push(t); // only open TV & SP tickets wait for a decision
       }
     } catch (e) { warnings.push(`TV linking failed (${e.message})`); }
     warnings.push(...tickets.warnings);
@@ -317,4 +385,4 @@ async function buildTracker({ brandId, force = false, now = Date.now() }) {
   };
 }
 
-module.exports = { buildTracker, tvTickets, signalsFor };
+module.exports = { buildTracker, studioTickets, signalsFor, searchWord, inWindow };

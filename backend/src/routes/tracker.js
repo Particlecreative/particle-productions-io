@@ -104,7 +104,7 @@ router.put('/:productionId', async (req, res) => {
     const saved = await db.query(
       `INSERT INTO production_tracker (production_id, updated_by, ${cols}) VALUES ($1, $2, ${params})
        ON CONFLICT (production_id) DO UPDATE SET ${sets}, updated_by = EXCLUDED.updated_by, updated_at = NOW()
-       RETURNING *, deadline::text AS deadline`,
+       RETURNING production_id, deadline::text AS deadline, deadline_label, notes, links, team, health, updated_by, updated_at`,
       [pid, who, ...vals]
     );
 
@@ -134,6 +134,7 @@ router.put('/tickets/:itemId', async (req, res) => {
     }
     await decide(itemId, { productionId, decision, board: req.body?.board || null, user: req.user });
     monday.clearCache(`studio:${req.brandId}:`);
+    monday.clearCache(`tracker:${req.brandId}:tickets`); // a ticket linked by hand is fetched on the next load
     res.json({ ok: true });
   } catch (err) { errorJson(res, err); }
 });

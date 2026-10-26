@@ -54,10 +54,14 @@ export default function TrackerPage() {
   const setView = (v) => { setViewState(v); try { localStorage.setItem(PREF, JSON.stringify({ ...readPrefs(), view: v })); } catch { /* ignore */ } };
   const toggleDone = () => setShowDone(v => { try { localStorage.setItem(PREF, JSON.stringify({ ...readPrefs(), showDone: !v })); } catch { /* ignore */ } return !v; });
 
-  const load = useCallback(async (force = false, quiet = false) => {
+  // quiet = no spinner (auto-refresh); after a write the refresh still reports a failure, so stale data never looks saved
+  const load = useCallback(async (force = false, quiet = false, afterWrite = false) => {
     if (!quiet) setLoading(true);
     setError(null);
-    try { setData(await trackerApi.get(brandId, { force })); loadedAt.current = Date.now(); } catch (e) { if (!quiet) setError(e.message); } finally { setLoading(false); }
+    try { setData(await trackerApi.get(brandId, { force })); loadedAt.current = Date.now(); } catch (e) {
+      if (!quiet) setError(e.message);
+      else if (afterWrite) setToast({ text: `Saved — but the page couldn’t refresh (${e.message}). Reload to see the latest.`, error: true });
+    } finally { setLoading(false); }
   }, [brandId]);
   useEffect(() => { if (isEditor) { setData(null); load(); } }, [load, isEditor]);
   useEffect(() => {
@@ -83,7 +87,7 @@ export default function TrackerPage() {
       await trackerApi.setStage(p.id, next, user);
       addNotification('stage_change', `${user?.name || 'Someone'} changed stage of ${p.name} to "${next}"`, p.id);
       setToast({ text: `${p.name} → ${next}`, undo: undo ? () => moveStage({ ...p, stage: next }, prev.stage, { undo: false }) : null });
-      load(false, true);
+      load(false, true, true);
     } catch (e) {
       patchProd(p.id, x => ({ ...x, ...prev }));
       setToast({ text: e.message || 'Couldn’t change the stage', error: true });
@@ -99,7 +103,7 @@ export default function TrackerPage() {
     });
     try {
       await trackerApi.save(brandId, p.id, patch);
-      load(false, true); // ids for new links / team, fresh signals
+      load(false, true, true); // ids for new links / team, fresh signals
     } catch (e) {
       patchProd(p.id, () => before);
       throw e;
@@ -123,12 +127,24 @@ export default function TrackerPage() {
       await trackerApi.linkTicket(brandId, t.id, { ...body, board: t.board });
       const to = body.production_id && data?.productions.find(p => p.id === body.production_id);
       setToast({ text: to ? `Linked to ${to.name}` : body.decision === 'none' ? 'Marked as not a production ticket' : 'Back to automatic matching' });
-      load(false, true);
+      load(false, true, true);
     } catch (e) {
       setToast({ text: e.message, error: true });
       load(false, true);
     }
   }, [brandId, user, data, load]);
+
+  /** Any Monday ticket, by its link or ID — e.g. one from another department that isn't named after the production */
+  const linkById = useCallback(async (p, input) => {
+    const m = String(input || '').match(/(?:pulses|items)\/(\d+)/) || String(input || '').trim().match(/^(\d{6,})$/);
+    if (!m) { setToast({ text: 'Paste a Monday ticket link (…/pulses/123…) or its ID', error: true }); return false; }
+    try {
+      await trackerApi.linkTicket(brandId, m[1], { production_id: p.id });
+      setToast({ text: `Linked to ${p.name} — fetching it from Monday…` });
+      await load(false, true, true);
+      return true;
+    } catch (e) { setToast({ text: e.message, error: true }); return false; }
+  }, [brandId, load]);
 
   // ── What's shown ──
   const stages = useMemo(() => stageList(), []);
@@ -325,7 +341,7 @@ export default function TrackerPage() {
 
       {open && (
         <Drawer p={open} data={data} today={today} canEdit={isEditor} isAdmin={isAdmin}
-          onClose={closeDrawer} onSave={saveTracker} onStage={moveStage} onTicket={linkTicket} />
+          onClose={closeDrawer} onSave={saveTracker} onStage={moveStage} onTicket={linkTicket} onLinkById={linkById} />
       )}
 
       {toast && (
