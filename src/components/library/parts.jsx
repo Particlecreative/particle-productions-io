@@ -12,6 +12,9 @@ export const fmtSize = (b) => {
 const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; } };
 export const sourceOf = (u) => (/dropbox\.com/i.test(u) ? 'Dropbox' : /drive\.google\.com/i.test(u) ? 'Drive' : /box\.com/i.test(u) ? 'Box' : host(u));
 
+/** The poster to show for a set of files: the smallest one that has a poster (another market's file, a digital version). */
+export const posterOf = (items) => [...items].filter(i => i.thumb_url).sort((a, b) => (a.size_bytes || 0) - (b.size_bytes || 0))[0] || null;
+
 /** Commercials: the sheet's rows (one item per market) grouped back together; CP files stay one per row. */
 export function groupCommercials(items) {
   const groups = new Map();
@@ -105,7 +108,7 @@ export function CommercialRow({ group, onError, right }) {
   return (
     <div className="trk-glass p-3 flex flex-wrap items-center gap-3">
       <div className="flex items-center gap-3 min-w-0 w-full md:w-[32%] flex-none">
-        <Poster item={group.items.find(i => i.thumb_url) || lead} className="w-20 h-11 rounded-lg flex-none overflow-hidden" />
+        <Poster item={posterOf(group.items) || lead} className="w-20 h-11 rounded-lg flex-none overflow-hidden" />
         <div className="min-w-0">
           <div className="text-[14px] font-semibold truncate" title={group.title}>{group.title}</div>
           <div className="text-[11px] trk-muted truncate">{[group.product, group.notes].filter(Boolean).join(' · ') || CATEGORY[lead.category]?.label}</div>

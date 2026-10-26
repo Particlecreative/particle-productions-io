@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { parseTab, sheetEntries, parseLanding, sheetIdOf, matchProduction } = require('../../src/lib/librarySheet');
+const { parseTab, sheetEntries, parseLanding, sheetIdOf, matchProduction, rankProductions } = require('../../src/lib/librarySheet');
 
 const row = (...vals) => vals.map(v => (typeof v === 'object' && v ? v : { text: v ?? '', link: null }));
 const HEADER = row('NAME', 'US', 'LINK', 'URL', 'CREATIVE CODE', 'CA', 'LINK', 'URL', 'CREATIVE CODE', 'AUS', 'LINK', 'URL', 'PROMO CODE', 'NOTES');
@@ -57,4 +57,26 @@ test('a row joins a production only by a clear name and the right time', () => {
   assert.strictEqual(matchProduction(e('The Hunt 30s', 'Face Cream'), prods, '2026-10-20T00:00:00Z'), 'PRD26-20');
   assert.strictEqual(matchProduction(e('The Hunt 30s', 'Face Cream'), prods, null), null, 'no file date → Before 2026');
   assert.strictEqual(matchProduction(e('Most Men 60s', 'Face Cream'), prods, '2026-10-20T00:00:00Z'), null);
+});
+
+test('product-aware suggestions (production names that are mostly the product)', () => {
+  const prods = [
+    { id: 'PRD26-05', name: 'Particle Hand Cream AI Campaign', product_type: ['Hand Cream'], planned_start: '2026-02-01', planned_end: '2026-02-28' },
+    { id: 'PRD26-16', name: 'Hand Cream - Extended 90s Version', product_type: ['Hand Cream'], planned_start: '2026-04-01', planned_end: '2026-04-30' },
+    { id: 'PRD26-13', name: 'Italian Aggressive + Most Men', product_type: ['Face Cream'], planned_start: '2026-07-01', planned_end: '2026-08-15' },
+    { id: 'PRD26-35', name: 'FC Spanish Aggressive + Most Men', product_type: ['Face Cream'], planned_start: '2026-07-01', planned_end: '2026-08-15' },
+    { id: 'PRD26-27', name: 'Memorial Day AI Campaign 2026', product_type: [], planned_start: '2026-05-01', planned_end: '2026-05-25' },
+  ];
+  const hand = rankProductions({ title: 'Hand Cream AI 60s', product: 'Hand Cream' }, prods, '2026-02-20T00:00:00Z');
+  assert.deepStrictEqual(hand.map(s => s.id), ['PRD26-05'], 'only Hand Cream productions, and only the product-only one without other words');
+  assert.ok(!rankProductions({ title: 'Hand Cream AI 60s', product: 'Hand Cream' }, prods, null).some(s => s.id === 'PRD26-13'), 'never another product');
+  const italy = rankProductions({ title: 'Most Men 30s', product: 'Face Cream', market: 'ITALY' }, prods, '2026-08-04T00:00:00Z');
+  assert.strictEqual(italy[0].id, 'PRD26-13', 'the Italian market points at the Italian production');
+  assert.ok(!rankProductions({ title: 'Most Men 60s', product: 'Face Cream', market: 'US' }, prods, '2026-08-04T00:00:00Z').some(x => ['PRD26-13', 'PRD26-35'].includes(x.id)), 'an Italian / Spanish production is never suggested for a US file');
+  assert.strictEqual(matchProduction({ title: 'Memorial Day Sale 30s (MEMORIAL)', product: null }, prods, '2026-05-10T00:00:00Z'), 'PRD26-27');
+  const more = [...prods, { id: 'PRD26-36', name: 'Most Guys 2026', product_type: ['Face Cream'], planned_start: '2026-08-01', planned_end: '2026-09-30' }, { id: 'PRD26-23', name: 'Gravite AI - Why Would You', product_type: ['Gravité'], planned_start: '2026-05-01', planned_end: '2026-06-30' }];
+  assert.ok(!rankProductions({ title: 'Most Men Texting 60s v2', product: 'Face Cream', market: 'US' }, more, '2026-08-20T00:00:00Z').some(x => x.id === 'PRD26-36'), '"most" alone is not a match');
+  assert.ok(!rankProductions({ title: 'Chosen AI 60s V2 Sets You Apart', product: 'Gravité', market: 'US' }, more, '2026-05-20T00:00:00Z').some(x => x.id === 'PRD26-23'), '"you" alone is not a match');
+  assert.strictEqual(matchProduction({ title: 'Most Guys 2026 60s', product: 'Face Cream', market: 'US' }, more, '2026-08-20T00:00:00Z'), 'PRD26-36', 'every word of the name still links');
+  assert.strictEqual(matchProduction({ title: 'Hand Cream AI 60s', product: 'Hand Cream' }, prods, '2026-02-20T00:00:00Z'), null, 'product-only: a suggestion, not automatic');
 });

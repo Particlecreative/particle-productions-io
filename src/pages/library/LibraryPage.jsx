@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Search, RefreshCw, Loader2, AlertTriangle, Check, Download, Archive, Sheet, Plus, X, Film, Music, Clock } from 'lucide-react';
 import { useBrand } from '../../context/BrandContext';
 import { libraryApi, download, CATEGORY, PROMPT_BOXES } from '../../lib/libraryService';
-import { Poster } from '../../components/library/parts';
+import { Poster, posterOf } from '../../components/library/parts';
 import ProductionDrawer from '../../components/library/ProductionDrawer';
 import BeforeModal from '../../components/library/BeforeModal';
 import AddFiles from '../../components/library/AddFiles';
@@ -238,7 +238,7 @@ export default function LibraryPage() {
 
 function ProductionCard({ p, onOpen, onError }) {
   const masters = p.items.filter(i => i.category === 'tv_master');
-  const lead = masters.find(i => i.thumb_url) || p.items.find(i => i.thumb_url) || masters[0] || p.items[0];
+  const lead = posterOf(masters) || posterOf(p.items) || masters[0] || p.items[0];
   const count = (c) => p.items.filter(i => i.category === c).length;
   const masterGroups = new Set(masters.map(i => i.specs?.group || i.id)).size;
   const markets = [...new Set(p.items.map(i => i.market).filter(Boolean))];

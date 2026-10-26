@@ -14,9 +14,8 @@ const lib = require('./library');
 const dbx = require('./creative/providers/dropbox');
 const W = require('./creative/week');
 const { canonicalUrl, linkKind } = require('./creative/snapshot');
-const { score } = require('./studio/tvLinks');
+const { tokens } = require('./studio/tvLinks');
 
-const DAY = 86400000;
 const FIELDS = { name: /^(name|title|commercial)$/i, link: /^(link|file|mov|dropbox)$/i, url: /^(url|landing|landing page)$/i, code: /(creative|promo)\s*code|^code$/i, notes: /^notes?$/i };
 const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
 const sha = (s) => crypto.createHash('sha1').update(s).digest('hex');
@@ -153,22 +152,57 @@ async function fileMeta(url, drive) {
   return null;
 }
 
-/** A row joins a production only on a clear name match, with the file from the production's time. */
-function matchProduction(entry, productions, fileDate) {
+// A market in the row can point at a production made for it ("Italian Aggressive + Most Men")
+const MARKET_WORDS = { ITALY: ['italian', 'italy'], UK: ['uk', 'british', 'britain'], AUS: ['australia', 'australian', 'aussie'], CA: ['canada', 'canadian'], ES: ['spanish', 'spain'] };
+const ANY_MARKET = new Set(Object.values(MARKET_WORDS).flat());
+// Words too common to point at a production on their own ("Most Men", "Why Would You")
+const WEAK = new Set(['you', 'your', 'our', 'most', 'men', 'man', 'guys', 'guy', 'all', 'more']);
+
+function inTime(p, fileDate) {
   if (!fileDate) return null;
-  const ranked = productions
-    .map(p => ({ p, ...score(p, { name: entry.title, product: { label: entry.product || '' }, campaign: '' }) }))
-    .filter(x => x.score > 0 && x.coverage === 1)
-    .sort((a, b) => b.score - a.score);
-  const [best, second] = ranked;
-  if (!best || best.score < 2 || (second && second.score >= best.score)) return null;
   const at = W.localDate(new Date(fileDate).getTime());
-  const created = best.p.created_at ? W.localDate(new Date(best.p.created_at).getTime()) : null;
-  const from = best.p.planned_start || created;
-  const to = best.p.air_date || best.p.delivery_date || best.p.planned_end || W.localDate(Date.now());
-  if (from && at < W.addDays(from, -60)) return null;
-  if (at > W.addDays(to, 120)) return null;
-  return best.p.id;
+  const created = p.created_at ? W.localDate(new Date(p.created_at).getTime()) : null;
+  const from = p.planned_start || created;
+  const to = p.air_date || p.delivery_date || p.planned_end || W.localDate(Date.now());
+  return !(from && at < W.addDays(from, -60)) && !(at > W.addDays(to, 120));
+}
+
+/**
+ * Productions a sheet row could belong to, best first. Product-aware: a row on the Hand Cream tab only ever
+ * matches a Hand Cream production; then shared name words, the market and the file's date decide.
+ * → [{ id, name, score, why, hits, coverage, in_time }]
+ */
+function rankProductions(entry, productions, fileDate) {
+  const rowTok = new Set(tokens(entry.title));
+  const product = entry.product ? norm(entry.product) : null;
+  const out = [];
+  for (const p of productions) {
+    const pProducts = (p.product_type || []).map(norm);
+    const productMatch = product ? (pProducts.includes(product) || norm(p.name).includes(product)) : false;
+    if (product && !productMatch) continue;
+    const productTok = new Set([...(entry.product ? tokens(entry.product) : []), ...pProducts.flatMap(tokens)]);
+    const pTok = [...new Set(tokens(p.name))].filter(t => !productTok.has(t));
+    const marketHit = (MARKET_WORDS[entry.market] || []).filter(w => pTok.includes(w));
+    // A production made for a market ("Italian …") is only for that market's files
+    if (pTok.some(t => ANY_MARKET.has(t)) && !marketHit.length) continue;
+    const hits = pTok.filter(t => rowTok.has(t) || marketHit.includes(t));
+    const strong = hits.filter(t => !WEAK.has(t));
+    const coverage = pTok.length ? hits.length / pTok.length : null; // null: the production is just its product
+    // A suggestion needs a real word in common, or every word of the production's name, or a production that's just its product
+    if (!strong.length && coverage !== 1 && !(productMatch && coverage === null)) continue;
+    const time = inTime(p, fileDate);
+    const score = (productMatch ? 2 : 0) + strong.length * 2 + (hits.length - strong.length) + (coverage === 1 ? 1 : 0) + (time === true ? 1 : time === false ? -3 : 0);
+    const why = [productMatch && entry.product, hits.length && `“${hits.join(' ')}”`, time === true && 'same time'].filter(Boolean).join(' · ');
+    out.push({ id: p.id, name: p.name, score, why, hits: hits.length, coverage, in_time: time });
+  }
+  return out.sort((a, b) => b.score - a.score);
+}
+
+/** Linked automatically only when it's clear: every word of the production's name, the file from its time, no close second. */
+function matchProduction(entry, productions, fileDate) {
+  const [best, second] = rankProductions(entry, productions, fileDate);
+  if (!best || best.coverage !== 1 || best.in_time !== true || (second && second.score >= best.score)) return null;
+  return best.id;
 }
 
 let running = null;
@@ -235,7 +269,7 @@ async function syncSource(sourceId, { by = 'sync' } = {}) {
               file_name = COALESCE($7, file_name), ext = COALESCE($8, ext), file_kind = COALESCE($9, file_kind),
               size_bytes = COALESCE($10, size_bytes), file_modified = COALESCE($11, file_modified), specs = $12,
               market = $13, on_air = $14, code = $15, vanity = $16, landing_url = $17, notes = $18, updated_at = NOW()
-            WHERE source_key = $19 AND (
+            WHERE source_key = $19 AND brand_id = $1 AND (
               production_id IS DISTINCT FROM (CASE WHEN production_locked THEN production_id ELSE $2 END) OR title IS DISTINCT FROM $3 OR product IS DISTINCT FROM $4
               OR url IS DISTINCT FROM $5 OR specs IS DISTINCT FROM $12::jsonb OR market IS DISTINCT FROM $13 OR on_air IS DISTINCT FROM $14
               OR code IS DISTINCT FROM $15 OR vanity IS DISTINCT FROM $16 OR landing_url IS DISTINCT FROM $17 OR notes IS DISTINCT FROM $18
@@ -277,4 +311,4 @@ async function syncAll() {
   return running;
 }
 
-module.exports = { sheetIdOf, parseLanding, parseTab, sheetEntries, readSheet, syncSource, syncAll, matchProduction, DAY };
+module.exports = { sheetIdOf, parseLanding, parseTab, sheetEntries, readSheet, syncSource, syncAll, matchProduction, rankProductions };

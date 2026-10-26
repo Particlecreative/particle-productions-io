@@ -50,7 +50,7 @@ function build() {
       ...sheetRow('Anti-Gray Serum', 'Beetjuice 60s', 'g7', [['US', false, 'AG1V2H', 'antigray.com']]),
       ...sheetRow('Anti-Gray Serum', 'Beetjuice 30s', 'g8', [['US', false, 'AG3V1H', 'antigray.com']], { notes: 'Rev-share' }),
       ...sheetRow('Sunscreen', 'Afterthought 60s', 'g9', [['US', false, 'PS1AFTERH', 'www.trysunscreen.com']]),
-      ...sheetRow('Hand Cream', 'Hand Cream AI 60s', 'g10', [['US', true, 'PFM1HCH', 'particlehand.com']]),
+      ...sheetRow('Hand Cream', 'Hand Cream AI 60s', 'g10', [['US', true, 'PFM1HCH', 'particlehand.com']], { suggestions: [{ id: 'PRD26-05', name: 'Particle Hand Cream AI Campaign', why: 'Hand Cream · same time' }] }),
       ...sheetRow(null, 'Black Friday Sale 30s (BEST)', 'g11', [['US', false, 'PS3BFSALEH', 'particlesale.com']]),
     ],
   };

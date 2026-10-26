@@ -42,10 +42,12 @@ router.use(verifyJWT);
 const ITEM_COLS = `id, brand_id, production_id, production_locked, category, title, product, url, entry_key, file_name, ext, file_kind, size_bytes, file_modified,
   specs, market, on_air, code, vanity, landing_url, notes, sort, source, added_by, created_at, updated_at`;
 const isDropbox = (u) => ['dropbox_file', 'dropbox_folder'].includes(linkKind(u));
+// Dropbox can't hand ffmpeg one frame of a 10 GB ProRes master in time — those show an icon instead
+const POSTER_MAX_BYTES = 1.5e9;
 const withThumb = (it) => ({
   ...it,
   size_bytes: it.size_bytes == null ? null : Number(it.size_bytes),
-  thumb_url: ['video', 'image'].includes(it.file_kind) && isDropbox(it.url) ? lib.thumbUrl(it.id) : null,
+  thumb_url: ['video', 'image'].includes(it.file_kind) && isDropbox(it.url) && !(Number(it.size_bytes) > POSTER_MAX_BYTES) ? lib.thumbUrl(it.id) : null,
 });
 
 /** Productions for the Library (everything finished, plus anything with files) and "Before 2026" (files with no production). */
@@ -82,8 +84,23 @@ async function libraryFor(brandId, productionId = null) {
       items: (itemsBy[p.id] || []).map(withThumb),
       other_links: linksBy[p.id] || [],
     })),
-    before: productionId ? [] : (itemsBy[''] || []).map(withThumb),
+    before: productionId ? [] : await withSuggestions(brandId, (itemsBy[''] || []).map(withThumb)),
   };
+}
+
+/** Before 2026: up to three productions each commercial might belong to (one click to link it). */
+async function withSuggestions(brandId, items) {
+  if (!items.length) return items;
+  const { rows: prods } = await db.query(
+    `SELECT id, project_name AS name, product_type, created_at, planned_start::text AS planned_start, planned_end::text AS planned_end,
+            delivery_date::text AS delivery_date, air_date::text AS air_date
+       FROM productions WHERE brand_id = $1 AND COALESCE(stage, '') NOT ILIKE '%cancel%'`, [brandId]);
+  for (const p of prods) p.product_type = Array.isArray(p.product_type) ? p.product_type : [];
+  return items.map(it => ({
+    ...it,
+    suggestions: sheet.rankProductions({ title: it.title, product: it.product, market: it.market }, prods, it.file_modified)
+      .filter(s => s.in_time !== false).slice(0, 3).map(s => ({ id: s.id, name: s.name, why: s.why })),
+  }));
 }
 
 async function sourcesFor(brandId) {

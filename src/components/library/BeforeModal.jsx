@@ -11,6 +11,7 @@ export default function BeforeModal({ items, productions, canEdit, onClose, onMo
   const [product, setProduct] = useState('');
   const [onAir, setOnAir] = useState(false);
   const [market, setMarket] = useState('');
+  const [suggested, setSuggested] = useState(false);
   useEffect(() => {
     const k = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', k);
@@ -29,6 +30,7 @@ export default function BeforeModal({ items, productions, canEdit, onClose, onMo
     (!product || (g.product || 'All products') === product) &&
     (!onAir || g.items.some(i => i.on_air)) &&
     (!market || g.items.some(i => i.market === market)) &&
+    (!suggested || g.items[0].suggestions?.length > 0) &&
     (!needle || [g.title, g.product, g.notes, ...g.items.map(i => i.code), ...g.items.map(i => i.vanity)].filter(Boolean).some(v => String(v).toLowerCase().includes(needle))));
   const byProduct = new Map();
   for (const g of shown) {
@@ -66,6 +68,11 @@ export default function BeforeModal({ items, productions, canEdit, onClose, onMo
             <button type="button" className="trk-btn" onClick={() => setOnAir(v => !v)} style={onAir ? { background: 'rgba(47,211,138,.18)', borderColor: 'rgba(47,211,138,.5)' } : undefined}>
               <span className="w-2 h-2 rounded-full" style={{ background: '#2fd38a' }} /> Checked only
             </button>
+            {canEdit && groups.filter(g => g.items[0].suggestions?.length).length > 0 && (
+              <button type="button" className="trk-btn" onClick={() => setSuggested(v => !v)} style={suggested ? { background: 'rgba(74,85,255,.25)', borderColor: 'rgba(140,147,255,.6)' } : undefined}>
+                → Might belong to a production · {groups.filter(g => g.items[0].suggestions?.length).length}
+              </button>
+            )}
           </div>
         </div>
         <div className="flex-1 overflow-y-auto trk-scroll px-5 md:px-8 pb-8">
@@ -75,11 +82,17 @@ export default function BeforeModal({ items, productions, canEdit, onClose, onMo
               <div className="flex flex-col gap-2">
                 {list.map(g => (
                   <CommercialRow key={g.key} group={g} onError={onError} right={canEdit && (
-                    <select value="" title="This commercial belongs to a CP production" className="trk-input !w-auto max-w-full !py-1 !text-[12px] flex-none"
-                      onChange={(e) => e.target.value && onMove(g, e.target.value)}>
-                      <option value="">Link to a production…</option>
-                      {productions.map(x => <option key={x.id} value={x.id}>{x.id} · {x.name}</option>)}
-                    </select>
+                    <div className="flex flex-wrap items-center gap-1.5 max-w-full">
+                      {(g.items[0].suggestions || []).slice(0, 2).map(sg => (
+                        <button key={sg.id} type="button" title={`Link to ${sg.id} · ${sg.name}${sg.why ? ` — ${sg.why}` : ''}`} onClick={() => onMove(g, sg.id)}
+                          className="trk-chip !py-1.5 hover:!bg-white/20 max-w-[240px]"><span className="trk-muted">→</span><span className="truncate">{sg.id} · {sg.name}</span></button>
+                      ))}
+                      <select value="" title="This commercial belongs to a CP production" className="trk-input !w-auto max-w-full !py-1 !text-[12px] flex-none"
+                        onChange={(e) => e.target.value && onMove(g, e.target.value)}>
+                        <option value="">{g.items[0].suggestions?.length ? 'Another…' : 'Link to a production…'}</option>
+                        {productions.map(x => <option key={x.id} value={x.id}>{x.id} · {x.name}</option>)}
+                      </select>
+                    </div>
                   )} />
                 ))}
               </div>
