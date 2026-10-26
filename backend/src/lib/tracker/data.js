@@ -194,12 +194,11 @@ async function buildTracker({ brandId, force = false, now = Date.now() }) {
   if (tickets) {
     try {
       const r = await linkTvItems(brandId, tickets.items);
-      const recent = now - 45 * DAY;
       for (const it of tickets.items) {
         const link = r.links[it.id];
         const t = { ...it, tv: link };
         if (link?.production_id) (ticketsBy[link.production_id] = ticketsBy[link.production_id] || []).push(t);
-        else if (link?.source === 'ask' && (it.open || Date.parse(it.updated_at || 0) > recent)) ask.push(t);
+        else if (link?.source === 'ask' && it.open) ask.push(t); // finished ones don't need a decision any more
       }
     } catch (e) { warnings.push(`TV linking failed (${e.message})`); }
     warnings.push(...tickets.warnings);
