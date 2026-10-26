@@ -48,6 +48,7 @@ export default function BudgetDashboard({ productions, lineItems, getAmt, getPla
   const scale = Math.max(budget, t.all, t.projected, 1);
   const pct = (v) => `${Math.min(100, (v / scale) * 100)}%`;
   const used = budget > 0 ? t.spent / budget : 0;
+  const plannedUse = budget > 0 ? t.all / budget : 0;
   const paceGap = t.pace - t.spent;
   const isCurrent = Number(today.slice(0, 4)) === year;
 
@@ -104,9 +105,20 @@ export default function BudgetDashboard({ productions, lineItems, getAmt, getPla
               </button>
             )}
           </div>
-          <div className="ml-auto pb-3 text-right">
-            <div className="trk-title text-[64px]" style={{ color: used > 1 ? '#ff5c7a' : '#fff' }}><CountUp value={Math.round(used * 100)} format={(n) => `${Math.round(n)}%`} /></div>
-            <div className="trk-label">of the budget</div>
+          {/* The year with everything planned: spent + lines not paid yet + budgets not broken into lines */}
+          <div className="pb-2 sm:pb-4 pl-0 sm:pl-6 sm:border-l" style={{ borderColor: 'var(--trk-line)' }}>
+            <div className="text-[15px] trk-muted">with everything planned</div>
+            <div className="trk-title text-[34px] sm:text-[44px]" style={{ color: plannedUse > 1 ? '#ff5c7a' : '#fff' }}><CountUp value={t.all} format={full} /></div>
+          </div>
+          <div className="ml-auto pb-3 flex items-end gap-6 text-right">
+            <div>
+              <div className="trk-title text-[64px]" style={{ color: used > 1 ? '#ff5c7a' : '#fff' }}><CountUp value={Math.round(used * 100)} format={(n) => `${Math.round(n)}%`} /></div>
+              <div className="trk-label">spent</div>
+            </div>
+            <div>
+              <div className="trk-title text-[64px]" style={{ color: plannedUse > 1 ? '#ff5c7a' : '#aab0ff' }}><CountUp value={Math.round(plannedUse * 100)} format={(n) => `${Math.round(n)}%`} /></div>
+              <div className="trk-label">planned</div>
+            </div>
           </div>
         </div>
 
