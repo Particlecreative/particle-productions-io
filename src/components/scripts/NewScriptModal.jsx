@@ -5,6 +5,11 @@ import ProductionPicker from '../ui/ProductionPicker';
 
 const API = import.meta.env.VITE_API_URL || '';
 function jwt() { return localStorage.getItem('cp_auth_token'); }
+// Imported scene text is HTML (lines joined with <br>) — the one-line preview shows it as plain text
+function plainText(html) {
+  return (html || '').replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]*>/g, '')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&');
+}
 
 const TONES = ['Cinematic', 'Energetic', 'Emotional', 'Humorous', 'Dramatic', 'Corporate', 'Minimalist'];
 const DURATIONS = ['15s', '30s', '45s', '60s', '90s', '2min'];
@@ -530,8 +535,8 @@ export default function NewScriptModal({ defaultProductionId, defaultBrandId, on
                     {importScenes.map((s, i) => (
                       <div key={s.id || i} className="bg-gray-50 rounded-xl p-3 text-xs">
                         <div className="font-mono text-gray-400 mb-1">{i + 1}. {s.location || 'Scene'}</div>
-                        {s.what_we_see && <p className="text-gray-700 line-clamp-1">{s.what_we_see}</p>}
-                        {s.what_we_hear && <p className="text-indigo-600 italic line-clamp-1">{s.what_we_hear}</p>}
+                        {s.what_we_see && <p className="text-gray-700 line-clamp-1">{plainText(s.what_we_see)}</p>}
+                        {s.what_we_hear && <p className="text-indigo-600 italic line-clamp-1">{plainText(s.what_we_hear)}</p>}
                       </div>
                     ))}
                   </div>

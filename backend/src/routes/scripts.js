@@ -88,7 +88,7 @@ async function callClaude(prompt, systemPrompt, images = []) {
     },
     body: JSON.stringify({
       model: 'claude-sonnet-4-6',
-      max_tokens: 4096,
+      max_tokens: 8192,
       system: systemPrompt,
       messages: [{ role: 'user', content }],
     }),
@@ -98,6 +98,8 @@ async function callClaude(prompt, systemPrompt, images = []) {
     throw new Error(`Claude API error: ${err.error?.message || resp.statusText}`);
   }
   const data = await resp.json();
+  // A cut-off answer is half a JSON object — say so instead of failing on JSON.parse
+  if (data.stop_reason === 'max_tokens') throw new Error('The script is too long for the AI to write out in one go. Try a shorter request or split the script.');
   return data.content[0].text;
 }
 
@@ -306,6 +308,135 @@ function parseSceneJson(text) {
   const parsed = JSON.parse(cleaned);
   if (!Array.isArray(parsed.scenes)) throw new Error('Invalid scene format from AI');
   return ensureScenes(parsed.scenes);
+}
+
+// ── Import by line numbers ────────────────────────────────────────────────────
+// Claude used to retype the whole script as JSON — a long script ran past the output limit and came
+// back cut off ("Unterminated string in JSON"). Now the document goes in as numbered lines and Claude
+// only answers which lines are "see" and which are "hear" in each scene: a small answer, fast, and the
+// script's words stay exactly as written.
+const MAX_IMPORT_LINES = 3000;
+const NAMED_ENTITIES = {
+  nbsp: ' ', ndash: '–', mdash: '—', lsquo: '‘', rsquo: '’', ldquo: '“', rdquo: '”',
+  hellip: '…', bull: '•', middot: '·', copy: '©', reg: '®', trade: '™',
+};
+
+function decodeEntities(s) {
+  return s
+    .replace(/&([a-z]+);/g, (m, name) => NAMED_ENTITIES[name] ?? m)
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(+n))
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
+/** HTML (mammoth's DOCX output, Google's HTML export) → lines, each table cell tagged with its row and column. */
+function htmlToLines(html) {
+  const lines = [];
+  const tables = [];
+  let tableCount = 0;
+  let buf = '';
+  const flush = () => {
+    const text = decodeEntities(buf).replace(/\s+/g, ' ').trim();
+    buf = '';
+    if (!text) return;
+    const t = tables[tables.length - 1];
+    lines.push(t ? { text, table: t.n, row: t.row, col: t.col } : { text });
+  };
+  const clean = html
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<(style|script|head)\b[^>]*>[\s\S]*?<\/\1>/gi, '')
+    .replace(/<[!?][^>]*>/g, '');
+  const re = /<(\/?)([a-zA-Z][a-zA-Z0-9]*)[^>]*>|([^<]+)/g;
+  let m;
+  while ((m = re.exec(clean))) {
+    if (m[3] !== undefined) { buf += m[3]; continue; }
+    const closing = m[1] === '/';
+    const tag = m[2].toLowerCase();
+    const t = tables[tables.length - 1];
+    if (tag === 'table') {
+      flush();
+      if (closing) tables.pop(); else tables.push({ n: ++tableCount, row: 0, col: 0 });
+    } else if (tag === 'tr') {
+      flush();
+      if (!closing && t) { t.row++; t.col = 0; }
+    } else if (tag === 'td' || tag === 'th') {
+      flush();
+      if (!closing && t) t.col++;
+    } else if (/^(p|h[1-6]|li|br|div)$/.test(tag)) {
+      flush();
+    }
+  }
+  flush();
+  return lines;
+}
+
+const IMPORT_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['scenes'],
+  properties: {
+    scenes: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['location', 'duration', 'see', 'hear'],
+        properties: {
+          location: { type: 'string', description: 'Scene heading or setting, e.g. "INT. BATHROOM - DAY". Empty if none.' },
+          duration: { type: 'string', description: 'Timing if the script gives one, e.g. "5s". Empty if none.' },
+          see: { type: 'array', items: { type: 'integer' }, description: 'Line numbers for what we see' },
+          hear: { type: 'array', items: { type: 'integer' }, description: 'Line numbers for what we hear' },
+        },
+      },
+    },
+  },
+};
+
+const IMPORT_SYSTEM = `You split a commercial script or storyboard into scenes for a storyboard tool.
+The document comes as numbered lines. A line from a table shows its table, row and column; in a two-column script the header row tells you which column is picture and which is sound.
+For each scene, list the line numbers that belong in "see" (visuals, action, camera, supers, on-screen text) and in "hear" (dialogue, voiceover, SFX, music).
+- Keep the script's order. Every line of the script itself goes into exactly one scene, in "see" or "hear".
+- Leave out lines that aren't part of the script: title, client, version, dates, column headers, page numbers, notes to the team.
+- A scene heading becomes that scene's "location" text; don't also list its line in "see".
+- When the script has no clear scene breaks, make one scene per table row or per shot.`;
+
+/** Lines → scenes. Claude answers with line numbers; the text is taken from the document itself. */
+async function linesToScenes(lines, docName) {
+  const shown = lines.slice(0, MAX_IMPORT_LINES);
+  if (!shown.length) throw new Error('This document has no text to import');
+  const numbered = shown
+    .map((l, i) => `${i + 1}${l.table ? ` [table ${l.table} · row ${l.row} · col ${l.col}]` : ''}: ${l.text}`)
+    .join('\n');
+  const stream = getAnthropicClient().beta.messages.stream({
+    model: 'claude-opus-5-5',
+    max_tokens: 16000,
+    betas: ['server-side-fallback-2026-07-01'],
+    fallbacks: 'default',
+    output_config: { effort: 'low', format: { type: 'json_schema', schema: IMPORT_SCHEMA } },
+    system: IMPORT_SYSTEM,
+    messages: [{ role: 'user', content: `Document: "${docName}"\n\n${numbered}` }],
+  });
+  const msg = await stream.finalMessage();
+  if (msg.stop_reason === 'refusal') throw new Error('Claude declined to read this document');
+  if (msg.stop_reason === 'max_tokens') throw new Error('This script is too long to import in one go. Split it into two files.');
+  const text = (msg.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+  let parsed;
+  try { parsed = JSON.parse(text); } catch { throw new Error('Claude returned an unreadable answer. Try again.'); }
+
+  const used = new Set();
+  const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const join = nums => [...new Set(nums || [])]
+    .filter(n => Number.isInteger(n) && n >= 1 && n <= shown.length)
+    .sort((a, b) => a - b)
+    .map(n => { used.add(n); return esc(shown[n - 1].text); })
+    .join('<br>');
+  const scenes = (parsed.scenes || [])
+    .map(s => ({ location: s.location || '', duration: s.duration || '', what_we_see: join(s.see), what_we_hear: join(s.hear) }))
+    .filter(s => s.location || s.what_we_see || s.what_we_hear);
+  if (!scenes.length) throw new Error('No scenes found in this document');
+  console.log(`[scripts/import] "${docName}": ${shown.length} lines → ${scenes.length} scenes, ${shown.length - used.size} lines left out${lines.length > shown.length ? `, ${lines.length - shown.length} past the limit` : ''}`);
+  return ensureScenes(scenes);
 }
 
 const APP_URL = process.env.APP_URL || 'https://particlepdio.particleface.com';
@@ -1145,8 +1276,7 @@ router.post('/import', async (req, res) => {
       } else {
         // Google Docs — try public no-auth export first (works for "Anyone with link"),
         // then fall back to OAuth chain (Docs API → HTML → PDF)
-        let docContent = '';
-        let contentLabel = '';
+        let docLines = [];
 
         // ── Attempt 0: public plain-text export (no OAuth needed) ──
         try {
@@ -1157,13 +1287,12 @@ router.post('/import', async (req, res) => {
           if (pubRes.ok && pubRes.headers.get('content-type')?.includes('text/plain')) {
             const txt = await pubRes.text();
             if (txt.trim().length > 50) {
-              docContent = txt.substring(0, 60000);
-              contentLabel = 'Google Doc plain text';
+              docLines = txt.split(/\r?\n/).map(l => l.replace(/^﻿/, '').trim()).filter(Boolean).map(text => ({ text }));
             }
           }
         } catch (_) { /* not publicly accessible, continue to OAuth */ }
 
-        if (!docContent) {
+        if (!docLines.length) {
         // ── OAuth chain ─────────────────────────────────────────────
         const { oauth2 } = await getGoogleDrive();
         const accessToken = (await oauth2.getAccessToken()).token;
@@ -1173,27 +1302,24 @@ router.post('/import', async (req, res) => {
           const docs = google.docs({ version: 'v1', auth: oauth2 });
           const doc = await docs.documents.get({ documentId: fileId });
           const blocks = doc.data.body?.content || [];
-          let fullText = '';
+          const paraText = para => (para.paragraph?.elements || []).map(el => el.textRun?.content || '').join('');
+          let tableCount = 0;
           for (const block of blocks) {
             if (block.paragraph) {
-              const style = block.paragraph.paragraphStyle?.namedStyleType || '';
-              const line = block.paragraph.elements?.map(el => el.textRun?.content || '').join('') || '';
-              if (style.startsWith('HEADING')) fullText += `\n## ${line.trim()}\n`;
-              else fullText += line;
+              for (const text of paraText(block).split(/[\n\u000b]/).map(s => s.trim()).filter(Boolean)) docLines.push({ text });
             } else if (block.table) {
-              for (const row of block.table.tableRows || []) {
-                const cells = (row.tableCells || []).map(cell => {
-                  return (cell.content || []).map(para =>
-                    (para.paragraph?.elements || []).map(el => el.textRun?.content || '').join('')
-                  ).join('').trim();
+              tableCount++;
+              (block.table.tableRows || []).forEach((row, r) => {
+                (row.tableCells || []).forEach((cell, c) => {
+                  for (const para of cell.content || []) {
+                    for (const text of paraText(para).split(/[\n\u000b]/).map(s => s.trim()).filter(Boolean)) {
+                      docLines.push({ text, table: tableCount, row: r + 1, col: c + 1 });
+                    }
+                  }
                 });
-                fullText += cells.join(' | ') + '\n';
-              }
-              fullText += '\n';
+              });
             }
           }
-          docContent = fullText.substring(0, 60000);
-          contentLabel = 'Google Doc (structured text with table rows as | separated columns)';
         } catch (docsErr) {
           // Surface 403/404 immediately — no point trying fallbacks
           const docsStatus = docsErr?.response?.status || docsErr?.code;
@@ -1208,14 +1334,7 @@ router.post('/import', async (req, res) => {
             { headers: { Authorization: `Bearer ${accessToken}` } }
           );
           if (htmlRes.ok) {
-            let html = await htmlRes.text();
-            html = html
-              .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-              .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-              .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, '')
-              .substring(0, 60000);
-            docContent = html;
-            contentLabel = 'Google Doc HTML export (pay special attention to TABLE structure — rows = scenes, columns = location/what we see/what we hear)';
+            docLines = htmlToLines(await htmlRes.text());
           } else {
             // ── Fallback 2: PDF export → Gemini ──────────────────
             console.warn('HTML export failed, falling back to PDF export');
@@ -1232,29 +1351,14 @@ router.post('/import', async (req, res) => {
               : await callClaude(pdfPrompt, SCENE_SYSTEM_PROMPT);
             scenes = parseSceneJson(pdfText);
             // Skip the Claude call below — already have scenes
-            docContent = null;
+            docLines = null;
           }
         }
-        } // end if (!docContent) OAuth chain
+        } // end if (!docLines.length) OAuth chain
 
-        if (docContent !== null) {
-          // Handles both: public export text AND OAuth Docs API/HTML content
-          const importPrompt = `Extract this ${contentLabel} into a structured JSON scenes array for a storyboard/script.
-
-For each scene/row/section:
-- "location": scene heading or setting (e.g. "INT. STUDIO - DAY"), empty string if none
-- "what_we_see": visual directions, action description, what appears on screen
-- "what_we_hear": dialogue, voiceover, script text, audio directions
-- "duration": timing if mentioned (e.g. "5s", "10s"), empty string if none
-- "images_in_source": array of strings describing any embedded images in this scene. Empty array if none.
-
-Content:
-${docContent}
-
-Return ONLY this JSON with NO markdown:
-{"scenes":[{"id":"<uuid-v4>","order":0,"location":"","what_we_see":"","what_we_hear":"","duration":"","collapsed":false,"images_in_source":[],"images":[]}]}`;
-          const text = await callClaude(importPrompt, SCENE_SYSTEM_PROMPT);
-          scenes = parseSceneJson(text);
+        if (docLines !== null) {
+          // Public text export, Docs API or HTML export — all arrive as lines
+          scenes = await linesToScenes(docLines, 'Google Doc');
         }
       }
     } else if (fileBase64) {
@@ -1291,13 +1395,11 @@ Return ONLY this JSON object with NO markdown:
         || fileName?.toLowerCase().endsWith('.docx')
         || fileName?.toLowerCase().endsWith('.doc');
       if (isDocx) {
-        // Gemini doesn't support DOCX — extract text with mammoth, send to Claude
+        // Gemini doesn't support DOCX — mammoth turns it into HTML (keeps the script's table), Claude splits the lines
         const buf = Buffer.from(fileBase64, 'base64');
-        const { value: docText } = await mammoth.extractRawText({ buffer: buf });
-        text = await callClaude(
-          `Document: "${fileName || 'script'}"\n\nContent:\n${docText.slice(0, 60000)}\n\n${importPrompt}`,
-          SCENE_SYSTEM_PROMPT
-        );
+        const { value: html } = await mammoth.convertToHtml({ buffer: buf });
+        scenes = await linesToScenes(htmlToLines(html), fileName || 'script');
+        return res.json({ scenes, images_found: [] });
       } else if (process.env.GEMINI_API_KEY) {
         text = await callGemini(importPrompt, fileBase64, mimeType || 'application/pdf');
       } else {
