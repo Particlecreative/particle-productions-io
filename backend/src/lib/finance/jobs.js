@@ -15,12 +15,22 @@ const today = () => W.localDate(Date.now());
 const dayOfMonth = () => Number(today().slice(8, 10));
 const thisMonth = () => `${today().slice(0, 7)}-01`;
 
-async function locked(name, fn) {
+// One run at a time across processes; a run that hangs is given up after `maxMs` so it can't block every later run
+async function locked(name, fn, maxMs = 10 * 60 * 1000) {
   const client = await db.connect();
+  let timer;
   try {
     const { rows } = await client.query('SELECT pg_try_advisory_lock(hashtext($1)) AS ok', [`finance:${name}`]);
     if (!rows[0].ok) return { skipped: 'locked' };
-    try { return await fn(); } finally { await client.query('SELECT pg_advisory_unlock(hashtext($1))', [`finance:${name}`]); }
+    try {
+      return await Promise.race([
+        fn(),
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`still running after ${Math.round(maxMs / 60000)} min — gave up`)), maxMs); }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+      await client.query('SELECT pg_advisory_unlock(hashtext($1))', [`finance:${name}`]);
+    }
   } finally { client.release(); }
 }
 const safely = (name, fn) => () => locked(name, fn).catch(e => console.error(`[finance job] ${name}:`, e.message));

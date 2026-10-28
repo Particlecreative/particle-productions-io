@@ -33,6 +33,7 @@ const WHITE = { red: 1, green: 1, blue: 1 };
 const FOOTER = 'cp-total';                                         // cp-id of CP's total rows
 const FOOTER_RE = /^(total\b|total:|approved planned budget|planned budget \(usd)/i;
 const NAVY = { red: 0.012, green: 0.043, blue: 0.18 };
+const G = { timeout: 30000 };   // every Google call: a hung request must fail, not block the sync forever
 
 const strip = (s) => String(s || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 const colLetter = (i) => String.fromCharCode(65 + i);
@@ -92,7 +93,7 @@ function exclusive(productionId, fn) {
 async function clientsFor(brandId) { return legacy.getGoogleClients(brandId); }
 
 async function tabs(sheets, spreadsheetId) {
-  const meta = await sheets.spreadsheets.get({ spreadsheetId, fields: 'sheets(properties,protectedRanges)' });
+  const meta = await sheets.spreadsheets.get({ spreadsheetId, fields: 'sheets(properties,protectedRanges)' }, G);
   const list = meta.data.sheets || [];
   const budget = list.find(s => s.properties.title === 'Budget') || list[0];
   return { list, budget };
@@ -100,7 +101,7 @@ async function tabs(sheets, spreadsheetId) {
 
 /** Read the Budget tab → { header, idx, rows: [{ rowNum, id, values, extras, raw }], extrasHead } */
 async function readGrid(sheets, spreadsheetId, title) {
-  const resp = await sheets.spreadsheets.values.get({ spreadsheetId, range: `'${title}'!A1:Z2000`, valueRenderOption: 'FORMULA' });
+  const resp = await sheets.spreadsheets.values.get({ spreadsheetId, range: `'${title}'!A1:Z2000`, valueRenderOption: 'FORMULA' }, G);
   const grid = resp.data.values || [];
   let h = grid.findIndex(r => (r || []).some(c => String(c).trim().toLowerCase() === 'name') && (r || []).some(c => /budget/i.test(String(c))));
   if (h < 0) return { header: null, rows: [], grid };
@@ -140,7 +141,7 @@ async function pull(productionId, { force = false } = {}) {
   const prod = pr[0];
   if (!prod?.finance_sheet_id || prod.finance_sheet_mode !== 'mirror') return { skipped: 'no-mirror' };
   const { sheets, drive } = await clientsFor(prod.brand_id);
-  const file = await drive.files.get({ fileId: prod.finance_sheet_id, fields: 'modifiedTime,trashed,lastModifyingUser(displayName,emailAddress)' });
+  const file = await drive.files.get({ fileId: prod.finance_sheet_id, fields: 'modifiedTime,trashed,lastModifyingUser(displayName,emailAddress)' }, G);
   if (file.data.trashed) return { skipped: 'trashed' };
   const modified = file.data.modifiedTime;
   if (!force && prod.finance_sheet_seen_modified && new Date(modified) <= new Date(prod.finance_sheet_seen_modified)) return { skipped: 'unchanged' };
@@ -236,7 +237,7 @@ async function pull(productionId, { force = false } = {}) {
         createdExtras[id] = r.extras;
         if (g.idx?.id >= 0) idWrites.push({ range: `'${budget.properties.title}'!${colLetter(g.idx.id)}${r.rowNum}`, values: [[id]] });
       });
-      if (idWrites.length) await sheets.spreadsheets.values.batchUpdate({ spreadsheetId: prod.finance_sheet_id, requestBody: { valueInputOption: 'RAW', data: idWrites } });
+      if (idWrites.length) await sheets.spreadsheets.values.batchUpdate({ spreadsheetId: prod.finance_sheet_id, requestBody: { valueInputOption: 'RAW', data: idWrites } }, G);
     }
   }
   const base = { brand_id: prod.brand_id, production_id: productionId, user_name: editorName, source: 'sheet' };
@@ -335,15 +336,15 @@ async function push(productionId, { createdExtras = {} } = {}) {
   for (const r of totalRows) values.push(cpCols(r));
 
   // Clear the old region (A1:Z of the old size) and write fresh
-  const g = await sheets.spreadsheets.values.get({ spreadsheetId, range: `'${title}'!A1:A2000` });
+  const g = await sheets.spreadsheets.values.get({ spreadsheetId, range: `'${title}'!A1:A2000` }, G);
   const oldRows = Math.max((g.data.values || []).length, values.length);
-  await sheets.spreadsheets.values.clear({ spreadsheetId, range: `'${title}'!A1:Z${oldRows + 5}` });
-  await sheets.spreadsheets.values.update({ spreadsheetId, range: `'${title}'!A1`, valueInputOption: 'RAW', requestBody: { values } });
+  await sheets.spreadsheets.values.clear({ spreadsheetId, range: `'${title}'!A1:Z${oldRows + 5}` }, G);
+  await sheets.spreadsheets.values.update({ spreadsheetId, range: `'${title}'!A1`, valueInputOption: 'RAW', requestBody: { values } }, G);
   if (formulas.length) {
     await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId,
       requestBody: { valueInputOption: 'USER_ENTERED', data: formulas.map(f => ({ range: `'${title}'!${colLetter(f.col)}${f.row}`, values: [f.values] })) },
-    });
+    }, G);
   }
 
   // Formatting: header, money formats per row currency, status fills, totals, hidden cp-id column
@@ -369,7 +370,7 @@ async function push(productionId, { createdExtras = {} } = {}) {
   req.push({ updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: NCP - 1, endIndex: NCP }, properties: { hiddenByUser: true }, fields: 'hiddenByUser' } });
   const hasProtect = (t.budget.protectedRanges || []).some(p => p.description === 'cp-id');
   if (!hasProtect) req.push({ addProtectedRange: { protectedRange: { range: { sheetId, startColumnIndex: NCP - 1, endColumnIndex: NCP }, description: 'cp-id', warningOnly: true } } });
-  await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: req } });
+  await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: req } }, G);
 
   await writeSideTabs(sheets, spreadsheetId, t.list, prod, lines, rate);
 
@@ -383,7 +384,7 @@ async function push(productionId, { createdExtras = {} } = {}) {
     }
     await client.query('COMMIT');
   } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; } finally { client.release(); }
-  const f = await drive.files.get({ fileId: spreadsheetId, fields: 'modifiedTime' });
+  const f = await drive.files.get({ fileId: spreadsheetId, fields: 'modifiedTime' }, G);
   await db.query('UPDATE productions SET finance_sheet_synced_at = NOW(), finance_sheet_seen_modified = $2 WHERE id = $1', [productionId, f.data.modifiedTime]);
   return { synced: true, rows: dataCount };
 }
@@ -396,7 +397,7 @@ function hexToRgb(hex) {
 async function writeSideTabs(sheets, spreadsheetId, list, prod, lines, rate) {
   const need = ['Summary', 'Change log'].filter(n => !list.some(s => s.properties.title === n));
   if (need.length) {
-    await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: need.map(title => ({ addSheet: { properties: { title } } })) } });
+    await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: need.map(title => ({ addSheet: { properties: { title } } })) } }, G);
   }
   const st = B.budgetState(prod, lines, fx.latest().rate);
   const per = {};
@@ -422,10 +423,10 @@ async function writeSideTabs(sheets, spreadsheetId, list, prod, lines, rate) {
   const log = [['When', 'What', 'Line', 'Old', 'New', 'USD change', 'Month', 'Reason', 'Approved by', 'Note', 'By', 'Source'],
     ...evs.map(e => [new Date(e.created_at).toISOString().slice(0, 16).replace('T', ' '), e.kind.replace(/_/g, ' '), e.label || '', e.old_value ?? '', e.new_value ?? '',
       e.delta_usd != null ? Number(e.delta_usd) : '', B.ymdOf(e.expense_month)?.slice(0, 7) || '', E.REASON_LABEL[e.reason] || '', e.approved_by || '', e.note || '', e.user_name || '', e.source || ''])];
-  await sheets.spreadsheets.values.clear({ spreadsheetId, range: "'Summary'!A1:C200" });
-  await sheets.spreadsheets.values.update({ spreadsheetId, range: "'Summary'!A1", valueInputOption: 'RAW', requestBody: { values: summary } });
-  await sheets.spreadsheets.values.clear({ spreadsheetId, range: "'Change log'!A1:L2000" });
-  await sheets.spreadsheets.values.update({ spreadsheetId, range: "'Change log'!A1", valueInputOption: 'RAW', requestBody: { values: log } });
+  await sheets.spreadsheets.values.clear({ spreadsheetId, range: "'Summary'!A1:C200" }, G);
+  await sheets.spreadsheets.values.update({ spreadsheetId, range: "'Summary'!A1", valueInputOption: 'RAW', requestBody: { values: summary } }, G);
+  await sheets.spreadsheets.values.clear({ spreadsheetId, range: "'Change log'!A1:L2000" }, G);
+  await sheets.spreadsheets.values.update({ spreadsheetId, range: "'Change log'!A1", valueInputOption: 'RAW', requestBody: { values: log } }, G);
 }
 
 /** Pull finance's edits, then push CP's state. The one entry point for a sync. */
@@ -443,7 +444,7 @@ async function pullAll() {
   const { rows } = await db.query(
     `SELECT id FROM productions WHERE finance_sheet_mode = 'mirror' AND finance_sheet_id IS NOT NULL
        AND (locked IS NOT TRUE OR locked_at > NOW() - INTERVAL '60 days')`);
-  let changed = 0;
+  let changed = 0, failed = 0;
   for (const { id } of rows) {
     try {
       // Read and write back in one go (ids for new rows, budget cells put back) — nothing can run in between
@@ -453,9 +454,10 @@ async function pullAll() {
         return p;
       });
       if (r && !r.skipped) changed++;
-    } catch (e) { console.error(`[finance sheet] pull ${id}:`, e.message); }
+    } catch (e) { failed++; console.error(`[finance sheet] pull ${id}:`, e.message); }
   }
-  return { checked: rows.length, changed };
+  if (changed || failed) console.log(`[finance sheet] checked ${rows.length} sheets: ${changed} updated, ${failed} failed`);
+  return { checked: rows.length, changed, failed };
 }
 
 /**
@@ -499,23 +501,23 @@ async function create(productionId) {
       properties: { title: `${B.financeCode(prod.id)} — ${company} — ${prod.project_name || prod.id} — Finance` },
       sheets: [{ properties: { title: 'Budget', gridProperties: { columnCount: MAX_COL, frozenRowCount: 2 } } }],
     },
-  });
+  }, G);
   const spreadsheetId = created.data.spreadsheetId;
   const url = created.data.spreadsheetUrl;
   await legacy.shareFinanceSheet(drive, spreadsheetId);
   if (process.env.DRIVE_FOLDER_ID) {
     try {
-      const meta = await drive.files.get({ fileId: spreadsheetId, fields: 'parents' });
-      await drive.files.update({ fileId: spreadsheetId, addParents: process.env.DRIVE_FOLDER_ID, removeParents: (meta.data.parents || []).join(','), fields: 'id' });
+      const meta = await drive.files.get({ fileId: spreadsheetId, fields: 'parents' }, G);
+      await drive.files.update({ fileId: spreadsheetId, addParents: process.env.DRIVE_FOLDER_ID, removeParents: (meta.data.parents || []).join(','), fields: 'id' }, G);
     } catch (e) { console.error('finance-sheet folder move failed:', e.message); }
   }
   await db.query(`UPDATE productions SET finance_sheet_id = $1, finance_sheet_url = $2, finance_sheet_mode = 'mirror' WHERE id = $3`, [spreadsheetId, url, productionId]);
   await exclusive(productionId, () => push(productionId));
   try {
     const sheetsApi = (await clientsFor(prod.brand_id)).sheets;
-    const meta = await sheetsApi.spreadsheets.get({ spreadsheetId, fields: 'sheets.properties' });
+    const meta = await sheetsApi.spreadsheets.get({ spreadsheetId, fields: 'sheets.properties' }, G);
     const sid = meta.data.sheets.find(x => x.properties.title === 'Budget').properties.sheetId;
-    await sheetsApi.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: [{ autoResizeDimensions: { dimensions: { sheetId: sid, dimension: 'COLUMNS', startIndex: 0, endIndex: NCP - 1 } } }] } });
+    await sheetsApi.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: [{ autoResizeDimensions: { dimensions: { sheetId: sid, dimension: 'COLUMNS', startIndex: 0, endIndex: NCP - 1 } } }] } }, G);
   } catch { /* cosmetic */ }
   return { spreadsheetId, url };
 }
