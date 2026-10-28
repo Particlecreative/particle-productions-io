@@ -6,6 +6,7 @@ const router = require('express').Router();
 const { verifyJWT } = require('../middleware/auth');
 const W = require('../lib/creative/week');
 const { getStudio } = require('../lib/studio/data');
+const { getCampaigns } = require('../lib/studio/campaigns');
 const { decide } = require('../lib/studio/tvLinks');
 const { dailyInspiration, tmdbConfigured, testTmdb } = require('../lib/studio/inspiration');
 const secrets = require('../lib/studio/secrets');
@@ -49,6 +50,14 @@ router.get('/dashboard', async (req, res) => {
     if (W.daysBetween(from, to) > 120) return res.status(400).json({ error: 'Pick a period of 4 months or less' });
     const data = await getStudio({ brandId: req.brandId, from, to, force: req.query.force === '1', lite: req.query.lite === '1' });
     res.json({ ...data, today });
+  } catch (err) { errorJson(res, err); }
+});
+
+/** Every Video + Design ticket that has a Campaign (the Campaign Tracker), grouped in the browser. */
+router.get('/campaigns', async (req, res) => {
+  try {
+    const data = await getCampaigns({ brandId: req.brandId, force: req.query.force === '1' });
+    res.json({ ...data, today: W.localDate(Date.now()) });
   } catch (err) { errorJson(res, err); }
 });
 

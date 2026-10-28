@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { LayoutDashboard, Clock, Plug, Loader2, AlertTriangle, Lock, GanttChart, Sparkles } from 'lucide-react';
+import { LayoutDashboard, Clock, Plug, Loader2, AlertTriangle, Lock, GanttChart, Sparkles, Megaphone } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useBrand } from '../../context/BrandContext';
 import { studioApi } from '../../lib/studioService';
@@ -10,12 +10,14 @@ import TimeTracking from '../../components/studio/TimeTracking';
 import Connections from '../../components/studio/Connections';
 import Workload from '../../components/studio/Workload';
 import TicketCreator from '../../components/studio/TicketCreator';
+import Campaigns from '../../components/studio/Campaigns';
 import TaskPanel from '../../components/studio/TaskPanel';
 import { StudioCtx, useMondayWrites } from '../../components/studio/writes';
 
 const TABS = [
   ['overview', 'Creative Control', LayoutDashboard],
   ['workload', 'Workload', GanttChart],
+  ['campaigns', 'Campaigns', Megaphone],
   ['ticket', 'New ticket', Sparkles],
   ['time', 'Time tracking', Clock],
   ['connections', 'Connections', Plug],
@@ -120,7 +122,7 @@ export default function StudioPage() {
         </nav>
       </div>
 
-      {!['connections', 'ticket'].includes(tab) && (
+      {!['connections', 'ticket', 'campaigns'].includes(tab) && (
         <Filters f={f} setF={setF} range={range} data={data} loading={loading} onRefresh={() => load(true)} showDivision={tab !== 'workload'} showPeriod={tab !== 'workload'} />
       )}
 
@@ -130,7 +132,7 @@ export default function StudioPage() {
           <button type="button" onClick={() => load(true)} className="ml-auto font-semibold underline">Try again</button>
         </div>
       )}
-      {data?.warnings?.length > 0 && tab !== 'connections' && (
+      {data?.warnings?.length > 0 && !['connections', 'campaigns'].includes(tab) && (
         <div className="my-2 text-xs text-amber-700">{data.warnings.join(' · ')}</div>
       )}
 
@@ -140,6 +142,8 @@ export default function StudioPage() {
         <TicketCreator />
       ) : tab === 'workload' ? (
         <Workload f={f} />
+      ) : tab === 'campaigns' ? (
+        <Campaigns />
       ) : !data ? (
         <div className="py-24 text-center text-gray-400 flex flex-col items-center gap-3">
           <Loader2 className="animate-spin" />

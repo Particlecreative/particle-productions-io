@@ -29,6 +29,24 @@ function periodBounds(from, to) {
   return { from, to, fromMs, toMs, fromIso: new Date(fromMs).toISOString(), toIso: new Date(toMs).toISOString() };
 }
 
+/** A board's status → category rule, plus its legend (Monday order + colours, active labels only). */
+function boardStatuses(bk, board, meta) {
+  const sm = meta.statusMaps[board.columns.status] || { byLabel: {}, byIndex: {} };
+  const catOf = {};
+  for (const [cat, labels] of Object.entries(board.statuses)) for (const l of labels) catOf[norm(l)] = cat;
+  const statusCategory = (label) => catOf[norm(label)] || 'other';
+  const legend = {
+    key: bk,
+    label: board.label,
+    board_id: board.board_id,
+    statuses: Object.entries(sm.byIndex)
+      .filter(([, v]) => v.label && !v.deactivated)
+      .map(([idx, v]) => ({ label: v.label, color: v.color || '#c4c4c4', category: statusCategory(v.label), index: Number(idx) }))
+      .sort((a, b) => (CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category)) || (a.index - b.index)),
+  };
+  return { sm, statusCategory, legend };
+}
+
 const ACTIVE = new Set(['in_progress', 'fixes']);
 const LIFETIME_DAYS = 180;
 
@@ -129,21 +147,8 @@ async function buildStudio({ brandId = 'particle', from, to, now = Date.now(), f
     const board = config.boards[bk];
     const meta = metas[bk];
     const cols = [...new Set(Object.values(board.columns).filter(Boolean))].filter(id => meta.columns[id]);
-    const sm = meta.statusMaps[board.columns.status] || { byLabel: {}, byIndex: {} };
-    const catOf = {};
-    for (const [cat, labels] of Object.entries(board.statuses)) for (const l of labels) catOf[norm(l)] = cat;
-    const statusCategory = (label) => catOf[norm(label)] || 'other';
-
-    // Board status legend (Monday order + colours), active labels only
-    boards[bk] = {
-      key: bk,
-      label: board.label,
-      board_id: board.board_id,
-      statuses: Object.entries(sm.byIndex)
-        .filter(([, v]) => v.label && !v.deactivated)
-        .map(([idx, v]) => ({ label: v.label, color: v.color || '#c4c4c4', category: statusCategory(v.label), index: Number(idx) }))
-        .sort((a, b) => (CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category)) || (a.index - b.index)),
-    };
+    const { sm, statusCategory, legend } = boardStatuses(bk, board, meta);
+    boards[bk] = legend;
 
     const deliveredIdx = board.statuses.delivered
       .map(l => sm.byLabel[norm(l)]).filter(i => i != null)
@@ -421,4 +426,4 @@ function getStudio({ brandId = 'particle', from, to, force = false, lite = false
   return monday.cached(key, 3 * 60 * 1000, () => buildStudio({ brandId, from, to, force, lite }));
 }
 
-module.exports = { getStudio, buildStudio, periodBounds };
+module.exports = { getStudio, buildStudio, periodBounds, boardStatuses };

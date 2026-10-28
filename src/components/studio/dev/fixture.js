@@ -94,6 +94,17 @@ export function studioFixture({ from, to }) {
   };
 }
 
+// Campaign Tracker: the same synthetic tickets over ~10 weeks, each with its campaign
+export function fixtureCampaigns() {
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
+  const d = studioFixture({ from: add(today, -63), to: add(today, 14) });
+  return {
+    generated_at: d.generated_at, today, boards: { video: d.boards.video, design: d.boards.design }, people: d.people, requesters: d.requesters,
+    // Own ids: the dashboard fixture reuses ids with different content per period
+    items: d.items.map(it => ({ ...it, id: `9${it.id}`, campaigns: [it.campaign] })), warnings: [],
+  };
+}
+
 // Submitted → (started) → completed, with where the calendar time went
 function lifeFor(it, r) {
   const sub = Date.parse(it.created_at);

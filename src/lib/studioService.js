@@ -31,6 +31,8 @@ const fx = () => import('../components/studio/dev/fixture');
 
 export const studioApi = {
   dashboard: async ({ from, to, force = false, lite = false }) => (LIVE ? call(`/dashboard?from=${from}&to=${to}${force ? '&force=1' : ''}${lite ? '&lite=1' : ''}`) : (await fx()).studioFixture({ from, to })),
+  /** Every Video + Design ticket that has a Campaign (Campaign Tracker) */
+  campaigns: async ({ force = false } = {}) => (LIVE ? call(`/campaigns${force ? '?force=1' : ''}`) : (await fx()).fixtureCampaigns()),
   inspiration: async () => (LIVE ? call('/inspiration') : (await fx()).fixtureInspiration),
   patchItem: async (itemId, body) => (LIVE ? call(`/items/${itemId}`, { method: 'PATCH', body }) : { ok: true }),
   archiveItem: async (itemId) => (LIVE ? call(`/items/${itemId}/archive`, { method: 'POST', body: { confirm: true } }) : { ok: true }),
