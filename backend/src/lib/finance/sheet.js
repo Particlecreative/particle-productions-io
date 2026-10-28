@@ -184,12 +184,16 @@ async function pull(productionId, { force = false } = {}) {
   const notifyOmer = [];
   const seenIds = new Set();
   const approved = B.isApproved(prod), locked = !!prod.locked;
+  // Does the sheet need rewriting? Only if it differs from what CP last wrote, or CP changed since (Drive's
+  // modified time lags, so CP's own write looks like an edit — comparing content stops needless rewrites)
+  let differs = (g.idx && g.idx.id < 0) || (!snap.size && lines.length > 0);
   for (const r of rows) {
     if (r.id && byId.has(r.id)) {
       seenIds.add(r.id);
       const li = byId.get(r.id);
       const cpNow = sheetValuesOf(li, invoiceByLine);
       const last = snap.get(r.id) || cpNow;
+      if (!snap.has(r.id) || FIELDS.some(f => !same(f, r.values[f] ?? '', last[f]) || !same(f, cpNow[f], last[f]))) differs = true;
       const vals = {};
       for (const f of FIELDS) {
         const sv = r.values[f];
@@ -211,6 +215,7 @@ async function pull(productionId, { force = false } = {}) {
       }
       if (Object.keys(vals).length) updates.set(r.id, vals);
     } else if (!r.id && r.values.name) {
+      differs = true;
       if (locked) { notifyOmer.push(`A new row “${r.values.name}” was added in the sheet, but the production is closed — not added to CP.`); continue; }
       if (approved && B.num(r.values.budget) > 0) { notifyOmer.push(`A new row “${r.values.name}” (${r.values.budget}) was added in the sheet — the budget is approved, so add it in CP with a reason.`); continue; }
       creates.push(r);
@@ -219,6 +224,7 @@ async function pull(productionId, { force = false } = {}) {
   for (const id of snap.keys()) {
     if (byId.has(id) && !seenIds.has(id) && g.idx?.id >= 0) logs.push({ kind: 'sheet_row_deleted', line: byId.get(id) });
   }
+  if (lines.some(l => !seenIds.has(l.id))) differs = true;   // a CP line missing from the sheet
 
   const fin = require('./service');
   const actor = { system: true, name: `${editorName} (finance sheet)`, role: 'Admin' };
@@ -254,8 +260,11 @@ async function pull(productionId, { force = false } = {}) {
   })));
   if (notifyOmer.length) await tellOmer(productionId, prod.project_name, notifyOmer);
   // Read; the write that follows sets synced_at again — if it fails, the next pass sees a NULL and retries
-  await db.query('UPDATE productions SET finance_sheet_seen_modified = $2, finance_sheet_synced_at = NULL WHERE id = $1', [productionId, modified]);
-  return { applied, created: creates.length, conflicts: logs.filter(l => l.kind === 'sync_conflict').length, createdExtras };
+  // When a rewrite is due, synced_at goes NULL until it succeeds — a failed write is retried next pass
+  await db.query(differs
+    ? 'UPDATE productions SET finance_sheet_seen_modified = $2, finance_sheet_synced_at = NULL WHERE id = $1'
+    : 'UPDATE productions SET finance_sheet_seen_modified = $2 WHERE id = $1', [productionId, modified]);
+  return { applied, created: creates.length, conflicts: logs.filter(l => l.kind === 'sync_conflict').length, createdExtras, needsPush: differs };
 }
 
 function toCp(f, v) {
@@ -461,10 +470,10 @@ async function pullAll() {
       // Read and write back in one go (ids for new rows, budget cells put back) — nothing can run in between
       const r = await exclusive(id, async () => {
         const p = await pull(id);
-        if (p && !p.skipped) await push(id, p);
+        if (p && !p.skipped && p.needsPush) await push(id, p);
         return p;
       });
-      if (r && !r.skipped) changed++;
+      if (r && !r.skipped && r.needsPush) changed++;
     } catch (e) {
       failed++;
       if (/quota|rate limit|429/i.test(`${e.message} ${e.code || ''}`)) { console.warn('[finance sheet] Google write quota reached — the next pass continues'); break; }
