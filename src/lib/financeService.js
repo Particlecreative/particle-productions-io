@@ -113,7 +113,7 @@ export const COMPANY = {
 export const companyOf = (id) => COMPANY[id] || { short: id ? id[0].toUpperCase() + id.slice(1) : '—', color: '#64748b' };
 export const financeCode = (id) => {
   const m = /^PRD(\d{2})-(\d+)(?:-(\d+))?$/i.exec(String(id || ''));
-  return m ? `${m[1]}${m[2].padStart(2, '0')}${m[3] ? m[3].padStart(2, '0') : ''}` : String(id || '');
+  return m ? `${m[1]}-${m[2].padStart(2, '0')}${m[3] ? `-${m[3].padStart(2, '0')}` : ''}` : String(id || '');
 };
 export const EVENT_LABEL = {
   budget_approved: 'Budget approved', budget_unapproved: 'Approval removed', budget_increase: 'Planned Budget raised',

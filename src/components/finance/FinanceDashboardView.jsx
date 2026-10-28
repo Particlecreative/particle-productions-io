@@ -185,7 +185,7 @@ export default function FinanceDashboardView({ data, onOpen, onConfirm, brand, o
                 <th className="text-left font-bold px-5 py-2">Production</th>
                 <th className="text-left font-bold px-3 py-2">Status</th>
                 <th className="text-right font-bold px-3 py-2">Planned</th>
-                <th className="text-right font-bold px-3 py-2">Expected</th>
+                <th className="text-right font-bold px-3 py-2">Actual</th>
                 <th className="text-right font-bold px-3 py-2">Paid</th>
                 <th className="text-right font-bold px-3 py-2">{monthLabel(data.this_month)}</th>
                 <th className="text-right font-bold px-3 py-2">{monthLabel(data.next_month)}</th>
@@ -217,7 +217,7 @@ export default function FinanceDashboardView({ data, onOpen, onConfirm, brand, o
                     {usd(p.planned_usd)}
                     {p.buffer_left_usd != null && <div className={`text-[10px] ${p.buffer_left_usd < 0 ? 'text-red-600' : 'text-gray-400'}`}>{p.buffer_left_usd < 0 ? `over ${usd(-p.buffer_left_usd)}` : `${usd(p.buffer_left_usd)} unexpected left`}</div>}
                   </td>
-                  <td className="px-3 py-2.5 text-right tabular-nums font-semibold">{usd(p.expected_usd)}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums font-semibold">{usd(p.actual_usd ?? 0)}</td>
                   <td className="px-3 py-2.5 text-right tabular-nums text-gray-600">{usd(p.paid_usd)}</td>
                   <td className="px-3 py-2.5 text-right tabular-nums">{p.this_month_usd ? usd(p.this_month_usd) : <span className="text-gray-300">—</span>}</td>
                   <td className="px-3 py-2.5 text-right tabular-nums">{p.next_month_usd ? usd(p.next_month_usd) : <span className="text-gray-300">—</span>}</td>

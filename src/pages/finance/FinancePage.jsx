@@ -272,7 +272,7 @@ function CleanupTab() {
           <p className="text-sm text-gray-600 mb-2">Without a date CP can’t tell which month the payment belongs to.</p>
           {c.paid_without_date.map(l => (
             <div key={l.id} className="flex items-center gap-2 text-sm py-1">
-              <span className="font-semibold w-16 shrink-0">{financeCode(l.production_id)}</span>
+              <span className="font-semibold w-20 shrink-0">{financeCode(l.production_id)}</span>
               <span className="truncate flex-1 text-gray-700">{l.full_name || l.item}</span>
               <span className="text-xs tabular-nums text-gray-500">{nativeMoney(l.actual_spent || l.planned_budget, l.currency_code)}</span>
               <input type="date" value={paidDates[l.id] ?? (l.guess || l.timeline_end || '')} onChange={e => setPaidDates(x => ({ ...x, [l.id]: e.target.value }))} className="border border-gray-200 rounded-lg px-2 py-1 text-xs" />
@@ -289,7 +289,7 @@ function CleanupTab() {
         <Section title="Paid lines with no payment method" count={c.paid_without_method.length}>
           {c.paid_without_method.slice(0, 40).map(l => (
             <div key={l.id} className="flex items-center gap-2 text-sm py-1">
-              <span className="font-semibold w-16 shrink-0">{financeCode(l.production_id)}</span>
+              <span className="font-semibold w-20 shrink-0">{financeCode(l.production_id)}</span>
               <span className="truncate flex-1 text-gray-700">{l.full_name || l.item}</span>
               <select value={methods[l.id] || ''} onChange={e => setMethods(x => ({ ...x, [l.id]: e.target.value }))} className="border border-gray-200 rounded-lg px-2 py-1 text-xs bg-white">
                 <option value="">Method…</option>{['Bank Transfer', 'PayPal', 'Credit Card', 'Upwork', 'Cash', 'Other'].map(m => <option key={m}>{m}</option>)}

@@ -112,7 +112,7 @@ async function build({ brandId = null } = {}) {
       parent_id: prod.parent_id || null, stage: B.normalizeStage(prod.stage), open, closed_at: prod.locked_at, closed_by: prod.locked_by,
       confirmed_at: prod.finance_confirmed_at, confirmed_by: prod.finance_confirmed_by,
       approved: B.isApproved(prod), approved_at: prod.budget_approved_at, approved_by: prod.budget_approved_by,
-      planned_usd: B.num(prod.planned_budget_2026), expected_usd: totals.expectedUsd, paid_usd: totals.paidUsd,
+      planned_usd: B.num(prod.planned_budget_2026), expected_usd: totals.expectedUsd, actual_usd: totals.actualUsd, paid_usd: totals.paidUsd,
       buffer_left_usd: state.approved ? state.bufferLeft : null, buffer_total_usd: state.approved ? state.bufferTotal : null,
       this_month_usd: B.round2(tm), next_month_usd: B.round2(nm),
       start: prod.planned_start, end: prod.planned_end, sheet_url: prod.finance_sheet_url || null,

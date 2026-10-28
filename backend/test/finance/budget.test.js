@@ -68,9 +68,9 @@ test('costAllocation: split by days across months; override wins; production dat
 test('spanFromLines, financeCode, normalizeStage', () => {
   assert.deepEqual(B.spanFromLines([line({ timeline_start: '2026-10-05', timeline_end: '2026-10-07' }), line({ timeline_end: '2026-11-02' }), line({})]), { start: '2026-10-05', end: '2026-11-02' });
   assert.equal(B.spanFromLines([line({})]), null);
-  assert.equal(B.financeCode('PRD26-37'), '2637');
-  assert.equal(B.financeCode('PRD26-37-01'), '263701');
-  assert.equal(B.financeCode('PRD26-7'), '2607');
+  assert.equal(B.financeCode('PRD26-37'), '26-37');
+  assert.equal(B.financeCode('PRD26-37-01'), '26-37-01');
+  assert.equal(B.financeCode('PRD26-7'), '26-07');
   assert.equal(B.normalizeStage('Pre-Production'), 'Pre Production');
   assert.equal(B.normalizeStage('Post Production'), 'Post');
   assert.equal(B.normalizeStage('Something else'), 'Something else');

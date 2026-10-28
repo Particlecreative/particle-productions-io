@@ -299,7 +299,7 @@ export function FinanceTab({ production, fin, isAdmin, isEditor, onChanged }) {
         {isAdmin && !fin.parent_id && (
           <div className="brand-card">
             <h3 className="font-bold text-gray-800 mb-1 flex items-center gap-2"><GitBranch size={15} /> Re-edits</h3>
-            <p className="text-[11px] text-gray-400 mb-2">A re-edit gets its own code (e.g. {fin.code}01), budget and sheet. Move its lines there from the Budget Table.</p>
+            <p className="text-[11px] text-gray-400 mb-2">A re-edit gets its own code (e.g. {fin.code}-01), budget and sheet. Move its lines there from the Budget Table.</p>
             <button type="button" disabled={!!busy} onClick={() => {
               const name = window.prompt('Name of the re-edit', `${production.project_name} — re-edit`);
               if (name) run('sub', async () => { const p = await financeApi.createReEdit(production.id, { name }); window.location.assign(`/production/${encodeURIComponent(p.id)}`); });

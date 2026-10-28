@@ -72,7 +72,7 @@ function missingInvoiceLines(prod, lines, todayMonth) {
 
 /** Expected / paid totals of a production (USD at today's rate for open amounts, payment-day rate for paid). */
 function totalsOf(lines) {
-  let expectedUsd = 0, paidUsd = 0;
+  let expectedUsd = 0, paidUsd = 0, actualUsd = 0;
   const parts = {};
   for (const li of lines) {
     const cur = li.currency_code || 'USD';
@@ -81,9 +81,10 @@ function totalsOf(lines) {
     const rate = paid && li.paid_at ? fx.rateOn(li.paid_at) : fx.latest().rate;
     expectedUsd += B.toUsd(exp, cur, rate);
     if (paid) paidUsd += B.toUsd(B.num(li.actual_spent) || exp, cur, rate);
+    actualUsd += B.toUsd(B.num(li.actual_spent), cur, rate);
     parts[cur] = (parts[cur] || 0) + exp;
   }
-  return { expectedUsd: B.round2(expectedUsd), paidUsd: B.round2(paidUsd), parts: Object.entries(parts).filter(([, a]) => a).map(([currency, amount]) => ({ currency, amount: B.round2(amount) })) };
+  return { expectedUsd: B.round2(expectedUsd), paidUsd: B.round2(paidUsd), actualUsd: B.round2(actualUsd), parts: Object.entries(parts).filter(([, a]) => a).map(([currency, amount]) => ({ currency, amount: B.round2(amount) })) };
 }
 
 /** Expected cost per month (USD) for every production — the base of accruals, the dashboard and the forecast. */

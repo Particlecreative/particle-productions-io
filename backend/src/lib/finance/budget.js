@@ -159,11 +159,11 @@ function spanFromLines(lines) {
   return start ? { start, end } : null;
 }
 
-/** PRD26-37 → "2637", PRD26-37-01 → "263701" (the code finance uses in Priority). */
+/** PRD26-37 → "26-37", PRD26-37-01 → "26-37-01" (the code finance uses, with dashes). */
 function financeCode(id) {
   const m = /^PRD(\d{2})-(\d+)(?:-(\d+))?$/i.exec(String(id || ''));
   if (!m) return String(id || '');
-  return `${m[1]}${m[2].padStart(2, '0')}${m[3] ? m[3].padStart(2, '0') : ''}`;
+  return `${m[1]}-${m[2].padStart(2, '0')}${m[3] ? `-${m[3].padStart(2, '0')}` : ''}`;
 }
 
 /** One spelling per stage (the dashboard used "Pre-Production" / "Post Production" in places). */

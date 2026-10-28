@@ -137,7 +137,7 @@ function ProductionDrawer({ id, onClose }) {
           <div className="p-5 space-y-5">
             <div className="grid grid-cols-3 gap-3">
               <div className="rounded-xl bg-gray-50 p-3"><div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Planned</div><div className="text-lg font-black">{usd(p.state.planned)}</div><div className="text-[10px] text-gray-500">{p.approved ? `Approved · ${p.approved_by}` : 'Not approved yet'}</div></div>
-              <div className="rounded-xl bg-gray-50 p-3"><div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Expected</div><div className="text-lg font-black">{usd(p.totals.expectedUsd)}</div><div className="text-[10px] text-gray-500">{p.totals.parts.map(x => nativeMoney(x.amount, x.currency)).join(' + ')}</div></div>
+              <div className="rounded-xl bg-gray-50 p-3"><div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Actual</div><div className="text-lg font-black">{usd(p.totals.actualUsd ?? 0)}</div><div className="text-[10px] text-gray-500">{p.totals.parts.map(x => nativeMoney(x.amount, x.currency)).join(' + ')}</div></div>
               <div className="rounded-xl bg-gray-50 p-3"><div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Paid</div><div className="text-lg font-black">{usd(p.totals.paidUsd)}</div><div className="text-[10px] text-gray-500">{p.open ? 'Open' : p.confirmed_at ? 'Closed · confirmed' : 'Closed'}</div></div>
             </div>
             {p.sheet_url && <a href={p.sheet_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm text-emerald-700 hover:underline">Finance sheet <ExternalLink size={12} /></a>}

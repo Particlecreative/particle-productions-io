@@ -61,7 +61,7 @@ test('invoice flags: wrong company, gap vs budget, duplicate, not an invoice', (
 test('every email opens with the company, Blurr says it is not paid by Particle', () => {
   const prod = { id: 'PRD26-52', brand_id: 'blurr', project_name: 'Q4 TV', stage: 'Post', planned_start: '2026-08-12', planned_end: '2026-09-30', planned_budget_2026: 3895 };
   const m = tpl.changes({ prod, events: [{ kind: 'completed', note: 'Delivered', meta: { work_this_month: true }, created_at: new Date() }], state: { planned: 3895, approved: false } });
-  assert.match(m.subject, /^\[Blurr\] 2652 Q4 TV — marked Completed/);
+  assert.match(m.subject, /^\[Blurr\] 26-52 Q4 TV — marked Completed/);
   assert.match(m.html, /BLURR/);
   assert.match(m.html, /not paid by Particle/);
 });
