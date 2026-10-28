@@ -53,6 +53,9 @@ test('invoice flags: wrong company, gap vs budget, duplicate, not an invoice', (
   assert.deepEqual(f.map(x => x.code).sort(), ['duplicate', 'over_budget', 'wrong_company']);
   assert.deepEqual(flagsFor({ data: { is_invoice: false }, li, prod, others: [] }).map(x => x.code), ['not_invoice']);
   assert.deepEqual(flagsFor({ data: { is_invoice: true, document_type: 'tax_invoice', billed_to_name: 'Blurr Beauty LTD', currency: 'USD', amount_before_vat: 1010 }, li, prod, others: [] }), []);
+  // Biomella is a Blurr brand: billed to Blurr Beauty is right, billed to Particle is not
+  assert.deepEqual(flagsFor({ data: { is_invoice: true, document_type: 'tax_invoice', billed_to_name: 'Blurr Beauty LTD', billed_to_tax_id: '517208203', currency: 'USD', amount_before_vat: 1000 }, li, prod: { brand_id: 'biomella' }, others: [] }), []);
+  assert.deepEqual(flagsFor({ data: { is_invoice: true, document_type: 'tax_invoice', billed_to_name: 'Particle Aesthetic Science', currency: 'USD', amount_before_vat: 1000 }, li, prod: { brand_id: 'biomella' }, others: [] }).map(x => x.code), ['wrong_company']);
 });
 
 test('every email opens with the company, Blurr says it is not paid by Particle', () => {

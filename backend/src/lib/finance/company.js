@@ -1,13 +1,13 @@
 /**
  * The company a production belongs to, for every finance output (email subject, banner, dashboard row).
- * Particle, Blurr and Biomella are separate companies — invoices must name the right one.
+ * Particle and Blurr are separate companies (Biomella is a Blurr brand — Blurr Beauty LTD) — invoices must name the right one.
  */
 const { BRAND_COMPANY } = require('../companyInfo');
 
 const FINANCE_COMPANY = {
   particle: { short: 'Particle', legalName: BRAND_COMPANY.particle.legalName, number: BRAND_COMPANY.particle.number, color: '#0808f8' },
   blurr:    { short: 'Blurr', legalName: BRAND_COMPANY.blurr.legalName, number: BRAND_COMPANY.blurr.number, color: '#B842A9' },
-  biomella: { short: 'Biomella', legalName: null, number: '', color: '#1a8c5c' },  // legal name not set yet
+  biomella: { short: 'Biomella', legalName: BRAND_COMPANY.biomella.legalName, number: BRAND_COMPANY.biomella.number, color: '#1a8c5c' },  // a Blurr brand: same legal company
 };
 
 function companyOf(brandId) {

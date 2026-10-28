@@ -16,6 +16,13 @@ export const BRAND_COMPANY = {
     address: 'King George 48, Tel Aviv',
     short: 'Blurr',
     hasLogo: false, // text letterhead for now
+  },  // Biomella is a Blurr brand — same legal company
+  biomella: {
+    legalName: 'Blurr Beauty LTD',
+    number: '517208203',
+    address: 'King George 48, Tel Aviv',
+    short: 'Biomella',
+    hasLogo: false,
   },
 };
 

@@ -42,6 +42,8 @@ If the file isn't an invoice or receipt, set is_invoice false and the rest to nu
 
 const COMPANY_RE = { particle: /particle/i, blurr: /blurr/i, biomella: /biomella/i };
 const COMPANY_IDS = { blurr: ['517208203'] };
+// Who actually pays: Biomella is a Blurr brand (Blurr Beauty LTD), so either name is right for either brand
+const ENTITY = { particle: 'particle', blurr: 'blurr', biomella: 'blurr' };
 
 function flagsFor({ data, li, prod, others }) {
   const flags = [];
@@ -50,7 +52,7 @@ function flagsFor({ data, li, prod, others }) {
   // Billed to the right company?
   const billed = `${data.billed_to_name || ''} ${data.billed_to_tax_id || ''}`;
   const mine = prod.brand_id;
-  const other = Object.keys(COMPANY_RE).find(k => k !== mine && (COMPANY_RE[k].test(billed) || (COMPANY_IDS[k] || []).some(id => billed.includes(id))));
+  const other = Object.keys(COMPANY_RE).find(k => (ENTITY[k] || k) !== (ENTITY[mine] || mine) && (COMPANY_RE[k].test(billed) || (COMPANY_IDS[k] || []).some(id => billed.includes(id))));
   if (other) flags.push({ code: 'wrong_company', message: `Billed to ${companyOf(other).short} — this is a ${companyOf(mine).short} production` });
   else if (!data.billed_to_name && !data.billed_to_tax_id) flags.push({ code: 'no_company', message: 'The invoice doesn’t say which company it’s billed to' });
   // Amount vs the budget line
