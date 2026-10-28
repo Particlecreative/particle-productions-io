@@ -144,7 +144,12 @@ async function pull(productionId, { force = false } = {}) {
   const file = await drive.files.get({ fileId: prod.finance_sheet_id, fields: 'modifiedTime,trashed,lastModifyingUser(displayName,emailAddress)' }, G);
   if (file.data.trashed) return { skipped: 'trashed' };
   const modified = file.data.modifiedTime;
-  if (!force && prod.finance_sheet_seen_modified && new Date(modified) <= new Date(prod.finance_sheet_seen_modified)) return { skipped: 'unchanged' };
+  if (!force && prod.finance_sheet_seen_modified && new Date(modified) <= new Date(prod.finance_sheet_seen_modified) && prod.finance_sheet_synced_at) {
+    // Unchanged since our last write — unless that write never finished (no snapshot yet while there are lines)
+    const { rows: st } = await db.query(
+      `SELECT EXISTS (SELECT 1 FROM finance_sheet_rows WHERE production_id = $1) AS snap, EXISTS (SELECT 1 FROM production_line_items WHERE production_id = $1) AS lines`, [productionId]);
+    if (st[0].snap || !st[0].lines) return { skipped: 'unchanged' };
+  }
   const editor = file.data.lastModifyingUser || {};
   const editorName = editor.displayName || editor.emailAddress || 'finance sheet';
 
@@ -248,7 +253,8 @@ async function pull(productionId, { force = false } = {}) {
     meta: l.kind === 'sync_conflict' ? { winner: l.winner, why: l.why || null } : null,
   })));
   if (notifyOmer.length) await tellOmer(productionId, prod.project_name, notifyOmer);
-  await db.query('UPDATE productions SET finance_sheet_seen_modified = $2 WHERE id = $1', [productionId, modified]);
+  // Read; the write that follows sets synced_at again — if it fails, the next pass sees a NULL and retries
+  await db.query('UPDATE productions SET finance_sheet_seen_modified = $2, finance_sheet_synced_at = NULL WHERE id = $1', [productionId, modified]);
   return { applied, created: creates.length, conflicts: logs.filter(l => l.kind === 'sync_conflict').length, createdExtras };
 }
 
@@ -335,11 +341,16 @@ async function push(productionId, { createdExtras = {} } = {}) {
   totalRows.push([B.isApproved(prod) ? `Approved Planned Budget (USD)` : 'Planned Budget (USD, not approved yet)', '', round2(B.num(prod.planned_budget_2026)), '', '', '', '', '', '', FOOTER]);
   for (const r of totalRows) values.push(cpCols(r));
 
-  // Clear the old region (A1:Z of the old size) and write fresh
-  const g = await sheets.spreadsheets.values.get({ spreadsheetId, range: `'${title}'!A1:A2000` }, G);
-  const oldRows = Math.max((g.data.values || []).length, values.length);
-  await sheets.spreadsheets.values.clear({ spreadsheetId, range: `'${title}'!A1:Z${oldRows + 5}` }, G);
-  await sheets.spreadsheets.values.update({ spreadsheetId, range: `'${title}'!A1`, valueInputOption: 'RAW', requestBody: { values } }, G);
+  // Few writes (Google allows 60 a minute): blanks over whatever was there before + CP's values + the side tabs
+  // in one RAW batch, links and finance's own columns in one USER_ENTERED batch, then one formatting batch
+  const oldRows = (cur.grid || []).length;
+  const blank = (rows, cols) => Array.from({ length: rows }, () => Array(cols).fill(''));
+  const raw = [{ range: `'${title}'!A1`, values }];
+  if (oldRows > values.length) raw.push({ range: `'${title}'!A${values.length + 1}`, values: blank(oldRows - values.length + 2, NCP) });
+  const hadExtras = (cur.grid || []).some(r => (r || []).slice(NCP).some(v => v !== '' && v != null));
+  if (hadExtras) raw.push({ range: `'${title}'!${colLetter(NCP)}1`, values: blank(Math.max(oldRows, values.length) + 2, MAX_COL - NCP) });
+  raw.push(...await sideTabs(sheets, spreadsheetId, t.list, prod, lines, rate));
+  await sheets.spreadsheets.values.batchUpdate({ spreadsheetId, requestBody: { valueInputOption: 'RAW', data: raw } }, G);
   if (formulas.length) {
     await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId,
@@ -372,8 +383,6 @@ async function push(productionId, { createdExtras = {} } = {}) {
   if (!hasProtect) req.push({ addProtectedRange: { protectedRange: { range: { sheetId, startColumnIndex: NCP - 1, endColumnIndex: NCP }, description: 'cp-id', warningOnly: true } } });
   await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: req } }, G);
 
-  await writeSideTabs(sheets, spreadsheetId, t.list, prod, lines, rate);
-
   // Remember what we wrote, and the file's modified time after our write
   const client = await db.connect();
   try {
@@ -394,7 +403,8 @@ function hexToRgb(hex) {
   return m ? { red: parseInt(m[1], 16) / 255, green: parseInt(m[2], 16) / 255, blue: parseInt(m[3], 16) / 255 } : NAVY;
 }
 
-async function writeSideTabs(sheets, spreadsheetId, list, prod, lines, rate) {
+/** The Summary + Change log tabs (created once), as value ranges padded with blanks to a fixed size. */
+async function sideTabs(sheets, spreadsheetId, list, prod, lines, rate) {
   const need = ['Summary', 'Change log'].filter(n => !list.some(s => s.properties.title === n));
   if (need.length) {
     await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: need.map(title => ({ addSheet: { properties: { title } } })) } }, G);
@@ -423,10 +433,11 @@ async function writeSideTabs(sheets, spreadsheetId, list, prod, lines, rate) {
   const log = [['When', 'What', 'Line', 'Old', 'New', 'USD change', 'Month', 'Reason', 'Approved by', 'Note', 'By', 'Source'],
     ...evs.map(e => [new Date(e.created_at).toISOString().slice(0, 16).replace('T', ' '), e.kind.replace(/_/g, ' '), e.label || '', e.old_value ?? '', e.new_value ?? '',
       e.delta_usd != null ? Number(e.delta_usd) : '', B.ymdOf(e.expense_month)?.slice(0, 7) || '', E.REASON_LABEL[e.reason] || '', e.approved_by || '', e.note || '', e.user_name || '', e.source || ''])];
-  await sheets.spreadsheets.values.clear({ spreadsheetId, range: "'Summary'!A1:C200" }, G);
-  await sheets.spreadsheets.values.update({ spreadsheetId, range: "'Summary'!A1", valueInputOption: 'RAW', requestBody: { values: summary } }, G);
-  await sheets.spreadsheets.values.clear({ spreadsheetId, range: "'Change log'!A1:L2000" }, G);
-  await sheets.spreadsheets.values.update({ spreadsheetId, range: "'Change log'!A1", valueInputOption: 'RAW', requestBody: { values: log } }, G);
+  const pad = (rows, n, w) => [...rows.map(r => { const a = r.slice(0, w); while (a.length < w) a.push(''); return a; }), ...Array.from({ length: Math.max(0, n - rows.length) }, () => Array(w).fill(''))];
+  return [
+    { range: "'Summary'!A1", values: pad(summary, 40, 3) },
+    { range: "'Change log'!A1", values: pad(log, 501, 12) },
+  ];
 }
 
 /** Pull finance's edits, then push CP's state. The one entry point for a sync. */
@@ -454,7 +465,11 @@ async function pullAll() {
         return p;
       });
       if (r && !r.skipped) changed++;
-    } catch (e) { failed++; console.error(`[finance sheet] pull ${id}:`, e.message); }
+    } catch (e) {
+      failed++;
+      if (/quota|rate limit|429/i.test(`${e.message} ${e.code || ''}`)) { console.warn('[finance sheet] Google write quota reached — the next pass continues'); break; }
+      console.error(`[finance sheet] pull ${id}:`, e.message);
+    }
   }
   if (changed || failed) console.log(`[finance sheet] checked ${rows.length} sheets: ${changed} updated, ${failed} failed`);
   return { checked: rows.length, changed, failed };
