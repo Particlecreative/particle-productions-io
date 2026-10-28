@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, DollarSign, BookOpen, Settings, Users, ChevronLeft, ChevronRight,
   History, FileText, FileSignature, Clapperboard, Users2, GripVertical,
-  GanttChartSquare, Check, Star, Sun, Moon, Grid3x3, X as XIcon, Scroll, CheckSquare, Presentation, Radar, Library,
+  GanttChartSquare, Check, Star, Sun, Moon, Grid3x3, X as XIcon, Scroll, CheckSquare, Presentation, Radar, Library, Landmark,
 } from 'lucide-react';
 import {
   DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors,
@@ -43,6 +43,7 @@ const DEFAULT_NAV_ITEMS = [
 ];
 
 const ADMIN_ITEMS = [
+  { to: '/finance',  icon: Landmark, label: 'Finance' },
   { to: '/settings', icon: Settings, label: 'Settings' },
   { to: '/users',    icon: Users,    label: 'Users' },
 ];

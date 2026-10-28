@@ -138,9 +138,10 @@ export default function Accounting() {
 
   function handlePaymentStatusChange(itemId, newStatus) {
     if (newStatus === 'Paid') {
-      // Invoice guard: must have received invoice with a link
+      // Invoice guard: must have received invoice with a link (unless no invoice is needed — same rule as the Payments tab)
       const item = allItems.find(i => i.id === itemId);
-      if (item?.invoice_status !== 'Received' || !item?.invoice_url) {
+      const invoiceWaived = item?.invoice_status === 'Waived' || item?.invoice_status === 'No invoice needed';
+      if (!invoiceWaived && (item?.invoice_status !== 'Received' || !item?.invoice_url)) {
         setPaymentBlockedId(itemId);
         toast.error('Invoice required — mark invoice as "Received" with a link before marking as Paid');
         setTimeout(() => setPaymentBlockedId(id => id === itemId ? null : id), 4000);

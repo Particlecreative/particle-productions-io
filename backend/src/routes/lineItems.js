@@ -1,10 +1,18 @@
 const router = require('express').Router();
 const db     = require('../db');
-const { verifyJWT } = require('../middleware/auth');
+const { verifyJWT, requireEditor } = require('../middleware/auth');
 const { logAction } = require('../lib/auditLog');
-const { triggerFinanceSync } = require('../lib/financeSheet');
+const fin = require('../lib/finance/service');
+const { parseDecision } = require('../lib/finance/events');
+const { parseFlow } = require('../lib/finance/rules');
+const { afterLines } = require('../lib/finance/after');
 
 router.use(verifyJWT);
+
+// Every write goes through the finance service: role + lock checks, the approved-budget rules,
+// the finance log, totals at Bank of Israel rates, and dates that follow the lines.
+const decisionOf = (body) => parseDecision(body);
+const flowOf = (body) => parseFlow(body);
 
 // GET /api/line-items?production_id=PRD26-01&cc_purchase_id=...
 router.get('/', async (req, res) => {
@@ -16,7 +24,7 @@ router.get('/', async (req, res) => {
     if (cc_purchase_id) { where.push(`cc_purchase_id = $${vals.push(cc_purchase_id)}`); }
     const clause = where.length ? ` WHERE ${where.join(' AND ')}` : '';
     const { rows } = await db.query(
-      `SELECT * FROM production_line_items${clause} ORDER BY created_at ASC`,
+      `SELECT * FROM production_line_items${clause} ORDER BY production_id, sort_order NULLS LAST, created_at ASC`,
       vals
     );
     res.json(rows);
@@ -25,136 +33,130 @@ router.get('/', async (req, res) => {
   }
 });
 
-// POST /api/line-items
+// POST /api/line-items  (optional after_id: insert right below that line)
 router.post('/', async (req, res) => {
-  const {
-    production_id, item, full_name, type, status,
-    planned_budget, actual_spent, payment_status, payment_method,
-    bank_details, business_type, supplier_type, invoice_status, invoice_url,
-    invoice_type, timeline_start, timeline_end, receipt_required,
-    paid_at, notes, supplier, id_number, currency_code, custom_fields,
-  } = req.body;
-
+  const { production_id, after_id } = req.body;
   if (!production_id) return res.status(400).json({ error: 'production_id required' });
-
   try {
-    const { rows } = await db.query(
-      `INSERT INTO production_line_items
-        (production_id, item, full_name, type, status,
-         planned_budget, actual_spent, payment_status, payment_method,
-         bank_details, business_type, supplier_type, invoice_status, invoice_url,
-         invoice_type, timeline_start, timeline_end, receipt_required,
-         paid_at, notes, supplier, id_number, currency_code, custom_fields)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
-       RETURNING *`,
-      [
-        production_id,
-        item || '', full_name || '', type || '', status || 'Not Started',
-        planned_budget || 0, actual_spent || 0,
-        payment_status || 'Not Paid', payment_method || null,
-        bank_details || null, business_type || null,
-        supplier_type || 'New Supplier', invoice_status || null, invoice_url || null,
-        invoice_type || null, timeline_start || null, timeline_end || null,
-        receipt_required || false, paid_at || null,
-        notes || null, supplier || null, id_number || null,
-        currency_code || 'USD',
-        JSON.stringify(custom_fields || {}),
-      ]
-    );
-
-    // Sync production totals
-    await syncTotals(production_id);
-
-    // Auto-create supplier if full_name provided (match by name, no duplicates)
-    if (full_name && full_name.trim()) {
-      try {
-        await db.query(
-          `INSERT INTO suppliers (name, brand_id, created_at)
-           VALUES ($1, (SELECT brand_id FROM productions WHERE id = $2 LIMIT 1), NOW())
-           ON CONFLICT DO NOTHING`,
-          [full_name.trim(), production_id.split('_')[0] === production_id ? production_id : production_id]
-        );
-      } catch (supErr) {
-        // Ignore — supplier may already exist or table may not have unique constraint
-      }
-    }
-
-    logAction({ production_id, entity: 'line_item', action: 'create', summary: `Added line item "${item || full_name || 'item'}"`, new_value: `${item || ''} — ${type || ''}`, user_id: req.user?.id, user_name: req.user?.name });
-    triggerFinanceSync(production_id);
-    res.status(201).json(rows[0]);
+    const out = await fin.changeLines({
+      productionId: production_id,
+      ops: [{ op: 'create', values: req.body, after_id }],
+      actor: fin.actorOf(req), decision: decisionOf(req.body), flow: flowOf(req.body),
+    });
+    if (fin.sendFinanceOutcome(res, out)) return;
+    const row = out.rows[0];
+    logAction({ production_id, entity: 'line_item', action: 'create', summary: `Added line item "${row.item || row.full_name || 'item'}"`, new_value: `${row.item || ''} — ${row.type || ''}`, user_id: req.user?.id, user_name: req.user?.name });
+    afterLines(production_id, out);
+    res.status(201).json(row);
   } catch (err) {
-    console.error('POST /line-items error:', err);
+    fin.sendFinanceError(res, err, 'POST /line-items error');
+  }
+});
+
+// PUT /api/line-items/order — save the order of a production's lines (drag & drop)
+router.put('/order', requireEditor, async (req, res) => {
+  const { production_id, ids } = req.body;
+  if (!production_id || !Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'production_id and ids required' });
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query('SELECT id FROM production_line_items WHERE production_id = $1', [production_id]);
+    const known = new Set(rows.map(r => r.id));
+    const ordered = ids.filter(id => known.has(id));
+    const rest = rows.map(r => r.id).filter(id => !ordered.includes(id)); // anything the browser didn't send keeps its place at the end
+    const all = [...ordered, ...rest];
+    for (let i = 0; i < all.length; i++) {
+      await client.query('UPDATE production_line_items SET sort_order = $2 WHERE id = $1', [all[i], i + 1]);
+    }
+    await client.query('COMMIT');
+    afterLines(production_id, { rows: [], events: [] }, { order: true });
+    res.json({ ok: true, count: all.length });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('PUT /line-items/order error:', err);
     res.status(500).json({ error: 'Server error' });
+  } finally {
+    client.release();
+  }
+});
+
+// PATCH /api/line-items/bulk — the same change on several lines of one production, one reason for all
+router.patch('/bulk', async (req, res) => {
+  const { ids, updates } = req.body;
+  if (!Array.isArray(ids) || !ids.length || !updates || typeof updates !== 'object') return res.status(400).json({ error: 'ids and updates required' });
+  try {
+    const { rows } = await db.query('SELECT id, production_id FROM production_line_items WHERE id = ANY($1::uuid[])', [ids]);
+    const prods = [...new Set(rows.map(r => r.production_id))];
+    if (prods.length !== 1) return res.status(400).json({ error: 'Bulk edits must be on one production' });
+    const out = await fin.changeLines({
+      productionId: prods[0],
+      ops: rows.map(r => ({ op: 'update', id: r.id, values: updates })),
+      actor: fin.actorOf(req), decision: decisionOf(req.body), flow: flowOf(req.body),
+    });
+    if (fin.sendFinanceOutcome(res, out)) return;
+    logAction({ production_id: prods[0], entity: 'line_item', action: 'update', summary: `Bulk-updated ${rows.length} lines — ${Object.keys(updates).join(', ')}`, user_id: req.user?.id, user_name: req.user?.name });
+    afterLines(prods[0], out);
+    res.json(out.rows);
+  } catch (err) {
+    fin.sendFinanceError(res, err, 'PATCH /line-items/bulk error');
   }
 });
 
 // PATCH /api/line-items/:id
 router.patch('/:id', async (req, res) => {
-  const allowed = [
-    'item','full_name','type','status','planned_budget','actual_spent',
-    'payment_status','payment_method','bank_details','business_type',
-    'supplier_type','invoice_status','invoice_url','invoice_type',
-    'timeline_start','timeline_end','receipt_required','paid_at','payment_note','paid_by',
-    'notes','supplier','id_number','currency_code','custom_fields','cc_purchase_id',
-    'drive_url','dropbox_url','payment_proof_url','payment_proof_drive_url','payment_proof_dropbox_url',
-  ];
-
-  const updates = Object.entries(req.body).filter(([k]) => allowed.includes(k));
-  if (!updates.length) return res.status(400).json({ error: 'No valid fields' });
-
-  const setClause = updates.map(([k], i) => `"${k}" = $${i + 2}`).join(', ');
-  const values    = updates.map(([, v]) => v);
-
   try {
-    const { rows } = await db.query(
-      `UPDATE production_line_items SET ${setClause} WHERE id = $1 RETURNING *`,
-      [req.params.id, ...values]
-    );
-    if (!rows[0]) return res.status(404).json({ error: 'Not found' });
-
-    await syncTotals(rows[0].production_id);
-
-    // Auto-create supplier when full_name is updated
-    if (req.body.full_name && req.body.full_name.trim()) {
-      try {
-        await db.query(
-          `INSERT INTO suppliers (name, brand_id, created_at) VALUES ($1, $2, NOW()) ON CONFLICT DO NOTHING`,
-          [req.body.full_name.trim(), rows[0].production_id?.split('_')[0] || 'particle']
-        );
-      } catch (_) {}
+    const { rows: cur } = await db.query('SELECT * FROM production_line_items WHERE id = $1', [req.params.id]);
+    if (!cur[0]) return res.status(404).json({ error: 'Not found' });
+    const old = cur[0];
+    const out = await fin.changeLines({
+      productionId: old.production_id,
+      ops: [{ op: 'update', id: old.id, values: req.body }],
+      actor: fin.actorOf(req), decision: decisionOf(req.body), flow: flowOf(req.body),
+    });
+    if (fin.sendFinanceOutcome(res, out)) return;
+    const row = out.rows[0];
+    const changed = Object.keys(req.body).filter(k => !k.startsWith('_') && String(old[k] ?? '') !== String(row[k] ?? ''));
+    if (changed.length) {
+      const detail = changed.slice(0, 4).map(k => `${k}: ${fmtVal(old[k])} → ${fmtVal(row[k])}`).join('; ');
+      logAction({ production_id: row.production_id, entity: 'line_item', action: 'update', summary: `Updated line item "${row.item || row.full_name || ''}" — ${detail}`, user_id: req.user?.id, user_name: req.user?.name });
     }
-
-    const changedFields = Object.keys(req.body).filter(k => k !== '_log').join(', ');
-    logAction({ production_id: rows[0].production_id, entity: 'line_item', action: 'update', summary: `Updated line item "${rows[0].item || rows[0].full_name || ''}" — ${changedFields}`, user_id: req.user?.id, user_name: req.user?.name });
-    triggerFinanceSync(rows[0].production_id);
-    res.json(rows[0]);
+    afterLines(row.production_id, out, { invoiceChanged: String(old.invoice_url || '') !== String(row.invoice_url || '') ? [row.id] : [] });
+    res.json(row);
   } catch (err) {
-    console.error('PATCH /line-items error:', err);
-    res.status(500).json({ error: 'Server error' });
+    fin.sendFinanceError(res, err, 'PATCH /line-items error');
   }
 });
 
-// DELETE /api/line-items/:id  — cascade delete with options
+function fmtVal(v) {
+  if (v === null || v === undefined || v === '') return '—';
+  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  const s = typeof v === 'object' ? JSON.stringify(v) : String(v);
+  return s.length > 40 ? `${s.slice(0, 40)}…` : s;
+}
+
+// DELETE /api/line-items/:id  — cascade delete with options (a reason may be needed once the budget is approved:
+// send it as JSON body `_finance` or ?_finance=<json>)
 router.delete('/:id', async (req, res) => {
   try {
-    // First fetch the item to get details before deleting
-    const { rows: itemRows } = await db.query(
-      'SELECT * FROM production_line_items WHERE id = $1', [req.params.id]
-    );
+    const { rows: itemRows } = await db.query('SELECT * FROM production_line_items WHERE id = $1', [req.params.id]);
     if (!itemRows[0]) return res.status(404).json({ error: 'Not found' });
     const item = itemRows[0];
 
-    // Parse cascade options from query params (or body)
+    let body = req.body || {};
+    if (!body._finance && req.query._finance) { try { body = { _finance: JSON.parse(req.query._finance) }; } catch { /* ignore */ } }
+    const out = await fin.changeLines({
+      productionId: item.production_id,
+      ops: [{ op: 'delete', id: item.id }],
+      actor: fin.actorOf(req), decision: decisionOf(body), flow: flowOf(body),
+    });
+    if (fin.sendFinanceOutcome(res, out)) return;
+
     const opts = {
       deleteContract: req.query.deleteContract !== 'false',
       deleteCast: req.query.deleteCast !== 'false',
       deleteDriveFiles: req.query.deleteDriveFiles === 'true',
     };
-
     const deleted = { lineItem: true, contract: false, cast: false, driveFiles: 0 };
-
-    // Delete line item
-    await db.query('DELETE FROM production_line_items WHERE id = $1', [req.params.id]);
 
     // Clean up contract + signatures
     if (opts.deleteContract) {
@@ -202,55 +204,13 @@ router.delete('/:id', async (req, res) => {
       }
     }
 
-    await syncTotals(item.production_id);
     logAction({ production_id: item.production_id, entity: 'line_item', action: 'delete', summary: `Deleted line item "${item.item || item.full_name || ''}"`, user_id: req.user?.id, user_name: req.user?.name });
-    triggerFinanceSync(item.production_id);
+    afterLines(item.production_id, out);
     res.json({ success: true, deleted });
   } catch (err) {
-    console.error('Delete line item error:', err);
-    res.status(500).json({ error: 'Server error' });
+    fin.sendFinanceError(res, err, 'Delete line item error');
   }
 });
-
-// Helper: recalculate and update production estimated_budget + actual_spent
-// Converts ILS amounts to USD using a default rate before summing.
-// Also derives planned_budget_2026 = live estimated total + 10% contingency for the
-// unexpected — unless the budget already has an explicit "unexpected"/contingency line,
-// in which case the buffer is considered already accounted for. When there are no line
-// items yet, the manually-entered planned budget is left untouched.
-const DEFAULT_ILS_RATE = 3.7;
-async function syncTotals(productionId) {
-  try {
-    await db.query(
-      `UPDATE productions p SET
-         estimated_budget = agg.est,
-         actual_spent     = agg.spent,
-         planned_budget_2026 = CASE
-           WHEN agg.line_count = 0    THEN p.planned_budget_2026        -- no items → keep manual value
-           WHEN agg.has_unexpected    THEN ROUND(agg.est, 2)            -- already has an "unexpected" line
-           ELSE ROUND(agg.est * 1.10, 2)                                -- + 10% contingency
-         END,
-         updated_at = NOW()
-       FROM (
-         SELECT
-           COALESCE(SUM(CASE WHEN currency_code = 'ILS' THEN planned_budget / ${DEFAULT_ILS_RATE}
-                             ELSE planned_budget END), 0) AS est,
-           COALESCE(SUM(CASE WHEN currency_code = 'ILS' THEN actual_spent / ${DEFAULT_ILS_RATE}
-                             ELSE actual_spent END), 0)   AS spent,
-           COUNT(*) AS line_count,
-           COALESCE(BOOL_OR(
-             item ILIKE '%unexpected%' OR item ILIKE '%contingenc%'
-             OR type ILIKE '%unexpected%' OR full_name ILIKE '%unexpected%'
-             OR item ILIKE '%בלת%' OR item ILIKE '%צפוי%'
-           ), false) AS has_unexpected
-         FROM production_line_items
-         WHERE production_id = $1
-       ) agg
-       WHERE p.id = $1`,
-      [productionId]
-    );
-  } catch (err) { console.error('syncTotals error:', err.message); }
-}
 
 // GET /api/line-items/gsheet-csv?url=... — proxy-fetch a public Google Sheet as CSV
 // Needed to avoid CORS when the frontend tries to load a Google Sheets URL directly.

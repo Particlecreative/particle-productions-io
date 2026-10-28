@@ -64,7 +64,7 @@ router.patch('/:id', requireEditor, async (req, res) => {
     'production_id', 'project_name', 'brand_id', 'name', 'photo_url',
     'role', 'period', 'start_date', 'end_date', 'warning_date',
     'contract_status', 'usage', 'signed_contract_url',
-    'contract_manager_name', 'notes',
+    'contract_manager_name', 'notes', 'term_months', 'renewal_cost', 'renewal_currency',
   ];
   const updates = Object.entries(req.body).filter(([k]) => allowed.includes(k));
   if (!updates.length) return res.status(400).json({ error: 'No valid fields' });

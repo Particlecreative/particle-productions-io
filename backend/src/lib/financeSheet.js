@@ -1,12 +1,8 @@
-// financeSheet.js — one-way CP -> Google Sheet finance mirror.
-// The CP is the source of truth; each production's budget line items are pushed
-// into a Google Sheet that matches the finance team's template. Reused by the
-// finance-sheet routes and by fire-and-forget triggers on budget mutations.
+// financeSheet.js — Google auth for the finance sheets, sharing, and the old-format ("linked") sheet comparison.
+// The two-way sheet itself (push, pull, Summary / Change log tabs) lives in finance/sheet.js.
 
 const { google } = require('googleapis');
 const db = require('../db');
-
-const DRIVE_FOLDER_ID = process.env.DRIVE_FOLDER_ID;
 
 // Finance team — auto-added as editors on every new mirror sheet.
 // Override in env without a code change (comma-separated).
@@ -14,9 +10,6 @@ const FINANCE_EDITORS = (process.env.FINANCE_SHEET_EDITORS ||
   'omer@particleformen.com,ortal@particleformen.com,arina@particleformen.com')
   .split(',').map(s => s.trim()).filter(Boolean);
 
-// ── Column layout (matches the finance team's template) ──────────────────────
-const HEADERS = ['Name', 'Job', 'Budget', 'Actual Spent', 'Invoice/Receipt', 'Status', 'Payment Method', 'Bank details', 'Business type'];
-const NCOLS = HEADERS.length;
 
 // ── Auth: load the brand's Google tokens, refresh if needed, return clients ──
 async function getGoogleClients(brandId) {
@@ -55,20 +48,6 @@ async function getGoogleClients(brandId) {
   };
 }
 
-// ── Formatting helpers ───────────────────────────────────────────────────────
-const CUR = { USD: '$', ILS: '₪', EUR: '€', GBP: '£' };
-function money(amount, code) {
-  if (amount === null || amount === undefined || amount === '' || isNaN(Number(amount))) return '';
-  const n = Number(amount);
-  const sym = CUR[code] || '$';
-  return `${sym}${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-function stripHtml(s) { return (s || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim(); }
-function fmtDate(d) {
-  try { return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }); }
-  catch { return ''; }
-}
-
 // Normalize the PAYMENT status (set in the Payments tab -> line_items.payment_status)
 // to the finance template's wording. Never uses the work/progress `status` field
 // (e.g. "Done" is a work status, not "paid").
@@ -79,123 +58,6 @@ function statusLabel(li) {
   if (/pending/i.test(ps)) return 'Pending';
   return 'Not Payed';
 }
-
-// ── Build the 2D value grid + a per-line invoice link map for the mirror ─────
-async function buildSheetData(productionId) {
-  const { rows: prodRows } = await db.query('SELECT * FROM productions WHERE id = $1', [productionId]);
-  const prod = prodRows[0];
-  if (!prod) throw new Error('Production not found');
-
-  const { rows: items } = await db.query(
-    'SELECT * FROM production_line_items WHERE production_id = $1 ORDER BY created_at ASC',
-    [productionId]
-  );
-  // Invoices give us per-line-item document links when the line item itself has none
-  const { rows: invoices } = await db.query('SELECT line_item_id, file_url FROM invoices WHERE production_id = $1', [productionId]);
-  const invByItem = {};
-  for (const inv of invoices) { if (inv.line_item_id && inv.file_url && !invByItem[inv.line_item_id]) invByItem[inv.line_item_id] = inv.file_url; }
-
-  const brandName = prod.brand_id === 'blurr' ? 'Blurr' : 'Particle';
-  const title = `${brandName} ${prod.project_name || prod.id} — Budget`;
-
-  // Title row (col D holds the title like the template; H/I hold "Updated:" + date)
-  const titleRow = new Array(NCOLS).fill('');
-  titleRow[3] = title;
-  titleRow[6] = 'Updated:';
-  titleRow[7] = fmtDate(new Date());
-
-  const dataRows = [];
-  const rowStatuses = []; // status per data row, for row coloring
-  const links = []; // { row, col, url } for hyperlinking the Invoice/Receipt cell
-  let rowIdx = 3; // 1-based sheet row where data starts (title=1, header=2, data from 3)
-  for (const li of items) {
-    const invoiceUrl = li.invoice_url || invByItem[li.id] || '';
-    const st = statusLabel(li);
-    dataRows.push([
-      li.full_name || li.supplier || '',
-      stripHtml(li.item) || li.type || '',
-      money(li.planned_budget, li.currency_code),
-      money(li.actual_spent, li.currency_code),
-      invoiceUrl ? 'Link' : '',
-      st,
-      li.payment_method || '',
-      li.bank_details || '',
-      li.business_type || li.supplier_type || '',
-    ]);
-    rowStatuses.push(st);
-    if (invoiceUrl) links.push({ row: rowIdx, col: 4, url: invoiceUrl }); // col E (0-based 4)
-    rowIdx++;
-  }
-
-  // Total row (sum of planned budgets, grouped by currency symbol)
-  const totalsByCur = {};
-  for (const li of items) {
-    if (li.planned_budget == null || isNaN(Number(li.planned_budget))) continue;
-    const sym = CUR[li.currency_code] || '$';
-    totalsByCur[sym] = (totalsByCur[sym] || 0) + Number(li.planned_budget);
-  }
-  const totalStr = Object.entries(totalsByCur)
-    .map(([sym, n]) => `${sym}${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)
-    .join('  +  ');
-  const totalRow = new Array(NCOLS).fill('');
-  totalRow[0] = 'Total:';
-  totalRow[2] = totalStr;
-
-  const values = [titleRow, HEADERS.slice(), ...dataRows, totalRow];
-  return { prod, values, links, dataRowCount: dataRows.length, rowStatuses };
-}
-
-// ── Formatting requests (batchUpdate) to match the template look ─────────────
-// Light background tints per payment status (row coloring)
-const STATUS_FILL = {
-  'Paid':      { red: 0.85, green: 0.94, blue: 0.85 }, // light green
-  'Not Payed': { red: 0.99, green: 0.89, blue: 0.89 }, // light red
-  'Pending':   { red: 1.00, green: 0.96, blue: 0.83 }, // light amber
-};
-function formatRequests(sheetId, dataRowCount, rowStatuses = []) {
-  const headerRow = 1; // 0-based
-  const totalRowIdx = 2 + dataRowCount;
-  const navy = { red: 0.012, green: 0.043, blue: 0.18 };
-  // Per-row light fill by status (data rows start at 0-based index 2)
-  const rowFills = rowStatuses.map((st, i) => {
-    const bg = STATUS_FILL[st];
-    if (!bg) return null;
-    return { repeatCell: {
-      range: { sheetId, startRowIndex: 2 + i, endRowIndex: 3 + i, startColumnIndex: 0, endColumnIndex: NCOLS },
-      cell: { userEnteredFormat: { backgroundColor: bg } },
-      fields: 'userEnteredFormat.backgroundColor',
-    } };
-  }).filter(Boolean);
-  return [
-    ...rowFills,
-    // Merge title across C..E (cols 2..4)
-    { mergeCells: { range: { sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 2, endColumnIndex: 5 }, mergeType: 'MERGE_ALL' } },
-    // Title style
-    { repeatCell: { range: { sheetId, startRowIndex: 0, endRowIndex: 1 }, cell: { userEnteredFormat: { horizontalAlignment: 'CENTER', textFormat: { bold: true, fontSize: 12 } } }, fields: 'userEnteredFormat(horizontalAlignment,textFormat)' } },
-    // Header row: navy bg, white bold, centered
-    { repeatCell: { range: { sheetId, startRowIndex: headerRow, endRowIndex: headerRow + 1, startColumnIndex: 0, endColumnIndex: NCOLS }, cell: { userEnteredFormat: { backgroundColor: navy, horizontalAlignment: 'CENTER', textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 } } } }, fields: 'userEnteredFormat(backgroundColor,horizontalAlignment,textFormat)' } },
-    // Freeze title + header rows
-    { updateSheetProperties: { properties: { sheetId, gridProperties: { frozenRowCount: 2 } }, fields: 'gridProperties.frozenRowCount' } },
-    // Total row bold
-    { repeatCell: { range: { sheetId, startRowIndex: totalRowIdx, endRowIndex: totalRowIdx + 1, startColumnIndex: 0, endColumnIndex: NCOLS }, cell: { userEnteredFormat: { textFormat: { bold: true }, backgroundColor: { red: 0.93, green: 0.93, blue: 0.96 } } }, fields: 'userEnteredFormat(textFormat,backgroundColor)' } },
-    // Auto-resize columns
-    { autoResizeDimensions: { dimensions: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: NCOLS } } },
-  ];
-}
-
-// Hyperlink the "Link" cells to the actual invoice URLs (USER_ENTERED formula)
-async function applyLinks(sheets, spreadsheetId, sheetTitle, links) {
-  if (!links.length) return;
-  const data = links.map(l => ({
-    range: `${sheetTitle}!${colLetter(l.col)}${l.row}`,
-    values: [[`=HYPERLINK("${l.url.replace(/"/g, '')}","Link")`]],
-  }));
-  await sheets.spreadsheets.values.batchUpdate({
-    spreadsheetId,
-    requestBody: { valueInputOption: 'USER_ENTERED', data },
-  });
-}
-function colLetter(idx) { return String.fromCharCode(65 + idx); }
 
 // Grant the finance team editor access (one permission per email; never throws)
 async function shareFinanceSheet(drive, spreadsheetId) {
@@ -212,74 +74,9 @@ async function shareFinanceSheet(drive, spreadsheetId) {
   }
 }
 
-// ── Create a brand-new mirror sheet for a production ─────────────────────────
-async function createFinanceSheet(productionId) {
-  const { sheets, drive } = await getGoogleClients((await db.query('SELECT brand_id FROM productions WHERE id = $1', [productionId])).rows[0]?.brand_id);
-  const { prod, values, links, dataRowCount, rowStatuses } = await buildSheetData(productionId);
-
-  const brandName = prod.brand_id === 'blurr' ? 'Blurr' : 'Particle';
-  const created = await sheets.spreadsheets.create({
-    requestBody: {
-      properties: { title: `${prod.id} — ${brandName} ${prod.project_name || ''} — Finance` },
-      sheets: [{ properties: { title: 'Budget', gridProperties: { columnCount: NCOLS, frozenRowCount: 2 } } }],
-    },
-  });
-  const spreadsheetId = created.data.spreadsheetId;
-  const url = created.data.spreadsheetUrl;
-  const innerSheetId = created.data.sheets[0].properties.sheetId;
-
-  // Write values, then formatting, then links
-  await sheets.spreadsheets.values.update({
-    spreadsheetId, range: 'Budget!A1', valueInputOption: 'RAW', requestBody: { values },
-  });
-  await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: formatRequests(innerSheetId, dataRowCount, rowStatuses) } });
-  await applyLinks(sheets, spreadsheetId, 'Budget', links);
-
-  // Share with the finance team as editors (best-effort, per email)
-  await shareFinanceSheet(drive, spreadsheetId);
-
-  // Move into the shared team Drive folder if configured (so finance can see it)
-  if (DRIVE_FOLDER_ID) {
-    try {
-      const meta = await drive.files.get({ fileId: spreadsheetId, fields: 'parents' });
-      const prevParents = (meta.data.parents || []).join(',');
-      await drive.files.update({ fileId: spreadsheetId, addParents: DRIVE_FOLDER_ID, removeParents: prevParents, fields: 'id' });
-    } catch (e) { console.error('finance-sheet folder move failed:', e.message); }
-  }
-
-  await db.query(
-    "UPDATE productions SET finance_sheet_id = $1, finance_sheet_url = $2, finance_sheet_mode = 'mirror', finance_sheet_synced_at = NOW() WHERE id = $3",
-    [spreadsheetId, url, productionId]
-  );
-  return { spreadsheetId, url };
-}
-
-// ── Push current CP data into the existing mirror sheet ──────────────────────
-async function syncFinanceSheet(productionId) {
-  const { rows } = await db.query('SELECT brand_id, finance_sheet_id, finance_sheet_mode FROM productions WHERE id = $1', [productionId]);
-  const prod = rows[0];
-  if (!prod?.finance_sheet_id) return { skipped: 'no-sheet' };
-  if (prod.finance_sheet_mode === 'linked') return { skipped: 'linked-readonly' }; // never overwrite external sheets
-
-  const { sheets } = await getGoogleClients(prod.brand_id);
-  const spreadsheetId = prod.finance_sheet_id;
-  const { values, links, dataRowCount, rowStatuses } = await buildSheetData(productionId);
-
-  // Find the target tab (prefer "Budget", else first)
-  const meta = await sheets.spreadsheets.get({ spreadsheetId, fields: 'sheets.properties' });
-  const target = meta.data.sheets.find(s => s.properties.title === 'Budget') || meta.data.sheets[0];
-  const sheetTitle = target.properties.title;
-  const innerSheetId = target.properties.sheetId;
-
-  // Clear old data region then write fresh (keeps sheet id/url stable)
-  await sheets.spreadsheets.values.clear({ spreadsheetId, range: `${sheetTitle}!A1:Z1000` });
-  await sheets.spreadsheets.values.update({ spreadsheetId, range: `${sheetTitle}!A1`, valueInputOption: 'RAW', requestBody: { values } });
-  await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: formatRequests(innerSheetId, dataRowCount, rowStatuses) } });
-  await applyLinks(sheets, spreadsheetId, sheetTitle, links);
-
-  await db.query('UPDATE productions SET finance_sheet_synced_at = NOW() WHERE id = $1', [productionId]);
-  return { synced: true, rows: dataRowCount };
-}
+// ── Create / sync: the two-way sheet lives in finance/sheet.js (kept here so existing callers don't change) ──
+function createFinanceSheet(productionId) { return require('./finance/sheet').create(productionId); }
+function syncFinanceSheet(productionId) { return require('./finance/sheet').sync(productionId); }
 
 // ── Read a linked external sheet and diff it against CP line items ───────────
 async function findMismatches(productionId) {
@@ -315,6 +112,7 @@ async function findMismatches(productionId) {
 
   const { rows: items } = await db.query('SELECT * FROM production_line_items WHERE production_id = $1 ORDER BY created_at', [productionId]);
   const cpRows = items.map(li => ({
+    id: li.id,
     name: (li.full_name || li.supplier || '').trim(),
     budget: li.planned_budget != null ? Number(li.planned_budget) : null,
     actual: li.actual_spent != null ? Number(li.actual_spent) : null,
@@ -342,13 +140,13 @@ async function findMismatches(productionId) {
       if (s.status && cp.status && normStatus(s.status) !== normStatus(cp.status)) fieldDiffs.push({ field: 'Status', sheet: s.status, cp: cp.status });
       // Note the spelling variant itself if the names weren't identical
       if (normName(s.name) !== normName(cp.name)) fieldDiffs.push({ field: 'Name spelling', sheet: s.name, cp: cp.name });
-      if (fieldDiffs.length) diffs.push({ type: 'changed', name: cp.name, fields: fieldDiffs });
+      if (fieldDiffs.length) diffs.push({ type: 'changed', name: cp.name, line_id: cp.id, fields: fieldDiffs });
     } else {
       diffs.push({ type: 'only_in_sheet', name: s.name });
     }
   }
   for (let i = 0; i < cpRows.length; i++) {
-    if (!usedCp.has(i) && cpRows[i].name) diffs.push({ type: 'only_in_cp', name: cpRows[i].name });
+    if (!usedCp.has(i) && cpRows[i].name) diffs.push({ type: 'only_in_cp', name: cpRows[i].name, line_id: cpRows[i].id });
   }
   return { diffs, sheetRowCount: sheetRows.length, cpRowCount: cpRows.length };
 }
@@ -413,20 +211,11 @@ function normStatus(s) {
 }
 
 // ── Fire-and-forget debounced trigger (used by budget mutations) ─────────────
-const _pending = new Map(); // productionId -> timeout
-function triggerFinanceSync(productionId, delayMs = 2500) {
-  if (!productionId) return;
-  if (_pending.has(productionId)) clearTimeout(_pending.get(productionId));
-  _pending.set(productionId, setTimeout(async () => {
-    _pending.delete(productionId);
-    try { await syncFinanceSheet(productionId); }
-    catch (e) { console.error(`finance-sheet auto-sync failed for ${productionId}:`, e.message); }
-  }, delayMs));
-}
+function triggerFinanceSync(productionId, delayMs = 2500) { require('./finance/sheet').trigger(productionId, delayMs); }
 
 module.exports = {
-  getGoogleClients, buildSheetData, createFinanceSheet, syncFinanceSheet,
-  findMismatches, triggerFinanceSync, extractSheetId, shareFinanceSheet,
+  getGoogleClients, createFinanceSheet, syncFinanceSheet,
+  findMismatches, triggerFinanceSync, extractSheetId, shareFinanceSheet, nameScore,
 };
 
 // Parse a spreadsheet id out of a full URL or accept a bare id

@@ -131,7 +131,21 @@ export function updateProduction(id, updates, userId, userName) {
     });
     return all[idx];
   }
-  return apiPatch(`/productions/${encodeURIComponent(id)}`, updates).then((r) => { announceIfCompleted(id, updates); return r; });
+  return apiPatch(`/productions/${encodeURIComponent(id)}`, updates)
+    .then((r) => { announceIfCompleted(id, updates); return r; })
+    .catch(ifCancelled);
+}
+
+// A finance prompt the user closed ("why is the budget changing?") — nothing was saved; callers just refresh
+function ifCancelled(err) {
+  if (err?.cancelled) return null;
+  throw err;
+}
+
+/** Close (lock) / reopen (unlock) a production — reopening asks for a reason. Admins only. */
+export function lockProduction(id, locked) {
+  if (IS_DEV) return updateProduction(id, { locked, locked_at: locked ? new Date().toISOString() : null });
+  return apiPost(`/productions/${encodeURIComponent(id)}/lock`, { locked }).catch(ifCancelled);
 }
 
 // ========== LINE ITEMS ==========
@@ -155,7 +169,7 @@ export function createLineItem(item) {
     write('cp_line_items', all);
     return item;
   }
-  return apiPost('/line-items', item);
+  return apiPost('/line-items', item).catch(ifCancelled);
 }
 
 export function updateLineItem(id, updates) {
@@ -167,15 +181,36 @@ export function updateLineItem(id, updates) {
     write('cp_line_items', all);
     return all[idx];
   }
-  return apiPatch(`/line-items/${encodeURIComponent(id)}`, updates);
+  return apiPatch(`/line-items/${encodeURIComponent(id)}`, updates).catch(ifCancelled);
 }
 
-export function deleteLineItem(id) {
+/** The same change on several lines of one production (one reason for all). */
+export function bulkUpdateLineItems(ids, updates) {
+  if (IS_DEV) return ids.map(id => updateLineItem(id, updates));
+  return apiPatch('/line-items/bulk', { ids, updates }).catch(ifCancelled);
+}
+
+/** Save the order of a production's lines (drag & drop). */
+export function reorderLineItems(productionId, ids) {
+  if (IS_DEV) {
+    const all = read('cp_line_items', []);
+    ids.forEach((id, i) => { const li = all.find(x => x.id === id); if (li) li.sort_order = i + 1; });
+    write('cp_line_items', all);
+    return { ok: true };
+  }
+  return apiPut('/line-items/order', { production_id: productionId, ids });
+}
+
+export function deleteLineItem(id, params = null) {
   if (IS_DEV) {
     write('cp_line_items', read('cp_line_items', []).filter(li => li.id !== id));
     return null;
   }
-  return apiDelete(`/line-items/${encodeURIComponent(id)}`);
+  const qs = params ? `?${new URLSearchParams(params)}` : '';
+  return api(`/line-items/${encodeURIComponent(id)}${qs}`, { method: 'DELETE', body: {} }).then(r => r ?? { success: false, cancelled: true }).catch(err => {
+    if (err?.cancelled) return { success: false, cancelled: true };
+    throw err;
+  });
 }
 
 export function getAllLineItems() {
@@ -1114,7 +1149,7 @@ export function generateId(prefix = 'id') {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
 }
 
-const UNEXPECTED_RE = /unexpected|contingenc|בלת|צפוי/i;
+const UNEXPECTED_RE = /unexpected|contingenc|בלתי[\s\-־]*(צפוי|מתוכנן)|בלת["״']?מ(?![א-ת])/i;
 export function syncProductionTotals(productionId) {
   if (!IS_DEV) return; // server-side in prod
   const lineItems = getLineItems(productionId);

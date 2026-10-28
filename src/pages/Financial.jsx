@@ -13,6 +13,7 @@ import { useBrand } from '../context/BrandContext';
 import { useCurrency } from '../context/CurrencyContext';
 import { useAuth } from '../context/AuthContext';
 import { getProductions, getAllLineItems } from '../lib/dataService';
+import { financeApi } from '../lib/financeService';
 import { EXPENSE_CATEGORIES } from '../lib/mockData';
 import clsx from 'clsx';
 
@@ -346,8 +347,13 @@ export default function Financial() {
       const prodIds = new Set(prodsArr.map(p => p.id));
       const items = await Promise.resolve(getAllLineItems());
       setLineItems((Array.isArray(items) ? items : []).filter(li => prodIds.has(li.production_id)));
-      const saved = Number(localStorage.getItem(`cp_yearly_budget_${brandId}_${selectedYear}`));
-      setYearlyBudget(saved || 600_000);
+      // The year's budget lives on the server now (shared by everyone + the finance forecast);
+      // a value only this browser had is moved up once
+      const local = Number(localStorage.getItem(`cp_yearly_budget_${brandId}_${selectedYear}`));
+      let server = null;
+      try { server = (await financeApi.yearBudgets(selectedYear)).find(b => b.brand_id === brandId)?.amount_usd; } catch { /* dev / offline */ }
+      if (server == null && local && isEditor) financeApi.saveYearBudget(brandId, selectedYear, local).catch(() => {});
+      setYearlyBudget(Number(server) || local || 600_000);
       setLoading(false);
     }
     load();
@@ -357,6 +363,7 @@ export default function Financial() {
     if (!isEditor) return;
     setYearlyBudget(pendingBudget.newVal);
     localStorage.setItem(`cp_yearly_budget_${brandId}_${selectedYear}`, String(pendingBudget.newVal));
+    financeApi.saveYearBudget(brandId, selectedYear, pendingBudget.newVal).catch(() => {});
     setPendingBudget(null);
   }
 

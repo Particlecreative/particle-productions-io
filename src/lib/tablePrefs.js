@@ -20,11 +20,25 @@ const DEFAULTS = {
 // Columns hidden by default per table (applied only if the user has never
 // explicitly saved prefs for that table — stored under a separate key).
 const DEFAULT_HIDDEN = {
-  budget:    ['timeline'],
+  budget:    [],
   dashboard: ['shoot_date', 'delivery_date', 'air_date'],
 };
 
 const INIT_KEY = 'cp_table_prefs_init';
+
+// Line dates now set the production's dates and the month finance books each cost in,
+// so the budget Timeline column is shown again once for everyone (they can still hide it).
+(function showBudgetTimelineOnce() {
+  try {
+    if (localStorage.getItem('cp_table_prefs_timeline_v2')) return;
+    const all = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    if (all.budget?.hidden?.includes('timeline')) {
+      all.budget.hidden = all.budget.hidden.filter(c => c !== 'timeline');
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+    }
+    localStorage.setItem('cp_table_prefs_timeline_v2', '1');
+  } catch { /* private mode */ }
+})();
 
 /**
  * Get preferences for a given table ID.

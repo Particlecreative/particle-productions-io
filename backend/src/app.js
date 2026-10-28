@@ -103,6 +103,7 @@ app.use('/api/creative-reports', require('./routes/creativeReports'));
 app.use('/api/studio', require('./routes/studio'));
 app.use('/api/tracker', require('./routes/tracker'));
 app.use('/api/library', require('./routes/library'));
+app.use('/api/finance', require('./routes/finance'));
 
 // Google OAuth callback redirect — the callback URL registered with Google
 // points to /api/auth/google/callback, so we redirect to the drive router
@@ -112,7 +113,8 @@ app.get('/api/auth/google/callback', (req, res) => {
 });
 
 // ── Public form endpoints (no auth required) ─────────
-app.use('/api/public',           require('./routes/publicForms'));
+const publicLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 120, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many requests' } });
+app.use('/api/public', publicLimiter, require('./routes/publicForms'));
 app.use('/api/calendar',         require('./routes/calendar'));
 
 
@@ -163,6 +165,9 @@ cron.schedule('0 8 * * *', async () => {
 
 // ── Creative Weekly: Sunday auto-generate (opt-in), Frame.io keepalive, media cache prune ───
 require('./lib/creative/jobs').schedule(cron);
+
+// ── Finance: emails, sheet sync, reminders, accruals, rates, database backup ───
+require('./lib/finance/jobs').schedule(cron);
 
 // ── Contract PDF orphan check (every 10 minutes) ───
 // Catches signed contracts where the frontend didn't upload the PDF (user closed tab too early)

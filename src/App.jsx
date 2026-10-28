@@ -56,6 +56,8 @@ const CreativeReportsPage = lazyPage(() => import('./pages/creative/CreativeRepo
 const CreativeReportEditorPage = lazyPage(() => import('./pages/creative/CreativeReportEditorPage'));
 const CreativeReportPresentPage = lazyPage(() => import('./pages/creative/CreativeReportPresentPage'));
 const CreativeReportSharePage = lazyPage(() => import('./pages/creative/CreativeReportSharePage'));
+const FinancePage = lazyPage(() => import('./pages/finance/FinancePage'));
+const FinanceViewPage = lazyPage(() => import('./pages/finance/FinanceViewPage'));
 
 function DeckSplash() {
   return (
@@ -162,6 +164,8 @@ function AppRoutes() {
         <Route path="/creative-reports/:id" element={<ProtectedRoute blockForAccounting blockForStudio><AppShell><ErrorBoundary>{lazyEl(<CreativeReportEditorPage />)}</ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="/creative-reports/:id/present" element={<ProtectedRoute blockForAccounting blockForStudio><ErrorBoundary>{lazyEl(<CreativeReportPresentPage />, <DeckSplash />)}</ErrorBoundary></ProtectedRoute>} />
         <Route path="/creative-report/:token" element={<ErrorBoundary>{lazyEl(<CreativeReportSharePage />, <DeckSplash />)}</ErrorBoundary>} />
+        <Route path="/finance" element={<ProtectedRoute adminOnly><AppShell><ErrorBoundary>{lazyEl(<FinancePage />)}</ErrorBoundary></AppShell></ProtectedRoute>} />
+        <Route path="/finance-view" element={<ErrorBoundary>{lazyEl(<FinanceViewPage />)}</ErrorBoundary>} />
         {/* Public forms — no auth required */}
         <Route path="/supplier-form/:productionId" element={<SupplierForm />} />
         <Route path="/cc-payment/:productionId" element={<CCPaymentForm />} />

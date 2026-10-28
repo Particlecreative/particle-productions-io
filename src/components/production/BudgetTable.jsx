@@ -1,5 +1,10 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
-import { Plus, Trash2, Mail, FileSignature, ExternalLink, Download, Check, ChevronUp, ChevronDown, ChevronRight, SlidersHorizontal, X, Upload, User, CreditCard, AlertTriangle, FileSpreadsheet } from 'lucide-react';
+import { Plus, Trash2, Mail, FileSignature, ExternalLink, Download, Check, ChevronUp, ChevronDown, ChevronRight, SlidersHorizontal, X, Upload, User, CreditCard, AlertTriangle, FileSpreadsheet, GripVertical, Lock, Sparkles, Loader2, CalendarDays, GitBranch } from 'lucide-react';
+import { DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { DateRangeButton, DateRangeDialog } from '../finance/DateRangePicker';
+import { financeApi, usd, dayYearLabel } from '../../lib/financeService';
 import { useAuth } from '../../context/AuthContext';
 import { useCurrency } from '../../context/CurrencyContext';
 import { useNotifications } from '../../context/NotificationsContext';
@@ -8,6 +13,8 @@ import {
   createLineItem,
   updateLineItem,
   deleteLineItem,
+  bulkUpdateLineItems,
+  reorderLineItems,
   syncProductionTotals,
   generateId,
   getContract,
@@ -68,7 +75,7 @@ const STATUS_CLASSES = {
 
 const BUDGET_TOGGLE_KEYS = ['full_name','planned_budget','type','status','timeline','actual_spent','difference','invoice','contract'];
 
-export default function BudgetTable({ productionId, production, onRefresh, prodRate, onImport, onFinanceSheet }) {
+export default function BudgetTable({ productionId, production, fin, onRefresh, prodRate, onImport, onFinanceSheet }) {
   const { isEditor, user } = useAuth();
   const { fmt, currency, rate } = useCurrency();
 
@@ -149,6 +156,19 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
   // Bulk selection
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkBudget, setBulkBudget] = useState('');
+  const [bulkDates, setBulkDates] = useState(false);
+  // A closed (locked) production: the budget is frozen, payments stay open
+  const budgetLocked = !!production?.locked;
+  // Drag to reorder (saved for everyone) — only while the table isn't sorted by a column
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
+  async function handleDragEnd({ active, over }) {
+    if (!over || active.id === over.id) return;
+    const from = items.findIndex(i => i.id === active.id), to = items.findIndex(i => i.id === over.id);
+    if (from < 0 || to < 0) return;
+    const next = arrayMove(items, from, to);
+    setItems(next);
+    try { await Promise.resolve(reorderLineItems(productionId, next.map(i => i.id))); } catch (e) { console.error('Reorder failed:', e); refresh(); }
+  }
 
   useEffect(() => {
     async function load() {
@@ -300,14 +320,34 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
     setEditingCell(null);
   }
 
+  // Several fields of one line at once (the date picker saves start + end + cost month together)
+  async function handleUpdateMany(id, updates) {
+    if (!isEditor) return;
+    try { await Promise.resolve(updateLineItem(id, updates)); } catch (e) { alert(e.message); }
+    await refresh();
+  }
+
+  // One request for the whole selection — so an approved budget asks for the reason once, not per line
   async function handleBulkUpdate(field, value) {
+    return handleBulkUpdates({ [field]: value }, field);
+  }
+  async function handleBulkUpdates(updates, what = Object.keys(updates).join(', ')) {
     if (!isEditor || selectedIds.size === 0) return;
-    await Promise.all(
-      Array.from(selectedIds).map(id => Promise.resolve(updateLineItem(id, { [field]: value })))
-    );
-    addNotification('edit', `${user?.name || 'Someone'} bulk-updated ${field} for ${selectedIds.size} items in ${production?.project_name || productionId}`, productionId);
+    try { await Promise.resolve(bulkUpdateLineItems(Array.from(selectedIds), updates)); } catch (e) { alert(e.message); }
+    addNotification('edit', `${user?.name || 'Someone'} bulk-updated ${what} for ${selectedIds.size} items in ${production?.project_name || productionId}`, productionId);
     await refresh();
     // keep selection intact so user can chain edits
+  }
+
+  // Re-edits: move the selected lines between the production and its re-edits (e.g. 263701's costs out of 2637)
+  const moveTargets = fin ? [
+    ...(fin.parent_id ? [{ id: fin.parent_id, label: `${fin.parent_id} (main production)` }] : []),
+    ...(fin.children || []).map(k => ({ id: k.id, label: `${k.id} — ${k.project_name}` })),
+  ] : [];
+  async function handleMoveLines(target) {
+    if (!target || selectedIds.size === 0) return;
+    try { await financeApi.moveLines(Array.from(selectedIds), target); setSelectedIds(new Set()); } catch (e) { alert(e.message); }
+    await refresh();
   }
 
   // Cascade delete state
@@ -337,11 +377,8 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
         deleteCast: deleteOpts.cast ? 'true' : 'false',
         deleteDriveFiles: deleteOpts.driveFiles ? 'true' : 'false',
       });
-      const token = localStorage.getItem('cp_auth_token');
-      await fetch(`/api/line-items/${encodeURIComponent(id)}?${params}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const r = await Promise.resolve(deleteLineItem(id, Object.fromEntries(params)));
+      if (r?.cancelled) { setDeleting(false); setDeleteModal(null); return; }
       addNotification('edit', `${user?.name || 'Someone'} deleted "${item.item || item.full_name}" from ${production?.project_name || productionId}`, productionId);
       await refresh();
     } catch (e) {
@@ -668,11 +705,34 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
               >Apply</button>
             )}
           </div>
+          {!budgetLocked && (
+            <button type="button" onClick={() => setBulkDates(true)}
+              className="text-xs border border-indigo-200 rounded-lg px-2 py-1.5 bg-white hover:bg-indigo-50 flex items-center gap-1">
+              <CalendarDays size={12} /> Set dates…
+            </button>
+          )}
+          {moveTargets.length > 0 && !budgetLocked && (
+            <select className="text-xs border border-indigo-200 rounded-lg px-2 py-1.5 bg-white cursor-pointer" value=""
+              onChange={e => { if (e.target.value) handleMoveLines(e.target.value); }}>
+              <option value="">Move to…</option>
+              {moveTargets.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+            </select>
+          )}
           <button
             onClick={() => setSelectedIds(new Set())}
             className="ml-auto text-indigo-400 hover:text-indigo-700 p-1 rounded transition-colors"
             title="Clear selection"
           ><X size={14} /></button>
+        </div>
+      )}
+      {bulkDates && (
+        <DateRangeDialog title={`Set dates for ${selectedIds.size} line${selectedIds.size === 1 ? '' : 's'}`} onClose={() => setBulkDates(false)}
+          onSave={(v) => { setBulkDates(false); handleBulkUpdates({ timeline_start: v.timeline_start, timeline_end: v.timeline_end }, 'dates'); }} />
+      )}
+      {budgetLocked && (
+        <div className="mb-2 flex items-center gap-2 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-600">
+          <Lock size={13} className="shrink-0" />
+          <span>This production is <b>closed</b> — the budget is frozen. Payments, actuals and invoices stay open.</span>
         </div>
       )}
 
@@ -707,6 +767,8 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
                 {isEditor && <th></th>}
               </tr>
             </thead>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={sortedItems.map(i => i.id)} strategy={verticalListSortingStrategy}>
             <tbody>
               {sortedItems.length === 0 ? (
                 <tr>
@@ -752,6 +814,10 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
                     showColors={showColors}
                     contractRefreshKey={contractRefreshKey}
                     isSelected={selectedIds.has(item.id)}
+                    sortable={isEditor && !sortState.col}
+                    budgetLocked={budgetLocked}
+                    onUpdateMany={handleUpdateMany}
+                    onReadInvoice={async (lineId) => { try { await financeApi.readInvoice(lineId); } catch (e) { alert(e.message); } await refresh(); }}
                     onSelect={id => setSelectedIds(prev => {
                       const next = new Set(prev);
                       next.has(id) ? next.delete(id) : next.add(id);
@@ -764,6 +830,8 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
                 </Fragment>
               ))}
             </tbody>
+            </SortableContext>
+            </DndContext>
             <tfoot>
               <tr style={{ background: 'var(--brand-bg)', borderTop: '2px solid var(--brand-border)' }}>
                 <td colSpan={colsBefore} className="font-bold text-sm py-3 px-3">Totals</td>
@@ -917,6 +985,15 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
           <div className="text-xs text-gray-400 mb-1">Total Actual</div>
           <div className="font-bold text-gray-800">{fmtDisplay(totalActual)}</div>
         </div>
+        {fin?.totals && (
+          <div className="brand-card flex-1" style={{ minWidth: 200 }}>
+            <div className="text-xs text-gray-400 mb-1">Total in USD (for finance)</div>
+            <div className="font-bold text-gray-800">{usd(fin.totals.usd)}</div>
+            <div className="text-[10px] text-gray-400 mt-0.5">
+              {(fin.totals.per_currency || []).map(c => `${c.currency === 'ILS' ? '₪' : '$'}${Math.round(c.amount).toLocaleString()}`).join(' + ')} · ₪{fin.totals.rate?.rate}/$ Bank of Israel {dayYearLabel(fin.totals.rate?.date)}
+            </div>
+          </div>
+        )}
         <div className="brand-card flex-1" style={{ minWidth: 160 }}>
           <div className="text-xs text-gray-400 mb-1">Budget Remaining</div>
           <div className={clsx('font-bold', totalDiff >= 0 ? 'diff-positive' : 'diff-negative')}>
@@ -1077,8 +1154,13 @@ export default function BudgetTable({ productionId, production, onRefresh, prodR
   );
 }
 
-function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEditingCell, onUpdate, onDelete, onInvoice, onContract, lineItemTypes, lineItemStatuses, crewRoles = [], hiddenCols = [], customCols = [], onOpenCastModal, onPhotoFullscreen, ccChildren = [], isExpanded, onToggleExpand, isNew, showColors, contractRefreshKey = 0, isSelected = false, onSelect }) {
+const BUDGET_FIELDS = new Set(['item', 'full_name', 'planned_budget', 'type']);
+
+function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEditingCell, onUpdate, onDelete, onInvoice, onContract, lineItemTypes, lineItemStatuses, crewRoles = [], hiddenCols = [], customCols = [], onOpenCastModal, onPhotoFullscreen, ccChildren = [], isExpanded, onToggleExpand, isNew, showColors, contractRefreshKey = 0, isSelected = false, onSelect, sortable = false, budgetLocked = false, onUpdateMany, onReadInvoice }) {
   const vis = key => !hiddenCols.includes(key);
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id, disabled: !sortable });
+  const [reading, setReading] = useState(false);
+  const flags = Array.isArray(item.invoice_flags) ? item.invoice_flags : [];
   const diff = (parseFloat(item.planned_budget) || 0) - (parseFloat(item.actual_spent) || 0);
   const isEditing = (field) => editingCell?.itemId === item.id && editingCell?.field === field;
   const contractKey = production ? `${production.id}_li_${item.id}` : null;
@@ -1098,7 +1180,7 @@ function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEd
   }, [contractKey, contractRefreshKey]);
 
   function cell(field, children, className) {
-    if (!isEditor) return <td className={className}>{children}</td>;
+    if (!isEditor || (budgetLocked && BUDGET_FIELDS.has(field))) return <td className={className}>{children}</td>;
     return (
       <td
         className={clsx(className, 'cursor-pointer hover:bg-blue-50 transition-colors')}
@@ -1120,6 +1202,29 @@ function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEd
   const invStatus = item.invoice_status;
   const invUrl    = item.invoice_url;
   const dlUrl     = getDownloadUrl(invUrl);
+
+  // What Claude found on the invoice (wrong company, gap vs budget, duplicate…), or a button to read it
+  function InvoiceExtras() {
+    if (!invUrl) return null;
+    return (
+      <div className="mt-1 flex flex-col gap-0.5" onClick={e => e.stopPropagation()}>
+        {flags.map(f => (
+          <span key={f.code} className={`flex items-start gap-1 text-[10px] leading-tight font-semibold ${f.code === 'wrong_company' || f.code === 'duplicate' ? 'text-red-600' : 'text-amber-600'}`} title={f.message}>
+            <AlertTriangle size={10} className="shrink-0 mt-px" /> {f.message}
+          </span>
+        ))}
+        {item.invoice_data?.invoice_number && !flags.length && (
+          <span className="text-[10px] text-gray-400" title={`${item.invoice_data.supplier_name || ''} · billed to ${item.invoice_data.billed_to_name || '—'}`}>#{item.invoice_data.invoice_number} · checked ✓</span>
+        )}
+        {isEditor && !item.invoice_read_at && onReadInvoice && (
+          <button type="button" disabled={reading} onClick={async () => { setReading(true); await onReadInvoice(item.id); setReading(false); }}
+            className="flex items-center gap-1 text-[10px] text-violet-600 hover:underline disabled:opacity-50 w-fit">
+            {reading ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />} Read with Claude
+          </button>
+        )}
+      </div>
+    );
+  }
 
   function InvoiceCell() {
     if (invStatus === 'Received' && invUrl) {
@@ -1226,23 +1331,37 @@ function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEd
 
   return (
     <tr
+      ref={setNodeRef}
       className={clsx(
         isNew ? 'animate-[budget-row-flash_1.5s_ease-out]' : '',
         isSelected && 'border-l-2 border-indigo-400',
+        'group/row',
       )}
       style={{
         ...(isNew ? { background: 'rgba(59,130,246,0.08)' } : {}),
         ...(isSelected ? { background: 'rgba(99,102,241,0.06)' } : {}),
+        transform: CSS.Transform.toString(transform),
+        transition,
+        ...(isDragging ? { position: 'relative', zIndex: 5, background: 'var(--brand-surface, #fff)', boxShadow: '0 8px 24px rgba(0,0,0,0.12)' } : {}),
       }}
     >
-      {/* Checkbox */}
-      <td style={{ width: 40, padding: '0 8px' }} onClick={e => { e.stopPropagation(); onSelect?.(item.id); }}>
-        <input
-          type="checkbox"
-          className="w-4 h-4 rounded-sm accent-indigo-600 cursor-pointer"
-          checked={isSelected}
-          onChange={() => onSelect?.(item.id)}
-        />
+      {/* Checkbox + drag handle */}
+      <td style={{ width: 40, padding: '0 4px 0 2px' }} onClick={e => { e.stopPropagation(); onSelect?.(item.id); }}>
+        <div className="flex items-center gap-0.5">
+          {sortable ? (
+            <button type="button" {...attributes} {...listeners} onClick={e => e.stopPropagation()}
+              className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 opacity-40 group-hover/row:opacity-100 transition-opacity touch-none"
+              title="Drag to reorder" aria-label="Drag to reorder">
+              <GripVertical size={13} />
+            </button>
+          ) : <span className="w-[13px]" />}
+          <input
+            type="checkbox"
+            className="w-4 h-4 rounded-sm accent-indigo-600 cursor-pointer"
+            checked={isSelected}
+            onChange={() => onSelect?.(item.id)}
+          />
+        </div>
       </td>
       {cell('item',
         <div className="flex items-center gap-2">
@@ -1277,7 +1396,7 @@ function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEd
       {vis('planned_budget') && cell('planned_budget', (
         <div className="flex items-center gap-1.5">
           <span className="font-medium">{fmtRow(item.planned_budget, item.currency_code || 'USD')}</span>
-          {isEditor && (
+          {isEditor && !budgetLocked && (
             <button
               onClick={e => { e.stopPropagation(); onUpdate(item.id, 'currency_code', (item.currency_code || 'USD') === 'ILS' ? 'USD' : 'ILS'); }}
               className="text-[9px] px-1 py-0.5 rounded border border-gray-200 text-gray-400 hover:border-blue-300 hover:text-blue-500 transition-colors shrink-0"
@@ -1295,7 +1414,7 @@ function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEd
           backgroundColor: getListItemColor('lineItemTypes', item.type) + '15',
         } : {}}
       >
-        {isEditor ? (
+        {isEditor && !budgetLocked ? (
           <select
             value={item.type}
             onChange={e => {
@@ -1352,27 +1471,9 @@ function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEd
 
       {/* Timeline */}
       {vis('timeline') && <td className="text-xs text-gray-500">
-        {isEditor ? (
-          <div className="flex gap-1 items-center">
-            <input
-              type="date"
-              value={item.timeline_start || ''}
-              onChange={e => onUpdate(item.id, 'timeline_start', e.target.value)}
-              className="border rounded px-1 py-0.5 text-xs outline-none"
-              style={{ borderColor: 'var(--brand-border)' }}
-            />
-            <span>→</span>
-            <input
-              type="date"
-              value={item.timeline_end || ''}
-              onChange={e => onUpdate(item.id, 'timeline_end', e.target.value)}
-              className="border rounded px-1 py-0.5 text-xs outline-none"
-              style={{ borderColor: 'var(--brand-border)' }}
-            />
-          </div>
-        ) : (
-          item.timeline_start ? `${item.timeline_start} → ${item.timeline_end || '?'}` : '—'
-        )}
+        <DateRangeButton start={item.timeline_start} end={item.timeline_end} expenseMonth={item.expense_month}
+          disabled={!isEditor || budgetLocked}
+          onSave={(v) => onUpdateMany?.(item.id, v)} />
       </td>}
 
       {vis('actual_spent') && cell('actual_spent', <span>{fmtRow(item.actual_spent, item.currency_code || 'USD')}</span>)}
@@ -1383,7 +1484,7 @@ function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEd
       </td>}
 
       {/* Invoice — state driven */}
-      {vis('invoice') && <td><InvoiceCell /></td>}
+      {vis('invoice') && <td><InvoiceCell /><InvoiceExtras /></td>}
 
       {/* Contract */}
       {vis('contract') && <td>

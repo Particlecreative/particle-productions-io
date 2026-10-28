@@ -7,6 +7,7 @@ import { getAllCasting, getProductions, createCastMember, updateCastMember, dele
 import { apiPost, apiGet } from '../lib/apiClient';
 import clsx from 'clsx';
 import ProductionPicker from '../components/ui/ProductionPicker';
+import { financeApi } from '../lib/financeService';
 
 const ROLES   = ['Model', 'Actor', 'Actress', 'Extra'];
 const PERIODS = ['Perpetually', '1 Year', '6 Months', '3 Months'];
@@ -96,6 +97,7 @@ export default function CastingRights() {
   const [automationRunning, setAutomationRunning] = useState(false);
   const [automationResult, setAutomationResult] = useState(null);
   const [lastRunTime, setLastRunTime] = useState(null);
+  const [renewing, setRenewing] = useState(null);
 
   // Fetch last automation run time
   useEffect(() => {
@@ -319,6 +321,11 @@ export default function CastingRights() {
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
               </button>
+              {isAdmin && m.end_date && m.period !== 'Perpetually' && (
+                <button onClick={() => setRenewing(m)} className="text-[10px] font-bold px-2 py-1 rounded-full bg-violet-50 text-violet-700 hover:bg-violet-100" title="Renew the rights — the cost goes into the production's budget and finance is told">
+                  Renew
+                </button>
+              )}
               {delConfirm === m.id ? (
                 <button onClick={() => handleDelete(m.id)}
                   className="text-[10px] text-red-600 font-semibold px-1.5 py-0.5 bg-red-50 rounded border border-red-200">
@@ -624,6 +631,65 @@ export default function CastingRights() {
           <button className="absolute top-4 right-4 text-white/70 hover:text-white text-2xl" onClick={() => setPhotoFullscreen(null)}>✕</button>
         </div>
       )}
+
+      {renewing && <RenewModal member={renewing} productionName={renewing.project_name || prodName(renewing.production_id)} onClose={() => setRenewing(null)} onDone={() => { setRenewing(null); refresh(); }} />}
+    </div>
+  );
+}
+
+/** Renew a cast member's rights: the cost becomes a line in the original production (reopening it if it was closed) and finance is told. */
+function RenewModal({ member, productionName, onClose, onDone }) {
+  const [cost, setCost] = useState(member.renewal_cost ?? '');
+  const [currency, setCurrency] = useState(member.renewal_currency || 'USD');
+  const [term, setTerm] = useState(member.term_months || ({ '1 Year': 12, '6 Months': 6, '3 Months': 3 }[member.period]) || 3);
+  const [approvedBy, setApprovedBy] = useState('');
+  const [approvers, setApprovers] = useState([]);
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  useEffect(() => { apiGet('/finance/approvers').then(r => { setApprovers(r?.approvers || []); setApprovedBy((r?.approvers || [])[0] || ''); }).catch(() => {}); }, []);
+  async function submit() {
+    setBusy(true); setErr('');
+    try {
+      const r = await financeApi.renewRights(member.id, { cost: Number(cost), currency, term_months: Number(term), approved_by: approvedBy, note: note.trim() || undefined });
+      if (r) onDone();
+    } catch (e) { setErr(e.message); }
+    setBusy(false);
+  }
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onMouseDown={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-3" onMouseDown={e => e.stopPropagation()}>
+        <div>
+          <h3 className="font-bold text-gray-900 text-lg">Renew {member.name}’s rights</h3>
+          <p className="text-sm text-gray-500">The cost is added to <b>{productionName}</b>’s budget (reason: rights renewal) and finance gets an email straight away — even if the production is closed.</p>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <div className="col-span-2">
+            <label className="text-xs font-semibold text-gray-600 block mb-1">Cost</label>
+            <div className="flex gap-1.5">
+              <input type="number" className="brand-input w-full" value={cost} onChange={e => setCost(e.target.value)} autoFocus />
+              <select className="brand-input" value={currency} onChange={e => setCurrency(e.target.value)}><option value="USD">$</option><option value="ILS">₪</option></select>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-600 block mb-1">Months</label>
+            <input type="number" className="brand-input w-full" value={term} onChange={e => setTerm(e.target.value)} />
+          </div>
+          <div className="col-span-3">
+            <label className="text-xs font-semibold text-gray-600 block mb-1">Approved by</label>
+            <select className="brand-input w-full" value={approvedBy} onChange={e => setApprovedBy(e.target.value)}>{approvers.map(a => <option key={a}>{a}</option>)}</select>
+          </div>
+          <div className="col-span-3">
+            <label className="text-xs font-semibold text-gray-600 block mb-1">Note (optional)</label>
+            <input className="brand-input w-full" value={note} onChange={e => setNote(e.target.value)} />
+          </div>
+        </div>
+        {err && <div className="text-sm text-red-600">{err}</div>}
+        <div className="flex justify-end gap-2 pt-1">
+          <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-600 bg-gray-100">Cancel</button>
+          <button onClick={submit} disabled={busy || !(Number(cost) > 0) || !(Number(term) > 0)} className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-violet-600 disabled:opacity-40">{busy ? 'Renewing…' : 'Renew & tell finance'}</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -804,6 +870,25 @@ function CastingModal({ initial, productions, onSave, onClose }) {
               <span className="text-xs font-semibold text-orange-700">⚠️ Warning Date</span>
               <span className="text-xs text-orange-600 font-mono">{fmtDate(form.warning_date) || '—'}</span>
               <span className="text-[10px] text-orange-400 ml-auto">1 month before end · Gantt event added on save</span>
+            </div>
+          )}
+
+          {/* Renewal — what extending the rights costs (Renew adds it to the production's budget and tells finance) */}
+          {form.period !== 'Perpetually' && (
+            <div className="grid grid-cols-3 gap-3">
+              <div className="col-span-2">
+                <label className="text-xs font-semibold text-gray-600 block mb-1">Renewal cost</label>
+                <div className="flex gap-1.5">
+                  <input type="number" className="brand-input w-full" value={form.renewal_cost ?? ''} onChange={e => set('renewal_cost', e.target.value === '' ? null : Number(e.target.value))} placeholder="e.g. 2500" />
+                  <select className="brand-input" value={form.renewal_currency || 'USD'} onChange={e => set('renewal_currency', e.target.value)}>
+                    <option value="USD">$</option><option value="ILS">₪</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 block mb-1">Renews for (months)</label>
+                <input type="number" className="brand-input w-full" value={form.term_months ?? ''} onChange={e => set('term_months', e.target.value === '' ? null : Number(e.target.value))} placeholder="3" />
+              </div>
             </div>
           )}
 

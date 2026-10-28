@@ -3,6 +3,7 @@ import Sidebar from './Sidebar';
 import Header from './Header';
 import ToastContainer from '../ui/ToastContainer';
 import CompletionPromptHost from '../library/CompletionPromptHost';
+import FinancePromptHost from '../finance/FinancePromptHost';
 
 export default function AppShell({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -21,6 +22,7 @@ export default function AppShell({ children }) {
       </div>
       <ToastContainer />
       <CompletionPromptHost />
+      <FinancePromptHost />
     </div>
   );
 }

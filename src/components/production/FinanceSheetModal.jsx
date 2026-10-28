@@ -94,7 +94,7 @@ export default function FinanceSheetModal({ productionId, production, onClose, o
           ) : !linked ? (
             /* ── Not linked: generate or connect ── */
             <div className="space-y-3">
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">This production has no finance sheet yet. Create a live mirror of the budget, or connect an existing sheet.</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">This production has no finance sheet yet. Create a two-way sheet for it, or connect an existing sheet.</p>
 
               <button onClick={handleCreate} disabled={!!busy}
                 className="w-full flex items-center gap-3 p-3.5 rounded-xl border-2 border-green-200 dark:border-green-900/50 bg-green-50/50 dark:bg-green-900/10 hover:border-green-400 transition-all text-left disabled:opacity-50">
@@ -103,7 +103,7 @@ export default function FinanceSheetModal({ productionId, production, onClose, o
                 </div>
                 <div>
                   <p className="text-sm font-bold text-gray-800 dark:text-gray-100">Generate finance sheet</p>
-                  <p className="text-[11px] text-gray-500 dark:text-gray-400">Creates a Google Sheet that mirrors the CP budget live, and shares it with the finance team as editors.</p>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400">Creates a Google Sheet that stays in sync with the CP budget both ways — finance’s Paid marks, actuals and invoices come back into CP — and shares it with the finance team as editors.</p>
                 </div>
               </button>
 
@@ -138,7 +138,7 @@ export default function FinanceSheetModal({ productionId, production, onClose, o
             <div className="space-y-3">
               <div className={`flex items-center gap-2 text-[11px] font-semibold px-2.5 py-1.5 rounded-lg w-fit ${isMirror ? 'bg-green-50 text-green-700 dark:bg-green-900/20' : 'bg-blue-50 text-blue-700 dark:bg-blue-900/20'}`}>
                 <Check size={12} />
-                {isMirror ? 'Live mirror — auto-updates from the CP' : 'Linked (read-only) — CP never changes this sheet'}
+                {isMirror ? 'Two-way — CP updates it, and finance’s edits come back into CP' : 'Old format (read-only) — convert it on the Finance page'}
               </div>
 
               <a href={state.url} target="_blank" rel="noreferrer"

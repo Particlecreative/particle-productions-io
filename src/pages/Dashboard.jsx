@@ -12,6 +12,7 @@ import {
   saveViewOrder,
   getViewOrder,
   addStandardCrew,
+  lockProduction,
 } from '../lib/dataService';
 import { getGanttEvents } from '../lib/ganttService';
 import { useLists } from '../context/ListsContext';
@@ -268,11 +269,12 @@ export default function Dashboard() {
   }
 
   // Immediate stage change
-  function handleStageChange(id, stage) {
+  // Completing / pausing / reopening may first ask for a note for finance (the prompt waits for it)
+  async function handleStageChange(id, stage) {
     const prod = productions.find(p => p.id === id);
     if (prod?.stage === stage) return;
-    updateProduction(id, { stage }, user?.id, user?.name);
-    addNotification('stage_change', `${user?.name || 'Someone'} changed stage of ${prod?.project_name || id} to "${stage}"`, id);
+    const saved = await Promise.resolve(updateProduction(id, { stage }, user?.id, user?.name)).catch(e => { alert(e.message); return null; });
+    if (saved) addNotification('stage_change', `${user?.name || 'Someone'} changed stage of ${prod?.project_name || id} to "${stage}"`, id);
     refresh();
   }
 
@@ -289,13 +291,13 @@ export default function Dashboard() {
   }
 
   // Bulk update for selected productions
-  function handleBulkProdUpdate(field, value) {
+  async function handleBulkProdUpdate(field, value) {
     if (!isEditor || selectedProdIds.size === 0) return;
-    Array.from(selectedProdIds).forEach(id => {
+    for (const id of Array.from(selectedProdIds)) {   // one by one, so each finance prompt (if any) gets its own answer
       const prod = productions.find(p => p.id === id);
-      updateProduction(id, { [field]: value }, user?.id, user?.name);
-      if (prod) addNotification('edit', `${user?.name || 'Someone'} bulk-updated ${field} of ${prod.project_name || id} to "${value}"`, id);
-    });
+      const saved = await Promise.resolve(updateProduction(id, { [field]: value }, user?.id, user?.name)).catch(e => { alert(e.message); return null; });
+      if (saved && prod) addNotification('edit', `${user?.name || 'Someone'} bulk-updated ${field} of ${prod.project_name || id} to "${value}"`, id);
+    }
     refresh();
   }
 
@@ -316,20 +318,15 @@ export default function Dashboard() {
     refresh();
   }
 
+  // Lock = closed for finance (they get an email); unlocking asks why and alerts finance straight away
   async function handleLock(prodId, locked) {
+    if (locked && !window.confirm('Close this production? Its budget freezes (payments stay open) and finance gets a “production closed” email.')) return;
     try {
-      const res = await fetch(`/api/productions/${prodId}/lock`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('cp_auth_token')}` },
-        body: JSON.stringify({ locked }),
-      });
-      if (res.ok) {
-        refresh();
-      } else {
-        const err = await res.json();
-        alert(err.error || 'Failed to lock/unlock');
-      }
-    } catch {}
+      await lockProduction(prodId, locked);
+      refresh();
+    } catch (e) {
+      alert(e.message || 'Failed to lock/unlock');
+    }
   }
 
   async function handleDeleteProduction() {
@@ -1519,81 +1516,40 @@ function ProductionRow({
           </td>
         );
         if (key === 'timeline') {
-          const mode = getTimelineMode(prod);
-          const isSynced = mode === 'gantt';
-          const isUnknown = mode === 'unknown';
-          let syncStart = null, syncEnd = null;
-          if (isSynced) {
-            const events = getGanttEvents(prod.id);
-            if (events.length > 0) {
-              const starts = events.map(e => e.start_date).filter(Boolean).sort();
-              const ends = events.map(e => e.end_date).filter(Boolean).sort().reverse();
-              syncStart = starts[0] ?? null;
-              syncEnd = ends[0] ?? null;
-            }
-          }
-          const displayStart = isSynced ? syncStart : prod.planned_start;
-          const displayEnd = isSynced ? syncEnd : prod.planned_end;
-          function cycleMode() {
-            const next = mode === 'manual' ? 'gantt' : mode === 'gantt' ? 'unknown' : 'manual';
-            onInlineEdit(prod.id, 'timeline_mode', next);
-          }
+          // A production's dates come from its budget lines (the Budget Table); typed here only before any line has dates
+          const displayStart = prod.planned_start;
+          const displayEnd = prod.planned_end;
           return (
             <td key={key} onClick={e => e.stopPropagation()}>
-              <div className="flex items-center gap-1">
-                {isEditor && (
-                  <button
-                    title={
-                      mode === 'gantt'    ? 'Synced with Gantt — click for Unknown/TBD' :
-                      mode === 'unknown'  ? 'Unknown/TBD — click for Manual dates' :
-                                           'Manual dates — click to sync with Gantt'
-                    }
-                    onClick={e => { e.stopPropagation(); cycleMode(); }}
-                    className={clsx('flex-shrink-0 p-0.5 rounded transition-colors',
-                      mode === 'gantt'   ? 'text-blue-500 hover:text-blue-700' :
-                      mode === 'unknown' ? 'text-amber-500 hover:text-amber-700' :
-                                          'text-gray-300 hover:text-blue-400'
-                    )}
-                  >
-                    {mode === 'unknown'
-                      ? <HelpCircle size={11} />
-                      : <RefreshCw size={11} className={isSynced ? 'animate-spin-slow' : ''} />
-                    }
-                  </button>
-                )}
-                {isUnknown ? (
-                  <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-600 text-[10px] font-semibold border border-amber-200">
-                    📅 TBD
-                  </span>
-                ) : isEditingThisRow && mode === 'manual' ? (
-                  <div className="flex gap-1 items-center">
-                    <input
-                      type="date"
-                      value={getVal('planned_start') ?? ''}
-                      onChange={e => setField('planned_start', e.target.value)}
-                      onKeyDown={handleInputKeyDown}
-                      className="border-b-2 outline-none bg-transparent text-xs"
-                      style={{ borderColor: 'var(--brand-accent)' }}
-                    />
-                    <span className="text-gray-400">→</span>
-                    <input
-                      type="date"
-                      value={getVal('planned_end') ?? ''}
-                      onChange={e => setField('planned_end', e.target.value)}
-                      onKeyDown={handleInputKeyDown}
-                      className="border-b-2 outline-none bg-transparent text-xs"
-                      style={{ borderColor: 'var(--brand-accent)' }}
-                    />
-                  </div>
-                ) : (
-                  <span className={clsx('text-xs whitespace-nowrap', isSynced ? 'text-blue-600' : 'text-gray-500')}>
-                    {displayStart && displayEnd
-                      ? `${new Date(displayStart).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })} → ${new Date(displayEnd).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}`
-                      : isSynced ? <span className="text-gray-400 italic text-[10px]">No Gantt events</span> : '—'
-                    }
-                  </span>
-                )}
-              </div>
+              {isEditingThisRow ? (
+                <div className="flex gap-1 items-center">
+                  <input
+                    type="date"
+                    value={String(getVal('planned_start') ?? '').slice(0, 10)}
+                    onChange={e => setField('planned_start', e.target.value)}
+                    onKeyDown={handleInputKeyDown}
+                    className="border-b-2 outline-none bg-transparent text-xs"
+                    style={{ borderColor: 'var(--brand-accent)' }}
+                    title="Only used until the budget lines have dates"
+                  />
+                  <span className="text-gray-400">→</span>
+                  <input
+                    type="date"
+                    value={String(getVal('planned_end') ?? '').slice(0, 10)}
+                    onChange={e => setField('planned_end', e.target.value)}
+                    onKeyDown={handleInputKeyDown}
+                    className="border-b-2 outline-none bg-transparent text-xs"
+                    style={{ borderColor: 'var(--brand-accent)' }}
+                    title="Only used until the budget lines have dates"
+                  />
+                </div>
+              ) : displayStart || displayEnd ? (
+                <span className="text-xs whitespace-nowrap text-gray-500">
+                  {`${new Date(displayStart || displayEnd).toLocaleDateString('en-US', { day: 'numeric', month: 'short' })} → ${new Date(displayEnd || displayStart).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}`}
+                </span>
+              ) : (
+                <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-600 text-[10px] font-semibold border border-amber-200">📅 TBD</span>
+              )}
             </td>
           );
         }

@@ -18,6 +18,9 @@ app.listen(port, () => {
   if (!process.env.GOOGLE_CLIENT_ID) console.warn('WARNING: Google OAuth not configured (GOOGLE_CLIENT_ID missing)');
   if (!process.env.SLACK_WEBHOOK_URL) console.warn('WARNING: Slack notifications disabled (SLACK_WEBHOOK_URL missing)');
 
+  // Bank of Israel rates for every USD total (loads stored rates, fetches new ones)
+  require('./lib/finance/fx').init();
+
   // ── Casting Rights Automation Scheduler ─────────────────────────────────
   // Run casting automations every 24 hours
   setInterval(async () => {

@@ -97,6 +97,7 @@ router.post('/send', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.getGmailClient = getGmailClient;
 module.exports.sendEmail = async function sendEmail({ to, cc, subject, htmlBody, skipDefaultCc }) {
   try {
     const gmail = await getGmailClient();

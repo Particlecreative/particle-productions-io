@@ -306,4 +306,4 @@ async function filesForMonday(ids) {
   return (await filesByIds(ids)).map(f => ({ name: f.name, mime: f.mime, buffer: f.bytes }));
 }
 
-module.exports = { saveUpload, gather, filesForMonday, urlsIn, htmlText, isPrivateIp, kindOf };
+module.exports = { saveUpload, gather, filesForMonday, urlsIn, htmlText, isPrivateIp, kindOf, fetchLink, claudeImage };

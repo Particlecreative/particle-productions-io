@@ -32,6 +32,8 @@ import CallSheetTab from '../components/production/CallSheetTab';
 import TaxiWizard from '../components/production/TaxiWizard';
 import ScriptsTab from '../components/production/ScriptsTab';
 import StudioTab from '../components/production/StudioTab';
+import { CompanyChips, LockControl, PlannedCard, ApproveModal, FinanceTab } from '../components/finance/ProductionFinance';
+import { financeApi } from '../lib/financeService';
 import clsx from 'clsx';
 
 const SHOOT_TYPES = ['Shoot', 'Remote Shoot'];
@@ -84,14 +86,18 @@ export default function ProductionBoard() {
   const [showTaxiWizard, setShowTaxiWizard] = useState(false);
   const [taxiPeople, setTaxiPeople] = useState([]);
   const [taxiCast, setTaxiCast] = useState([]);
+  // Finance: approved budget, buffer, company, code, the decision log (null when the API isn't there, e.g. local dev)
+  const [fin, setFin] = useState(null);
+  const [showApprove, setShowApprove] = useState(false);
+  const loadFinance = () => financeApi.production(id).then(setFin).catch(() => setFin(null));
 
   // Build tab list based on production type
   const isShootType = production && SHOOT_TYPES.includes(production.production_type);
   const isRemoteShoot = production?.production_type === 'Remote Shoot';
   const deliveryTab = isRemoteShoot ? ['Product Delivery'] : [];
   const defaultTabs = isShootType
-    ? ['Budget Table', ...(!isRemoteShoot ? ['People on Set'] : []), 'Credit Card', 'Cast', ...deliveryTab, 'Payments', 'Financial', 'Links', 'Scripts', 'Updates', 'History', 'Gantt', 'Call Sheet']
-    : ['Budget Table', 'Credit Card', 'Payments', 'Financial', 'Links', 'Scripts', 'Updates', 'History', 'Gantt'];
+    ? ['Budget Table', ...(!isRemoteShoot ? ['People on Set'] : []), 'Credit Card', 'Cast', ...deliveryTab, 'Payments', 'Financial', 'Finance', 'Links', 'Scripts', 'Updates', 'History', 'Gantt', 'Call Sheet']
+    : ['Budget Table', 'Credit Card', 'Payments', 'Financial', 'Finance', 'Links', 'Scripts', 'Updates', 'History', 'Gantt'];
 
   const [tabConfig, setTabConfig] = useState(() => {
     const saved = getTabOrder(user?.id || 'anon', production?.id, defaultTabs);
@@ -111,8 +117,8 @@ export default function ProductionBoard() {
          ...(production.production_type !== 'Remote Shoot' ? ['People on Set'] : []),
          'Credit Card', 'Cast',
          ...(production.production_type === 'Remote Shoot' ? ['Product Delivery'] : []),
-         'Payments', 'Financial', 'Links', 'Scripts', 'Updates', 'History', 'Gantt', 'Call Sheet']
-      : ['Budget Table', 'Credit Card', 'Payments', 'Financial', 'Links', 'Scripts', 'Updates', 'History', 'Gantt'];
+         'Payments', 'Financial', 'Finance', 'Links', 'Scripts', 'Updates', 'History', 'Gantt', 'Call Sheet']
+      : ['Budget Table', 'Credit Card', 'Payments', 'Financial', 'Finance', 'Links', 'Scripts', 'Updates', 'History', 'Gantt'];
     const saved = getTabOrder(user?.id || 'anon', production.id, freshDefaults);
     const savedIds = new Set(saved.map(t => t.id));
     const missing = freshDefaults.filter(t => !savedIds.has(t));
@@ -131,6 +137,7 @@ export default function ProductionBoard() {
         Promise.resolve(getLineItems(id)),
       ]);
       if (p) { setProduction(p); setNameValue(p.project_name); }
+      loadFinance();
       const itemsArr = Array.isArray(items) ? items : [];
       setLineItems(itemsArr);
 
@@ -169,18 +176,20 @@ export default function ProductionBoard() {
     ]);
     if (p) setProduction(p);
     setLineItems(Array.isArray(items) ? items : []);
+    loadFinance();
   }
 
-  function handleNameSave() {
+  async function handleNameSave() {
+    setEditingName(false);
     if (nameValue.trim() && nameValue !== production.project_name) {
-      updateProduction(id, { project_name: nameValue }, user?.id, user?.name);
+      await updateProduction(id, { project_name: nameValue }, user?.id, user?.name);
       refresh();
     }
-    setEditingName(false);
   }
 
-  function handleStageChange(stage) {
-    updateProduction(id, { stage }, user?.id, user?.name);
+  // Completing / pausing / reopening may ask for a note for finance first (the prompt waits for it)
+  async function handleStageChange(stage) {
+    try { await updateProduction(id, { stage }, user?.id, user?.name); } catch (e) { alert(e.message); }
     refresh();
   }
 
@@ -202,12 +211,13 @@ export default function ProductionBoard() {
   // unexpected — unless the budget already has an explicit "unexpected" line (then the
   // buffer is considered already included). Detected below once line items are summed.
   const CONTINGENCY_PCT = 0.10;
-  const UNEXPECTED_RE = /unexpected|contingenc|בלת|צפוי/i;
+  const UNEXPECTED_RE = /unexpected|contingenc|בלתי[\s\-־]*(צפוי|מתוכנן)|בלת["״']?מ(?![א-ת])/i;
   const hasUnexpectedLine = lineItems.some(i => UNEXPECTED_RE.test(`${i.item || ''} ${i.type || ''} ${i.full_name || ''}`));
 
   // Live totals computed directly from line items (never stale)
   // Use SAME rate priority as BudgetTable: prodRate (historical for delivery date) → live rate → fallback
-  const DEFAULT_ILS_RATE = prodRate || globalRate || 3.7;
+  // One rate on the page: the Bank of Israel rate the server uses (frozen at approval), else the delivery-date rate
+  const DEFAULT_ILS_RATE = fin?.state?.rate || prodRate || globalRate || 3.7;
 
   // Native split totals (for display — no conversion)
   const liveSpentUSD = lineItems.filter(i => (i.currency_code || 'USD') !== 'ILS').reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0);
@@ -257,7 +267,9 @@ export default function ProductionBoard() {
               <span className="mx-1">/</span>
               <span className="text-gray-600 font-semibold truncate max-w-[200px]">{production.project_name || production.id}</span>
             </nav>
-            {/* Stage */}
+            {/* Closed / open + stage */}
+            <div className="flex items-center gap-2">
+            <LockControl production={production} isAdmin={isAdmin} onChanged={refresh} />
             {isEditor ? (
               <select
                 value={production.stage}
@@ -273,6 +285,7 @@ export default function ProductionBoard() {
             ) : (
               <StageBadge stage={production.stage} />
             )}
+            </div>
           </div>
 
           {/* Project name + ID + type tags */}
@@ -290,6 +303,7 @@ export default function ProductionBoard() {
               >
                 {production.id}
               </span>
+              <CompanyChips fin={fin} />
               {productTypes.map(pt => (
                 <span key={pt} className="px-3 py-1 text-[11px] font-bold rounded-full"
                   style={{ background: 'rgba(8,8,248,0.08)', color: 'var(--brand-accent)' }}>
@@ -347,7 +361,7 @@ export default function ProductionBoard() {
               <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-800/50 rounded-xl px-3 py-2.5 col-span-2 sm:col-span-1">
                 <Calendar size={14} className="text-gray-400 shrink-0" />
                 <div>
-                  <div className="text-[9px] text-gray-400 uppercase tracking-wide font-semibold">Timeline</div>
+                  <div className="text-[9px] text-gray-400 uppercase tracking-wide font-semibold">Timeline{fin?.dates_from_lines ? ' · from the lines' : ''}</div>
                   <div className="text-xs font-bold text-gray-700 dark:text-gray-200">{timeline}</div>
                 </div>
               </div>
@@ -376,7 +390,8 @@ export default function ProductionBoard() {
 
           {/* Budget Stats */}
           <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
-            {/* Planned Budget — derived: live estimate + 10% for the unexpected */}
+            {/* Planned Budget — estimate + 10% unexpected; frozen once approved (the 10% is then what's left for surprises) */}
+            <PlannedCard fin={fin} fmt={fmt} isAdmin={isAdmin} onApprove={() => setShowApprove(true)} fallback={
             <div className="rounded-2xl px-4 py-3 border border-gray-100 bg-gray-50/80">
               <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Planned Budget</div>
               <div className="text-2xl font-black tracking-tight text-gray-800">{fmt(planned)}</div>
@@ -388,6 +403,7 @@ export default function ProductionBoard() {
                     : `Estimate + 10% unexpected (+${fmt(contingency)})`}
               </div>
             </div>
+            } />
 
             {/* Estimated Total — live sum of all line-item estimates */}
             <div className="rounded-2xl px-4 py-3 border border-gray-100 bg-gray-50/80">
@@ -496,7 +512,7 @@ export default function ProductionBoard() {
 
       {/* ── Tab Content ──────────────────────────────────────── */}
       {activeTab === 'Budget Table' && (
-        <BudgetTable productionId={id} production={production} onRefresh={refresh} prodRate={prodRate} onImport={() => setShowImport(true)} onFinanceSheet={() => setShowFinanceSheet(true)} />
+        <BudgetTable productionId={id} production={production} fin={fin} onRefresh={refresh} prodRate={fin?.state?.rate || prodRate} onImport={() => setShowImport(true)} onFinanceSheet={() => setShowFinanceSheet(true)} />
       )}
       {activeTab === 'People on Set' && (
         <PeopleOnSet production={production} />
@@ -506,6 +522,9 @@ export default function ProductionBoard() {
       )}
       {activeTab === 'Financial' && (
         <ProductionFinancialTab productionId={id} production={production} />
+      )}
+      {activeTab === 'Finance' && (
+        <FinanceTab production={production} fin={fin} isAdmin={isAdmin} isEditor={isEditor} onChanged={refresh} />
       )}
       {activeTab === 'Credit Card' && (
         <CCPaymentsTab productionId={id} production={production} />
@@ -538,6 +557,10 @@ export default function ProductionBoard() {
       )}
       {activeTab === 'Studio' && (
         <StudioTab productionId={id} production={production} />
+      )}
+
+      {showApprove && (
+        <ApproveModal fin={fin} production={production} onClose={() => setShowApprove(false)} onDone={() => { setShowApprove(false); refresh(); }} />
       )}
 
       {/* Import Modal */}

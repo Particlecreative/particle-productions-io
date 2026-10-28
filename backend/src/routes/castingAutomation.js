@@ -55,9 +55,10 @@ async function notifyAdmins(message, productionId, type = 'casting_alert') {
 
 // ── Core automation logic (exported for scheduler use) ───────────────────────
 async function runCastingAutomations() {
-  const today = new Date().toISOString().slice(0, 10);
-  const oneMonthFromNow = new Date();
-  oneMonthFromNow.setMonth(oneMonthFromNow.getMonth() + 1);
+  // Israel's date — the server runs on UTC, so late-evening runs used to land on the wrong day
+  const today = require('../lib/creative/week').localDate(Date.now());
+  const oneMonthFromNow = new Date(`${today}T12:00:00Z`);
+  oneMonthFromNow.setUTCMonth(oneMonthFromNow.getUTCMonth() + 1);
   const monthStr = oneMonthFromNow.toISOString().slice(0, 10);
 
   const SLACK_WEBHOOK        = process.env.SLACK_WEBHOOK_URL;

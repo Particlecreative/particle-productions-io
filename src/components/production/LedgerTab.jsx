@@ -137,6 +137,8 @@ export default function LedgerTab({ productionId, production }) {
     const note = `Paid by ${payerName} on ${payDate} at ${payTime}`;
     const item = items.find(i => i.id === pendingPayment.itemId);
     const updates = { payment_status: 'Paid', payment_note: note, paid_by: payerName, paid_at: payDate };
+    // Paid before an actual was typed: the actual is what was planned (it can still be corrected)
+    if (!(parseFloat(item?.actual_spent) || 0) && (parseFloat(item?.planned_budget) || 0)) updates.actual_spent = parseFloat(item.planned_budget);
     // Receipt follow-up for חשבון עסקה
     const paidAtTs = new Date().toISOString();
     if (item?.invoice_type === 'cheshbon_iska') {
@@ -174,18 +176,20 @@ export default function LedgerTab({ productionId, production }) {
     if (payerName === name) setPayerName(updated[0] || '');
   }
 
-  const visibleItems = items.filter(i => (parseFloat(i.actual_spent) || 0) !== 0);
+  // Every line that costs something — a planned-only line can be paid too (it used to be hidden until an actual was typed)
+  const amountOf = (i) => (parseFloat(i.actual_spent) || 0) || (parseFloat(i.planned_budget) || 0);
+  const visibleItems = items.filter(i => amountOf(i) !== 0);
 
   // Split totals by currency
   const usdItems = visibleItems.filter(i => (i.currency_code || 'USD') === 'USD');
   const ilsItems = visibleItems.filter(i => i.currency_code === 'ILS');
-  const usdTotal = usdItems.reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0);
-  const ilsTotal = ilsItems.reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0);
+  const usdTotal = usdItems.reduce((s, i) => s + amountOf(i), 0);
+  const ilsTotal = ilsItems.reduce((s, i) => s + amountOf(i), 0);
   const hasMixed = usdTotal > 0 && ilsTotal > 0;
 
   // Paid totals
-  const usdPaid = usdItems.filter(i => i.payment_status === 'Paid').reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0);
-  const ilsPaid = ilsItems.filter(i => i.payment_status === 'Paid').reduce((s, i) => s + (parseFloat(i.actual_spent) || 0), 0);
+  const usdPaid = usdItems.filter(i => i.payment_status === 'Paid').reduce((s, i) => s + amountOf(i), 0);
+  const ilsPaid = ilsItems.filter(i => i.payment_status === 'Paid').reduce((s, i) => s + amountOf(i), 0);
   const usdRemaining = usdTotal - usdPaid;
   const ilsRemaining = ilsTotal - ilsPaid;
 
@@ -264,13 +268,13 @@ export default function LedgerTab({ productionId, production }) {
               </tr>
             </thead>
             <tbody>
-              {items.filter(i => (parseFloat(i.actual_spent) || 0) !== 0).length === 0 ? (
+              {visibleItems.length === 0 ? (
                 <tr>
                   <td colSpan={12} className="text-center py-10 text-gray-400 text-sm">
                     Add line items in Budget Table to populate the Ledger.
                   </td>
                 </tr>
-              ) : [...items].filter(i => (parseFloat(i.actual_spent) || 0) !== 0).sort((a, b) => (a.payment_status === 'Paid' ? 1 : 0) - (b.payment_status === 'Paid' ? 1 : 0)).map(item => {
+              ) : [...visibleItems].sort((a, b) => (a.payment_status === 'Paid' ? 1 : 0) - (b.payment_status === 'Paid' ? 1 : 0)).map(item => {
                 const inv = invoice(item.id);
                 const mismatch = inv && Math.abs((parseFloat(inv.amount) || 0) - (parseFloat(item.actual_spent) || 0)) > 0.01;
                 return (
@@ -433,7 +437,11 @@ function LedgerRow({ item, invoice, mismatch, fmt, fmtRow, isEditor, onUpdate, o
     <tr className={clsx(item.payment_status === 'Paid' && 'paid-row')}>
       <td className="font-medium">{item.full_name || '—'}</td>
       <td className="text-gray-600">{item.item || '—'}</td>
-      <td className="font-semibold">{fmtRow(item.actual_spent, item.currency_code || 'USD')}</td>
+      <td className="font-semibold">
+        {(parseFloat(item.actual_spent) || 0)
+          ? fmtRow(item.actual_spent, item.currency_code || 'USD')
+          : <span className="text-gray-400" title="No actual yet — this is the planned amount">{fmtRow(item.planned_budget, item.currency_code || 'USD')} <span className="text-[10px] font-normal">planned</span></span>}
+      </td>
 
       {/* Invoice */}
       <td>
