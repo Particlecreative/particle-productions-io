@@ -224,16 +224,17 @@ async function draftTicket({ form, messages, draft, board, userName, config, fil
 
   const stream = client.beta.messages.stream({
     model: MODEL,
-    max_tokens: 6000,
+    // Opus 5.5 always thinks and the thinking counts here — 6000 cut full briefs off mid-JSON
+    max_tokens: 32000,
     betas: ['server-side-fallback-2026-07-01'],
     fallbacks: 'default',
     output_config: { effort: 'low', format: { type: 'json_schema', schema: DRAFT_SCHEMA } },
     system: [{ type: 'text', text: refs ? `${SYSTEM}\n\n${refs}` : SYSTEM, cache_control: { type: 'ephemeral' } }],
     messages: convo,
-  });
+  }, { maxRetries: 0 }); // a retry after a 105s timeout would run past nginx's 120s and come back as a bare 504
   const msg = await stream.finalMessage();
   if (msg.stop_reason === 'refusal') throw new Error('Claude declined this request');
-  if (msg.stop_reason === 'max_tokens') throw new Error('The draft was cut off — try a shorter message');
+  if (msg.stop_reason === 'max_tokens') throw new Error('The draft ran too long and was cut off — try again');
   const text = (msg.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
   let out;
   try { out = JSON.parse(text); } catch { throw new Error('Claude returned an unreadable draft — try again'); }

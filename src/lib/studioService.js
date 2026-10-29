@@ -16,13 +16,19 @@ async function call(path, { method = 'GET', body } = {}) {
   });
   const text = await res.text();
   let data = null;
-  try { data = text ? JSON.parse(text) : null; } catch { data = { error: text }; }
+  let json = true;
+  try { data = text ? JSON.parse(text) : null; } catch { data = { error: text }; json = false; }
   if (res.status === 401) {
     localStorage.removeItem('cp_auth_token');
     window.location.href = '/login?redirect=' + encodeURIComponent(window.location.pathname + window.location.search);
     throw new StudioError('Session expired', 401);
   }
-  if (!res.ok) throw new StudioError(data?.error || (res.status >= 502 ? 'The server is updating — try again in a moment' : `Request failed (${res.status})`), res.status);
+  // A non-JSON error is nginx's own HTML page — never show that in the UI
+  if (!res.ok) {
+    const fallback = res.status === 504 ? 'That took too long and timed out — try again'
+      : res.status >= 502 ? 'The server is updating — try again in a moment' : `Request failed (${res.status})`;
+    throw new StudioError((json && data?.error) || fallback, res.status);
+  }
   return data;
 }
 

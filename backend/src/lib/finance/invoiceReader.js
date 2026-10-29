@@ -100,7 +100,7 @@ async function readLine(lineId) {
   const client = getAnthropic();
   const stream = client.beta.messages.stream({
     model: MODEL,
-    max_tokens: 2000,
+    max_tokens: 8000, // Opus 5.5 always thinks; the thinking counts toward this
     betas: ['server-side-fallback-2026-07-01'],
     fallbacks: 'default',
     output_config: { effort: 'low', format: { type: 'json_schema', schema: SCHEMA } },

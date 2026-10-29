@@ -125,7 +125,7 @@ async function generateNarrative(report, { previous = null, force = false } = {}
 
   const stream = client.beta.messages.stream({
     model: MODEL,
-    max_tokens: 8000,
+    max_tokens: 16000, // Opus 5.5 always thinks; the thinking counts toward this
     betas: ['server-side-fallback-2026-07-01'],
     fallbacks: 'default',
     output_config: { effort: 'medium', format: { type: 'json_schema', schema: NARRATIVE_SCHEMA } },

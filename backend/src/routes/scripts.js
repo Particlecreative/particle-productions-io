@@ -217,6 +217,9 @@ function downloadYouTubeVideo(url) {
   });
 }
 
+// Nano Banana 2.1 (GA, Oct 2026), then Nano Banana 2 GA (deprecated, no shutdown date yet)
+const GEMINI_IMAGE_MODELS = ['gemini-nano-banana-2.1', 'gemini-3.1-flash-image'];
+
 async function generateGeminiImage(prompt, referenceImages = []) {
   if (!process.env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY not configured in .env');
   const parts = [];
@@ -225,17 +228,21 @@ async function generateGeminiImage(prompt, referenceImages = []) {
     parts.push({ inline_data: { mime_type: ref.mimeType || 'image/jpeg', data: ref.base64 } });
   }
   parts.push({ text: `IMPORTANT: Generate as a 16:9 widescreen landscape format image (cinematic wide aspect ratio). ${prompt}` });
-  const resp = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key=${process.env.GEMINI_API_KEY}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts }],
-        generationConfig: { responseModalities: ['IMAGE', 'TEXT'] },
-      }),
-    }
-  );
+  const body = JSON.stringify({
+    contents: [{ parts }],
+    generationConfig: { responseModalities: ['IMAGE', 'TEXT'] },
+  });
+  // Google retires image models every few months (the 3.1 preview was shut down) — try the newest first and
+  // move to the next only when the model itself is gone, never on a real error
+  let resp;
+  for (const model of GEMINI_IMAGE_MODELS) {
+    resp = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body }
+    );
+    if (resp.status !== 404) break;
+    console.warn(`Gemini image model ${model} not available (404), trying the next one`);
+  }
   if (!resp.ok) {
     const errText = await resp.text();
     throw new Error(`Gemini Image API error: ${resp.statusText} — ${errText.slice(0, 200)}`);
@@ -259,8 +266,10 @@ async function generateGeminiImage(prompt, referenceImages = []) {
     console.error('Gemini response (no parts):', JSON.stringify(data).slice(0, 500));
     throw new Error('Gemini returned no content parts');
   }
-  // Check both camelCase (inlineData) and snake_case (inline_data) since the API mixes them
-  const imagePart = respParts.find(p => p.inlineData || p.inline_data);
+  // Check both camelCase (inlineData) and snake_case (inline_data) since the API mixes them.
+  // Thinking image models may also return draft images marked thought: true — the final image is the last real one.
+  const imageParts = respParts.filter(p => p.inlineData || p.inline_data);
+  const imagePart = imageParts.filter(p => !p.thought).pop() || imageParts.pop();
   if (!imagePart) {
     const textParts = respParts.filter(p => p.text).map(p => p.text).join(' ').slice(0, 200);
     throw new Error('Gemini did not return an image' + (textParts ? ' — response: ' + textParts : ''));
