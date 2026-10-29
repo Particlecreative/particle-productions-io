@@ -92,6 +92,7 @@ app.use('/api/scripts',        require('./routes/scripts'));
 app.use('/api/admin',          require('./routes/admin'));
 app.use('/api/casting-auto',   require('./routes/castingAutomation'));
 app.use('/api/drive',          require('./routes/drive'));
+app.use('/api/higgsfield',     require('./routes/higgsfield'));
 app.use('/api/gcal',           require('./routes/gcal'));
 app.use('/api/gmail',          require('./routes/gmail'));
 app.use('/api/monday',         require('./routes/monday'));

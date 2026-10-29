@@ -549,6 +549,121 @@ function DataBackupSection({ dropboxConnected, dropboxLoading, setDropboxLoading
   );
 }
 
+// ── Higgsfield (AI storyboard images) ─────────────────────────────────────────
+function HiggsfieldSection({ isAdmin }) {
+  const [status, setStatus] = useState(null);
+  const [pasting, setPasting] = useState(false);
+  const [pasted, setPasted] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const call = async (path, opts = {}) => {
+    const token = localStorage.getItem('cp_auth_token');
+    const r = await fetch(`/api/higgsfield${path}`, { ...opts, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` } });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || `Request failed (${r.status})`);
+    return data;
+  };
+  const load = () => call('/status?live=1').then(setStatus).catch(e => setStatus({ connected: false, error: e.message }));
+  useEffect(() => { load(); }, []);
+
+  async function connect() {
+    setBusy(true); setError('');
+    // Open the tab inside the click so it isn't blocked as a popup, then send it to Higgsfield's sign-in
+    const tab = window.open('', '_blank');
+    try {
+      const { url } = await call('/connect', { method: 'POST' });
+      if (tab) { tab.opener = null; tab.location.href = url; } else window.open(url, '_blank', 'noopener');
+      setPasted(''); setPasting(true);
+    } catch (e) {
+      tab?.close();
+      setError(e.message);
+    }
+    setBusy(false);
+  }
+
+  async function finish() {
+    setBusy(true); setError('');
+    try {
+      setStatus(await call('/connect/finish', { method: 'POST', body: JSON.stringify({ url: pasted }) }));
+      setPasting(false);
+    } catch (e) {
+      setError(e.message);
+    }
+    setBusy(false);
+  }
+
+  async function disconnect() {
+    if (!confirm('Disconnect Higgsfield? Script images stop working until it is connected again.')) return;
+    try { await call('', { method: 'DELETE' }); } catch (e) { setError(e.message); }
+    load();
+  }
+
+  return (
+    <div className="space-y-3">
+      {!status ? (
+        <p className="text-xs text-gray-400">Checking…</p>
+      ) : status.connected ? (
+        <div className="flex flex-wrap items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-xs">
+          <span className="text-green-500 font-bold">✓</span>
+          <span className="text-green-700 font-medium">
+            Connected{status.plan ? ` · ${status.plan} plan` : ''}{status.credits != null ? ` · ${Math.floor(status.credits).toLocaleString()} credits left` : ''}
+          </span>
+          {status.connected_at && (
+            <span className="text-gray-400">
+              since {new Date(status.connected_at).toLocaleDateString('en-GB')}{status.connected_by ? ` by ${status.connected_by}` : ''}
+            </span>
+          )}
+          {status.error && <span className="text-amber-600 w-full">Couldn't check the balance: {status.error}</span>}
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs">
+          <span className="text-amber-500 font-bold">!</span>
+          <span className="text-amber-700 font-medium">{status.expired ? 'The sign-in has expired — connect again' : 'Not connected — script images are off'}</span>
+        </div>
+      )}
+
+      {pasting ? (
+        <div className="border border-gray-200 rounded-lg p-3 space-y-2 text-xs text-gray-600">
+          <p><b>1.</b> In the new tab, sign in to Higgsfield and allow access.</p>
+          <p><b>2.</b> The tab then ends on a page that won't load ("This site can't be reached") — that's expected.</p>
+          <p><b>3.</b> Copy the whole address from that tab's address bar and paste it here:</p>
+          <input
+            value={pasted}
+            onChange={e => setPasted(e.target.value)}
+            placeholder="http://localhost:53682/callback?code=…"
+            className="w-full border border-gray-200 rounded px-2 py-1.5 text-xs font-mono"
+            autoFocus
+          />
+          <div className="flex items-center gap-3">
+            <button onClick={finish} disabled={busy || !pasted.trim()} className="btn-cta text-sm" style={{ opacity: busy || !pasted.trim() ? 0.6 : 1 }}>
+              {busy ? 'Connecting…' : 'Finish connecting'}
+            </button>
+            <button onClick={() => setPasting(false)} className="text-xs text-gray-400 hover:text-gray-600 underline">Cancel</button>
+          </div>
+        </div>
+      ) : isAdmin ? (
+        <div className="flex items-center gap-3">
+          <button onClick={connect} disabled={busy} className="btn-cta flex items-center gap-2 text-sm">
+            <Link2 size={13} />
+            {busy ? 'Opening Higgsfield…' : status?.connected ? 'Reconnect' : 'Connect Higgsfield'}
+          </button>
+          {status?.connected && (
+            <button onClick={disconnect} className="text-xs text-gray-400 hover:text-gray-600 underline">Disconnect</button>
+          )}
+        </div>
+      ) : (
+        !status?.connected && <p className="text-xs text-gray-400">An admin can connect Higgsfield here.</p>
+      )}
+
+      {error && <p className="text-xs text-red-600">{error}</p>}
+      <p className="text-[10px] text-gray-300">
+        Storyboard frames use Nano Banana Pro on the Particle Higgsfield plan — 2 credits per image.
+      </p>
+    </div>
+  );
+}
+
 // ── Monday.com Board Config ───────────────────────────────────────────────────
 const DEFAULT_MONDAY_CONFIG = {
   video_board_id:  '5433027071',
@@ -1397,6 +1512,18 @@ export default function Settings() {
               Nightly backup of all Google Drive files to Dropbox at 9:00 PM Israel time.
             </p>
             <DataBackupSection dropboxConnected={dropboxConnected} dropboxLoading={dropboxLoading} setDropboxLoading={setDropboxLoading} />
+          </section>
+
+          {/* Higgsfield — AI storyboard images */}
+          <section className="brand-card">
+            <div className="flex items-center gap-2 mb-1">
+              <Sparkles size={18} style={{ color: 'var(--brand-secondary)' }} />
+              <h2 className="font-bold" style={{ color: 'var(--brand-primary)' }}>Higgsfield</h2>
+            </div>
+            <p className="text-xs text-gray-400 mb-4">
+              Makes the AI storyboard images in Scripts, on the Particle Higgsfield account.
+            </p>
+            <HiggsfieldSection isAdmin={isAdmin} />
           </section>
 
           {/* Slack Webhook */}

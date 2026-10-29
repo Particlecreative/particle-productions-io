@@ -4,6 +4,7 @@ const crypto  = require('crypto');
 const { google } = require('googleapis');
 const mammoth = require('mammoth');
 const { verifyJWT } = require('../middleware/auth');
+const higgsfield = require('../lib/higgsfield');
 
 const DRIVE_FOLDER_ID = process.env.DRIVE_FOLDER_ID;
 const { execFile } = require('child_process');
@@ -215,70 +216,6 @@ function downloadYouTubeVideo(url) {
       resolve(outPath);
     });
   });
-}
-
-// Nano Banana 2.1 (GA, Oct 2026), then Nano Banana 2 GA (deprecated, no shutdown date yet)
-const GEMINI_IMAGE_MODELS = ['gemini-nano-banana-2.1', 'gemini-3.1-flash-image'];
-
-async function generateGeminiImage(prompt, referenceImages = []) {
-  if (!process.env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY not configured in .env');
-  const parts = [];
-  // Reference images first so Gemini uses them as visual context
-  for (const ref of referenceImages) {
-    parts.push({ inline_data: { mime_type: ref.mimeType || 'image/jpeg', data: ref.base64 } });
-  }
-  parts.push({ text: `IMPORTANT: Generate as a 16:9 widescreen landscape format image (cinematic wide aspect ratio). ${prompt}` });
-  const body = JSON.stringify({
-    contents: [{ parts }],
-    generationConfig: { responseModalities: ['IMAGE', 'TEXT'] },
-  });
-  // Google retires image models every few months (the 3.1 preview was shut down) — try the newest first and
-  // move to the next only when the model itself is gone, never on a real error
-  let resp;
-  for (const model of GEMINI_IMAGE_MODELS) {
-    resp = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
-      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body }
-    );
-    if (resp.status !== 404) break;
-    console.warn(`Gemini image model ${model} not available (404), trying the next one`);
-  }
-  if (!resp.ok) {
-    const errText = await resp.text();
-    throw new Error(`Gemini Image API error: ${resp.statusText} — ${errText.slice(0, 200)}`);
-  }
-  const data = await resp.json();
-
-  // Defensive parsing — Gemini may return promptFeedback (blocked), empty candidates, or different shape
-  if (data.promptFeedback?.blockReason) {
-    throw new Error(`Gemini blocked the prompt: ${data.promptFeedback.blockReason}${data.promptFeedback.blockReasonMessage ? ' — ' + data.promptFeedback.blockReasonMessage : ''}`);
-  }
-  if (!Array.isArray(data.candidates) || data.candidates.length === 0) {
-    console.error('Gemini response (no candidates):', JSON.stringify(data).slice(0, 500));
-    throw new Error('Gemini did not return any candidates. ' + (data.error?.message || 'The prompt may have been rejected by safety filters.'));
-  }
-  const candidate = data.candidates[0];
-  if (candidate.finishReason && !['STOP', 'MAX_TOKENS'].includes(candidate.finishReason)) {
-    throw new Error(`Gemini stopped: ${candidate.finishReason}${candidate.safetyRatings ? ' (safety filter triggered)' : ''}`);
-  }
-  const respParts = candidate.content?.parts;
-  if (!Array.isArray(respParts) || respParts.length === 0) {
-    console.error('Gemini response (no parts):', JSON.stringify(data).slice(0, 500));
-    throw new Error('Gemini returned no content parts');
-  }
-  // Check both camelCase (inlineData) and snake_case (inline_data) since the API mixes them.
-  // Thinking image models may also return draft images marked thought: true — the final image is the last real one.
-  const imageParts = respParts.filter(p => p.inlineData || p.inline_data);
-  const imagePart = imageParts.filter(p => !p.thought).pop() || imageParts.pop();
-  if (!imagePart) {
-    const textParts = respParts.filter(p => p.text).map(p => p.text).join(' ').slice(0, 200);
-    throw new Error('Gemini did not return an image' + (textParts ? ' — response: ' + textParts : ''));
-  }
-  const inline = imagePart.inlineData || imagePart.inline_data;
-  return {
-    base64: inline.data,
-    mimeType: inline.mimeType || inline.mime_type || 'image/jpeg',
-  };
 }
 
 const SCENE_SYSTEM_PROMPT = `You are a professional script writer and storyboard creator.
@@ -1484,7 +1421,8 @@ router.post('/:id/ai-generate', async (req, res) => {
 });
 
 // Simple in-memory rate limiter for expensive AI image calls
-// Max 15 image generations per script per 5 minutes
+// Max 15 image generations per script per 5 minutes. Returns 0 and takes a slot when allowed,
+// otherwise the seconds until a slot frees up
 const aiImageRateMap = new Map();
 function checkAiImageRate(scriptId) {
   const now = Date.now();
@@ -1492,66 +1430,104 @@ function checkAiImageRate(scriptId) {
   const max = 15;
   if (!aiImageRateMap.has(scriptId)) aiImageRateMap.set(scriptId, []);
   const ts = aiImageRateMap.get(scriptId).filter(t => now - t < window);
-  if (ts.length >= max) return false;
+  if (ts.length >= max) return Math.max(1, Math.ceil((ts[0] + window - now) / 1000));
   ts.push(now);
   aiImageRateMap.set(scriptId, ts);
-  return true;
+  return 0;
+}
+// A failed generation gives its slot back — only images that were actually made count
+function releaseAiImageRate(scriptId) {
+  aiImageRateMap.get(scriptId)?.pop();
 }
 
-// POST /api/scripts/:id/ai-image — Gemini image generation (Nano Banana 2)
+// Image jobs run in the background: a Higgsfield frame takes ~45s on top of Claude writing its prompt, which as one
+// request ran into nginx's 120s limit. The page polls GET /:id/ai-image/jobs/:jobId until the job is done or failed.
+const aiImageJobs = new Map();
+const imageFail = (message, status = 400) => Object.assign(new Error(message), { status });
+
+// POST /api/scripts/:id/ai-image — storyboard frame with Nano Banana Pro on Higgsfield → 202 { job_id }
 // Accepts optional: prompt (override), replace_image_id (replace vs append), character_profiles, style_notes, product_info
 router.post('/:id/ai-image', async (req, res) => {
-  if (!checkAiImageRate(req.params.id)) {
-    return res.status(429).json({ error: 'Too many image generations — please wait a moment before generating more.' });
+  const wait = checkAiImageRate(req.params.id);
+  if (wait) {
+    const when = wait > 60 ? `${Math.ceil(wait / 60)} min` : `${wait}s`;
+    return res.status(429).json({ error: `Too many image generations — please wait ${when} before generating more.`, retry_after: wait });
   }
   try {
-    const { scene_id, prompt: promptOverride, replace_image_id, character_profiles, style_notes, reference_image, reference_image_url, product_info, character_photos, reference_images, independent } = req.body;
-    if (!scene_id) return res.status(400).json({ error: 'scene_id is required' });
-
-    if (!process.env.GEMINI_API_KEY) {
-      return res.status(501).json({ error: 'GEMINI_API_KEY not configured in .env' });
+    if (!req.body?.scene_id) throw imageFail('scene_id is required');
+    if (!(await higgsfield.isConnected())) {
+      throw Object.assign(imageFail("Higgsfield isn't connected — an admin can connect it in Settings → Integrations.", 503), { code: 'HF_NOT_CONNECTED' });
     }
+  } catch (err) {
+    releaseAiImageRate(req.params.id);
+    return res.status(err.status || 500).json({ error: err.message, code: err.code });
+  }
+  for (const [id, j] of aiImageJobs) if (Date.now() - j.started_at > 30 * 60 * 1000) aiImageJobs.delete(id);
+  const job = { id: crypto.randomUUID(), script_id: req.params.id, status: 'working', started_at: Date.now() };
+  aiImageJobs.set(job.id, job);
+  res.status(202).json({ job_id: job.id });
+  try {
+    Object.assign(job, { status: 'done' }, await makeAiImage(req.params.id, req.body));
+  } catch (err) {
+    releaseAiImageRate(req.params.id);
+    console.error('POST /scripts/:id/ai-image error:', err);
+    Object.assign(job, { status: 'failed', error: err.message || 'Image generation failed', code: err.code, http_status: err.status || 500, retry_after: err.retryAfter });
+  }
+});
 
-    // Load full script to get context
-    const { rows } = await db.query('SELECT scenes, title FROM scripts WHERE id = $1', [req.params.id]);
-    if (!rows[0]) return res.status(404).json({ error: 'Script not found' });
-    const scenes = rows[0].scenes || [];
-    const sceneIndex = scenes.findIndex(s => s.id === scene_id);
-    if (sceneIndex === -1) return res.status(404).json({ error: 'Scene not found' });
+// GET /api/scripts/:id/ai-image/jobs/:jobId → { status: working|done|failed, url, prompt, image_id, error, code }
+router.get('/:id/ai-image/jobs/:jobId', (req, res) => {
+  const job = aiImageJobs.get(req.params.jobId);
+  if (!job || job.script_id !== req.params.id) {
+    return res.status(404).json({ error: 'This image was interrupted (the server restarted) — try again', code: 'JOB_LOST' });
+  }
+  const { script_id, started_at, ...rest } = job;
+  res.json(rest);
+});
 
-    const targetScene = scenes[sceneIndex];
-    const prevScene = sceneIndex > 0 ? scenes[sceneIndex - 1] : null;
-    const nextScene = sceneIndex < scenes.length - 1 ? scenes[sceneIndex + 1] : null;
+async function makeAiImage(scriptId, body) {
+  const { scene_id, prompt: promptOverride, replace_image_id, character_profiles, style_notes, reference_image, reference_image_url, product_info, character_photos, reference_images, independent } = body;
 
-    // All existing image prompts for visual consistency (use more for better continuity)
-    const existingImagePrompts = scenes
-      .filter(s => s.id !== scene_id)
-      .flatMap(s => (s.images || []).filter(img => img.prompt).map(img => img.prompt))
-      .slice(0, 10);
+  // Load full script to get context
+  const { rows } = await db.query('SELECT scenes, title FROM scripts WHERE id = $1', [scriptId]);
+  if (!rows[0]) throw imageFail('Script not found', 404);
+  const scenes = rows[0].scenes || [];
+  const sceneIndex = scenes.findIndex(s => s.id === scene_id);
+  if (sceneIndex === -1) throw imageFail('Scene not found', 404);
 
-    // Get the immediately previous scene's generated image as visual reference for continuity (skip if independent)
-    const prevSceneImage = !independent ? (prevScene?.images?.[0]?.url || null) : null;
+  const targetScene = scenes[sceneIndex];
+  const prevScene = sceneIndex > 0 ? scenes[sceneIndex - 1] : null;
+  const nextScene = sceneIndex < scenes.length - 1 ? scenes[sceneIndex + 1] : null;
 
-    let imagePrompt = promptOverride; // use override if provided (regenerate with edited prompt)
+  // All existing image prompts for visual consistency (use more for better continuity)
+  const existingImagePrompts = scenes
+    .filter(s => s.id !== scene_id)
+    .flatMap(s => (s.images || []).filter(img => img.prompt).map(img => img.prompt))
+    .slice(0, 10);
 
-    if (!imagePrompt) {
-      // Build character profiles context
-      const charContext = Array.isArray(character_profiles) && character_profiles.length > 0
-        ? `\nCHARACTERS — IDENTITY LOCK (non-negotiable):\n${character_profiles.map(c => `- ${c.name}: ${c.description}`).join('\n')}\nYou MUST reproduce each character's exact appearance as described. Same face structure, hair, skin tone, build. Do NOT idealize, beautify, or alter them.\n`
-        : '';
+  // Get the immediately previous scene's generated image as visual reference for continuity (skip if independent)
+  const prevSceneImage = !independent ? (prevScene?.images?.[0]?.url || null) : null;
 
-      // Build product context
-      const productContext = product_info?.name
-        ? `\nPRODUCT CONSISTENCY (CRITICAL — non-negotiable):\nThe product "${product_info.name}" must appear in this scene with EXACT visual accuracy. Maintain the exact shape, branding, colors, proportions, and logo placement from the reference product images provided. Do NOT stylize, abstract, or alter the product in any way. The product must be instantly recognizable as "${product_info.name}".\n`
-        : '';
+  let imagePrompt = promptOverride; // use override if provided (regenerate with edited prompt)
 
-      // Build style notes context
-      const styleContext = style_notes
-        ? `\nVISUAL STYLE FOR THIS PRODUCTION:\n${style_notes}\n`
-        : '';
+  if (!imagePrompt) {
+    // Build character profiles context
+    const charContext = Array.isArray(character_profiles) && character_profiles.length > 0
+      ? `\nCHARACTERS — IDENTITY LOCK (non-negotiable):\n${character_profiles.map(c => `- ${c.name}: ${c.description}`).join('\n')}\nYou MUST reproduce each character's exact appearance as described. Same face structure, hair, skin tone, build. Do NOT idealize, beautify, or alter them.\n`
+      : '';
 
-      // Ask Claude to craft a detailed image generation prompt
-      const contextPrompt = `You are writing an image generation prompt for a professional storyboard frame.
+    // Build product context
+    const productContext = product_info?.name
+      ? `\nPRODUCT CONSISTENCY (CRITICAL — non-negotiable):\nThe product "${product_info.name}" must appear in this scene with EXACT visual accuracy. Maintain the exact shape, branding, colors, proportions, and logo placement from the reference product images provided. Do NOT stylize, abstract, or alter the product in any way. The product must be instantly recognizable as "${product_info.name}".\n`
+      : '';
+
+    // Build style notes context
+    const styleContext = style_notes
+      ? `\nVISUAL STYLE FOR THIS PRODUCTION:\n${style_notes}\n`
+      : '';
+
+    // Ask Claude to craft a detailed image generation prompt
+    const contextPrompt = `You are writing an image generation prompt for a professional storyboard frame.
 
 Script title: "${rows[0].title}"
 ${charContext}${productContext}${styleContext}
@@ -1588,122 +1564,127 @@ ${independent ? `INDEPENDENT SHOT — generate a fresh, standalone image. Use yo
 - Do NOT include text overlays, titles, or watermarks.
 - Return ONLY the prompt text, nothing else.`;
 
-      try {
-        imagePrompt = await callClaude(contextPrompt, 'You are a professional storyboard artist and cinematographer. Write concise, vivid image generation prompts.');
-        imagePrompt = imagePrompt.trim().replace(/^["']|["']$/g, '');
-      } catch (claudeErr) {
-        console.warn('Claude prompt generation failed, using fallback:', claudeErr.message);
-        imagePrompt = `Cinematic storyboard frame: ${targetScene.location || ''}. ${targetScene.what_we_see || ''}. Professional film production style, dramatic lighting.`;
-      }
-    }
-
-    // Resolve reference image (upload or URL)
-    const refImages = [];
-
-    // Prepend product photos (up to 3) before any actor reference
-    if (Array.isArray(product_info?.photos)) {
-      for (const photo of product_info.photos.slice(0, 3)) {
-        if (photo?.base64) {
-          refImages.unshift({ base64: photo.base64, mimeType: photo.mimeType || 'image/jpeg' });
-        }
-      }
-    }
-
-    // Add character reference photos — placed after product photos, with identity lock instruction
-    if (Array.isArray(character_photos)) {
-      for (const cp of character_photos.slice(0, 3)) {
-        if (cp?.base64) {
-          refImages.push({ base64: cp.base64, mimeType: cp.mimeType || 'image/jpeg' });
-        }
-      }
-    }
-
-    // Add general reference images (style/mood refs from wizard)
-    if (Array.isArray(reference_images)) {
-      for (const ri of reference_images.slice(0, 5)) {
-        if (ri?.base64) {
-          refImages.push({ base64: ri.base64, mimeType: ri.mimeType || 'image/jpeg' });
-        }
-      }
-    }
-
-    // Fetch previous scene's generated image as CONTINUITY reference (so Gemini sees the last frame)
-    if (prevSceneImage && !promptOverride) {
-      try {
-        const prevImgUrl = prevSceneImage.startsWith('data:') ? null : prevSceneImage;
-        if (prevImgUrl) {
-          const prevRes = await fetch(prevImgUrl, { signal: AbortSignal.timeout(5000) });
-          if (prevRes.ok) {
-            const prevBuf = Buffer.from(await prevRes.arrayBuffer());
-            const prevMime = prevRes.headers.get('content-type') || 'image/jpeg';
-            // Push as FIRST reference — Gemini sees this frame first for continuity
-            refImages.unshift({ base64: prevBuf.toString('base64'), mimeType: prevMime });
-          }
-        }
-      } catch { /* non-critical — continue without prev image */ }
-    }
-
-    if (reference_image?.base64) {
-      refImages.push({ base64: reference_image.base64, mimeType: reference_image.mimeType || 'image/jpeg' });
-    } else if (reference_image_url) {
-      // SSRF guard — block internal/private IPs
-      try {
-        const parsedRefUrl = new URL(reference_image_url);
-        const isInternal = /^(localhost|127\.|0\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|169\.254\.|::1$|::ffff:127\.|fd|fc)/.test(parsedRefUrl.hostname);
-        if (isInternal) return res.status(400).json({ error: 'Internal URLs not allowed as reference images' });
-        const refRes = await fetch(reference_image_url, { signal: AbortSignal.timeout(8000) });
-        if (refRes.ok) {
-          const refBuf = Buffer.from(await refRes.arrayBuffer());
-          const refMime = refRes.headers.get('content-type') || 'image/jpeg';
-          refImages.push({ base64: refBuf.toString('base64'), mimeType: refMime });
-        }
-      } catch (refErr) {
-        console.warn('Could not fetch reference image URL:', refErr.message);
-      }
-    }
-
-    // STORYBOARD CONTINUITY: if we have the previous frame, tell Gemini to match it
-    if (prevSceneImage && !promptOverride && refImages.length > 0) {
-      imagePrompt += ' STORYBOARD CONTINUITY: The FIRST reference image is the previous frame in this storyboard sequence. Match its exact color grading, lighting temperature, visual tone, and cinematic style. Characters must look identical. This new frame must feel like the immediate next shot in the same production.';
-    }
-
-    // If product photos were added (and no override), tell model to replicate product precisely
-    const productPhotosAdded = Array.isArray(product_info?.photos) && product_info.photos.length > 0;
-    if (productPhotosAdded && !promptOverride) {
-      imagePrompt += ' The provided product reference images show the exact product that must appear in this scene — replicate it precisely.';
-    }
-    const charPhotosAdded = Array.isArray(character_photos) && character_photos.length > 0;
-    if (charPhotosAdded && !promptOverride) {
-      imagePrompt += ` IDENTITY LOCK: The reference photo(s) that follow this text show the EXACT actor(s)/character(s) who must appear in this scene. Reproduce their face, hair color and style, skin tone, and build with absolute precision. Do NOT change, idealize, or invent their appearance.`;
-    } else if (refImages.length > 0 && !promptOverride && !productPhotosAdded) {
-      imagePrompt += ' Use the provided reference image as visual inspiration for composition, style, or subject — adapt it to fit the scene context while maintaining storyboard consistency.';
-    }
-
-    // Generate image via Gemini (Nano Banana 2), optionally with reference images
-    const { base64, mimeType } = await generateGeminiImage(imagePrompt, refImages);
-    const imgBuffer = Buffer.from(base64, 'base64');
-    const ext = mimeType.includes('png') ? 'png' : 'jpg';
-
-    // Upload to Google Drive for persistence
-    let finalUrl = null;
     try {
-      const { drive } = await getGoogleDrive();
-      finalUrl = await driveUploadBuffer({
-        drive,
-        fileName: `ai-image-scene${sceneIndex + 1}-${Date.now()}.${ext}`,
-        buffer: imgBuffer,
-        mimeType,
-        subfolder: 'Scripts/AI Images',
-      });
-    } catch (driveErr) {
-      console.warn('Could not upload AI image to Drive, using base64 data URL:', driveErr.message);
-      finalUrl = `data:${mimeType};base64,${base64}`;
+      imagePrompt = await callClaude(contextPrompt, 'You are a professional storyboard artist and cinematographer. Write concise, vivid image generation prompts.');
+      imagePrompt = imagePrompt.trim().replace(/^["']|["']$/g, '');
+    } catch (claudeErr) {
+      console.warn('Claude prompt generation failed, using fallback:', claudeErr.message);
+      imagePrompt = `Cinematic storyboard frame: ${targetScene.location || ''}. ${targetScene.what_we_see || ''}. Professional film production style, dramatic lighting.`;
     }
+  }
 
-    const newImageEntry = { id: crypto.randomUUID(), url: finalUrl, prompt: imagePrompt, source: 'ai' };
+  // Resolve reference image (upload or URL)
+  const refImages = [];
 
-    // Replace existing image OR append new one
-    const updated = scenes.map(s => {
+  // Prepend product photos (up to 3) before any actor reference
+  if (Array.isArray(product_info?.photos)) {
+    for (const photo of product_info.photos.slice(0, 3)) {
+      if (photo?.base64) {
+        refImages.unshift({ base64: photo.base64, mimeType: photo.mimeType || 'image/jpeg' });
+      }
+    }
+  }
+
+  // Add character reference photos — placed after product photos, with identity lock instruction
+  if (Array.isArray(character_photos)) {
+    for (const cp of character_photos.slice(0, 3)) {
+      if (cp?.base64) {
+        refImages.push({ base64: cp.base64, mimeType: cp.mimeType || 'image/jpeg' });
+      }
+    }
+  }
+
+  // Add general reference images (style/mood refs from wizard)
+  if (Array.isArray(reference_images)) {
+    for (const ri of reference_images.slice(0, 5)) {
+      if (ri?.base64) {
+        refImages.push({ base64: ri.base64, mimeType: ri.mimeType || 'image/jpeg' });
+      }
+    }
+  }
+
+  // Fetch previous scene's generated image as CONTINUITY reference (so the model sees the last frame)
+  if (prevSceneImage && !promptOverride) {
+    try {
+      const prevImgUrl = prevSceneImage.startsWith('data:') ? null : prevSceneImage;
+      if (prevImgUrl) {
+        const prevRes = await fetch(prevImgUrl, { signal: AbortSignal.timeout(5000) });
+        if (prevRes.ok) {
+          const prevBuf = Buffer.from(await prevRes.arrayBuffer());
+          const prevMime = prevRes.headers.get('content-type') || 'image/jpeg';
+          // Push as FIRST reference — the model sees this frame first for continuity
+          refImages.unshift({ base64: prevBuf.toString('base64'), mimeType: prevMime });
+        }
+      }
+    } catch { /* non-critical — continue without prev image */ }
+  }
+
+  if (reference_image?.base64) {
+    refImages.push({ base64: reference_image.base64, mimeType: reference_image.mimeType || 'image/jpeg' });
+  } else if (reference_image_url) {
+    // SSRF guard — block internal/private IPs
+    try {
+      const parsedRefUrl = new URL(reference_image_url);
+      const isInternal = /^(localhost|127\.|0\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|169\.254\.|::1$|::ffff:127\.|fd|fc)/.test(parsedRefUrl.hostname);
+      if (isInternal) throw imageFail('Internal URLs not allowed as reference images');
+      const refRes = await fetch(reference_image_url, { signal: AbortSignal.timeout(8000) });
+      if (refRes.ok) {
+        const refBuf = Buffer.from(await refRes.arrayBuffer());
+        const refMime = refRes.headers.get('content-type') || 'image/jpeg';
+        refImages.push({ base64: refBuf.toString('base64'), mimeType: refMime });
+      }
+    } catch (refErr) {
+      console.warn('Could not fetch reference image URL:', refErr.message);
+    }
+  }
+
+  // STORYBOARD CONTINUITY: if we have the previous frame, tell the model to match it
+  if (prevSceneImage && !promptOverride && refImages.length > 0) {
+    imagePrompt += ' STORYBOARD CONTINUITY: The FIRST reference image is the previous frame in this storyboard sequence. Match its exact color grading, lighting temperature, visual tone, and cinematic style. Characters must look identical. This new frame must feel like the immediate next shot in the same production.';
+  }
+
+  // If product photos were added (and no override), tell model to replicate product precisely
+  const productPhotosAdded = Array.isArray(product_info?.photos) && product_info.photos.length > 0;
+  if (productPhotosAdded && !promptOverride) {
+    imagePrompt += ' The provided product reference images show the exact product that must appear in this scene — replicate it precisely.';
+  }
+  const charPhotosAdded = Array.isArray(character_photos) && character_photos.length > 0;
+  if (charPhotosAdded && !promptOverride) {
+    imagePrompt += ` IDENTITY LOCK: The reference photo(s) that follow this text show the EXACT actor(s)/character(s) who must appear in this scene. Reproduce their face, hair color and style, skin tone, and build with absolute precision. Do NOT change, idealize, or invent their appearance.`;
+  } else if (refImages.length > 0 && !promptOverride && !productPhotosAdded) {
+    imagePrompt += ' Use the provided reference image as visual inspiration for composition, style, or subject — adapt it to fit the scene context while maintaining storyboard consistency.';
+  }
+
+  // Generate the frame on Higgsfield (Nano Banana Pro, plan credits), with the reference images
+  const { buffer: imgBuffer, mimeType } = await higgsfield.generateImage(imagePrompt, refImages);
+  const ext = mimeType.includes('png') ? 'png' : 'jpg';
+
+  // Upload to Google Drive for persistence
+  let finalUrl = null;
+  try {
+    const { drive } = await getGoogleDrive();
+    finalUrl = await driveUploadBuffer({
+      drive,
+      fileName: `ai-image-scene${sceneIndex + 1}-${Date.now()}.${ext}`,
+      buffer: imgBuffer,
+      mimeType,
+      subfolder: 'Scripts/AI Images',
+    });
+  } catch (driveErr) {
+    console.warn('Could not upload AI image to Drive, using base64 data URL:', driveErr.message);
+    finalUrl = `data:${mimeType};base64,${imgBuffer.toString('base64')}`;
+  }
+
+  const newImageEntry = { id: crypto.randomUUID(), url: finalUrl, prompt: imagePrompt, source: 'ai' };
+
+  // Replace existing image OR append new one — on the scenes as they are now, since the script may have been
+  // edited while the frame was being made
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: [current] } = await client.query('SELECT scenes FROM scripts WHERE id = $1 FOR UPDATE', [scriptId]);
+    if (!current?.scenes?.some(s => s.id === scene_id)) throw imageFail('That scene was deleted while its image was being made', 409);
+    const updated = current.scenes.map(s => {
       if (s.id !== scene_id) return s;
       const imgs = s.images || [];
       if (replace_image_id) {
@@ -1711,14 +1692,17 @@ ${independent ? `INDEPENDENT SHOT — generate a fresh, standalone image. Use yo
       }
       return { ...s, images: [...imgs, newImageEntry] };
     });
-    await db.query('UPDATE scripts SET scenes = $1, updated_at = NOW() WHERE id = $2', [JSON.stringify(updated), req.params.id]);
-
-    res.json({ url: finalUrl, prompt: imagePrompt, image_id: newImageEntry.id });
+    await client.query('UPDATE scripts SET scenes = $1, updated_at = NOW() WHERE id = $2', [JSON.stringify(updated), scriptId]);
+    await client.query('COMMIT');
   } catch (err) {
-    console.error('POST /scripts/:id/ai-image error:', err);
-    res.status(500).json({ error: err.message || 'Image generation failed' });
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
   }
-});
+
+  return { url: finalUrl, prompt: imagePrompt, image_id: newImageEntry.id };
+}
 
 // POST /api/scripts/:id/extract-characters — Claude reads all scenes and extracts characters
 router.post('/:id/extract-characters', async (req, res) => {

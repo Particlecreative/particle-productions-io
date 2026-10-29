@@ -608,6 +608,8 @@ ALTER TABLE settings ADD COLUMN IF NOT EXISTS frameio_tokens  JSONB;
 -- Repo drift: used by existing code but never created by a migration (no-op where they already exist)
 ALTER TABLE settings ADD COLUMN IF NOT EXISTS dropbox_tokens  JSONB;
 ALTER TABLE settings ADD COLUMN IF NOT EXISTS monday_config   JSONB;
+-- Higgsfield sign-in for script images (lib/higgsfield.js also adds it on first use)
+ALTER TABLE settings ADD COLUMN IF NOT EXISTS higgsfield_tokens JSONB;
 
 CREATE TABLE IF NOT EXISTS creative_reports (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),

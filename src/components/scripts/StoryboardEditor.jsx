@@ -856,8 +856,32 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
     });
   };
 
-  const handleImageGenerate = async (sceneId, { independent = false } = {}) => {
+  // Images are made in the background on the server (~1 min on Higgsfield) — start one, then check back until it's done
+  const runAiImage = async (body) => {
+    const res = await fetch(`${API}/api/scripts/${scriptId}/ai-image`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
+      body: JSON.stringify(body),
+    });
+    // A non-JSON reply is nginx's own error page
+    const data = await res.json().catch(() => ({ error: res.status === 504 ? 'That took too long and timed out — try again' : `Image generation failed (${res.status})` }));
+    if (res.status !== 202) return { status: res.status, data };
+    const deadline = Date.now() + 6 * 60 * 1000;
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 3000));
+      const poll = await fetch(`${API}/api/scripts/${scriptId}/ai-image/jobs/${data.job_id}`, { headers: { Authorization: `Bearer ${jwt()}` } }).catch(() => null);
+      if (!poll || poll.status >= 502) continue; // a network blip or the server restarting — keep checking
+      const job = await poll.json().catch(() => null);
+      if (!poll.ok) return { status: poll.status, data: job || { error: 'Image generation failed' } };
+      if (job?.status === 'done') return { status: 200, data: job };
+      if (job?.status === 'failed') return { status: job.http_status || 500, data: job };
+    }
+    return { status: 504, data: { error: 'The image is taking unusually long — reload in a minute to see if it arrived' } };
+  };
+
+  const handleImageGenerate = async (sceneId, { independent = false, quiet = false } = {}) => {
     setGeneratingSceneId(sceneId);
+    let result = { ok: false };
     try {
       const charProfiles = getCharProfiles();
       // Read from localStorage with fallback to current wizard state (in case localStorage quota exceeded)
@@ -888,22 +912,21 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
         independent: independent || undefined,
       };
 
-      const res = await fetch(`${API}/api/scripts/${scriptId}/ai-image`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
+      const { status, data } = await runAiImage(body);
       if (data.url) {
         await loadScript();
         onUpdated?.({ id: scriptId });
+        result = { ok: true };
       } else {
-        toast.error(data.error || 'Image generation failed');
+        result = { ok: false, status, code: data.code, retryAfter: data.retry_after, error: data.error || 'Image generation failed' };
+        if (!quiet) toast.error(result.error);
       }
     } catch (err) {
-      toast.error('Image generation failed: ' + (err.message || 'Network error'));
+      result = { ok: false, error: 'Image generation failed: ' + (err.message || 'Network error') };
+      if (!quiet) toast.error(result.error);
     }
     setGeneratingSceneId(null);
+    return result;
   };
 
   const handleSmartSplit = (sceneId) => {
@@ -1535,14 +1558,26 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
     setGenerateAllProgress({ current: 0, total: scenesToGen.length });
     toast.success(`Generating ${scenesToGen.length} image${scenesToGen.length !== 1 ? 's' : ''}...`);
 
+    let made = 0;
     for (let i = 0; i < scenesToGen.length; i++) {
       setGenerateAllProgress({ current: i + 1, total: scenesToGen.length });
-      try {
-        await handleImageGenerate(scenesToGen[i].id);
-      } catch {}
+      let result = await handleImageGenerate(scenesToGen[i].id, { quiet: true });
+      // Hit the per-script image limit — wait it out and redo this scene instead of skipping it
+      for (let tries = 0; !result.ok && result.status === 429 && tries < 3; tries++) {
+        const wait = Math.min(result.retryAfter || 60, 300);
+        toast.info(`Image limit reached — continuing in ${wait > 60 ? Math.ceil(wait / 60) + ' min' : wait + 's'}…`);
+        await new Promise(r => setTimeout(r, wait * 1000));
+        result = await handleImageGenerate(scenesToGen[i].id, { quiet: true });
+      }
+      if (result.ok) made++;
+      else {
+        toast.error(result.error);
+        if (result.code === 'HF_CREDITS' || result.code === 'HF_NOT_CONNECTED') break; // every next scene would fail the same way
+      }
       if (i < scenesToGen.length - 1) await new Promise(r => setTimeout(r, 1500));
     }
-    toast.success(`Done! Generated ${scenesToGen.length} images.`);
+    if (made === scenesToGen.length) toast.success(`Done! Generated ${made} images.`);
+    else if (made) toast.info(`Generated ${made} of ${scenesToGen.length} images.`);
 
     setGeneratingAll(false);
     setGenerateAllProgress({ current: 0, total: 0 });
@@ -1589,12 +1624,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
         body.reference_image_url = regenRefUrl.trim();
       }
     }
-    const res = await fetch(`${API}/api/scripts/${scriptId}/ai-image`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt()}` },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json();
+    const { data } = await runAiImage(body).catch(err => ({ data: { error: 'Image regeneration failed: ' + (err.message || 'Network error') } }));
     setRegenLoading(false);
     setRegenModal(null);
     setRegenRefBase64(''); setRegenRefMime(''); setRegenRefUrl(''); setRegenRefPreview('');
@@ -3020,7 +3050,7 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                     <Sparkles size={28} className="text-purple-500" />
                     <div>
                       <p className="text-sm font-bold text-gray-800">AI Generate</p>
-                      <p className="text-xs text-gray-500 mt-0.5">Claude + Nano Banana 2 creates storyboard frames</p>
+                      <p className="text-xs text-gray-500 mt-0.5">Claude + Nano Banana Pro (Higgsfield) creates storyboard frames</p>
                     </div>
                   </button>
                 </div>
