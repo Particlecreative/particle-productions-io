@@ -206,7 +206,7 @@ function parseLabel(v) {
   return null;
 }
 
-function normalizeActivity(row, boardId) {
+function normalizeActivity(row, boardId, raw = false) {
   let data = {};
   try { data = typeof row.data === 'string' ? JSON.parse(row.data) : (row.data || {}); } catch { data = {}; }
   return {
@@ -223,6 +223,8 @@ function normalizeActivity(row, boardId) {
     user_id: row.user_id != null ? String(row.user_id) : null,
     prev: parseLabel(data.previous_value),
     value: parseLabel(data.value),
+    // Dates, timelines and people aren't labels — callers that need them ask for the raw values
+    ...(raw ? { prev_raw: data.previous_value ?? null, value_raw: data.value ?? null } : {}),
   };
 }
 
@@ -230,7 +232,7 @@ function normalizeActivity(row, boardId) {
  * All activity log rows for a board in [fromIso, toIso). Pages until a short page.
  * Returns { events, truncated }.
  */
-async function activityLogs(boardId, { fromIso, toIso, columnIds = null, itemIds = null, limit = 500, maxPages = 20, deadline } = {}) {
+async function activityLogs(boardId, { fromIso, toIso, columnIds = null, itemIds = null, limit = 500, maxPages = 20, deadline, raw = false } = {}) {
   const events = [];
   const seen = new Set();
   let truncated = false;
@@ -246,7 +248,7 @@ async function activityLogs(boardId, { fromIso, toIso, columnIds = null, itemIds
     for (const r of rows) {
       if (seen.has(r.id)) continue;
       seen.add(r.id);
-      events.push(normalizeActivity(r, boardId));
+      events.push(normalizeActivity(r, boardId, raw));
     }
     if (rows.length < limit) break;
     if (page === maxPages) truncated = true;

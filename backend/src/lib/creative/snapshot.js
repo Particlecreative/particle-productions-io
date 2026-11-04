@@ -171,6 +171,7 @@ function normalizeItem(raw, ctx) {
   const productColor = config.product_colors?.[productLabel] || labelColor(meta, c.product, productCv);
 
   const typeCv = get('type');
+  const priCv = get('priority');
   const deptCv = get('department');
   const platCv = get('platform');
   const campCv = get('campaign');
@@ -203,6 +204,7 @@ function normalizeItem(raw, ctx) {
     subtitle,
     product: { label: productLabel || '', color: productColor || null },
     type: typeCv ? { label: typeCv.label ?? typeCv.text ?? '', color: labelColor(meta, c.type, typeCv) } : null,
+    priority: priCv && (priCv.label ?? priCv.text) ? { label: priCv.label ?? priCv.text, color: labelColor(meta, c.priority, priCv) } : null,
     department: deptCv ? { label: deptCv.label ?? deptCv.text ?? '', color: labelColor(meta, c.department, deptCv) } : null,
     platform: platCv ? (platCv.label ?? platCv.text ?? '') : '',
     campaign: campCv ? (campCv.values?.map(v => v.label).join(', ') || campCv.text || '') : '',

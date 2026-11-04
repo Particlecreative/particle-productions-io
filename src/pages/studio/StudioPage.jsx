@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { LayoutDashboard, Clock, Plug, Loader2, AlertTriangle, Lock, GanttChart, Sparkles, Megaphone } from 'lucide-react';
+import { LayoutDashboard, Clock, Plug, Loader2, AlertTriangle, Lock, GanttChart, Sparkles, Megaphone, Flame } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useBrand } from '../../context/BrandContext';
 import { studioApi } from '../../lib/studioService';
@@ -11,11 +11,13 @@ import Connections from '../../components/studio/Connections';
 import Workload from '../../components/studio/Workload';
 import TicketCreator from '../../components/studio/TicketCreator';
 import Campaigns from '../../components/studio/Campaigns';
+import HotProjects from '../../components/studio/HotProjects';
 import TaskPanel from '../../components/studio/TaskPanel';
 import { StudioCtx, useMondayWrites } from '../../components/studio/writes';
 
 const TABS = [
   ['overview', 'Creative Control', LayoutDashboard],
+  ['hot', 'Hot Projects', Flame],
   ['workload', 'Workload', GanttChart],
   ['campaigns', 'Campaigns', Megaphone],
   ['ticket', 'New ticket', Sparkles],
@@ -122,7 +124,7 @@ export default function StudioPage() {
         </nav>
       </div>
 
-      {!['connections', 'ticket', 'campaigns'].includes(tab) && (
+      {!['connections', 'ticket', 'campaigns', 'hot'].includes(tab) && (
         <Filters f={f} setF={setF} range={range} data={data} loading={loading} onRefresh={() => load(true)} showDivision={tab !== 'workload'} showPeriod={tab !== 'workload'} />
       )}
 
@@ -132,7 +134,7 @@ export default function StudioPage() {
           <button type="button" onClick={() => load(true)} className="ml-auto font-semibold underline">Try again</button>
         </div>
       )}
-      {data?.warnings?.length > 0 && !['connections', 'campaigns'].includes(tab) && (
+      {data?.warnings?.length > 0 && !['connections', 'campaigns', 'hot'].includes(tab) && (
         <div className="my-2 text-xs text-amber-700">{data.warnings.join(' · ')}</div>
       )}
 
@@ -144,6 +146,8 @@ export default function StudioPage() {
         <Workload f={f} />
       ) : tab === 'campaigns' ? (
         <Campaigns />
+      ) : tab === 'hot' ? (
+        <HotProjects studioData={data} />
       ) : !data ? (
         <div className="py-24 text-center text-gray-400 flex flex-col items-center gap-3">
           <Loader2 className="animate-spin" />

@@ -7,6 +7,7 @@ const { verifyJWT } = require('../middleware/auth');
 const W = require('../lib/creative/week');
 const { getStudio } = require('../lib/studio/data');
 const { getCampaigns } = require('../lib/studio/campaigns');
+const hot = require('../lib/studio/hotProjects');
 const { decide } = require('../lib/studio/tvLinks');
 const { dailyInspiration, tmdbConfigured, testTmdb } = require('../lib/studio/inspiration');
 const secrets = require('../lib/studio/secrets');
@@ -58,6 +59,47 @@ router.get('/campaigns', async (req, res) => {
   try {
     const data = await getCampaigns({ brandId: req.brandId, force: req.query.force === '1' });
     res.json({ ...data, today: W.localDate(Date.now()) });
+  } catch (err) { errorJson(res, err); }
+});
+
+// ── Hot Projects: the big projects the team pinned, with their Monday data and analytics ──
+router.get('/hot-projects', async (req, res) => {
+  try { res.json(await hot.getHotProjects({ brandId: req.brandId, force: req.query.force === '1' })); } catch (err) { errorJson(res, err); }
+});
+
+/** Candidates to pin, ranked (priority, who asked, size, urgency); q searches every open ticket. */
+router.get('/hot-projects/suggestions', async (req, res) => {
+  try {
+    res.json(await hot.suggestHotProjects({ brandId: req.brandId, q: String(req.query.q || '').slice(0, 100), requester: /^\d+$/.test(req.query.requester || '') ? req.query.requester : '' }));
+  } catch (err) { errorJson(res, err); }
+});
+
+router.post('/hot-projects', async (req, res) => {
+  try {
+    const itemId = String(req.body?.item_id || '');
+    if (!/^\d+$/.test(itemId)) return res.status(400).json({ error: 'Bad item id' });
+    res.json(await hot.addPin(req.brandId, itemId, req.user));
+  } catch (err) { errorJson(res, err); }
+});
+
+router.put('/hot-projects/order', async (req, res) => {
+  try { await hot.reorderPins(req.brandId, (req.body?.ids || []).map(String).filter(id => /^\d+$/.test(id))); res.json({ ok: true }); } catch (err) { errorJson(res, err); }
+});
+
+router.patch('/hot-projects/:id', async (req, res) => {
+  try {
+    if (!/^\d+$/.test(req.params.id)) return res.status(400).json({ error: 'Bad id' });
+    const { title, note, related } = req.body || {};
+    await hot.updatePin(req.brandId, req.params.id, { title, note, related });
+    res.json({ ok: true });
+  } catch (err) { errorJson(res, err); }
+});
+
+router.delete('/hot-projects/:id', async (req, res) => {
+  try {
+    if (!/^\d+$/.test(req.params.id)) return res.status(400).json({ error: 'Bad id' });
+    await hot.removePin(req.brandId, req.params.id);
+    res.json({ ok: true });
   } catch (err) { errorJson(res, err); }
 });
 

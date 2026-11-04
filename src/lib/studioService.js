@@ -34,11 +34,21 @@ async function call(path, { method = 'GET', body } = {}) {
 
 const LIVE = !import.meta.env.DEV || import.meta.env.VITE_STUDIO_LIVE === '1';
 const fx = () => import('../components/studio/dev/fixture');
+const hfx = () => import('../components/studio/dev/hotFixture');
 
 export const studioApi = {
   dashboard: async ({ from, to, force = false, lite = false }) => (LIVE ? call(`/dashboard?from=${from}&to=${to}${force ? '&force=1' : ''}${lite ? '&lite=1' : ''}`) : (await fx()).studioFixture({ from, to })),
   /** Every Video + Design ticket that has a Campaign (Campaign Tracker) */
   campaigns: async ({ force = false } = {}) => (LIVE ? call(`/campaigns${force ? '?force=1' : ''}`) : (await fx()).fixtureCampaigns()),
+  /** Hot Projects: pinned big projects with their Monday analytics */
+  hotProjects: async ({ force = false } = {}) => (LIVE ? call(`/hot-projects${force ? '?force=1' : ''}`) : (await hfx()).fixtureHot()),
+  hotSuggestions: async ({ q = '', requester = '' } = {}) => (LIVE
+    ? call(`/hot-projects/suggestions?q=${encodeURIComponent(q)}&requester=${encodeURIComponent(requester)}`)
+    : (await hfx()).fixtureHotSuggestions({ q, requester })),
+  addHot: async (itemId) => (LIVE ? call('/hot-projects', { method: 'POST', body: { item_id: itemId } }) : (await hfx()).fixtureHotAdd(itemId)),
+  updateHot: async (id, patch) => (LIVE ? call(`/hot-projects/${id}`, { method: 'PATCH', body: patch }) : (await hfx()).fixtureHotUpdate(id, patch)),
+  orderHot: async (ids) => (LIVE ? call('/hot-projects/order', { method: 'PUT', body: { ids } }) : (await hfx()).fixtureHotOrder(ids)),
+  removeHot: async (id) => (LIVE ? call(`/hot-projects/${id}`, { method: 'DELETE' }) : (await hfx()).fixtureHotRemove(id)),
   inspiration: async () => (LIVE ? call('/inspiration') : (await fx()).fixtureInspiration),
   patchItem: async (itemId, body) => (LIVE ? call(`/items/${itemId}`, { method: 'PATCH', body }) : { ok: true }),
   archiveItem: async (itemId) => (LIVE ? call(`/items/${itemId}/archive`, { method: 'POST', body: { confirm: true } }) : { ok: true }),

@@ -53,7 +53,10 @@ const DEFAULTS = {
         deadline: 'date_Mjj2cG7T', versions: 'numbers', working_time: 'duration_mkynps36',
         campaign: 'dropdown_mm3n9vjc', platform: 'single_selectu06tevn', concept: 'long_text_mkn8c1ax',
         hook: 'short_text_mkn8n4bx', finished_files: 'numeric_mm321027', files: 'files', requested_by: 'person',
+        priority: 'priority_mkm11w0a',
       },
+      // Monday's automation timers (Hot Projects shows them as Monday reports them)
+      timers: { review: 'duration_mkynnrsn', lifecycle: 'duration_mkynptaf', stuck: 'duration_mkynmfnr', upload: 'duration_mkynnxec' },
       statuses: {
         delivered: ['Approved', 'Completed', 'Upload Complete'],
         in_progress: ['Working'],
@@ -73,8 +76,9 @@ const DEFAULTS = {
         // Designers' timers live in "Time tracking" — the "Working Time" column (duration_mkynccfs) is unused
         deadline: 'date_Mjj20aki', versions: 'numberpuotbeaf', working_time: 'time_tracking__1',
         campaign: 'dropdown_mm3n7bw1', platform: 'single_selectrz7230p', concept: 'long_textpvqldjpg',
-        brand: 'text_mkz3xf50', requested_by: 'people_Mjj2RrZM',
+        brand: 'text_mkz3xf50', requested_by: 'people_Mjj2RrZM', priority: 'priority__1',
       },
+      timers: { review: 'duration_mkyn55k', lifecycle: 'duration_mkynqdzn', stuck: 'duration_mkynew3p', upload: 'duration_mkynzqv9' },
       statuses: {
         delivered: ['Approved', 'Completed'],   // "Upload Complete" is deactivated on this board
         in_progress: ['Working', 'Freelance'],
