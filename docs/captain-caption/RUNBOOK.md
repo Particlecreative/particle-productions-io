@@ -55,6 +55,7 @@ In **Activity → Errors**, any failed check is listed with the reason. The Capt
 ## When something breaks
 | Symptom | Likely cause | Fix |
 |---|---|---|
+| Whole CP shows errors right after a server restart ("502") | CP's web front still points at the API's old internal address | Ask Claude: "reload CP's nginx". On the server: `docker compose -f docker-compose.prod.yml exec -T app nginx -s reload`. Do this after every API restart |
 | Worker pill red | The worker container stopped | Ask Claude: "restart the captain-worker". On the server: `docker compose -f docker-compose.prod.yml up -d captain-worker` |
 | Frame.io pill red / "session expired" | The Adobe sign-in lapsed, or the password changed | HQ → Settings → **Reconnect**, signing in as the Captain (tomer@blurrskin.com) |
 | Figma errors "403" | The token expired (7 Feb 2027) or was revoked | See "Rotating tokens" below |
