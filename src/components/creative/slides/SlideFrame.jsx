@@ -34,7 +34,7 @@ export function SlideFrame({ slide, active, children, footer = true, theme, styl
         <div className="cr-footer">
           <DeckLogo />
           <span className="cr-footer-sep" />
-          <span className="cr-footer-brand">Creative Weekly</span>
+          <span className="cr-footer-brand">{snapshot?.team ? 'Team Weekly' : 'Creative Weekly'}</span>
           <span className="cr-footer-sep" />
           <span>{snapshot?.week?.label}</span>
           {page && <span className="cr-footer-page">{String(page.index).padStart(2, '0')} / {String(page.total).padStart(2, '0')}</span>}

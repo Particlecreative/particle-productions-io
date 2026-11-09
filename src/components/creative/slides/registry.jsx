@@ -1,7 +1,9 @@
 import {
   Presentation, Sparkles, Gauge, Star, BarChart3, PieChart, Bookmark, UserRound, Grid3x3,
   Clapperboard, Megaphone, CalendarDays, AlertTriangle, Type, Flag, LayoutDashboard, Layers3, CalendarRange, Film, Images, Timer,
+  Users, Trophy, Target, Crosshair, Flame,
 } from 'lucide-react';
+import { TeamWeekSlide, MarketWinsSlide, MarketPeopleSlide, TeamFocusSlide, HotProjectsSlide, SlaSlide } from './TeamWeeklySlides';
 import { CoverSlide, ExecSummarySlide, SectionSlide, CustomSlide, ClosingSlide } from './StorySlides';
 import { KpisSlide, ByProductSlide, ByTypeSlide } from './NumberSlides';
 import { HighlightsSlide, PersonSlide } from './WorkSlides';
@@ -30,4 +32,10 @@ export const SLIDE_COMPONENTS = {
   risks: { Component: RisksSlide, icon: AlertTriangle },
   custom: { Component: CustomSlide, icon: Type },
   closing: { Component: ClosingSlide, icon: Flag },
+  team_week: { Component: TeamWeekSlide, icon: Users },
+  market_wins: { Component: MarketWinsSlide, icon: Trophy },
+  market_people: { Component: MarketPeopleSlide, icon: Target },
+  team_focus: { Component: TeamFocusSlide, icon: Crosshair },
+  hot_projects: { Component: HotProjectsSlide, icon: Flame },
+  sla: { Component: SlaSlide, icon: Gauge },
 };

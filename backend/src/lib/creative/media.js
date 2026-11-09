@@ -17,6 +17,7 @@ const mondayAssets = require('./providers/mondayAssets');
 const frameio = require('./providers/frameio');
 const figma = require('./providers/figma');
 const ff = require('./providers/ffmpeg');
+const afterlife = require('./afterlife');
 
 const LISTING_TTL_MS = 15 * 60 * 1000;
 const TOKEN_TTL_MS = 12 * 60 * 60 * 1000;
@@ -202,6 +203,8 @@ const failures = new Map(); // cacheKey → at
 const FAILURE_TTL_MS = 10 * 60 * 1000;
 
 async function entryFor(ref, key) {
+  // An AFTERLIFE creative (Team Weekly): one still, no listing
+  if (ref.kind === 'afterlife') return { key, kind: 'image', version: ref.path };
   if (key === '_' || ref.kind === 'monday_asset') {
     const { entries } = await getListing(ref);
     return entries[0] || null;
@@ -221,6 +224,11 @@ async function entryFor(ref, key) {
 }
 
 async function produceThumb(ref, key, entry) {
+  if (ref.kind === 'afterlife') {
+    const { bytes, mime } = await afterlife.thumbnail(ref.path);
+    if (bytes.length <= MAX_THUMB_BYTES) return { type: mime, bytes };
+    return { type: 'image/jpeg', bytes: await ff.downscaleImage(bytes) };
+  }
   if (ref.kind === 'dropbox_folder' || ref.kind === 'dropbox_file') {
     const relPath = ref.kind === 'dropbox_file' ? '' : (entry.path || dbx.unb64url(key));
     if (entry.kind === 'image' && dbx.THUMBABLE.has(entry.ext)) return { type: 'image/jpeg', bytes: await dbx.thumbnail(ref.url, relPath) };
@@ -269,7 +277,7 @@ async function thumbBytes(ref, key) {
   const entry = await entryFor(ref, key);
   if (!entry) return null;
   const version = entry.rev || entry.hash || entry.modified || entry.version || '';
-  const cacheKey = sha256(`${ref.kind}|${ref.url || ref.asset_id}|${key}|thumb|${version}`);
+  const cacheKey = sha256(`${ref.kind}|${ref.url || ref.asset_id || ref.path}|${key}|thumb|${version}`);
   const hit = await cacheGet(cacheKey);
   if (hit) return { type: hit.content_type, bytes: hit.bytes, cached: true };
   const failedAt = failures.get(cacheKey);

@@ -1,6 +1,6 @@
 // Offline dev store for Creative Weekly (used only when running `npm run dev` without VITE_CREATIVE_LIVE).
 // Synthetic people (the repo is public); real Particle product names + Monday label colours.
-import { DEFAULT_TEMPLATE } from '../deck/defaultTemplate';
+import { DEFAULT_TEMPLATE, DEFAULT_TEAM_TEMPLATE } from '../deck/defaultTemplate';
 import { addDays, shortDate, sundayOf } from '../deck/format';
 
 const KEY = 'cp_creative_reports_fixture';
@@ -70,8 +70,17 @@ export function buildFixtureSnapshot(weekStart, seed = 7) {
       monday_url: 'https://monday.com', links: { frame: board === 'video' ? 'https://next.frame.io' : null, dropbox: 'https://www.dropbox.com', figma: null, project: null },
       assets: [], media_refs: refs, fixture_thumb: thumb(color, concept, board, n),
     };
+    items[id].priority = [['High', '#ff6d3b'], ['Medium', '#ffcb00'], ['Critical ⚠️️', '#df2f4a'], ['Low', '#00c875']].map(([label, color]) => ({ label, color }))[Math.floor(r() * 4)];
     if (deliveredDay != null) {
       items[id].delivered_at = Date.parse(`${days[deliveredDay]}T12:00:00Z`) + Math.floor(r() * 3600000);
+      // Its life (from the Studio): request → completed and where the time went
+      const sub = Date.parse(items[id].created_at);
+      const span = Math.max(3600e3, items[id].delivered_at - sub);
+      const ph = { queued: span * (0.15 + r() * 0.25), in_progress: span * (0.2 + r() * 0.2), review: span * (0.15 + r() * 0.2) };
+      ph.fixes = r() > 0.5 ? span * 0.1 : 0;
+      items[id].life = { submitted: items[id].created_at, started: new Date(sub + ph.queued).toISOString(), completed: new Date(items[id].delivered_at).toISOString(), partial: false,
+        fix_rounds: ph.fixes ? 1 + Math.floor(r() * 2) : 0, phases: Object.fromEntries(Object.entries(ph).filter(([, v]) => v).map(([k, v]) => [k, Math.round(v / 1000)])) };
+      items[id].effort_total_s = Math.round((1 + r() * 9) * 3600);
       items[id].delivered_status = status;
       items[id].fixes_in_week = Math.floor(r() * 3);
       sections.delivered.push(id);
@@ -177,28 +186,83 @@ export function buildFixtureSnapshot(weekStart, seed = 7) {
 
 const withMedia = (report) => ({ report, media: { token: 'fixture' } });
 
+/** The team deck's extras: hot projects + one week of AFTERLIFE performance (synthetic). */
+export function teamFixture(snapshot) {
+  const ids = Object.keys(snapshot.items);
+  const open = ids.filter(id => !snapshot.items[id].delivered_at);
+  const hot = open.slice(0, 3).map((id, i) => {
+    const it = snapshot.items[id];
+    const from = new Date(Date.parse(it.created_at)).toISOString();
+    return { id: String(i + 1), title: ['The Hunt — TV commercial', null, 'NeoRoot launch statics'][i], note: '', related: 0,
+      health: { key: ['on_track', 'at_risk', 'late'][i], reasons: [] },
+      item: { ...it, open: true, fix_rounds: i, journey: [
+        { label: 'Pending', color: '#df2f4a', category: 'queued', from, to: new Date(Date.parse(from) + 2 * 86400e3).toISOString() },
+        { label: 'Working', color: '#fdab3d', category: 'in_progress', from: new Date(Date.parse(from) + 2 * 86400e3).toISOString(), to: new Date(Date.parse(from) + 5 * 86400e3).toISOString() },
+        { label: it.status.label, color: it.status.color, category: it.status.category, from: new Date(Date.parse(from) + 5 * 86400e3).toISOString(), to: new Date().toISOString() },
+      ] } };
+  });
+  const creatives = [];
+  const makers = PEOPLE.map(([pid, , role], i) => {
+    const mine = ids.filter(id => snapshot.items[id].people.includes(pid) && snapshot.items[id].delivered_at).slice(0, 3);
+    const list = mine.map((id, k) => {
+      const it = snapshot.items[id];
+      const ref = `al-${pid}-${k}`;
+      snapshot.media_refs[ref] = { kind: 'afterlife', key: ref, fixture_thumb: it.fixture_thumb };
+      const c = { key: ref, ref, label: `${it.product.label} ${it.title} V1 ${it.board === 'video' ? 'Video' : 'Image'} Elpage`, title: it.title, makerId: pid, makers: [pid],
+        format: role === 'video' ? 'video' : 'image', product: it.product, campaign: it.campaign,
+        spend: Math.round(800 + ((i * 7 + k * 13) % 9) * 900), roas: 0.6 + ((i + k) % 5) * 0.35, ctr: 0.008 + ((i * 3 + k) % 6) * 0.004, hook: role === 'video' ? 0.18 + ((i + k) % 4) * 0.06 : null };
+      creatives.push(c);
+      return c;
+    });
+    if (i === 2) return { id: pid, role, creatives: 0, best: null }; // someone with nothing live last week
+    return { id: pid, role, creatives: list.length, spend: list.reduce((a, c) => a + c.spend, 0), best: [...list].sort((a, b) => b.roas - a.roas)[0] || null };
+  });
+  creatives.sort((a, b) => b.spend - a.spend);
+  return {
+    hot: { projects: hot, people: {} },
+    performance: {
+      since: snapshot.week.start, until: snapshot.week.end,
+      totals: { spend: 214600, roas: 1.08, ctr: 0.0172, hook: 0.247 },
+      prev: { spend: 198300, roas: 1.02, ctr: 0.0161, hook: 0.231 },
+      inhouse: { share: 0.62 },
+      makers, creatives,
+      learnings: ['Before & after statics carried the week — 3 of the top 4 creatives open on a comparison.', 'Videos that show the product in the first second held a higher thumbstop.'],
+    },
+    warnings: [],
+  };
+}
+
 export async function list() {
-  return { reports: read().map(r => ({ id: r.id, week_start: r.week_start, title: r.title, status: r.status, revision: r.revision, week_label: r.snapshot.week.label, week_number: r.snapshot.week.number, totals: r.snapshot.metrics.totals, shared: !!r.share_token, generated_at: r.generated_at, updated_at: r.updated_at })), current_week: sundayOf(), review_week: sundayOf() };
+  return { reports: read().map(r => ({ id: r.id, week_start: r.week_start, deck: r.deck || 'founders', title: r.title, status: r.status, revision: r.revision, week_label: r.snapshot.week.label, week_number: r.snapshot.week.number, totals: r.snapshot.metrics.totals, shared: !!r.share_token, generated_at: r.generated_at, updated_at: r.updated_at })), current_week: sundayOf(), review_week: sundayOf() };
 }
 export async function get(id) {
   const r = read().find(x => x.id === id);
   if (!r) throw Object.assign(new Error('Not found'), { status: 404 });
-  return { ...withMedia(r), cp_weekly_stale: false };
+  const decks = Object.fromEntries(read().filter(x => x.week_start === r.week_start).map(x => [x.deck || 'founders', x.id]));
+  return { ...withMedia(r), cp_weekly_stale: false, decks };
 }
-export async function byWeek(ws) {
-  const r = read().find(x => x.week_start === ws);
+export async function byWeek(ws, deck = 'founders') {
+  const r = read().find(x => x.week_start === ws && (x.deck || 'founders') === deck);
   return r ? withMedia(r) : { report: null };
 }
-export async function generate(ws) {
+/** No deck = both decks of the week (founders + Creative Team Weekly). */
+export async function generate(ws, deck) {
   const all = read();
-  const ex = all.find(x => x.week_start === ws);
-  if (ex) throw Object.assign(new Error('A deck already exists for this week'), { status: 409, data: { id: ex.id } });
+  const want = deck ? [deck] : ['founders', 'team'];
+  const missing = want.filter(d => !all.some(x => x.week_start === ws && (x.deck || 'founders') === d));
+  const first = all.find(x => x.week_start === ws && (x.deck || 'founders') === want[0]);
+  if (!missing.length) throw Object.assign(new Error('A deck already exists for this week'), { status: 409, data: { id: first.id } });
   await delay(2600);
   const snapshot = buildFixtureSnapshot(ws);
   const now = new Date().toISOString();
-  const report = { id: uid(), brand_id: 'particle', week_start: ws, title: `Week ${snapshot.week.number} · ${snapshot.week.label}`, status: 'draft', snapshot, overrides: {}, template: JSON.parse(JSON.stringify(DEFAULT_TEMPLATE)), narrative: null, revision: 1, generated_at: now, updated_at: now, versions: [] };
-  write([report, ...all]);
-  return withMedia(report);
+  const made = missing.map((d) => {
+    const snap = d === 'team' ? { ...snapshot, media_refs: { ...snapshot.media_refs } } : snapshot;
+    if (d === 'team') snap.team = teamFixture(snap);
+    return { id: uid(), brand_id: 'particle', week_start: ws, deck: d, title: `Week ${snapshot.week.number} · ${snapshot.week.label}`, status: 'draft', snapshot: snap, overrides: {},
+      template: JSON.parse(JSON.stringify(d === 'team' ? DEFAULT_TEAM_TEMPLATE : DEFAULT_TEMPLATE)), narrative: null, revision: 1, generated_at: now, updated_at: now, versions: [] };
+  });
+  write([...made, ...all]);
+  return withMedia(made.find(x => x.deck === want[0]) || first);
 }
 export async function save(id, patch) {
   const all = read();
@@ -219,6 +283,7 @@ export async function refresh(id) {
   r.versions.unshift({ id: uid(), version_number: r.versions.length + 1, reason: 'pre_refresh', created_at: new Date().toISOString(), created_by_name: 'You', snapshot: r.snapshot, overrides: r.overrides, template: r.template });
   const before = r.snapshot.metrics.totals;
   r.snapshot = buildFixtureSnapshot(r.week_start, Math.floor(Math.random() * 1000));
+  if (r.deck === 'team') r.snapshot.team = teamFixture(r.snapshot);
   r.revision += 1;
   write(all);
   const after = r.snapshot.metrics.totals;

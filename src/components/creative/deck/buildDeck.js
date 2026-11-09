@@ -82,7 +82,8 @@ export function buildDeck(template, snapshot, overrides = {}, narrative = null) 
     } catch (e) {
       vm = { error: e.message };
     }
-    const generated = def.defaultText ? def.defaultText(vm, { options, snapshot }) : {};
+    // A template can word a slide its own way (options.text), e.g. the team deck's "Workload · this week"
+    const generated = { ...(def.defaultText ? def.defaultText(vm, { options, snapshot }) : {}), ...(options.text || {}) };
     const customText = stub.custom ? (overrides?.custom?.[stub.key] || {}) : {};
     const text = {};
     for (const slot of def.textSlots || []) {

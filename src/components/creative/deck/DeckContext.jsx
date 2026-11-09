@@ -22,7 +22,7 @@ export function makeMedia({ reportId, token, snapshot, picks = {} }) {
   const fixture = token === 'fixture';
   const q = `?mt=${encodeURIComponent(token || '')}`;
   const ref = (refId, key, variant = 'thumb') => {
-    if (fixture) return snapshot?.items?.[snapshot?.media_refs?.[refId]?.item_id]?.fixture_thumb || null;
+    if (fixture) return snapshot?.media_refs?.[refId]?.fixture_thumb || snapshot?.items?.[snapshot?.media_refs?.[refId]?.item_id]?.fixture_thumb || null;
     return `${MEDIA_BASE}/${reportId}/${refId}/${encodeURIComponent(key || '_')}/${variant}${q}`;
   };
   const itemThumb = (id) => {

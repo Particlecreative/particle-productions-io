@@ -44,8 +44,9 @@ async function fx() {
 export const creativeApi = {
   async list() { return LIVE ? crFetch('/') : (await fx()).list(); },
   async get(id) { return LIVE ? crFetch(`/${id}`) : (await fx()).get(id); },
-  async byWeek(weekStart) { return LIVE ? crFetch(`/weeks/${weekStart}`) : (await fx()).byWeek(weekStart); },
-  async generate(weekStart) { return LIVE ? crFetch('/generate', { method: 'POST', body: { week_start: weekStart } }) : (await fx()).generate(weekStart); },
+  async byWeek(weekStart, deck = 'founders') { return LIVE ? crFetch(`/weeks/${weekStart}?deck=${deck}`) : (await fx()).byWeek(weekStart, deck); },
+  /** No deck = both (founders + Creative Team Weekly) */
+  async generate(weekStart, deck) { return LIVE ? crFetch('/generate', { method: 'POST', body: { week_start: weekStart, ...(deck ? { deck } : {}) } }) : (await fx()).generate(weekStart, deck); },
   async save(id, patch, { keepalive = false } = {}) { return LIVE ? crFetch(`/${id}`, { method: 'PUT', body: patch, keepalive }) : (await fx()).save(id, patch); },
   async refresh(id) { return LIVE ? crFetch(`/${id}/refresh`, { method: 'POST', body: {} }) : (await fx()).refresh(id); },
   /** Edit the CP weekly from the deck (written back to the old Weekly) → { report, media } */

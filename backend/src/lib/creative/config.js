@@ -9,7 +9,7 @@ const SLIDE_TYPES = [
   'cover', 'exec_summary', 'dept_overview', 'division_overview', 'division_next', 'production', 'showcase',
   'kpis', 'highlights', 'by_product', 'by_type', 'section',
   'person', 'workload', 'cp_productions', 'cp_updates', 'planned_next', 'risks', 'custom', 'closing',
-  'studio_stats',
+  'studio_stats', 'team_week', 'market_wins', 'market_people', 'team_focus', 'hot_projects', 'sla',
 ];
 
 /**
@@ -41,6 +41,33 @@ const DEFAULT_TEMPLATE = {
     { id: 'studio_stats',    type: 'studio_stats',      enabled: true, options: {} },
   ],
 };
+
+/**
+ * Creative Team Weekly — the deck for the team itself: last week together (output + how the work did on Meta,
+ * credited, never ranked), this week (each editor's / designer's main project, workload, hot projects) and
+ * how we work (turnaround SLAs). Generated next to the founders deck; its own template.
+ */
+const TEAM_TEMPLATE_VERSION = 1;
+const DEFAULT_TEAM_TEMPLATE = {
+  version: TEAM_TEMPLATE_VERSION,
+  slides: [
+    { id: 'cover',         type: 'cover',         enabled: true, options: { text: { eyebrow: 'Particle · Creative Team', title: 'Team Weekly' } } },
+    { id: 'sec_last',      type: 'section',       enabled: true, options: { number: '01', title: 'Last week, together', subtitle: '' } },
+    { id: 'team_week',     type: 'team_week',     enabled: true, options: {} },
+    { id: 'market_wins',   type: 'market_wins',   enabled: true, options: { whenEmpty: 'hide' } },
+    { id: 'market_design', type: 'market_people', enabled: true, options: { role: 'design', whenEmpty: 'hide' } },
+    { id: 'market_video',  type: 'market_people', enabled: true, options: { role: 'video', whenEmpty: 'hide' } },
+    { id: 'sec_this',      type: 'section',       enabled: true, options: { number: '02', title: 'This week', subtitle: '' } },
+    { id: 'focus_video',   type: 'team_focus',    enabled: true, options: { role: 'video' } },
+    { id: 'focus_design',  type: 'team_focus',    enabled: true, options: { role: 'design' } },
+    { id: 'workload',      type: 'workload',      enabled: true, options: { week: 'next', text: { eyebrow: 'Workload · this week', title: 'Who’s on what' } } },
+    { id: 'hot_projects',  type: 'hot_projects',  enabled: true, options: { whenEmpty: 'hide' } },
+    { id: 'sec_how',       type: 'section',       enabled: true, options: { number: '03', title: 'How we work', subtitle: '' } },
+    { id: 'sla',           type: 'sla',           enabled: true, options: {} },
+    { id: 'shoutouts',     type: 'custom',        enabled: true, options: { text: { eyebrow: 'Shoutouts', title: 'Thank you, team' } } },
+  ],
+};
+const DECKS = ['founders', 'team'];
 
 const DEFAULTS = {
   boards: {
@@ -130,6 +157,7 @@ const DEFAULTS = {
   product_colors: {},  // { 'Face Cream': '#579bfc' } overrides
   auto_generate: { enabled: false, target: 'previous_week' },
   default_template: DEFAULT_TEMPLATE,
+  team_template: DEFAULT_TEAM_TEMPLATE,
   frameio: { account_id: null, legacy_header: false },
 };
 
@@ -155,13 +183,20 @@ async function getCreativeConfig(brandId = 'particle') {
   merged.default_template = stored?.default_template?.slides && (stored.default_template.version || 1) >= TEMPLATE_VERSION
     ? stored.default_template
     : DEFAULT_TEMPLATE;
+  merged.team_template = stored?.team_template?.slides && (stored.team_template.version || 1) >= TEAM_TEMPLATE_VERSION
+    ? stored.team_template
+    : DEFAULT_TEAM_TEMPLATE;
   return merged;
 }
+
+/** The template a new deck starts from. */
+const templateFor = (config, deck) => (deck === 'team' ? config.team_template : config.default_template);
 
 async function saveCreativeConfig(brandId, patch) {
   const current = await getCreativeConfig(brandId);
   const next = deepMerge(current, patch || {});
   if (patch?.default_template) next.default_template = patch.default_template;
+  if (patch?.team_template) next.team_template = patch.team_template;
   await db.query(
     `INSERT INTO settings (brand_id, creative_config) VALUES ($1, $2)
      ON CONFLICT (brand_id) DO UPDATE SET creative_config = EXCLUDED.creative_config`,
@@ -222,8 +257,12 @@ function divisionOf(item, config) {
 module.exports = {
   SLIDE_TYPES,
   TEMPLATE_VERSION,
+  TEAM_TEMPLATE_VERSION,
   divisionOf,
   DEFAULT_TEMPLATE,
+  DEFAULT_TEAM_TEMPLATE,
+  DECKS,
+  templateFor,
   DEFAULTS,
   deepMerge,
   getCreativeConfig,

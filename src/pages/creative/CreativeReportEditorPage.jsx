@@ -338,19 +338,35 @@ export default function CreativeReportEditorPage() {
       autosave.setStatus(on ? 'locked' : 'idle');
     } catch (e) { flash(e.message); } finally { setBusy(b => ({ ...b, final: false })); }
   };
+  const deck = payload?.report?.deck || 'founders';
   const switchWeek = async (delta) => {
     const ws = addDays(payload.report.week_start, 7 * delta);
     await autosave.flush();
-    const r = await creativeApi.byWeek(ws).catch(() => null);
+    const r = await creativeApi.byWeek(ws, deck).catch(() => null);
     if (r?.report) { navigate(`/creative-reports/${r.report.id}`); return; }
     if (!window.confirm(`There’s no deck for ${weekLabelOf(ws)} yet. Generate it now?`)) return;
     setBusy(b => ({ ...b, week: true }));
     try {
-      const g = await creativeApi.generate(ws);
+      await creativeApi.generate(ws, deck);
+      const g = await creativeApi.byWeek(ws, deck);
       navigate(`/creative-reports/${g.report.id}`);
     } catch (e) {
       if (e.status === 409 && e.data?.id) navigate(`/creative-reports/${e.data.id}`); else flash(e.message);
     } finally { setBusy(b => ({ ...b, week: false })); }
+  };
+  // Founders Weekly ↔ Creative Team Weekly for the same week (the team deck is made on first open for older weeks)
+  const openDeck = async (to) => {
+    if (to === deck) return;
+    await autosave.flush();
+    const id = payload.decks?.[to];
+    if (id) { navigate(`/creative-reports/${id}`); return; }
+    setBusy(b => ({ ...b, deck: true }));
+    try {
+      const g = await creativeApi.generate(payload.report.week_start, to);
+      navigate(`/creative-reports/${g.report.id}`);
+    } catch (e) {
+      if (e.status === 409 && e.data?.id) navigate(`/creative-reports/${e.data.id}`); else flash(e.message);
+    } finally { setBusy(b => ({ ...b, deck: false })); }
   };
   const addSlide = (type) => {
     const after = slide?.key || null;
@@ -414,10 +430,18 @@ export default function CreativeReportEditorPage() {
             <div className="flex items-center gap-1">
               <button type="button" disabled={busy.week} onClick={() => switchWeek(-1)} className="p-1 rounded-md hover:bg-gray-100 text-gray-500" title="Previous week"><ChevronLeft size={16} /></button>
               <div className="px-1">
-                <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#0808f8]">Creative Weekly · Week {wk?.number}</div>
+                <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#0808f8]">{deck === 'team' ? 'Team Weekly' : 'Creative Weekly'} · Week {wk?.number}</div>
                 <div className="text-sm font-bold text-[#030b2e] leading-tight">{wk?.label}{wk?.partial ? <span className="ml-1.5 text-[10px] font-semibold text-amber-600">IN PROGRESS</span> : null}</div>
               </div>
               <button type="button" disabled={busy.week} onClick={() => switchWeek(1)} className="p-1 rounded-md hover:bg-gray-100 text-gray-500" title="Next week">{busy.week ? <Loader2 size={16} className="animate-spin" /> : <ChevronRight size={16} />}</button>
+            </div>
+            <div className="ml-2 inline-flex p-0.5 rounded-xl bg-gray-100" role="tablist" aria-label="Deck">
+              {[['founders', 'Founders Weekly'], ['team', 'Creative Team Weekly']].map(([k, label]) => (
+                <button key={k} type="button" role="tab" aria-selected={deck === k} disabled={busy.deck} onClick={() => openDeck(k)}
+                  className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${deck === k ? 'bg-white shadow text-[#030b2e]' : 'text-gray-500 hover:text-gray-800'}`}>
+                  {busy.deck && deck !== k && <Loader2 size={12} className="animate-spin" />}{label}
+                </button>
+              ))}
             </div>
             <span className={`ml-1 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full ${final ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>{final ? 'Final' : 'Draft'}</span>
             <div className="ml-2"><SaveIndicator status={final ? 'locked' : autosave.status} lastSavedAt={autosave.lastSavedAt} /></div>

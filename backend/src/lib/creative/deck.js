@@ -36,6 +36,8 @@ function allowedMediaRefs(report, audience = 'internal') {
     if (it.people?.length && it.people.every(p => hiddenPeople.has(String(p)))) continue;
     for (const r of it.media_refs || []) refs.add(r);
   }
+  // Team Weekly: the AFTERLIFE creatives on the performance slides
+  for (const [id, r] of Object.entries(snap.media_refs || {})) if (r?.kind === 'afterlife') refs.add(id);
   // The video / image chosen for a production slide that's in the deck
   for (const pov of Object.values(ov.productions || {})) {
     if (!pov?.hidden && pov?.show !== 'tickets' && pov?.show !== 'none' && pov?.media?.refId) refs.add(pov.media.refId);
@@ -143,6 +145,7 @@ function coverSummary(row) {
   return {
     id: row.id,
     week_start: row.week_start,
+    deck: row.deck || 'founders',
     title: row.title,
     status: row.status,
     revision: row.revision,

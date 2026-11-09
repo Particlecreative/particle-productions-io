@@ -142,7 +142,7 @@ function IntegrationsModal({ open, onClose, data, reload, isAdmin }) {
   );
 }
 
-function WeekCard({ r, onOpen, onPresent, onDelete }) {
+function WeekCard({ r, team, onOpen, onOpenTeam, onPresent, onDelete }) {
   const t = r.totals || {};
   return (
     <m.div layout initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
@@ -159,7 +159,15 @@ function WeekCard({ r, onOpen, onPresent, onDelete }) {
           <span className="flex items-center gap-1.5"><Film size={14} className="opacity-60" /><b className="text-white">{t.video ?? 0}</b> videos</span>
           <span className="flex items-center gap-1.5"><PenTool size={14} className="opacity-60" /><b className="text-white">{t.design ?? 0}</b> designs</span>
         </div>
-        <div className="text-[11px] opacity-50">Edited {relTime(r.updated_at)}</div>
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] opacity-50">Edited {relTime(r.updated_at)}</span>
+          {team && (
+            <button type="button" onClick={(e) => { e.stopPropagation(); onOpenTeam(); }} title="Open the Creative Team Weekly for this week"
+              className="ml-1 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/20 flex items-center gap-1.5">
+              <Users size={12} /> Team deck
+            </button>
+          )}
+        </div>
       </div>
       <button type="button" onClick={(e) => { e.stopPropagation(); onPresent(); }}
         className="absolute bottom-5 right-5 w-11 h-11 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
@@ -221,8 +229,12 @@ export default function CreativeReportsPage() {
   const thisWeek = data?.review_week || (today === sundayOf() ? addDays(sundayOf(), -7) : sundayOf());
   const inProgress = thisWeek === (data?.current_week || sundayOf());
   const presentedOn = addDays(thisWeek, 7);
-  const reports = data?.reports || [];
+  // Each week has a founders deck and a Creative Team Weekly; cards are the founders decks, the team deck sits on them
+  const allDecks = data?.reports || [];
+  const reports = allDecks.filter(r => (r.deck || 'founders') === 'founders');
+  const teamOf = Object.fromEntries(allDecks.filter(r => r.deck === 'team').map(r => [r.week_start, r]));
   const current = reports.find(r => r.week_start === thisWeek);
+  const currentTeam = teamOf[thisWeek];
   const past = reports.filter(r => r.week_start !== thisWeek);
   const removeDeck = async (r) => {
     try { if (await confirmDeleteDeck(r)) { setNotice({ ok: true, text: `Deleted the deck for ${r.week_label || weekLabelOf(r.week_start)}.` }); load(); } } catch (e) { setNotice({ ok: false, text: e.message }); }
@@ -322,6 +334,14 @@ export default function CreativeReportsPage() {
                       <button type="button" onClick={() => navigate(`/creative-reports/${current.id}/present`)} className="px-6 py-3.5 rounded-full font-semibold text-white flex items-center gap-2" style={{ background: ELECTRIC, boxShadow: '0 12px 40px -8px rgba(8,8,248,.9)' }}>
                         <Play size={16} fill="#fff" /> Present
                       </button>
+                      <button type="button" onClick={async () => {
+                        if (currentTeam) { navigate(`/creative-reports/${currentTeam.id}`); return; }
+                        try { const g = await creativeApi.generate(thisWeek, 'team'); navigate(`/creative-reports/${g.report.id}`); } catch (e) {
+                          if (e.status === 409 && e.data?.id) navigate(`/creative-reports/${e.data.id}`); else setNotice({ ok: false, text: e.message });
+                        }
+                      }} className="px-6 py-3.5 rounded-full font-semibold bg-white/10 hover:bg-white/20 flex items-center gap-2" title="The deck for the team: last week together, this week, how we work">
+                        <Users size={16} /> {currentTeam ? 'Team Weekly' : 'Make the Team Weekly'}
+                      </button>
                     </>
                   ) : (
                     <button type="button" disabled={!data} onClick={() => generate(thisWeek)}
@@ -354,7 +374,7 @@ export default function CreativeReportsPage() {
               </div>
             ) : past.length ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                {past.map(r => <WeekCard key={r.id} r={r} onOpen={() => navigate(`/creative-reports/${r.id}`)} onPresent={() => navigate(`/creative-reports/${r.id}/present`)} onDelete={isAdmin ? () => removeDeck(r) : undefined} />)}
+                {past.map(r => <WeekCard key={r.id} r={r} team={teamOf[r.week_start]} onOpenTeam={() => navigate(`/creative-reports/${teamOf[r.week_start]?.id}`)} onOpen={() => navigate(`/creative-reports/${r.id}`)} onPresent={() => navigate(`/creative-reports/${r.id}/present`)} onDelete={isAdmin ? () => removeDeck(r) : undefined} />)}
               </div>
             ) : (
               <div className="text-sm text-gray-400 py-10 text-center border border-dashed border-gray-200 rounded-3xl">No past decks yet — generate an earlier week to compare.</div>

@@ -1,6 +1,7 @@
 // Pure slide specifications: defaults, editable schema, text slots and view-model selectors.
 // No React here — buildDeck() uses these; slides/registry.jsx maps types to components.
 import { displayName, fmtNum, plural, ensureContrast, paletteColor, addDays } from '../deck/format';
+import { TEAM_SPECS } from './teamSpecs';
 import {
   DIVISIONS, DIVISION_ORDER, divisionOf, personCandidates, personSelection, productionTickets, visibleProductions, productionDatesIn,
 } from './divisions';
@@ -629,6 +630,8 @@ export const SPECS = {
     },
     defaultText: () => ({ eyebrow: 'Next week', title: 'Focus' }),
   },
+
+  ...TEAM_SPECS,
 };
 
 export const SLIDE_TYPES = Object.keys(SPECS);

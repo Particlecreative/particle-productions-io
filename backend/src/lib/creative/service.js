@@ -3,7 +3,8 @@
  */
 const db = require('../../db');
 const { buildSnapshot, hashSnapshot } = require('./snapshot');
-const { getCreativeConfig } = require('./config');
+const { getCreativeConfig, templateFor, DECKS } = require('./config');
+const { teamExtras } = require('./team');
 const { diffSnapshots } = require('./diff');
 const W = require('./week');
 
@@ -17,7 +18,7 @@ function singleFlight(key, fn) {
   return p;
 }
 
-const REPORT_COLS = `id, brand_id, week_start, title, status, snapshot, snapshot_hash, overrides, template, narrative, revision,
+const REPORT_COLS = `id, brand_id, week_start, deck, title, status, snapshot, snapshot_hash, overrides, template, narrative, revision,
   generated_at, generated_by, generated_by_name, generation_ms, finalized_at, finalized_by_name,
   share_token, share_expires_at, share_created_at, created_at, updated_at`;
 
@@ -26,14 +27,20 @@ async function getReport(id) {
   return rows[0] || null;
 }
 
-async function getReportByWeek(brandId, weekStart) {
-  const { rows } = await db.query(`SELECT ${REPORT_COLS} FROM creative_reports WHERE brand_id = $1 AND week_start = $2`, [brandId, weekStart]);
+async function getReportByWeek(brandId, weekStart, deck = 'founders') {
+  const { rows } = await db.query(`SELECT ${REPORT_COLS} FROM creative_reports WHERE brand_id = $1 AND week_start = $2 AND deck = $3`, [brandId, weekStart, deck]);
   return rows[0] || null;
+}
+
+/** The week's decks by kind → id (the editor's Founders / Team tabs). */
+async function decksOfWeek(brandId, weekStart) {
+  const { rows } = await db.query('SELECT id, deck FROM creative_reports WHERE brand_id = $1 AND week_start = $2', [brandId, weekStart]);
+  return Object.fromEntries(rows.map(r => [r.deck, r.id]));
 }
 
 async function listReports(brandId) {
   const { rows } = await db.query(
-    `SELECT id, week_start, title, status, revision, generated_at, updated_at, share_token, share_expires_at,
+    `SELECT id, week_start, deck, title, status, revision, generated_at, updated_at, share_token, share_expires_at,
             snapshot->'metrics'->'totals' AS totals, snapshot->'week'->>'label' AS week_label,
             (snapshot->'week'->>'number')::int AS week_number
        FROM creative_reports WHERE brand_id = $1 ORDER BY week_start DESC`, [brandId]);
@@ -84,25 +91,39 @@ function weekTitle(snapshot) {
 /**
  * Generate a new report for a week. Returns { report, created } — if one exists, { report, created: false }.
  */
-async function generateReport({ brandId, weekStart, user }) {
+/**
+ * Generate a week's decks — both (founders + Creative Team Weekly) unless one is asked for — from one snapshot.
+ * Returns the first requested deck; created = something new was made.
+ */
+async function generateReport({ brandId, weekStart, user, deck = null }) {
   W.weekBounds(weekStart); // validates Sunday
-  return singleFlight(`${brandId}|${weekStart}`, async () => {
-    const existing = await getReportByWeek(brandId, weekStart);
-    if (existing) return { report: existing, created: false };
+  const decks = deck ? [deck] : DECKS;
+  return singleFlight(`${brandId}|${weekStart}|${decks.join('+')}`, async () => {
+    const found = {};
+    for (const d of decks) found[d] = await getReportByWeek(brandId, weekStart, d);
+    const missing = decks.filter(d => !found[d]);
+    if (!missing.length) return { report: found[decks[0]], created: false };
     const config = await getCreativeConfig(brandId);
     const t0 = Date.now();
     const snapshot = await buildSnapshot({ brandId, weekStart });
-    const { rows } = await db.query(
-      `INSERT INTO creative_reports (brand_id, week_start, title, snapshot, snapshot_hash, overrides, template,
-                                     generated_at, generated_by, generated_by_name, generation_ms)
-       VALUES ($1,$2,$3,$4,$5,'{}'::jsonb,$6,NOW(),$7,$8,$9)
-       ON CONFLICT (brand_id, week_start) DO NOTHING
-       RETURNING ${REPORT_COLS}`,
-      [brandId, weekStart, weekTitle(snapshot), JSON.stringify(snapshot), hashSnapshot(snapshot),
-        JSON.stringify(config.default_template), await userRef(user), user?.name || 'Automation', Date.now() - t0]
-    );
-    if (!rows[0]) return { report: await getReportByWeek(brandId, weekStart), created: false };
-    return { report: rows[0], created: true };
+    for (const d of missing) {
+      let snap = snapshot;
+      if (d === 'team') {
+        const { team, media_refs } = await teamExtras({ brandId, weekStart });
+        snap = { ...snapshot, media_refs: { ...snapshot.media_refs, ...media_refs }, team, warnings: [...(snapshot.warnings || []), ...team.warnings] };
+      }
+      const { rows } = await db.query(
+        `INSERT INTO creative_reports (brand_id, week_start, deck, title, snapshot, snapshot_hash, overrides, template,
+                                       generated_at, generated_by, generated_by_name, generation_ms)
+         VALUES ($1,$2,$3,$4,$5,$6,'{}'::jsonb,$7,NOW(),$8,$9,$10)
+         ON CONFLICT (brand_id, week_start, deck) DO NOTHING
+         RETURNING ${REPORT_COLS}`,
+        [brandId, weekStart, d, weekTitle(snapshot), JSON.stringify(snap), hashSnapshot(snap),
+          JSON.stringify(templateFor(config, d)), await userRef(user), user?.name || 'Automation', Date.now() - t0]
+      );
+      if (rows[0]) found[d] = rows[0];
+    }
+    return { report: found[decks[0]] || await getReportByWeek(brandId, weekStart, decks[0]), created: true };
   });
 }
 
@@ -110,9 +131,15 @@ async function generateReport({ brandId, weekStart, user }) {
  * Rebuild the snapshot from live data, keep overrides. Saves a pre_refresh version first.
  */
 async function refreshReport(report, { user, dryRun = false } = {}) {
-  return singleFlight(`${report.brand_id}|${report.week_start}|refresh`, async () => {
+  return singleFlight(`${report.brand_id}|${report.week_start}|${report.deck || 'founders'}|refresh`, async () => {
     const t0 = Date.now();
     const snapshot = await buildSnapshot({ brandId: report.brand_id, weekStart: report.week_start, force: true });
+    if (report.deck === 'team') {
+      const { team, media_refs } = await teamExtras({ brandId: report.brand_id, weekStart: report.week_start });
+      snapshot.team = team;
+      Object.assign(snapshot.media_refs, media_refs);
+      snapshot.warnings = [...(snapshot.warnings || []), ...team.warnings];
+    }
     // Links added by hand (production videos / images) aren't on any ticket — keep them
     for (const [refId, ref] of Object.entries(report.snapshot?.media_refs || {})) {
       if (ref?.custom && !snapshot.media_refs[refId]) snapshot.media_refs[refId] = ref;
@@ -185,6 +212,6 @@ async function restoreVersion(report, version, user) {
 }
 
 module.exports = {
-  REPORT_COLS, getReport, getReportByWeek, listReports, generateReport, refreshReport, updateReport,
+  REPORT_COLS, getReport, getReportByWeek, decksOfWeek, listReports, generateReport, refreshReport, updateReport,
   setStatus, saveVersion, listVersions, getVersion, restoreVersion, weekTitle, isUuid,
 };

@@ -14,7 +14,7 @@ const db = require('../db');
 const { verifyJWT } = require('../middleware/auth');
 const monday = require('../lib/monday');
 const W = require('../lib/creative/week');
-const { getCreativeConfig, saveCreativeConfig, validateTemplate, validateConfig } = require('../lib/creative/config');
+const { getCreativeConfig, saveCreativeConfig, validateTemplate, validateConfig, DECKS } = require('../lib/creative/config');
 const service = require('../lib/creative/service');
 const media = require('../lib/creative/media');
 const { publicReport, allowedMediaRefs, visibleTicketIds, coverSummary } = require('../lib/creative/deck');
@@ -289,10 +289,16 @@ router.put('/config', requireAdminRole, async (req, res) => {
 router.put('/config/template', async (req, res) => {
   try {
     let tpl = req.body?.template;
-    if (!tpl && req.body?.from_report_id && UUID_RE.test(req.body.from_report_id)) tpl = (await service.getReport(req.body.from_report_id))?.template;
+    let deck = DECKS.includes(req.body?.deck) ? req.body.deck : 'founders';
+    if (!tpl && req.body?.from_report_id && UUID_RE.test(req.body.from_report_id)) {
+      const from = await service.getReport(req.body.from_report_id);
+      tpl = from?.template;
+      deck = from?.deck || deck;
+    }
     validateTemplate(tpl);
-    const next = await saveCreativeConfig(req.brandId, { default_template: { version: (tpl.version || 1), slides: tpl.slides } });
-    res.json({ template: next.default_template });
+    const key = deck === 'team' ? 'team_template' : 'default_template';
+    const next = await saveCreativeConfig(req.brandId, { [key]: { version: (tpl.version || 1), slides: tpl.slides } });
+    res.json({ template: next[key], deck });
   } catch (err) { err.status = err.status || 400; errorJson(res, err); }
 });
 
@@ -340,7 +346,7 @@ router.get('/weeks/:weekStart', async (req, res) => {
   try {
     const ws = String(req.params.weekStart);
     W.weekBounds(ws);
-    const report = await service.getReportByWeek(req.brandId, ws);
+    const report = await service.getReportByWeek(req.brandId, ws, DECKS.includes(req.query.deck) ? req.query.deck : 'founders');
     res.json(report ? withMedia(report) : { report: null });
   } catch (err) { err.status = err.status || 400; errorJson(res, err); }
 });
@@ -350,7 +356,9 @@ router.post('/generate', async (req, res) => {
     // Presented on Sunday about the Sun–Thu that just ended → default to the week the next Sunday reviews
     const weekStart = String(req.body?.week_start || W.reviewWeekOf(Date.now()));
     try { W.weekBounds(weekStart); } catch (e) { return res.status(400).json({ error: e.message }); }
-    const { report, created } = await service.generateReport({ brandId: req.brandId, weekStart, user: req.user });
+    // No deck = both (founders + Creative Team Weekly); a deck = just that one (e.g. the team deck for an older week)
+    const deck = DECKS.includes(req.body?.deck) ? req.body.deck : null;
+    const { report, created } = await service.generateReport({ brandId: req.brandId, weekStart, user: req.user, deck });
     if (!created) return res.status(409).json({ error: 'A deck already exists for this week', id: report.id });
     res.status(201).json(withMedia(report));
   } catch (err) { errorJson(res, err, 'Could not generate the deck'); }
@@ -365,7 +373,7 @@ router.get('/:id', async (req, res) => {
       const cur = await cpWeeklyUpdatedAt(r.brand_id, cpWeekFor(r.week_start));
       cpStale = (cur || null) !== (r.snapshot?.cp_weekly?.updated_at || null);
     } catch { cpStale = false; }
-    res.json(withMedia(r, { cp_weekly_stale: cpStale }));
+    res.json(withMedia(r, { cp_weekly_stale: cpStale, decks: await service.decksOfWeek(r.brand_id, r.week_start) }));
   } catch (err) { errorJson(res, err); }
 });
 
