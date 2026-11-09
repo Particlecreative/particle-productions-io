@@ -13,10 +13,12 @@
  *   POST /issues/:id/feedback          { feedback: good_catch | not_a_typo }
  *   GET  /events                       raw event log
  *   GET  /brain                        Brain items
+ *   GET  /import                       history import progress + report (counts, AI estimate)
  * Admin:
  *   GET  /frameio/connect · DELETE /frameio    the Captain's own Frame.io sign-in
  *   GET|PUT /settings
  *   POST /brain · PUT /brain/:id · DELETE /brain/:id
+ *   POST /import/start                 start the read-only history import (Brain bootstrap)
  */
 const express = require('express');
 const crypto = require('crypto');
@@ -287,6 +289,20 @@ router.delete('/brain/:id', requireAdmin, async (req, res) => {
     await brainHistory(before.id, 'delete', before, null, actor);
     await logEvent({ kind: 'brain', message: `${actor} removed ${before.type} "${before.title}"`, data: { id: before.id }, actor });
     res.json({ ok: true });
+  } catch (err) { errorJson(res, err); }
+});
+
+// ── Brain bootstrap: the read-only history import ────────────────────────────
+router.get('/import', async (req, res) => {
+  try { res.json(await require('../lib/captain/importer').importStatus()); } catch (err) { errorJson(res, err); }
+});
+router.post('/import/start', requireAdmin, async (req, res) => {
+  try {
+    const actor = actorOf(req);
+    const sources = Array.isArray(req.body?.sources) ? req.body.sources.filter(x => ['frameio', 'figma'].includes(x)) : ['frameio', 'figma'];
+    const jobId = await enqueue('import_start', { actor, sources, since: req.body?.since || null }, { dedupeKey: 'import_start', priority: 5 });
+    await logEvent({ kind: 'brain', message: `${actor} started the history import`, data: { job_id: jobId, sources }, actor });
+    res.json({ queued: !!jobId, job_id: jobId });
   } catch (err) { errorJson(res, err); }
 });
 

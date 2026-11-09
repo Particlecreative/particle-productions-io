@@ -8,13 +8,14 @@ const db = require('../../db');
 const WORKER_ID = `${os.hostname()}:${process.pid}`;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-async function enqueue(kind, payload = {}, { dedupeKey = null, delaySec = 0, maxAttempts = 3 } = {}) {
+// priority: live checks 10 (default), the history import 0 — the worker always takes the highest first
+async function enqueue(kind, payload = {}, { dedupeKey = null, delaySec = 0, maxAttempts = 3, priority = 10 } = {}) {
   const { rows } = await db.query(
-    `INSERT INTO captain_jobs (kind, payload, dedupe_key, run_after, max_attempts)
-     VALUES ($1, $2, $3, NOW() + make_interval(secs => $4), $5)
+    `INSERT INTO captain_jobs (kind, payload, dedupe_key, run_after, max_attempts, priority)
+     VALUES ($1, $2, $3, NOW() + make_interval(secs => $4), $5, $6)
      ON CONFLICT (dedupe_key) WHERE status IN ('queued', 'running') AND dedupe_key IS NOT NULL DO NOTHING
      RETURNING id`,
-    [kind, JSON.stringify(payload), dedupeKey, delaySec, maxAttempts],
+    [kind, JSON.stringify(payload), dedupeKey, delaySec, maxAttempts, priority],
   );
   return rows[0]?.id || null;   // null = an identical job is already waiting
 }
@@ -23,7 +24,7 @@ async function claim() {
   const { rows } = await db.query(
     `UPDATE captain_jobs SET status = 'running', locked_at = NOW(), locked_by = $1, attempts = attempts + 1
       WHERE id = (SELECT id FROM captain_jobs WHERE status = 'queued' AND run_after <= NOW()
-                   ORDER BY run_after, id FOR UPDATE SKIP LOCKED LIMIT 1)
+                   ORDER BY priority DESC, run_after, id FOR UPDATE SKIP LOCKED LIMIT 1)
       RETURNING *`,
     [WORKER_ID],
   );

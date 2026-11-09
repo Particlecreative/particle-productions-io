@@ -60,6 +60,8 @@ export const captainApi = {
   deleteBrain: (id) => call(`/brain/${id}`, { method: 'DELETE' }),
   settings: () => call('/settings'),
   saveSettings: (patch) => call('/settings', { method: 'PUT', body: patch }),
+  importStatus: () => call('/import'),
+  importStart: (body = {}) => call('/import/start', { method: 'POST', body }),
   frameioConnect: () => call('/frameio/connect'),
   frameioDisconnect: () => call('/frameio', { method: 'DELETE' }),
 };

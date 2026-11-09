@@ -225,9 +225,24 @@ async function deliverablesOfFolder(folderId) {
   }).sort((p, q) => L.sizeRank(p.size) - L.sizeRank(q.size) || (p.variant || 0) - (q.variant || 0) || p.name.localeCompare(q.name));
 }
 
-/** Deliverables for any link: folder → all of them; stack or file → just that one. */
+/** A share link holding several assets (what some f.io short links point to) → the deliverables inside it. */
+async function deliverablesOfShare(shareId) {
+  const a = await accountId();
+  const assets = (await api(`/accounts/${a}/shares/${shareId}/assets?page_size=50`))?.data || [];
+  const out = [];
+  for (const x of assets) {
+    const id = x.asset_id || x.file_id || x.id;
+    if (x.type === 'folder') out.push(...await deliverablesOfFolder(id));
+    else if (x.type === 'version_stack') out.push(...await deliverablesForTarget({ kind: 'stack', id, name: x.name }));
+    else out.push(...await deliverablesForTarget({ kind: 'file', id, name: x.name }));
+  }
+  return out;
+}
+
+/** Deliverables for any link: folder → all of them; share → everything shared; stack or file → just that one. */
 async function deliverablesForTarget(target) {
   if (target.kind === 'folder') return deliverablesOfFolder(target.id);
+  if (target.kind === 'share') return deliverablesOfShare(target.id);
   if (target.kind === 'stack') {
     const rounds = await stackRounds(target.id);
     const size = L.sizeFromName(target.name), variant = L.variantFromName(target.name);
@@ -305,5 +320,5 @@ async function keepalive() { const t = await loadTokens().catch(() => null); if 
 
 module.exports = {
   configured, authorizeUrl, captainState, exchangeCode, status, disconnect, keepalive,
-  api, accountId, resolveTarget, deliverablesOfFolder, deliverablesForTarget, stackRounds, fileInfo, listComments, createComment,
+  api, accountId, resolveTarget, deliverablesOfFolder, deliverablesOfShare, deliverablesForTarget, stackRounds, fileInfo, listComments, createComment,
 };

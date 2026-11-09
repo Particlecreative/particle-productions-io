@@ -13,6 +13,7 @@ const { startWorker } = require('./lib/captain/queue');
 const { getConfig } = require('./lib/captain/config');
 const { runVideoJob } = require('./lib/captain/video');
 const { runDesignJob } = require('./lib/captain/design');
+const importer = require('./lib/captain/importer');
 
 (async () => {
   const cfg = await getConfig().catch(() => null);
@@ -22,6 +23,9 @@ const { runDesignJob } = require('./lib/captain/design');
     handlers: {
       video_check: runVideoJob,
       design_check: runDesignJob,
+      import_start: (p) => importer.startImport(p),
+      import_frameio_item: importer.importFrameioItem,
+      import_figma_file: importer.importFigmaFile,
     },
   });
   console.log(`[captain-worker] started (concurrency ${concurrency})`);

@@ -103,3 +103,8 @@ test('design: layer list and pinned comment wording', () => {
   assert.match(commentText({ type: 'placeholder', found: 'Lorem ipsum', severity: 'must_fix' }), /placeholder text left in: "Lorem ipsum"/);
   assert.match(commentText({ type: 'size_mismatch', found: 'A', fix: 'B', severity: 'check' }), /differs from the other size/);
 });
+
+test('import: modules load and expose the job handlers', () => {
+  const imp = require('../src/lib/captain/importer');
+  for (const k of ['startImport', 'importFrameioItem', 'importFigmaFile', 'importStatus']) assert.equal(typeof imp[k], 'function');
+});

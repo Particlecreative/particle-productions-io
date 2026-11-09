@@ -62,6 +62,8 @@ export function fixtureCall(path, { method = 'GET', body } = {}) {
   if (p === '/brain') return method === 'POST' ? { item: body } : { items: brain };
   if (p.startsWith('/brain/')) return { ok: true };
   if (p === '/settings') return { settings: method === 'PUT' ? { ...settings, ...body, posting: { ...settings.posting, ...(body?.posting || {}) } } : settings };
+  if (p === '/import') return { run: { id: 1, status: 'running', since: '2025-01-01', started_at: ago(40), plan: { frameio: { items: 1462 }, figma: { files: 8, items: 501 } } }, progress: { done: 310, all: 1470, failed: 4 }, assets: [{ source: 'frameio', n: 1180, items: 306 }, { source: 'figma', n: 480, items: 480 }], comments: [{ source: 'frameio', n: 2410, authors: 9 }, { source: 'figma', n: 1302, matched: 1104, authors: 7 }], authors: [{ author: 'Anton Shpakovskiy', n: 812 }, { author: 'Lilian Krumholz', n: 640 }, { author: 'Tomer Wilf Lezmy', n: 377 }], estimate: { total: 12.4 } };
+  if (p === '/import/start') return { queued: true };
   if (p === '/frameio/connect') return { url: '#' };
   return {};
 }

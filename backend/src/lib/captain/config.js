@@ -61,6 +61,8 @@ const DEFAULTS = {
     test_monday_items: [],
   },
   worker: { concurrency: 1 },
+  // Brain bootstrap: what the history import reads (read-only)
+  import: { since: '2025-01-01', figma_folders: ['Media Ads'] },
 };
 
 const isObj = (v) => v && typeof v === 'object' && !Array.isArray(v);
@@ -77,7 +79,7 @@ async function getConfig(brandId = 'particle') {
   return merge(DEFAULTS, typeof saved === 'string' ? JSON.parse(saved) : saved);
 }
 
-const EDITABLE = ['triggers', 'done_statuses', 'scope', 'auto_versions', 'engines', 'second_opinion', 'max_reference_images', 'insights', 'posting', 'worker'];
+const EDITABLE = ['triggers', 'done_statuses', 'scope', 'auto_versions', 'engines', 'second_opinion', 'max_reference_images', 'insights', 'posting', 'worker', 'import'];
 async function saveConfig(patch, brandId = 'particle') {
   const clean = Object.fromEntries(Object.entries(patch || {}).filter(([k]) => EDITABLE.includes(k)));
   const { rows } = await db.query('SELECT captain_config FROM settings WHERE brand_id = $1', [brandId]);
