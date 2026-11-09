@@ -12,6 +12,7 @@ for (const key of ['DATABASE_URL']) {
 const { startWorker } = require('./lib/captain/queue');
 const { getConfig } = require('./lib/captain/config');
 const { runVideoJob } = require('./lib/captain/video');
+const { runDesignJob } = require('./lib/captain/design');
 
 (async () => {
   const cfg = await getConfig().catch(() => null);
@@ -20,6 +21,7 @@ const { runVideoJob } = require('./lib/captain/video');
     concurrency,
     handlers: {
       video_check: runVideoJob,
+      design_check: runDesignJob,
     },
   });
   console.log(`[captain-worker] started (concurrency ${concurrency})`);

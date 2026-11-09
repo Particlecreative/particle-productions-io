@@ -20,6 +20,7 @@ const { loadBrain, brainText } = require('./brain');
 const gemini = require('./engines/gemini');
 const { logEvent } = require('./log');
 const { enqueue } = require('./queue');
+const { insertCheck, updateCheck, lastCheckOf, insertIssue, setIssueComment } = require('./store');
 const L = require('./labels');
 
 const PREFIX = monday.PREFIX;
@@ -88,28 +89,6 @@ function normIssues(issues, fps) {
 }
 
 // ── one deliverable ──────────────────────────────────────────────────────────
-async function lastCheckOf(dedupeKey) {
-  const { rows } = await db.query(`SELECT id, status, issue_count, raw FROM captain_checks WHERE dedupe_key = $1 AND status IN ('passed','issues') ORDER BY created_at DESC LIMIT 1`, [dedupeKey]);
-  return rows[0] || null;
-}
-
-async function insertCheck(fields) {
-  const cols = Object.keys(fields);
-  const { rows } = await db.query(
-    `INSERT INTO captain_checks (${cols.join(',')}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(',')}) RETURNING id`,
-    cols.map(c => (fields[c] && typeof fields[c] === 'object' && !(fields[c] instanceof Date) && !Buffer.isBuffer(fields[c]) ? JSON.stringify(fields[c]) : fields[c])),
-  );
-  return rows[0].id;
-}
-
-async function updateCheck(id, fields) {
-  const cols = Object.keys(fields);
-  await db.query(
-    `UPDATE captain_checks SET ${cols.map((c, i) => `${c} = $${i + 2}`).join(', ')} WHERE id = $1`,
-    [id, ...cols.map(c => (fields[c] && typeof fields[c] === 'object' && !(fields[c] instanceof Date) && !Buffer.isBuffer(fields[c]) ? JSON.stringify(fields[c]) : fields[c]))],
-  );
-}
-
 async function grabThumb(file) {
   const out = `${file}.jpg`;
   try {
@@ -172,12 +151,7 @@ async function checkDeliverable({ d, round, ctx, cfg, posting, master }) {
     const r = await gemini.checkVideo({ path: tmp, name: `${base.item_name} · ${d.label} · r${round.round}`, prompt, model: engine.model, prices: cfg.prices || {} });
     const issues = normIssues(r.issues, fps);
 
-    for (const i of issues) {
-      await db.query(
-        `INSERT INTO captain_issues (check_id, idx, start_s, end_s, frame, duration_frames, found, fix, type, severity, note) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-        [checkId, i.idx, i.start_s, i.end_s, i.frame, i.duration_frames, i.found, i.fix, i.type, i.severity, i.note],
-      );
-    }
+    for (const i of issues) await insertIssue(checkId, i);
     await updateCheck(checkId, {
       status: issues.length ? 'issues' : 'passed', issue_count: issues.length, cost_usd: r.cost_usd, duration_ms: r.ms, usage: r.usage,
       raw: { on_screen_text: r.on_screen_text, voiceover: r.voiceover, issues: r.issues, brain_ids: brain.ids, prompt_chars: prompt.length },
@@ -192,7 +166,7 @@ async function checkDeliverable({ d, round, ctx, cfg, posting, master }) {
       }
       for (const i of issues) {
         const c = await frameio.createComment(fileId, { text: commentText(i), timestamp: i.frame, duration: i.duration_frames });
-        if (c?.id) await db.query('UPDATE captain_issues SET comment_id = $2 WHERE check_id = $1 AND idx = $3', [checkId, c.id, i.idx]);
+        if (c?.id) await setIssueComment(checkId, i.idx, c.id);
       }
       await updateCheck(checkId, { posted_at: new Date() });
       await logEvent({ kind: 'post', discipline: 'video', board_id: base.board_id, item_id: base.item_id, check_id: checkId, message: `Posted ${issues.length || 1} Frame.io comment(s) on ${d.label} round ${round.round}`, actor });
@@ -291,4 +265,4 @@ async function runVideoJob(payload) {
   return { results: results.map(({ on_screen_text, ...r }) => r), posting };
 }
 
-module.exports = { runVideoJob, postingFor, commentText, normIssues, buildPrompt, briefBlock };
+module.exports = { runVideoJob, postingFor, commentText, normIssues, buildPrompt, briefBlock, grabThumb };

@@ -93,3 +93,13 @@ test('video: brief block mentions versions and script order', () => {
   assert.match(txt, /in this order/);
   assert.match(briefBlock(null), /No Monday brief/);
 });
+
+test('design: layer list and pinned comment wording', () => {
+  const { layersBlock, commentText } = require('../src/lib/captain/design');
+  const txt = layersBlock([{ id: '1:10', name: 'Ad', width: 1200, height: 1200, size: '1x1', texts: [{ id: '1:11', text: 'STRONGER,\nHAIR' }] }]);
+  assert.match(txt, /Frame 1 — id 1:10 — 1200×1200 \(1x1\)/);
+  assert.match(txt, /\[1:11\] STRONGER, HAIR/);
+  assert.equal(commentText({ type: 'spelling', found: 'GAURANTEE', fix: 'GUARANTEE', severity: 'must_fix' }), '🧑‍✈️ Captain Caption: "GAURANTEE" → "GUARANTEE"');
+  assert.match(commentText({ type: 'placeholder', found: 'Lorem ipsum', severity: 'must_fix' }), /placeholder text left in: "Lorem ipsum"/);
+  assert.match(commentText({ type: 'size_mismatch', found: 'A', fix: 'B', severity: 'check' }), /differs from the other size/);
+});

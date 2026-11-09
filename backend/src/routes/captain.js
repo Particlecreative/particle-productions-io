@@ -112,7 +112,6 @@ router.post('/check', async (req, res) => {
     } else {
       return res.status(400).json({ error: "That doesn't look like a Frame.io, Figma or Monday link" });
     }
-    if (discipline === 'design') return res.status(400).json({ error: 'Design checks are the next step — video works today' });
     const jobId = await enqueue(`${discipline}_check`, payload, { dedupeKey: `manual:${raw}:${force ? 'force' : ''}` });
     await logEvent({ kind: 'check', discipline, item_id: payload.item_id || null, message: `Manual check queued by ${actor}`, data: { link: raw, job_id: jobId, force, override_scope }, actor });
     res.json({ queued: !!jobId, job_id: jobId, discipline, already_queued: !jobId });
@@ -185,11 +184,13 @@ router.post('/checks/:id/rerun', async (req, res) => {
     if (!UUID_RE.test(req.params.id)) return res.status(404).json({ error: 'Not found' });
     const c = (await db.query('SELECT discipline, item_id, asset FROM captain_checks WHERE id = $1', [req.params.id])).rows[0];
     if (!c) return res.status(404).json({ error: 'Not found' });
-    if (c.discipline !== 'video') return res.status(400).json({ error: 'Design re-runs come with design checks' });
     const actor = actorOf(req);
-    const link = c.asset?.view_url || c.asset?.link;
+    const link = c.discipline === 'design' ? c.asset?.link : (c.asset?.view_url || c.asset?.link);
     if (!link && !c.item_id) return res.status(400).json({ error: 'Nothing to re-run — this check has no link' });
-    const jobId = await enqueue('video_check', { link, item_id: c.item_id || null, trigger: 'manual', actor, force: true, only_file_id: c.asset?.file_id || null }, { dedupeKey: `rerun:${req.params.id}` });
+    const payload = c.discipline === 'design'
+      ? { link, item_id: c.item_id || null, trigger: 'manual', actor, force: true }
+      : { link, item_id: c.item_id || null, trigger: 'manual', actor, force: true, only_file_id: c.asset?.file_id || null };
+    const jobId = await enqueue(`${c.discipline}_check`, payload, { dedupeKey: `rerun:${req.params.id}` });
     await logEvent({ kind: 'check', discipline: c.discipline, item_id: c.item_id, check_id: req.params.id, message: `Re-run requested by ${actor}`, actor });
     res.json({ queued: !!jobId, job_id: jobId });
   } catch (err) { errorJson(res, err); }

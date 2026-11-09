@@ -36,6 +36,7 @@ export default function CheckDrawer({ id, onClose, notify, onChanged }) {
   const s = c ? statusMeta(c) : null;
   const raw = c?.raw || {};
   const frameioUrl = c?.asset?.view_url || null;
+  const figmaUrl = c?.discipline === 'design' && c?.asset?.file_key ? `https://www.figma.com/design/${c.asset.file_key}/?node-id=${String(c.asset.node_id || '').replace(':', '-')}` : null;
   return (
     <div className="fixed inset-0 z-[70] flex justify-end" onClick={onClose} style={{ background: 'rgba(3,11,46,.55)' }}>
       <aside className="trk cc trk-drawer h-full w-full max-w-[760px] overflow-y-auto trk-scroll" onClick={e => e.stopPropagation()} role="dialog" aria-label="Check details">
@@ -63,8 +64,9 @@ export default function CheckDrawer({ id, onClose, notify, onChanged }) {
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
                 {frameioUrl && <a className="trk-btn" href={frameioUrl} target="_blank" rel="noopener noreferrer"><ExternalLink size={13} /> Open in Frame.io</a>}
+                {figmaUrl && <a className="trk-btn" href={figmaUrl} target="_blank" rel="noopener noreferrer"><ExternalLink size={13} /> Open in Figma</a>}
                 {c.monday_url && <a className="trk-btn" href={c.monday_url} target="_blank" rel="noopener noreferrer"><ExternalLink size={13} /> Monday item</a>}
-                {c.discipline === 'video' && <button type="button" className="trk-btn" onClick={rerun} disabled={busy === 'rerun'}>{busy === 'rerun' ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />} Re-run</button>}
+                {<button type="button" className="trk-btn" onClick={rerun} disabled={busy === 'rerun'}>{busy === 'rerun' ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />} Re-run</button>}
               </div>
 
               {c.thumb_url && <img src={c.thumb_url} alt="" className="mt-5 w-full max-h-[300px] object-contain rounded-2xl" style={{ background: 'rgba(0,0,0,.25)' }} />}
