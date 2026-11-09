@@ -53,6 +53,10 @@ services:
       BAMBOOHR_SUBDOMAIN: ${BAMBOOHR_SUBDOMAIN:-}
       BAMBOOHR_API_KEY: ${BAMBOOHR_API_KEY:-}
       SLACK_CREATIVE_WEBHOOK_URL: ${SLACK_CREATIVE_WEBHOOK_URL:-}
+      # Creative Team Weekly — Meta performance from AFTERLIFE's export API
+      AFTERLIFE_URL: ${AFTERLIFE_URL:-https://afterlife.particle-creative.cloud}
+      AFTERLIFE_EXPORT_TOKEN: ${AFTERLIFE_EXPORT_TOKEN:-}
+      AFTERLIFE_BASIC_AUTH: ${AFTERLIFE_BASIC_AUTH:-}
       PORT: 3001
       NODE_ENV: production
     depends_on:
