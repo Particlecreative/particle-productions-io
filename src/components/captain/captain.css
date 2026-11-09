@@ -1,0 +1,63 @@
+/* Captain Caption HQ — built on the Tracker/Studio look (.trk, navy + electric glows). That look is dark; when CP is
+   in light mode (no html.dark) the .cc scope re-tints the same components for paper-white. */
+
+.cc .cc-row { display: grid; grid-template-columns: 84px minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 12px 14px; border-radius: 18px; border: 1px solid transparent; transition: background 0.15s, border-color 0.15s; cursor: pointer; text-align: left; width: 100%; }
+.cc .cc-row:hover { background: var(--trk-glass-hi); border-color: var(--trk-line); }
+.cc .cc-thumb { width: 84px; height: 48px; border-radius: 10px; object-fit: cover; background: var(--trk-glass-hi); display: flex; align-items: center; justify-content: center; font-size: 20px; overflow: hidden; }
+.cc .cc-issue { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 12px 0; border-top: 1px solid var(--trk-line); }
+.cc .cc-time { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 13px; }
+.cc .cc-fix { font-weight: 600; }
+.cc .cc-strike { text-decoration: line-through; text-decoration-color: var(--trk-red); text-decoration-thickness: 2px; opacity: 0.85; }
+.cc .cc-dot { width: 8px; height: 8px; border-radius: 999px; display: inline-block; flex: none; }
+.cc .cc-pre { white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; line-height: 1.5; max-height: 340px; overflow: auto; padding: 12px; border-radius: 14px; background: rgba(0, 0, 0, 0.25); }
+.cc .cc-stat { font-family: 'Sofia Sans Extra Condensed', sans-serif; font-weight: 900; font-size: 44px; line-height: 0.9; }
+.cc .cc-switch button { min-width: 92px; justify-content: center; }
+.cc details > summary { cursor: pointer; list-style: none; }
+.cc details > summary::-webkit-details-marker { display: none; }
+@media (max-width: 640px) {
+  .cc .cc-row { grid-template-columns: 64px minmax(0, 1fr); }
+  .cc .cc-row > :last-child { grid-column: 1 / -1; justify-self: start; }
+  .cc .cc-thumb { width: 64px; height: 40px; }
+}
+
+/* ── light mode ─────────────────────────────────────────────────────────── */
+html:not(.dark) .cc.trk {
+  --trk-navy: #f5f6fb;
+  --trk-navy-2: #ffffff;
+  --trk-text: #0d1330;
+  --trk-muted: #5b6390;
+  --trk-dim: #8a90b3;
+  --trk-line: rgba(13, 19, 48, 0.1);
+  --trk-glass: rgba(13, 19, 48, 0.03);
+  --trk-glass-hi: rgba(13, 19, 48, 0.055);
+  --trk-violet: #3a44e8;
+}
+html:not(.dark) .cc .trk-canvas {
+  background:
+    radial-gradient(1100px 620px at 92% -12%, rgba(8, 8, 248, 0.12), transparent 60%),
+    radial-gradient(760px 520px at -12% 112%, rgba(8, 8, 248, 0.07), transparent 60%),
+    #f5f6fb;
+  box-shadow: inset 0 0 0 1px rgba(13, 19, 48, 0.06);
+}
+html:not(.dark) .cc .trk-canvas::before { opacity: 0.025; }
+html:not(.dark) .cc .trk-title { color: #0d1330; }
+html:not(.dark) .cc .trk-glass { background: #fff; box-shadow: 0 1px 2px rgba(13, 19, 48, 0.04); }
+html:not(.dark) .cc .trk-btn { background: #fff; }
+html:not(.dark) .cc .trk-btn:hover { background: #eef0fb; }
+html:not(.dark) .cc .trk-btn.primary { background: var(--trk-electric); color: #fff; }
+html:not(.dark) .cc .trk-input { background: #fff; }
+html:not(.dark) .cc .trk-input:focus { background: #fff; }
+html:not(.dark) .cc .trk-input[type='date'] { color-scheme: light; }
+html:not(.dark) .cc .trk-seg { background: rgba(13, 19, 48, 0.05); }
+html:not(.dark) .cc .trk-seg button.on { background: #0d1330; color: #fff; }
+html:not(.dark) .cc .trk-chip { background: rgba(13, 19, 48, 0.06); }
+html:not(.dark) .cc .trk-chip.red { background: rgba(225, 29, 72, 0.1); color: #be123c; }
+html:not(.dark) .cc .trk-chip.amber { background: rgba(217, 119, 6, 0.12); color: #a16207; }
+html:not(.dark) .cc .trk-chip.green { background: rgba(5, 150, 105, 0.12); color: #047857; }
+html:not(.dark) .cc .trk-chip.gray { background: rgba(13, 19, 48, 0.05); }
+html:not(.dark) .cc .trk-link { color: #3a44e8; }
+html:not(.dark) .cc .trk-link:hover { color: #0808f8; }
+html:not(.dark) .cc .trk-drawer {
+  background: radial-gradient(700px 400px at 100% -10%, rgba(8, 8, 248, 0.08), transparent 60%), #ffffff;
+}
+html:not(.dark) .cc .cc-pre { background: rgba(13, 19, 48, 0.05); }

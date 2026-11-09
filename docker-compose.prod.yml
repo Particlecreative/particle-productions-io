@@ -19,7 +19,7 @@ services:
   # ── Node.js / Express API ──
   api:
     build: ./backend
-    environment:
+    environment: &api_env
       DATABASE_URL: postgres://${DB_USER:-cpanel}:${DB_PASSWORD}@db:5432/${DB_NAME:-cpanel}
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
@@ -57,8 +57,23 @@ services:
       AFTERLIFE_URL: ${AFTERLIFE_URL:-https://afterlife.particle-creative.cloud}
       AFTERLIFE_EXPORT_TOKEN: ${AFTERLIFE_EXPORT_TOKEN:-}
       AFTERLIFE_BASIC_AUTH: ${AFTERLIFE_BASIC_AUTH:-}
+      # Captain Caption — the Captain's own Figma and Monday users (Frame.io sign-in lives in the database)
+      CAPTAIN_FIGMA_TOKEN: ${CAPTAIN_FIGMA_TOKEN:-}
+      CAPTAIN_MONDAY_TOKEN: ${CAPTAIN_MONDAY_TOKEN:-}
       PORT: 3001
       NODE_ENV: production
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Captain Caption worker: downloads, Gemini checks and comments run here, never inside the API ──
+  captain-worker:
+    build: ./backend
+    command: ["node", "src/captainWorker.js"]
+    environment: *api_env
+    mem_limit: 1g
+    cpus: 1.0
     depends_on:
       db:
         condition: service_healthy

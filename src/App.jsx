@@ -57,6 +57,7 @@ const CreativeReportEditorPage = lazyPage(() => import('./pages/creative/Creativ
 const CreativeReportPresentPage = lazyPage(() => import('./pages/creative/CreativeReportPresentPage'));
 const CreativeReportSharePage = lazyPage(() => import('./pages/creative/CreativeReportSharePage'));
 const FinancePage = lazyPage(() => import('./pages/finance/FinancePage'));
+const CaptainPage = lazyPage(() => import('./pages/captain/CaptainPage'));
 const FinanceViewPage = lazyPage(() => import('./pages/finance/FinanceViewPage'));
 
 function DeckSplash() {
@@ -155,6 +156,7 @@ function AppRoutes() {
         <Route path="/library" element={<ProtectedRoute blockForAccounting><AppShell><ErrorBoundary>{lazyEl(<LibraryPage />)}</ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="/tracker" element={<ProtectedRoute blockForAccounting blockForStudio><AppShell><ErrorBoundary>{lazyEl(<TrackerPage />)}</ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="/studio" element={<ProtectedRoute blockForAccounting blockForStudio><AppShell><ErrorBoundary>{lazyEl(<StudioPage />)}</ErrorBoundary></AppShell></ProtectedRoute>} />
+        <Route path="/captain" element={<ProtectedRoute blockForAccounting blockForStudio><AppShell><ErrorBoundary>{lazyEl(<CaptainPage />)}</ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="/gantts" element={<ProtectedRoute blockForAccounting blockForStudio><AppShell><ErrorBoundary><Gantts /></ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="/casting-rights" element={<ProtectedRoute blockForStudio><AppShell><ErrorBoundary><CastingRights /></ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="/call-sheets" element={<ProtectedRoute blockForAccounting blockForStudio><AppShell><ErrorBoundary><CallSheets /></ErrorBoundary></AppShell></ProtectedRoute>} />

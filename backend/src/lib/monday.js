@@ -54,8 +54,9 @@ function retryDelayFromError(err) {
  * Run a GraphQL query against Monday.
  * @returns {Promise<object>} data
  */
-async function mondayQuery(query, variables = {}, { retries = 3, timeoutMs = 30000, deadline = null } = {}) {
-  const token = process.env.MONDAY_API_TOKEN;
+async function mondayQuery(query, variables = {}, { retries = 3, timeoutMs = 30000, deadline = null, token: tokenOverride = null } = {}) {
+  // tokenOverride: Captain Caption posts as its own Monday user (CAPTAIN_MONDAY_TOKEN); everything else uses the CP token
+  const token = tokenOverride || process.env.MONDAY_API_TOKEN;
   if (!token) throw new MondayError('Monday.com API token not configured (MONDAY_API_TOKEN)', { code: 'NO_TOKEN' });
 
   let attempt = 0;

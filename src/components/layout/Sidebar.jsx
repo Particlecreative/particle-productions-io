@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, DollarSign, BookOpen, Settings, Users, ChevronLeft, ChevronRight,
   History, FileText, FileSignature, Clapperboard, Users2, GripVertical,
-  GanttChartSquare, Check, Star, Sun, Moon, Grid3x3, X as XIcon, Scroll, CheckSquare, Presentation, Radar, Library, Landmark,
+  GanttChartSquare, Check, Star, Sun, Moon, Grid3x3, X as XIcon, Scroll, CheckSquare, Presentation, Radar, Library, Landmark, SpellCheck,
 } from 'lucide-react';
 import {
   DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors,
@@ -31,6 +31,7 @@ const DEFAULT_NAV_ITEMS = [
   { to: '/studio',         icon: Clapperboard,     label: 'Studio',      accountingHide: true, studioHide: true, particleOnly: true, editorOnly: true },
   { to: '/studio-tickets', icon: Clapperboard,     label: 'Studio',      accountingHide: true, particleOnly: true, nonEditorOnly: true },
   { to: '/creative-reports', icon: Presentation,   label: 'Creative Weekly', accountingHide: true, studioHide: true, particleOnly: true, editorOnly: true },
+  { to: '/captain',        icon: SpellCheck,       label: 'Captain Caption', accountingHide: true, studioHide: true, particleOnly: true, editorOnly: true },
   { to: '/gantts',         icon: GanttChartSquare, label: 'Gantts',      accountingHide: true, studioHide: true },
   { to: '/call-sheets',    icon: FileText,         label: 'Call Sheets', accountingHide: true, studioHide: true },
   { to: '/financial',      icon: DollarSign,       label: 'Budget Overview', studioHide: true },

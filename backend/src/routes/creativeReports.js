@@ -221,6 +221,22 @@ router.get('/share/:token/picks', async (req, res) => {
 });
 
 router.get('/frameio/callback', async (req, res) => {
+  // Captain Caption shares this registered redirect; its signed state routes the Captain's own sign-in to its own storage
+  const captain = require('../lib/captain/frameio');
+  const cst = captain.captainState(String(req.query.state || ''));
+  if (cst) {
+    const backC = (status, msg) => res.redirect(`${appUrl()}/captain?tab=settings&frameio=${status}${msg ? `&msg=${encodeURIComponent(msg.slice(0, 160))}` : ''}`);
+    try {
+      if (req.query.error) return backC('error', String(req.query.error_description || req.query.error));
+      const t = await captain.exchangeCode(String(req.query.code || ''), cst.uid);
+      if (t?.last_error) return backC('error', t.last_error);
+      require('../lib/captain/log').logEvent({ kind: 'connect', message: `Frame.io connected as ${t?.user_name || 'unknown'}`, actor: String(cst.uid) });
+      return backC('connected');
+    } catch (err) {
+      console.error('[captain frameio callback]', err.message);
+      return backC('error', err.message);
+    }
+  }
   const back = (status, msg) => res.redirect(`${appUrl()}/creative-reports?frameio=${status}${msg ? `&msg=${encodeURIComponent(msg.slice(0, 160))}` : ''}`);
   try {
     const fio = require('../lib/creative/providers/frameio');
