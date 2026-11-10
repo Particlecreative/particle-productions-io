@@ -420,9 +420,15 @@ async function stepDesign(runId, { limit = null } = {}) {
     // Fresh version history per file (the import stored page 1 only), saved back on the file's asset row
     const versionsOf = {};
     for (const key of [...new Set(rows.map(r => r.file_key))]) {
+      const stored = (await db.query(`SELECT meta->'versions' AS v, meta->>'versions_ok' AS ok FROM captain_import_assets WHERE asset_key = $1`, [`figma-file:${key}`])).rows[0];
+      const list = Array.isArray(stored?.v) ? stored.v : [];
+      if (list.length && (stored.ok === 'true' || new Set(list.map(v => v.id)).size === list.length)) {
+        versionsOf[key] = list.slice().sort((x, y) => String(y.at).localeCompare(String(x.at)));
+        continue;
+      }
       const since = (await db.query(`SELECT MIN(created_at) AS m FROM captain_import_comments WHERE file_key = $1`, [key])).rows[0]?.m;
       versionsOf[key] = await figma.versionsSince(key, since ? new Date(since).toISOString() : '2025-01-01');
-      await db.query(`UPDATE captain_import_assets SET meta = meta || jsonb_build_object('versions', $2::jsonb) WHERE asset_key = $1`, [`figma-file:${key}`, JSON.stringify(versionsOf[key])]);
+      await db.query(`UPDATE captain_import_assets SET meta = meta || jsonb_build_object('versions', $2::jsonb, 'versions_ok', true) WHERE asset_key = $1`, [`figma-file:${key}`, JSON.stringify(versionsOf[key])]);
       log(`design: ${versionsOf[key].length} Figma versions for ${key}`);
     }
     const cache = new Map();
@@ -431,21 +437,31 @@ async function stepDesign(runId, { limit = null } = {}) {
       if (cache.has(k)) return cache.get(k);
       let out = null;
       try {
-        const n = await figma.node(key, node, { version });
-        out = n.doc ? figma.textsOf(n.doc).map(t => t.text).filter(Boolean) : null;
+        const q = new URLSearchParams({ ids: node });
+        if (version) q.set('version', version);
+        const d = await figma.api(`/v1/files/${key}/nodes?${q}`, { tries: 8, timeoutMs: 120000 });   // 429s wait out Retry-After
+        const doc = d?.nodes?.[node]?.document;
+        out = doc ? figma.textsOf(doc).map(t => t.text).filter(Boolean) : null;
       } catch (e) { if (![400, 404].includes(e.status)) log(`design: Figma ${e.message}`); }
-      await sleep(1200);                                     // stay well under Figma's rate limit
+      await sleep(250);
       cache.set(k, out);
       return out;
     };
     const requests = [];
     let i = 0;
+    const t0 = Date.now();
     for (const r of rows) {
-      const at = new Date(r.created_at).getTime();
-      const v = (versionsOf[r.file_key] || []).find(x => new Date(x.at).getTime() <= at);
-      const before = v ? await textsAt(r.file_key, r.node_id, v.id) : null;
-      const after = await textsAt(r.file_key, r.node_id, null);
-      if (++i % 100 === 0) log(`design: ${i}/${rows.length} read`);
+      let before, after, v = true;
+      if (r.analysis?.d_before && r.analysis?.d_after) {           // read on an earlier (interrupted) pass
+        before = r.analysis.d_before; after = r.analysis.d_after;
+      } else {
+        const at = new Date(r.created_at).getTime();
+        v = (versionsOf[r.file_key] || []).find(x => new Date(x.at).getTime() <= at);
+        before = v ? await textsAt(r.file_key, r.node_id, v.id) : null;
+        after = await textsAt(r.file_key, r.node_id, null);
+        if (before && after) await db.query(`UPDATE captain_import_comments SET analysis = analysis || $2::jsonb WHERE id = $1`, [r.id, JSON.stringify({ d_before: before.slice(0, 80), d_after: after.slice(0, 80) })]);
+      }
+      if (++i % 50 === 0) log(`design: ${i}/${rows.length} read (${Math.round((Date.now() - t0) / i / 100) / 10}s each)`);
       if (!before || !after) {
         await db.query(`UPDATE captain_import_comments SET analysis = analysis || $2::jsonb WHERE id = $1`, [r.id, JSON.stringify({ outcome: 'cant_tell', outcome_note: !v ? 'version too old' : 'layer gone' })]);
         continue;
@@ -548,12 +564,12 @@ function bucketLines(list, kindLabel) {
   });
 }
 
-async function distilCall(runId, title, lines) {
+async function distilCall(runId, title, lines, preface = '') {
   const msg = await live(runId, 'distil', {
     model: MODELS.distil, max_tokens: 128000,
     system: DISTIL_SYSTEM,
     output_config: { effort: 'high', format: { type: 'json_schema', schema: BRAIN_SCHEMA } },
-    messages: [{ role: 'user', content: `${title} — ${lines.length} lines:\n${lines.join('\n')}` }],
+    messages: [{ role: 'user', content: `${preface ? `${preface}\n\n` : ''}${title} — ${lines.length} lines:\n${lines.join('\n')}` }],
   });
   const json = msg ? parseJson(msg) : null;
   if (!json) throw new Error(`Distil "${title}" returned nothing usable`);
@@ -561,7 +577,16 @@ async function distilCall(runId, title, lines) {
   return json.items;
 }
 
-async function stepDistil(runId) {
+async function pool(list, n, fn) {
+  const q = [...list];
+  await Promise.all(Array.from({ length: Math.min(n, q.length) }, async () => { while (q.length) await fn(q.shift()); }));
+}
+
+/**
+ * fast = merge what's there now (the design fix-check may still be running). The final pass redoes the text buckets
+ * with every fix confirmed, reuses the creative ones, and refreshes the pending items the fast pass created.
+ */
+async function stepDistil(runId, { fast = false } = {}) {
   const rows = await distilRows();
   const byId = new Map(rows.map(r => [String(r.id), r]));
   const text = rows.filter(r => r.category === 'text' && (r.analysis?.found || r.analysis?.fix || r.analysis?.rule));
@@ -574,31 +599,31 @@ async function stepDistil(runId) {
     ['Creative feedback on VIDEO ads', rows.filter(r => r.category === 'creative' && r.source === 'frameio' && r.analysis?.lesson)],
     ['Creative feedback on DESIGN ads', rows.filter(r => r.category === 'creative' && r.source === 'figma' && r.analysis?.lesson)],
   ];
+  const key = fast ? 'distil_buckets_fast' : 'distil_buckets';
   const s = await getState(runId);
-  const done = s.distil_buckets || {};
-  for (const [title, list] of buckets) {
-    if (done[title] || !list.length) continue;
+  const done = { ...(s[key] || {}) };
+  if (!fast) for (const [t, v] of Object.entries(s.distil_buckets_fast || {})) if (t.startsWith('Creative') && !done[t]) done[t] = v;
+  const todo = buckets.filter(([title, list]) => !done[title] && list.length);
+  await pool(todo, 3, async ([title, list]) => {
     const lines = bucketLines(list, title.startsWith('Creative') ? 'creative' : 'text');
-    // Very large buckets go in slices so each call stays comfortably sized
     const items = [];
-    for (let i = 0; i < lines.length; i += 2500) items.push(...await distilCall(runId, title, lines.slice(i, i + 2500)));
+    for (let i = 0; i < lines.length; i += 2500) items.push(...await distilCall(runId, title, lines.slice(i, i + 2500)));   // big buckets in slices
     done[title] = items;
-    await setState(runId, { distil_buckets: done });
-  }
-  // Final pass: merge across buckets and resolve overlaps
+    await setState(runId, { [key]: done });
+  });
+  // Merge across buckets, reusing the exact titles of what's already in the Brain (so nothing is duplicated)
   const all = Object.values(done).flat();
-  let final = all;
-  if (all.length > 40) {
-    const compact = all.map((x, i) => `${i}. [${x.type}|${x.discipline}|×${x.count}|${x.confidence}${x.possibly_expired ? '|expired?' : ''}] ${x.title} — ${x.content} {${(x.products || []).join('/')}} (${(x.reviewers || []).join('/')}) ids:${(x.example_ids || []).join(',')}`);
-    final = await distilCall(runId, 'FINAL MERGE: these are Brain candidates from several batches. Merge duplicates and overlaps (sum counts, union reviewers/products, keep the best example ids), drop anything contradictory or too specific, keep everything else unchanged', compact);
-  }
+  const existing = (await db.query(`SELECT type, title, status FROM captain_brain WHERE status IN ('approved', 'pending') ORDER BY type, lower(title)`)).rows;
+  const preface = `Already in the Brain (${existing.length}): when a candidate is the same idea as one of these, use that EXACT type and title so it updates that entry instead of creating a duplicate.\n${existing.map(e => `- [${e.type}${e.status === 'approved' ? ', approved' : ''}] ${e.title}`).join('\n')}`;
+  const compact = all.map((x, i) => `${i}. [${x.type}|${x.discipline}|×${x.count}|${x.confidence}${x.possibly_expired ? '|expired?' : ''}] ${x.title} — ${x.content} {${(x.products || []).join('/')}} (${(x.reviewers || []).join('/')}) ids:${(x.example_ids || []).join(',')}`);
+  const final = await distilCall(runId, 'FINAL MERGE: these are Brain candidates from several batches. Merge duplicates and overlaps (sum counts, union reviewers/products, keep the best example ids), resolve contradictions (when reviewers disagree, keep the majority rule and mention the exception in its content), drop anything too specific, keep everything else', compact, preface);
   const saved = await saveBrain(runId, final, byId);
-  await setState(runId, { brain: saved });
+  await setState(runId, fast ? { fast: { status: 'done', brain: saved, at: new Date().toISOString() } } : { brain: saved });
   return saved;
 }
 
 async function saveBrain(runId, items, byId) {
-  let created = 0, existing = 0;
+  let created = 0, refreshed = 0, existing = 0;
   for (const x of items) {
     const title = String(x.title || '').trim().slice(0, 200);
     if (!title) continue;
@@ -608,19 +633,24 @@ async function saveBrain(runId, items, byId) {
     }));
     const products = (x.products || []).filter(Boolean);
     const evidence = { count: x.count, reviewers: x.reviewers || [], products, possibly_expired: !!x.possibly_expired, confidence: x.confidence, examples, run_id: runId };
+    // New → pending. Same idea already pending from an earlier pass → refreshed. Approved / rejected / manual → untouched.
     const r = await db.query(
       `INSERT INTO captain_brain (type, title, content, discipline, scope, active, status, source, evidence, added_by)
        VALUES ($1, $2, $3, $4, $5, true, 'pending', 'import', $6, 'History import')
-       ON CONFLICT (type, lower(title)) DO NOTHING RETURNING id`,
+       ON CONFLICT (type, lower(title)) DO UPDATE SET content = EXCLUDED.content, discipline = EXCLUDED.discipline, scope = EXCLUDED.scope,
+         evidence = EXCLUDED.evidence, updated_at = NOW()
+       WHERE captain_brain.status = 'pending' AND captain_brain.source = 'import'
+       RETURNING id, (xmax = 0) AS inserted`,
       [x.type, title, x.content || null, x.discipline || 'both', JSON.stringify(products.length ? { product: products } : {}), JSON.stringify(evidence)],
     );
-    if (r.rows[0]) {
+    if (r.rows[0]?.inserted) {
       created++;
       await db.query(`INSERT INTO captain_brain_history (brain_id, action, after, actor) VALUES ($1, 'create', $2, 'History import')`, [r.rows[0].id, JSON.stringify({ type: x.type, title, status: 'pending' })]).catch(() => {});
-    } else existing++;
+    } else if (r.rows[0]) refreshed++;
+    else existing++;
   }
-  log(`brain: ${created} new pending items, ${existing} already in the Brain`);
-  return { created, existing, candidates: items.length };
+  log(`brain: ${created} new pending items, ${refreshed} refreshed, ${existing} already decided / manual`);
+  return { created, refreshed, existing, candidates: items.length };
 }
 
 // ── driver ───────────────────────────────────────────────────────────────────
@@ -632,14 +662,23 @@ async function counts() {
 }
 
 /** Runs (or resumes) the whole thing. pilot = a small sample through sorting and both fix checks, no Brain items. */
-async function runLearn({ pilot = false, only = null } = {}) {
+async function runLearn({ pilot = false, only = null, fast = false } = {}) {
   const run = await latestRun();
   if (!run) throw new Error('No finished history import to learn from');
+  if (fast) only = 'distil';
+  const LOCK = fast ? 770433 : only === 'distil' ? 770432 : 770431;      // the quick merge may run beside the design check
   const lock = await db.connect();
   try {
-    const got = (await lock.query('SELECT pg_try_advisory_lock(770431) AS ok')).rows[0].ok;
+    const got = (await lock.query('SELECT pg_try_advisory_lock($1) AS ok', [LOCK])).rows[0].ok;
     if (!got) throw new Error('Another learning run is already going');
-    await setState(run.id, { models: MODELS, phase: 'classify', started_at: (await getState(run.id)).started_at || new Date().toISOString(), error: null, pilot });
+    if (fast) {
+      await setState(run.id, { fast: { status: 'running', at: new Date().toISOString() } });
+      log('── quick merge (design fix-check may still be running)');
+      const saved = await stepDistil(run.id, { fast: true });
+      log('quick merge done', JSON.stringify({ cost: (await getState(run.id)).cost, brain: saved }));
+      return saved;
+    }
+    await setState(run.id, { models: MODELS, started_at: (await getState(run.id)).started_at || new Date().toISOString(), error: null, pilot });
     // Pilot: sort a spread sample, then try the video-still and Figma-version checks on 20 each — no Brain items yet
     const lim = pilot ? { limit: 20 } : {};
     const steps = [['classify', () => stepClassify(run.id, { pilot })], ['video', () => stepVideo(run.id, lim)], ['design', () => stepDesign(run.id, lim)]];
@@ -651,7 +690,8 @@ async function runLearn({ pilot = false, only = null } = {}) {
       await fn();
       await setState(run.id, { counts: await counts() });
     }
-    await setState(run.id, { phase: pilot ? 'pilot_done' : 'done', finished_at: pilot ? null : new Date().toISOString() });
+    if (pilot) await setState(run.id, { phase: 'pilot_done' });
+    else if (!only || only === 'distil') await setState(run.id, { phase: 'done', finished_at: new Date().toISOString() });
     const st = await getState(run.id);
     log('done', JSON.stringify({ cost: st.cost, brain: st.brain }));
     return st;
