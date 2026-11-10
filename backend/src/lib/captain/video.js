@@ -23,6 +23,7 @@ const { enqueue } = require('./queue');
 const { insertCheck, updateCheck, lastCheckOf, insertIssue, setIssueComment } = require('./store');
 const L = require('./labels');
 const { frameioMatcher } = require('./dedupe');
+const { brandOf } = require('./brand');
 
 const PREFIX = monday.PREFIX;
 const PROMPT = fs.readFileSync(path.join(__dirname, 'prompts', 'qc-video.txt'), 'utf8');
@@ -45,7 +46,9 @@ function briefBlock(item) {
   if (!item) return 'No Monday brief for this check — skip every comparison with a brief or script.';
   const hooks = monday.hookVariations(item);
   const script = item.brief.script || '';
-  const lines = ['Approved brief for this task (from Monday):'];
+  const lines = ['Approved brief for this task (from Monday):', `Task: ${item.name}`];
+  const productName = [item.campaign, item.product].find(p => p && !['-', 'Multiple Products', 'Not a Product Task', 'Test Product'].includes(p));
+  if (productName) lines.push(`Product: ${productName} — packaging, labels, text and voiceover must show this current product name.`);
   if (hooks.length) lines.push(`Hook variation(s): ${hooks.map((h, i) => `${i + 1}. ${h}`).join('  ')}`);
   if (item.brief.versions_needed > 1) lines.push(`(The brief asked for ${item.brief.versions_needed} versions, so this video may open with a different hook. If its opening matches none of the listed hooks, report that ONCE as type "script_mismatch", severity "check".)`);
   if (script) lines.push(`Script (what the voiceover and captions should say, in this order):\n${script}`);
@@ -59,8 +62,10 @@ function referenceBlock(master) {
   return `This video is a CUT-DOWN of the master "${master.label}" (round ${master.round}). The master's on-screen copy was:\n${copy}\nReport any wording difference from the master as type "size_mismatch", severity "check" (different line breaks or layout don't matter; a changed, missing or added word does).`;
 }
 
-function buildPrompt({ brain, item, master }) {
-  return PROMPT.replace('{{BRAIN}}', brainText(brain)).replace('{{BRIEF}}', briefBlock(item)).replace('{{REFERENCE}}', referenceBlock(master));
+function buildPrompt({ brain, item, master, brand = null }) {
+  const b = brand || brandOf({ itemName: item?.name });
+  return PROMPT.replaceAll('{{BRAND_ABOUT}}', b.about).replaceAll('{{BRAND}}', b.name)
+    .replace('{{BRAIN}}', brainText(brain)).replace('{{BRIEF}}', briefBlock(item)).replace('{{REFERENCE}}', referenceBlock(master));
 }
 
 // ── comment wording ──────────────────────────────────────────────────────────
@@ -70,6 +75,9 @@ function commentText(issue) {
   if (issue.type === 'vo_order') return `${PREFIX} please check — sentence order differs from the script${issue.note ? `: ${issue.note}` : ''}`;
   if (issue.type === 'size_mismatch') return `${PREFIX} please check — copy differs from the master: ${q(issue.found)} (master: ${q(issue.fix)})`;
   if (issue.type === 'vo_unclear') return `${PREFIX} voiceover: ${issue.note || q(issue.found)}`;
+  if (issue.type === 'vo_pronunciation') return `${PREFIX} voiceover mispronounces ${q(issue.fix || issue.found)}${issue.note ? ` — should sound like ${issue.note}` : ''} (please check)`;
+  if (issue.type === 'label_mismatch') return `${PREFIX} packaging/label shows ${q(issue.found)} — should be ${q(issue.fix)}${issue.note ? ` · ${issue.note}` : ''}`;
+  if (issue.type === 'claim') return `${PREFIX} please check the claim ${q(issue.found)}${issue.fix ? ` → ${q(issue.fix)}` : ''}${issue.note ? ` · ${issue.note}` : ''}`;
   if (issue.type === 'caption_vs_voiceover') return `${PREFIX} caption ${q(issue.found)} doesn't match the voice — says ${q(issue.fix)}`;
   const head = issue.type?.startsWith('vo_') ? `${PREFIX} voiceover says ${q(issue.found)} → ${q(issue.fix)}` : `${PREFIX} ${q(issue.found)} → ${q(issue.fix)}`;
   return issue.severity === 'check' ? `${head} (please check${issue.note ? `: ${issue.note}` : ''})` : head;
@@ -107,7 +115,7 @@ async function probeFps(file) {
 }
 
 async function checkDeliverable({ d, round, ctx, cfg, posting, master }) {
-  const { item, brain, trigger, actor, force, scopeReason, target } = ctx;
+  const { item, brain, trigger, actor, force, scopeReason, target, brand } = ctx;
   const fileId = round.file_id;
   const dedupeKey = `frameio:${fileId}`;
   const base = {
@@ -134,7 +142,7 @@ async function checkDeliverable({ d, round, ctx, cfg, posting, master }) {
   const engine = cfg.engines.video;
   const checkId = await insertCheck({
     ...base, status: 'running', engine: engine.engine, model: engine.model, posting: posting.mode, started_at: new Date(),
-    asset: { file_id: fileId, stack_id: d.stack_id, folder_id: target.folder_id, project_id: info.project_id, name: info.name, fps: info.fps, duration: info.duration, view_url: info.view_url, size: d.size, variant: d.variant, master: master ? master.label : null },
+    asset: { file_id: fileId, stack_id: d.stack_id, folder_id: target.folder_id, project_id: info.project_id, name: info.name, fps: info.fps, duration: info.duration, view_url: info.view_url, size: d.size, variant: d.variant, master: master ? master.label : null, brand: brand?.name || null },
   });
   await logEvent({ kind: 'check', discipline: 'video', board_id: base.board_id, item_id: base.item_id, check_id: checkId, message: `Checking ${d.label} round ${round.round}`, data: { trigger, file_id: fileId }, actor });
 
@@ -147,7 +155,7 @@ async function checkDeliverable({ d, round, ctx, cfg, posting, master }) {
     const fps = info.fps || (await probeFps(tmp)) || 24;
     const thumb = await grabThumb(tmp);
 
-    const prompt = buildPrompt({ brain, item, master });
+    const prompt = buildPrompt({ brain, item, master, brand });
     if (engine.engine !== 'gemini') throw new Error(`Video engine "${engine.engine}" isn't available yet — set Gemini in Settings`);
     const r = await gemini.checkVideo({ path: tmp, name: `${base.item_name} · ${d.label} · r${round.round}`, prompt, model: engine.model, prices: cfg.prices || {} });
     const issues = normIssues(r.issues, fps);
@@ -157,7 +165,7 @@ async function checkDeliverable({ d, round, ctx, cfg, posting, master }) {
       status: issues.length ? 'issues' : 'passed', issue_count: issues.length, cost_usd: r.cost_usd, duration_ms: r.ms, usage: r.usage,
       raw: { on_screen_text: r.on_screen_text, voiceover: r.voiceover, issues: r.issues, brain_ids: brain.ids, prompt_chars: prompt.length },
       thumb, finished_at: new Date(),
-      asset: { file_id: fileId, stack_id: d.stack_id, folder_id: target.folder_id, project_id: info.project_id, name: info.name, fps, duration: info.duration, view_url: info.view_url, size: d.size, variant: d.variant, master: master ? master.label : null },
+      asset: { file_id: fileId, stack_id: d.stack_id, folder_id: target.folder_id, project_id: info.project_id, name: info.name, fps, duration: info.duration, view_url: info.view_url, size: d.size, variant: d.variant, master: master ? master.label : null, brand: brand?.name || null },
     });
 
     // Comments on the exact frame of this exact version
@@ -256,9 +264,10 @@ async function runVideoJob(payload) {
     );
   }
 
-  const brain = await loadBrain({ discipline: 'video', product: item?.product, campaign: item?.campaign, department: item?.department });
+  const brand = brandOf({ itemName: item?.name, names: [target.name, deliverables[0]?.name] }, cfg);
+  const brain = await loadBrain({ discipline: 'video', product: item?.product, campaign: item?.campaign, department: item?.department, brand: brand.name });
   const posting = postingFor(cfg, { frameioFolderId: target.folder_id, itemId: fromLink ? null : item?.id });
-  const ctx = { item, brain, trigger, actor, force, scopeReason, target, fromLink };
+  const ctx = { item, brain, trigger, actor, force, scopeReason, target, fromLink, brand };
 
   // Master first (biggest size per version); cut-downs are compared with their master's copy
   const results = [];

@@ -20,6 +20,7 @@ const db = require('../../db');
 const frameio = require('./frameio');
 const figma = require('./figma');
 const { getConfig } = require('./config');
+const { brandOf } = require('./brand');
 
 const MODELS = { bulk: 'claude-sonnet-5-5', distil: 'claude-opus-5-5' };
 // USD per 1M tokens (Anthropic first-party list prices); the Batch API bills half.
@@ -492,9 +493,10 @@ const BRAIN_SCHEMA = {
       type: 'array',
       items: {
         type: 'object', additionalProperties: false,
-        required: ['type', 'title', 'content', 'discipline', 'products', 'count', 'reviewers', 'example_ids', 'possibly_expired', 'confidence'],
+        required: ['type', 'title', 'content', 'discipline', 'brand', 'products', 'count', 'reviewers', 'example_ids', 'possibly_expired', 'confidence'],
         properties: {
           type: { type: 'string', enum: ['term', 'rule', 'learned', 'do_not_flag', 'insight'] },
+          brand: { type: 'string', enum: ['Particle', 'Ashford', 'any'] },
           title: { type: 'string' }, content: { type: 'string' },
           discipline: { type: 'string', enum: ['video', 'design', 'both'] },
           products: { type: 'array', items: { type: 'string' } },
@@ -517,6 +519,7 @@ Make Brain items the Captain can APPLY to future ads:
 - do_not_flag: something reviewers deliberately kept or asked for that a proofreader might wrongly flag (slang, an intentional spelling).
 - insight: (creative input) a recurring reviewer preference another editor/designer can act on, seen at least twice. content = an actionable heads-up.
 Merge duplicates and near-duplicates into one item; count = how many comments support it; reviewers = who said it; example_ids = up to 6 of the strongest ids from the input (prefer ones marked fixed). products = the products it is limited to ([] when it applies to all). Skip one-off typos in ordinary words (any spell-checker catches those) and anything only true for one specific ad. Set possibly_expired for specific prices, dates, discount codes or limited-time offers. confidence: high when repeated and confirmed fixed, low when inferred from one or two vague comments.
+brand: the studio makes ads for two brands — Particle (men's skincare) and Ashford (Ashford Formulary & Co., men's joint supplements). Lines tagged {Ashford: …} come from Ashford ads, all others from Particle ads. Set brand to "Particle" or "Ashford" when the item only applies to that brand (its products, ingredients, names, claims, URLs, CTAs), or "any" when it is general house style for every brand (punctuation, capitalisation, hyphenation, subtitles, layout, editing, casting).
 Write titles and content in English, quoting Hebrew or Spanish copy as it is. Order by count, highest first.`;
 
 const ALIASES = { lilian: 'Lilian Krumholz', anton: 'Anton Shpakovskiy', shay: 'Shay Shalev', aviad: 'Aviad Eilam' };
@@ -533,11 +536,11 @@ function normAuthor(a, fullNames) {
 /** Text + creative comments for the merge. Reviewers on the exclude list (Tomer's call) are left out entirely. */
 async function distilRows(exclude = []) {
   const { rows } = await db.query(
-    `SELECT c.id, c.source, c.author, c.text, c.category, c.analysis, a.product
+    `SELECT c.id, c.source, c.author, c.text, c.category, c.analysis, a.product, a.item_name
        FROM captain_import_comments c LEFT JOIN captain_import_assets a ON a.id = c.asset_id
       WHERE c.category IN ('text', 'creative')`);
   const fullNames = [...new Set(rows.map(r => String(r.author || '').trim()).filter(n => /\s/.test(n)))];
-  for (const r of rows) r.who = normAuthor(r.author, fullNames);
+  for (const r of rows) { r.who = normAuthor(r.author, fullNames); r.brand = r.item_name ? brandOf({ itemName: r.item_name }).name : 'Particle'; }
   const ex = exclude.map(x => x.toLowerCase());
   return rows.filter(r => !ex.includes(String(r.who).toLowerCase()));
 }
@@ -557,7 +560,8 @@ function bucketLines(list, kindLabel, senior = []) {
     const a = first.analysis || {};
     const ids = rows.slice(0, 6).map(r => r.id).join(',');
     const who = [...new Set(rows.map(r => r.who))].slice(0, 3).join('/');
-    const prods = [...new Set(rows.map(r => r.product).filter(Boolean))].slice(0, 4).join('/') || '-';
+    const ash = rows.some(r => r.brand === 'Ashford');
+    const prods = `${ash ? 'Ashford: ' : ''}${[...new Set(rows.map(r => r.product).filter(p => p && p !== '-'))].slice(0, 4).join('/') || '-'}`;
     const fixed = rows.filter(r => r.analysis?.outcome === 'fixed').length;
     const src = [...new Set(rows.map(r => (r.source === 'frameio' ? 'video' : 'design')))].join('+');
     const n = rows.length > 1 ? ` ×${rows.length}` : '';
@@ -629,7 +633,7 @@ async function stepDistil(runId, { fast = false } = {}) {
     own.length ? `The team's OWN rules (written by Tomer — they override anything learned; drop or rewrite any candidate that contradicts them):\n${own.map(e => `- [${e.type}] ${e.title}${e.content ? ` — ${e.content}` : ''}`).join('\n')}` : '',
     `Already in the Brain (${existing.length}): when a candidate is the same idea as one of these, use that EXACT type and title so it updates that entry instead of creating a duplicate.\n${existing.map(e => `- [${e.type}${e.status === 'approved' ? ', approved' : ''}] ${e.title}`).join('\n')}`,
   ].filter(Boolean).join('\n\n');
-  const compact = all.map((x, i) => `${i}. [${x.type}|${x.discipline}|×${x.count}|${x.confidence}${x.possibly_expired ? '|expired?' : ''}] ${x.title} — ${x.content} {${(x.products || []).join('/')}} (${(x.reviewers || []).join('/')}) ids:${(x.example_ids || []).join(',')}`);
+  const compact = all.map((x, i) => `${i}. [${x.type}|${x.discipline}|${x.brand || 'any'}|×${x.count}|${x.confidence}${x.possibly_expired ? '|expired?' : ''}] ${x.title} — ${x.content} {${(x.products || []).join('/')}} (${(x.reviewers || []).join('/')}) ids:${(x.example_ids || []).join(',')}`);
   const final = await distilCall(runId, 'FINAL MERGE: these are Brain candidates from several batches. Merge duplicates and overlaps (sum counts, union reviewers/products, keep the best example ids), resolve contradictions (keep the senior reviewers\' version, otherwise the majority, and mention the exception in its content), drop anything too specific, keep everything else', compact, [seniority, preface].filter(Boolean).join('\n\n'));
   const saved = await saveBrain(runId, final, byId, { exclude, senior });
   if (!fast) {
@@ -669,7 +673,7 @@ async function saveBrain(runId, items, byId, { exclude = [], senior = [] } = {})
          evidence = EXCLUDED.evidence, updated_at = NOW()
        WHERE captain_brain.status = 'pending' AND captain_brain.source = 'import'
        RETURNING id, (xmax = 0) AS inserted`,
-      [x.type, title, x.content || null, x.discipline || 'both', JSON.stringify(products.length ? { product: products } : {}), JSON.stringify(evidence)],
+      [x.type, title, x.content || null, x.discipline || 'both', JSON.stringify({ ...(products.length ? { product: products } : {}), ...(x.brand && x.brand !== 'any' ? { brand: x.brand } : {}) }), JSON.stringify(evidence)],
     );
     if (r.rows[0]) ids.push(r.rows[0].id);
     if (r.rows[0]?.inserted) {

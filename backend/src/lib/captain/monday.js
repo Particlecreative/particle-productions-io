@@ -57,15 +57,27 @@ function hookVariations(item) {
   return out;
 }
 
-/** The newest item on a board whose name is exactly `name` (the team names the Frame.io folder after the task). */
+/**
+ * The newest item on a board named like `name`. Frame.io strips "|" from folder names, so
+ * "Ashford | Bone & Joint | … | Would You Date Him" arrives as "Ashford  Bone & Joint  …  Would You Date Him":
+ * try the exact name, then search by its longest part and compare with "|" and spacing ignored.
+ */
+const looseName = (s) => String(s || '').replace(/[|｜]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
 async function findItemByName(boardId, name) {
   const n = String(name || '').trim();
   if (!n) return null;
-  const d = await mondayQuery(`query ($b: ID!, $v: [String]!) {
+  const newest = (items) => items.filter(i => i.state !== 'deleted').sort((x, y) => Number(y.id) - Number(x.id))[0]?.id || null;
+  const exact = await mondayQuery(`query ($b: ID!, $v: [String]!) {
     items_page_by_column_values(board_id: $b, limit: 10, columns: [{ column_id: "name", column_values: $v }]) { items { id name state } }
   }`, { b: String(boardId), v: [n] });
-  const items = (d?.items_page_by_column_values?.items || []).filter(i => i.name.trim() === n && i.state !== 'deleted');
-  return items.sort((x, y) => Number(y.id) - Number(x.id))[0]?.id || null;
+  const hit = newest((exact?.items_page_by_column_values?.items || []).filter(i => i.name.trim() === n));
+  if (hit) return hit;
+  const part = n.split(/\s{2,}|\s*[|｜]\s*/).map(x => x.trim()).filter(Boolean).sort((x, y) => y.length - x.length)[0];
+  if (!part || part.length < 6) return null;
+  const d = await mondayQuery(`query ($b: [ID!], $v: CompareValue!) {
+    boards(ids: $b) { items_page(limit: 25, query_params: { rules: [{ column_id: "name", compare_value: $v, operator: contains_text }] }) { items { id name state } } }
+  }`, { b: [String(boardId)], v: [part] });
+  return newest((d?.boards?.[0]?.items_page?.items || []).filter(i => looseName(i.name) === looseName(n)));
 }
 
 async function postUpdate(itemId, body) {

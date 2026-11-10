@@ -17,6 +17,7 @@ const { loadBrain, brainText } = require('./brain');
 const claude = require('./engines/claude');
 const { logEvent } = require('./log');
 const { figmaMatcher } = require('./dedupe');
+const { brandOf } = require('./brand');
 const { postingFor } = require('./video');
 const { insertCheck, updateCheck, lastCheckOf, insertIssue, setIssueComment } = require('./store');
 
@@ -173,8 +174,9 @@ async function runDesignJob(payload) {
     if (!images.length) throw new Error("Figma couldn't render the frames");
     const thumb = await thumbFrom(images[0].bytes);
 
-    const brain = await loadBrain({ discipline: 'design', product: item?.product, campaign: item?.campaign, department: item?.department });
-    const prompt = PROMPT.replace('{{BRAIN}}', brainText(brain)).replace('{{BRIEF}}', briefBlock(item)).replace('{{LAYERS}}', layersBlock(frames));
+    const brand = brandOf({ itemName: item?.name, names: [name, nodeRes?.fileName] }, cfg);
+    const brain = await loadBrain({ discipline: 'design', product: item?.product, campaign: item?.campaign, department: item?.department, brand: brand.name });
+    const prompt = PROMPT.replaceAll('{{BRAND_ABOUT}}', brand.about).replaceAll('{{BRAND}}', brand.name).replace('{{BRAIN}}', brainText(brain)).replace('{{BRIEF}}', briefBlock(item)).replace('{{LAYERS}}', layersBlock(frames));
     const r = await claude.checkDesign({ images: images.map(({ bytes, ...i }) => i), prompt, model: engine.model, prices: cfg.prices || {} });
 
     const known = new Set(frames.flatMap(f => [f.id, ...f.texts.map(t => t.id)]));

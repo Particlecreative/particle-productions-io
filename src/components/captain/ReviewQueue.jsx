@@ -108,6 +108,7 @@ export default function ReviewQueue({ items, isAdmin, notify, reload }) {
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="trk-chip gray">{TYPE_LABEL[i.type] || i.type}</span>
                     {i.discipline !== 'both' && <span className="trk-chip gray">{i.discipline === 'video' ? '🎬 Video' : '🎨 Design'}</span>}
+                    {i.scope?.brand && <span className="trk-chip gray">{i.scope.brand}</span>}
                     {ev.count > 1 && <span className="trk-chip">×{ev.count}</span>}
                     {ev.confidence && <span className={`trk-chip ${ev.confidence === 'high' ? 'green' : ev.confidence === 'low' ? 'amber' : 'gray'}`}>{ev.confidence}</span>}
                     {ev.possibly_expired && <span className="trk-chip amber">⚠️ possibly expired</span>}

@@ -23,6 +23,7 @@ export default function Brain({ notify, isAdmin }) {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [discipline, setDiscipline] = useState('both');
+  const [brand, setBrand] = useState('');
   const [busy, setBusy] = useState(null);
   const [q, setQ] = useState('');
 
@@ -55,7 +56,7 @@ export default function Brain({ notify, isAdmin }) {
     if (!title.trim()) return;
     setBusy('add');
     try {
-      await captainApi.addBrain({ type, title: title.trim(), content: content.trim() || null, discipline });
+      await captainApi.addBrain({ type, title: title.trim(), content: content.trim() || null, discipline, scope: brand ? { brand } : {} });
       setTitle(''); setContent('');
       notify('Added — used from the next check');
       load();
@@ -88,7 +89,7 @@ export default function Brain({ notify, isAdmin }) {
       {pending.length > 0 && <ReviewQueue items={pending} isAdmin={isAdmin} notify={notify} reload={load} />}
 
       {isAdmin && (
-        <form className="trk-glass p-5 grid gap-3 md:grid-cols-[180px_minmax(0,1fr)_minmax(0,1.4fr)_130px_auto] items-end" onSubmit={add}>
+        <form className="trk-glass p-5 grid gap-3 md:grid-cols-[170px_minmax(0,1fr)_minmax(0,1.4fr)_120px_120px_auto] items-end" onSubmit={add}>
           <label className="grid gap-1"><span className="trk-label">Type</span>
             <select className="trk-input" value={type} onChange={(e) => setType(e.target.value)}>{TYPES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
           </label>
@@ -100,6 +101,9 @@ export default function Brain({ notify, isAdmin }) {
           </label>
           <label className="grid gap-1"><span className="trk-label">For</span>
             <select className="trk-input" value={discipline} onChange={(e) => setDiscipline(e.target.value)}><option value="both">Video + design</option><option value="video">🎬 Video</option><option value="design">🎨 Design</option></select>
+          </label>
+          <label className="grid gap-1"><span className="trk-label">Brand</span>
+            <select className="trk-input" value={brand} onChange={(e) => setBrand(e.target.value)}><option value="">All brands</option><option value="Particle">Particle</option><option value="Ashford">Ashford</option></select>
           </label>
           <button type="submit" className="trk-btn primary" disabled={busy === 'add' || !title.trim()}>{busy === 'add' ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Add</button>
         </form>
@@ -117,6 +121,7 @@ export default function Brain({ notify, isAdmin }) {
                   <div className="min-w-0 flex-1">
                     <span className="font-semibold">{i.title}</span>
                     {i.discipline !== 'both' && <span className="trk-chip gray ml-2">{i.discipline === 'video' ? '🎬' : '🎨'}</span>}
+                    {i.scope?.brand && <span className="trk-chip gray ml-2">{i.scope.brand}</span>}
                     {i.content && <div className="text-[12.5px] trk-muted">{i.content}</div>}
                   </div>
                   {isAdmin && (

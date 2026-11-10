@@ -62,6 +62,11 @@ const DEFAULTS = {
   },
   worker: { concurrency: 1 },
   // Brain bootstrap: what the history import reads (read-only)
+  // Brands the studio makes ads for. The Captain uses only the matching brand's Brain items (+ general house style).
+  brands: [
+    { name: 'Particle', default: true, match: ['particle'], about: "the men's skincare brand Particle (DTC, particleformen.com)", site: 'particleformen.com' },
+    { name: 'Ashford', match: ['ashford'], about: 'Ashford Formulary & Co., a men\'s joint and wellness supplement brand (DTC, houseashford.com)', site: 'houseashford.com' },
+  ],
   import: { since: '2025-01-01', figma_folders: ['Media Ads'], exclude_reviewers: ['Natalie Blenford'], senior_reviewers: ['Aviad Eilam', 'Lilian Krumholz'] },
 };
 

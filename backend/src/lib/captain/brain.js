@@ -1,6 +1,6 @@
 /**
  * Captain Caption's Brain → the text block added to his instructions at check time.
- * Only active + approved items; global ones plus those scoped to this item's product / campaign / department.
+ * Only active + approved items; global ones plus those scoped to this ad's brand / product / campaign / department.
  * (He "learns" by remembering what the team teaches him — the model itself is never retrained.)
  */
 const db = require('../../db');
@@ -9,6 +9,8 @@ const norm = (s) => String(s ?? '').trim().toLowerCase();
 
 function matchesScope(scope, ctx) {
   if (!scope || !Object.keys(scope).length) return true;
+  // brand: items for another brand never apply; items without a brand are general house style
+  if (scope.brand && ctx.brand && norm(scope.brand) !== norm(ctx.brand)) return false;
   for (const key of ['product', 'campaign', 'department']) {
     const want = scope[key];
     if (!want || (Array.isArray(want) && !want.length)) continue;
@@ -18,13 +20,13 @@ function matchesScope(scope, ctx) {
   return true;
 }
 
-async function loadBrain({ discipline, product = null, campaign = null, department = null } = {}) {
+async function loadBrain({ discipline, product = null, campaign = null, department = null, brand = null } = {}) {
   const { rows } = await db.query(
     `SELECT id, type, title, content, discipline, scope FROM captain_brain
       WHERE active AND status = 'approved' AND discipline IN ($1, 'both') ORDER BY type, id`,
     [discipline],
   );
-  const items = rows.filter(r => matchesScope(r.scope, { product, campaign, department }));
+  const items = rows.filter(r => matchesScope(r.scope, { product, campaign, department, brand }));
   const of = (t) => items.filter(i => i.type === t);
   return {
     items,
