@@ -114,3 +114,17 @@ test('import: modules load and expose the job handlers', () => {
   assert.equal(typeof require('../src/lib/captain/video').findItemForLink, 'function');
   assert.equal(typeof require('../src/lib/captain/monday').findItemByName, 'function');
 });
+
+test('re-runs never post the same Captain comment twice', () => {
+  const { makeMatcher } = require('../src/lib/captain/dedupe');
+  const m = makeMatcher([
+    { id: 'a', text: '🧑‍✈️ Captain Caption: "CUSTUMER" → "CUSTOMER"', where: 181 },
+    { id: 'b', text: '🧑‍✈️ Captain Caption: "CUSTUMER" → "CUSTOMER"', where: 637 },
+  ]);
+  assert.equal(m('🧑‍✈️ Captain Caption:  "CUSTUMER" → "CUSTOMER"', 185)?.id, 'a');   // same spot (±12 frames), whitespace ignored
+  assert.equal(m('🧑‍✈️ Captain Caption: "CUSTUMER" → "CUSTOMER"', 640)?.id, 'b');
+  assert.equal(m('🧑‍✈️ Captain Caption: "CUSTUMER" → "CUSTOMER"', 900), null);       // a third real occurrence still posts
+  const f = makeMatcher([{ id: 'x', text: '🧑‍✈️ Captain Caption: "GAURANTEE" → "GUARANTEE"', where: '1:11' }]);
+  assert.equal(f('🧑‍✈️ Captain Caption: "GAURANTEE" → "GUARANTEE"', ['1:12', '1:10']), null);  // different layer
+  assert.equal(f('🧑‍✈️ Captain Caption: "GAURANTEE" → "GUARANTEE"', ['1:11', '1:10'])?.id, 'x');
+});

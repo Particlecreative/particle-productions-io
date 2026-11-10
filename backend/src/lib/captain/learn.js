@@ -623,8 +623,12 @@ async function stepDistil(runId, { fast = false } = {}) {
   });
   // Merge across buckets, reusing the exact titles of what's already in the Brain (so nothing is duplicated)
   const all = Object.values(done).flat();
-  const existing = (await db.query(`SELECT type, title, status FROM captain_brain WHERE status IN ('approved', 'pending') ORDER BY type, lower(title)`)).rows;
-  const preface = `Already in the Brain (${existing.length}): when a candidate is the same idea as one of these, use that EXACT type and title so it updates that entry instead of creating a duplicate.\n${existing.map(e => `- [${e.type}${e.status === 'approved' ? ', approved' : ''}] ${e.title}`).join('\n')}`;
+  const existing = (await db.query(`SELECT type, title, status, source, content FROM captain_brain WHERE status IN ('approved', 'pending') ORDER BY type, lower(title)`)).rows;
+  const own = existing.filter(e => e.status === 'approved' && ['manual', 'seed'].includes(e.source));
+  const preface = [
+    own.length ? `The team's OWN rules (written by Tomer — they override anything learned; drop or rewrite any candidate that contradicts them):\n${own.map(e => `- [${e.type}] ${e.title}${e.content ? ` — ${e.content}` : ''}`).join('\n')}` : '',
+    `Already in the Brain (${existing.length}): when a candidate is the same idea as one of these, use that EXACT type and title so it updates that entry instead of creating a duplicate.\n${existing.map(e => `- [${e.type}${e.status === 'approved' ? ', approved' : ''}] ${e.title}`).join('\n')}`,
+  ].filter(Boolean).join('\n\n');
   const compact = all.map((x, i) => `${i}. [${x.type}|${x.discipline}|×${x.count}|${x.confidence}${x.possibly_expired ? '|expired?' : ''}] ${x.title} — ${x.content} {${(x.products || []).join('/')}} (${(x.reviewers || []).join('/')}) ids:${(x.example_ids || []).join(',')}`);
   const final = await distilCall(runId, 'FINAL MERGE: these are Brain candidates from several batches. Merge duplicates and overlaps (sum counts, union reviewers/products, keep the best example ids), resolve contradictions (keep the senior reviewers\' version, otherwise the majority, and mention the exception in its content), drop anything too specific, keep everything else', compact, [seniority, preface].filter(Boolean).join('\n\n'));
   const saved = await saveBrain(runId, final, byId, { exclude, senior });

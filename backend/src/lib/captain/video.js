@@ -22,6 +22,7 @@ const { logEvent } = require('./log');
 const { enqueue } = require('./queue');
 const { insertCheck, updateCheck, lastCheckOf, insertIssue, setIssueComment } = require('./store');
 const L = require('./labels');
+const { frameioMatcher } = require('./dedupe');
 
 const PREFIX = monday.PREFIX;
 const PROMPT = fs.readFileSync(path.join(__dirname, 'prompts', 'qc-video.txt'), 'utf8');
@@ -161,15 +162,22 @@ async function checkDeliverable({ d, round, ctx, cfg, posting, master }) {
 
     // Comments on the exact frame of this exact version
     if (posting.comments) {
+      const already = await frameioMatcher(frameio, fileId, PREFIX);   // skip what the Captain already said here (re-runs)
+      let posted = 0, skipped = 0;
       if (!issues.length) {
-        await frameio.createComment(fileId, { text: `${PREFIX} ${d.label} round ${round.round} passed ✅ — no typos found`, timestamp: 1 });
+        const text = `${PREFIX} ${d.label} round ${round.round} passed ✅ — no typos found`;
+        if (already(text, 1)) skipped++; else { await frameio.createComment(fileId, { text, timestamp: 1 }); posted++; }
       }
       for (const i of issues) {
-        const c = await frameio.createComment(fileId, { text: commentText(i), timestamp: i.frame, duration: i.duration_frames });
+        const text = commentText(i);
+        const prev = already(text, i.frame);
+        if (prev) { skipped++; await setIssueComment(checkId, i.idx, prev.id); continue; }
+        const c = await frameio.createComment(fileId, { text, timestamp: i.frame, duration: i.duration_frames });
         if (c?.id) await setIssueComment(checkId, i.idx, c.id);
+        posted++;
       }
       await updateCheck(checkId, { posted_at: new Date() });
-      await logEvent({ kind: 'post', discipline: 'video', board_id: base.board_id, item_id: base.item_id, check_id: checkId, message: `Posted ${issues.length || 1} Frame.io comment(s) on ${d.label} round ${round.round}`, actor });
+      await logEvent({ kind: 'post', discipline: 'video', board_id: base.board_id, item_id: base.item_id, check_id: checkId, message: `Posted ${posted} Frame.io comment(s) on ${d.label} round ${round.round}${skipped ? ` (${skipped} already there — not posted again)` : ''}`, actor });
     }
     return { label: d.label, round: round.round, status: issues.length ? 'issues' : 'passed', issue_count: issues.length, must_fix: issues.filter(i => i.severity === 'must_fix').length, check_id: checkId, on_screen_text: r.on_screen_text, size: d.size, variant: d.variant };
   } catch (e) {

@@ -16,6 +16,7 @@ const monday = require('./monday');
 const { loadBrain, brainText } = require('./brain');
 const claude = require('./engines/claude');
 const { logEvent } = require('./log');
+const { figmaMatcher } = require('./dedupe');
 const { postingFor } = require('./video');
 const { insertCheck, updateCheck, lastCheckOf, insertIssue, setIssueComment } = require('./store');
 
@@ -75,9 +76,15 @@ async function skip({ item, link, reason, trigger, actor, asset = {} }) {
 }
 
 /** Pin a comment on the layer; if Figma won't pin to a nested layer, pin on its frame at the layer's position. */
-async function pinComment(fileKey, issue, frames) {
+/** Where a comment for this issue gets pinned: the text layer, falling back to its frame. */
+function placeOf(issue, frames) {
   const frame = frames.find(f => f.id === issue.frame_node_id) || frames.find(f => f.texts.some(t => t.id === issue.node_id)) || frames[0];
   const layer = frame?.texts.find(t => t.id === issue.node_id);
+  return { frame, layer };
+}
+
+async function pinComment(fileKey, issue, frames) {
+  const { frame, layer } = placeOf(issue, frames);
   const message = commentText(issue);
   if (layer && layer.id !== frame.id) {
     try {
@@ -186,15 +193,22 @@ async function runDesignJob(payload) {
     });
 
     if (posting.comments) {
+      const already = await figmaMatcher(figma, fileKey, PREFIX);   // skip what the Captain already said on this layer (re-runs)
+      let posted = 0, skipped = 0;
       if (!issues.length) {
-        await figma.postComment(fileKey, { message: `${PREFIX} round ${round} passed ✅ — no typos in ${label}`, nodeId: frames[0].id, offset: { x: 24, y: 24 } });
+        const message = `${PREFIX} round ${round} passed ✅ — no typos in ${label}`;
+        if (already(message, frames[0].id)) skipped++; else { await figma.postComment(fileKey, { message, nodeId: frames[0].id, offset: { x: 24, y: 24 } }); posted++; }
       }
       for (const i of issues) {
+        const { frame, layer } = placeOf(i, frames);
+        const prev = already(commentText(i), [layer?.id, frame?.id]);
+        if (prev) { skipped++; await setIssueComment(checkId, i.idx, prev.id); continue; }
         const c = await pinComment(fileKey, i, frames);
         if (c?.id) await setIssueComment(checkId, i.idx, c.id);
+        posted++;
       }
       await updateCheck(checkId, { posted_at: new Date() });
-      await logEvent({ kind: 'post', discipline: 'design', board_id: base.board_id, item_id: base.item_id, check_id: checkId, message: `Posted ${issues.length || 1} Figma comment(s) on ${name}`, actor });
+      await logEvent({ kind: 'post', discipline: 'design', board_id: base.board_id, item_id: base.item_id, check_id: checkId, message: `Posted ${posted} Figma comment(s) on ${name}${skipped ? ` (${skipped} already there — not posted again)` : ''}`, actor });
     }
     return { results: [{ label, round, status: issues.length ? 'issues' : 'passed', issue_count: issues.length, check_id: checkId }], posting };
   } catch (e) {

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Check, X, Pencil, ChevronDown, ChevronRight, Loader2, Search } from 'lucide-react';
+import { Check, X, Pencil, ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
 import { captainApi } from '../../lib/captainService';
 import { relTime } from './util';
 
@@ -15,7 +15,6 @@ const PAGE = 40;
 export default function ReviewQueue({ items, isAdmin, notify, reload }) {
   const [type, setType] = useState('all');
   const [disc, setDisc] = useState('all');
-  const [q, setQ] = useState('');
   const [expiredOnly, setExpiredOnly] = useState(false);
   const [sel, setSel] = useState(() => new Set());
   const [open, setOpen] = useState(() => new Set());
@@ -30,15 +29,13 @@ export default function ReviewQueue({ items, isAdmin, notify, reload }) {
   }, [items]);
 
   const list = useMemo(() => {
-    const s = q.trim().toLowerCase();
     return items
       .filter(i => type === 'all' || i.type === type)
       .filter(i => disc === 'all' || i.discipline === disc || i.discipline === 'both')
       .filter(i => !expiredOnly || i.evidence?.possibly_expired)
-      .filter(i => !s || `${i.title} ${i.content || ''} ${(i.evidence?.products || []).join(' ')} ${(i.evidence?.reviewers || []).join(' ')}`.toLowerCase().includes(s))
       .sort((a, b) => (b.evidence?.senior !== false) - (a.evidence?.senior !== false)            // Aviad / Lilian-backed first
         || (b.evidence?.count || 1) - (a.evidence?.count || 1) || String(a.title).localeCompare(String(b.title)));
-  }, [items, type, disc, q, expiredOnly]);
+  }, [items, type, disc, expiredOnly]);
 
   const visible = list.slice(0, shown);
   const allSelected = list.length > 0 && list.every(i => sel.has(i.id));
@@ -83,10 +80,7 @@ export default function ReviewQueue({ items, isAdmin, notify, reload }) {
           <option value="all">Video + design</option><option value="video">🎬 Video</option><option value="design">🎨 Design</option>
         </select>
         <label className="flex items-center gap-1.5 text-[12px] trk-muted"><input type="checkbox" checked={expiredOnly} onChange={(e) => setExpiredOnly(e.target.checked)} /> Possibly expired offers</label>
-        <label className="ml-auto flex items-center gap-1.5 trk-input !py-1 !w-[220px]">
-          <Search size={13} className="trk-dim" />
-          <input className="bg-transparent outline-none text-[13px] w-full" value={q} onChange={(e) => { setQ(e.target.value); setShown(PAGE); }} placeholder="Search" />
-        </label>
+
       </div>
 
       {isAdmin && list.length > 0 && (

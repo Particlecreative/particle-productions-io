@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Plus, Loader2, Trash2 } from 'lucide-react';
+import { Plus, Loader2, Trash2, Search, X } from 'lucide-react';
 import { captainApi } from '../../lib/captainService';
 import HistoryImport from './HistoryImport';
 import ReviewQueue from './ReviewQueue';
@@ -24,18 +24,31 @@ export default function Brain({ notify, isAdmin }) {
   const [content, setContent] = useState('');
   const [discipline, setDiscipline] = useState('both');
   const [busy, setBusy] = useState(null);
+  const [q, setQ] = useState('');
 
   const load = useCallback(async () => {
     try { setItems((await captainApi.brain()).items); } catch (e) { notify(e.message, true); }
   }, [notify]);
   useEffect(() => { load(); }, [load]);
 
-  const pending = useMemo(() => (items || []).filter(i => i.status === 'pending'), [items]);
+  // One search across everything: title, wording, products, reviewers, example comments
+  const matches = useMemo(() => {
+    const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (!words.length) return () => true;
+    return (i) => {
+      const ev = i.evidence || {};
+      const hay = [i.title, i.content, i.type, i.discipline, ...(ev.products || []), ...(ev.reviewers || []), ...(ev.examples || []).map(x => `${x.text} ${x.found || ''} ${x.fix || ''}`), ...(Array.isArray(i.scope?.product) ? i.scope.product : [i.scope?.product])]
+        .filter(Boolean).join(' ').toLowerCase();
+      return words.every(w => hay.includes(w));
+    };
+  }, [q]);
+  const pending = useMemo(() => (items || []).filter(i => i.status === 'pending' && matches(i)), [items, matches]);
   const byType = useMemo(() => {
     const m = {};
-    for (const i of items || []) if (i.status === 'approved') (m[i.type] ||= []).push(i);
+    for (const i of items || []) if (i.status === 'approved' && matches(i)) (m[i.type] ||= []).push(i);
     return m;
-  }, [items]);
+  }, [items, matches]);
+  const approvedCount = Object.values(byType).reduce((a, l) => a + l.length, 0);
 
   const add = async (e) => {
     e.preventDefault();
@@ -64,6 +77,13 @@ export default function Brain({ notify, isAdmin }) {
       <p className="text-sm trk-muted max-w-[760px]">The Captain “learns” by remembering what the team teaches him and what reviewers have said before. Everything here is added to his instructions on every check — the AI model itself is never retrained.</p>
 
       <HistoryImport notify={notify} isAdmin={isAdmin} />
+
+      <div className="trk-glass p-3 flex items-center gap-2">
+        <Search size={16} className="trk-dim ml-1" />
+        <input className="flex-1 bg-transparent outline-none text-[15px]" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search the Brain — a word, product, rule or reviewer (e.g. “money-back”, “Gravité”, “Aviad”)" aria-label="Search the Brain" />
+        {q && <span className="text-[12px] trk-muted whitespace-nowrap">{pending.length} in review · {approvedCount} approved</span>}
+        {q && <button type="button" className="trk-btn !py-1 !px-2" aria-label="Clear search" onClick={() => setQ('')}><X size={13} /></button>}
+      </div>
 
       {pending.length > 0 && <ReviewQueue items={pending} isAdmin={isAdmin} notify={notify} reload={load} />}
 
