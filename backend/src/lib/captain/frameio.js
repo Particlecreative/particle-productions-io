@@ -159,8 +159,9 @@ async function tryGet(path) {
 
 /**
  * Any Frame.io link → what it points at.
- *   { kind: 'folder' | 'stack' | 'file', id, name, project_id, folder_id }
- * f.io short links resolve to share links; a share of one asset is treated as that asset.
+ *   { kind: 'folder' | 'stack' | 'file' | 'share', id, name, project_id, folder_id }
+ * f.io short links resolve to share links; a share of one asset is treated as that asset, a share of several is
+ * checked as a whole (every video in it, each counted once).
  */
 async function resolveTarget(link) {
   const a = await accountId();
@@ -170,7 +171,16 @@ async function resolveTarget(link) {
   let id = p.id;
   if (p.share_id && !id) {
     const assets = (await api(`/accounts/${a}/shares/${p.share_id}/assets?page_size=50`))?.data || [];
-    if (assets.length !== 1) return { kind: 'share', id: p.share_id, count: assets.length, url };
+    if (!assets.length) return null;
+    if (assets.length > 1) {
+      // A review link of several assets — often the task folder plus the videos inside it. Its home folder (for the
+      // posting switch) is the one shared folder, or the folder every shared file sits in.
+      const sh = await tryGet(`/accounts/${a}/shares/${p.share_id}`);
+      const folders = assets.filter(x => x.type === 'folder');
+      const parents = [...new Set(assets.filter(x => x.type !== 'folder').map(x => x.parent_id).filter(Boolean))];
+      const folderId = folders.length === 1 && parents.every(pid => pid === folders[0].id) ? folders[0].id : (!folders.length && parents.length === 1 ? parents[0] : null);
+      return { kind: 'share', id: p.share_id, count: assets.length, name: sh?.name || folders[0]?.name || null, project_id: assets[0].project_id || null, folder_id: folderId, url };
+    }
     id = assets[0].id;
   }
   if (!id) return p.project_id ? { kind: 'project', id: p.project_id, url } : null;
@@ -217,26 +227,33 @@ async function deliverablesOfFolder(folderId) {
     const next = d?.links?.next;
     path = next ? next.replace(/^https?:\/\/[^/]+\/v4/, '').replace(/^\/v4/, '') + (next.includes('page_size') ? '' : '&page_size=50') : null;
   }
-  return out.map(x => {
+  return sortDeliverables(out.map(x => {
     const size = L.sizeFromName(x.name);
     const variant = L.variantFromName(x.name);
     const head = x.rounds[x.rounds.length - 1];
     return { ...x, size, variant, label: L.deliverableLabel({ variant, size }), head, first_upload: x.rounds[0].created_at };
-  }).sort((p, q) => L.sizeRank(p.size) - L.sizeRank(q.size) || (p.variant || 0) - (q.variant || 0) || p.name.localeCompare(q.name));
+  }));
 }
+
+/** Master first (biggest size), then by version number, then by name. */
+const sortDeliverables = (list) => list.sort((p, q) => L.sizeRank(p.size) - L.sizeRank(q.size) || (p.variant || 0) - (q.variant || 0) || p.name.localeCompare(q.name));
 
 /** A share link holding several assets (what some f.io short links point to) → the deliverables inside it. */
 async function deliverablesOfShare(shareId) {
   const a = await accountId();
   const assets = (await api(`/accounts/${a}/shares/${shareId}/assets?page_size=50`))?.data || [];
   const out = [];
+  const seen = new Set();
   for (const x of assets) {
     const id = x.asset_id || x.file_id || x.id;
-    if (x.type === 'folder') out.push(...await deliverablesOfFolder(id));
-    else if (x.type === 'version_stack') out.push(...await deliverablesForTarget({ kind: 'stack', id, name: x.name }));
-    else out.push(...await deliverablesForTarget({ kind: 'file', id, name: x.name }));
+    let found = [];
+    if (x.type === 'folder') found = await deliverablesOfFolder(id);
+    else if (x.type === 'version_stack') found = await deliverablesForTarget({ kind: 'stack', id, name: x.name });
+    else if (!x.media_type || /^video\//.test(x.media_type)) found = await deliverablesForTarget({ kind: 'file', id, name: x.name });
+    // A share often holds the task folder AND the videos inside it — count each video once
+    for (const d of found) { const k = d.stack_id || d.head?.file_id; if (!seen.has(k)) { seen.add(k); out.push(d); } }
   }
-  return out;
+  return sortDeliverables(out);
 }
 
 /** Deliverables for any link: folder → all of them; share → everything shared; stack or file → just that one. */

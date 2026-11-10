@@ -1,6 +1,6 @@
 /**
  * Naming deliverables the way the team talks about them.
- *   - "_V1" / "_V2" in a file name = Version 1 / 2 = a deliverable variant (e.g. two hooks because the brief asked
+ *   - "_V1" / "_V2" (or "_Hook1" / "_Hook2") in a file name = Version 1 / 2 = a deliverable variant (e.g. two hooks because the brief asked
  *     for "Versions Needed: 2") — NOT a revision.
  *   - Revisions are Frame.io versions stacked on the same file → "round 1, 2, 3…".
  *   - Size from "16X9" / "4x5" in a video name, or from a Figma frame's pixel size (1200×1200 → 1:1).
@@ -26,7 +26,7 @@ function sizeFromPixels(w, h) {
 }
 
 function variantFromName(name) {
-  const m = String(name || '').match(/(?:^|[_\s-])V(\d{1,2})(?=[_\s.-]|$)/i);
+  const m = String(name || '').match(/(?:^|[_\s-])(?:V|Hook[\s_-]?)(\d{1,2})(?=[_\s.-]|$)/i);
   return m ? Number(m[1]) : null;
 }
 

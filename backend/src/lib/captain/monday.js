@@ -57,6 +57,17 @@ function hookVariations(item) {
   return out;
 }
 
+/** The newest item on a board whose name is exactly `name` (the team names the Frame.io folder after the task). */
+async function findItemByName(boardId, name) {
+  const n = String(name || '').trim();
+  if (!n) return null;
+  const d = await mondayQuery(`query ($b: ID!, $v: [String]!) {
+    items_page_by_column_values(board_id: $b, limit: 10, columns: [{ column_id: "name", column_values: $v }]) { items { id name state } }
+  }`, { b: String(boardId), v: [n] });
+  const items = (d?.items_page_by_column_values?.items || []).filter(i => i.name.trim() === n && i.state !== 'deleted');
+  return items.sort((x, y) => Number(y.id) - Number(x.id))[0]?.id || null;
+}
+
 async function postUpdate(itemId, body) {
   const token = process.env.CAPTAIN_MONDAY_TOKEN;
   if (!token) throw Object.assign(new Error("The Captain's Monday token isn't set (CAPTAIN_MONDAY_TOKEN)"), { code: 'NOT_CONFIGURED' });
@@ -74,4 +85,4 @@ async function status() {
   } catch (e) { return { configured: true, connected: false, error: e.message }; }
 }
 
-module.exports = { PREFIX, readItem, hookVariations, postUpdate, status };
+module.exports = { PREFIX, readItem, findItemByName, hookVariations, postUpdate, status };

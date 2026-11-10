@@ -11,7 +11,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
 const db = require('../../db');
-const { getConfig } = require('./config');
+const { getConfig, BOARDS } = require('./config');
 const { inScope } = require('./scope');
 const frameio = require('./frameio');
 const figma = require('./figma');
@@ -125,7 +125,7 @@ async function checkDeliverable({ d, round, ctx, cfg, posting, master }) {
   const info = await frameio.fileInfo(fileId);
   if (!info.ready) {
     // Still transcoding — try again in 5 minutes (deduped per file)
-    await enqueue('video_check', { link: info.view_url, item_id: item?.id || null, trigger, actor, only_file_id: fileId }, { dedupeKey: `wait:${fileId}`, delaySec: 300 });
+    await enqueue('video_check', { link: info.view_url, item_id: item?.id || null, item_from_link: !!ctx.fromLink, trigger, actor, only_file_id: fileId }, { dedupeKey: `wait:${fileId}`, delaySec: 300 });
     await logEvent({ kind: 'skip', discipline: 'video', board_id: base.board_id, item_id: base.item_id, message: `${d.label} round ${round.round}: Frame.io is still processing — retrying in 5 min`, actor });
     return { label: d.label, round: round.round, status: 'waiting' };
   }
@@ -182,9 +182,9 @@ async function checkDeliverable({ d, round, ctx, cfg, posting, master }) {
 }
 
 // ── one job ──────────────────────────────────────────────────────────────────
-async function skip({ item, link, reason, trigger, actor }) {
+async function skip({ item, link, name = null, reason, trigger, actor }) {
   const id = await insertCheck({
-    discipline: 'video', status: 'skipped', skip_reason: reason, trigger, board_id: item?.board_id || null, item_id: item?.id || null, item_name: item?.name || link || null,
+    discipline: 'video', status: 'skipped', skip_reason: reason, trigger, board_id: item?.board_id || null, item_id: item?.id || null, item_name: item?.name || name || link || null,
     department: item?.department || null, product: item?.product || null, person: item?.person || null, requested_by: actor || null, asset: { link: link || null }, finished_at: new Date(),
   });
   await logEvent({ kind: 'skip', discipline: 'video', board_id: item?.board_id, item_id: item?.id, check_id: id, message: reason, data: { link, trigger }, actor });
@@ -192,33 +192,53 @@ async function skip({ item, link, reason, trigger, actor }) {
 }
 
 /**
- * payload: { link?, item_id?, trigger, actor?, force?, override_scope?, only_file_id? }
+ * A pasted link → its Monday task, so the brief is read: a task the Captain already tracks, one the history import
+ * tied to these files, or the task with the same name on the Video board (the team names the folder after it).
+ */
+async function findItemForLink({ target, deliverables }) {
+  const first = async (sql, args) => { try { return (await db.query(sql, args)).rows[0]?.item_id || null; } catch { return null; } };
+  let id = target.folder_id ? await first(`SELECT item_id FROM captain_tracked WHERE discipline = 'video' AND frameio_folder_id = $1 ORDER BY updated_at DESC LIMIT 1`, [target.folder_id]) : null;
+  const keys = deliverables.flatMap(d => d.rounds.map(r => `frameio:${r.file_id}`));
+  if (!id && keys.length) id = await first(`SELECT item_id FROM captain_import_assets WHERE asset_key = ANY($1::text[]) AND item_id IS NOT NULL LIMIT 1`, [keys]);
+  if (!id && target.name) id = await monday.findItemByName(BOARDS.video.board_id, target.name).catch(() => null);
+  return id ? monday.readItem(id) : null;
+}
+
+/**
+ * payload: { link?, item_id?, item_from_link?, trigger, actor?, force?, override_scope?, only_file_id? }
+ * item_from_link = the task was found from a pasted link (brief only — no scope gate, no Monday summary).
  */
 async function runVideoJob(payload) {
   const { item_id = null, trigger = 'manual', actor = null, force = false, override_scope = false, only_file_id = null } = payload;
   const cfg = await getConfig();
-  const item = item_id ? await monday.readItem(item_id) : null;
+  let item = item_id ? await monday.readItem(item_id) : null;
+  let fromLink = !!(item && payload.item_from_link);
   if (item_id && !item) return skip({ item: null, link: payload.link, reason: `Monday item ${item_id} not found`, trigger, actor });
   if (item && item.discipline !== 'video') return skip({ item, link: payload.link, reason: 'Not a Video board item', trigger, actor });
   const link = payload.link || item?.link;
   if (!link) return skip({ item, link, reason: 'No Frame.io link on the item yet', trigger, actor });
   if (figma.parseUrl(link)) return skip({ item, link, reason: 'Data-quality flag: a Figma link on a video item', trigger, actor });
 
-  let scopeReason = 'Manual check (pasted link)';
-  if (item) {
+  let scopeReason = fromLink ? `Manual check (pasted link) · Monday task found` : 'Manual check (pasted link)';
+  if (item && !fromLink) {
     const s = inScope({ discipline: 'video', department: item.department, type: item.type, title: item.name }, cfg);
     if (!s.ok && !override_scope) return skip({ item, link, reason: s.reason, trigger, actor });
     scopeReason = s.ok ? s.reason : `Admin override — ${s.reason}`;
   }
 
   const target = await frameio.resolveTarget(link);
-  if (!target || !['folder', 'stack', 'file'].includes(target.kind)) return skip({ item, link, reason: target?.kind === 'share' ? `The share link holds ${target.count} assets — link the task's folder instead` : "Couldn't open the Frame.io link (no access or not a folder/video)", trigger, actor });
+  if (!target || !['folder', 'stack', 'file', 'share'].includes(target.kind)) return skip({ item, link, reason: "Couldn't open the Frame.io link (no access, or not a folder, share link or video)", trigger, actor });
 
   let deliverables = await frameio.deliverablesForTarget(target);
   if (only_file_id) deliverables = deliverables.filter(d => d.rounds.some(r => r.file_id === only_file_id)).map(d => ({ ...d, head: d.rounds.find(r => r.file_id === only_file_id) }));
-  if (!deliverables.length) return skip({ item, link, reason: 'No videos found at the Frame.io link yet', trigger, actor });
+  if (!deliverables.length) return skip({ item, link, name: target.name, reason: 'No videos found at the Frame.io link yet', trigger, actor });
 
-  if (item) {
+  if (!item) {
+    const found = await findItemForLink({ target, deliverables }).catch(() => null);
+    if (found?.discipline === 'video') { item = found; fromLink = true; scopeReason = 'Manual check (pasted link) · Monday task found'; }
+  }
+
+  if (item && !fromLink) {
     await db.query(
       `INSERT INTO captain_tracked (board_id, item_id, discipline, item_name, link, frameio_folder_id, frameio_project_id)
        VALUES ($1,$2,'video',$3,$4,$5,$6)
@@ -229,8 +249,8 @@ async function runVideoJob(payload) {
   }
 
   const brain = await loadBrain({ discipline: 'video', product: item?.product, campaign: item?.campaign, department: item?.department });
-  const posting = postingFor(cfg, { frameioFolderId: target.folder_id, itemId: item?.id });
-  const ctx = { item, brain, trigger, actor, force, scopeReason, target };
+  const posting = postingFor(cfg, { frameioFolderId: target.folder_id, itemId: fromLink ? null : item?.id });
+  const ctx = { item, brain, trigger, actor, force, scopeReason, target, fromLink };
 
   // Master first (biggest size per version); cut-downs are compared with their master's copy
   const results = [];
@@ -245,9 +265,9 @@ async function runVideoJob(payload) {
     }
   }
 
-  // One Monday summary per trigger
+  // One Monday summary per Monday trigger (a pasted link only borrows the task's brief)
   const done = results.filter(r => ['passed', 'issues', 'error'].includes(r.status));
-  if (item && done.length) {
+  if (item && !fromLink && done.length) {
     const errors = done.filter(r => r.status === 'error');
     const parts = done.map(r => r.status === 'error' ? `${r.label} (round ${r.round}): couldn't check — ${r.error}` : r.status === 'passed' ? `${r.label} (round ${r.round}) passed ✅` : `${r.label} (round ${r.round}): ${r.issue_count} issue${r.issue_count === 1 ? '' : 's'}`);
     const anyIssues = done.some(r => r.status === 'issues');
@@ -265,4 +285,4 @@ async function runVideoJob(payload) {
   return { results: results.map(({ on_screen_text, ...r }) => r), posting };
 }
 
-module.exports = { runVideoJob, postingFor, commentText, normIssues, buildPrompt, briefBlock, grabThumb };
+module.exports = { runVideoJob, findItemForLink, postingFor, commentText, normIssues, buildPrompt, briefBlock, grabThumb };

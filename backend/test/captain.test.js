@@ -34,6 +34,10 @@ test('labels: version vs size vs master order', () => {
   assert.equal(L.variantFromName('FaceCream_SaveMoneyCopyCat_4X5_V2_Omri.mp4'), 2);
   assert.equal(L.variantFromName('Face_16x9_v1.mp4'), 1);
   assert.equal(L.variantFromName('Gravite_Video.mp4'), null);
+  assert.equal(L.variantFromName('Biomella_Cherry_Hook1_9x16.mp4'), 1);
+  assert.equal(L.variantFromName('Biomella Cherry Hook 2 9x16.mp4'), 2);
+  assert.equal(L.variantFromName('Hooked_On_Particle_9x16.mp4'), null);
+  assert.equal(L.deliverableLabel({ variant: L.variantFromName('Biomella_Cherry_Hook2_9x16.mp4'), size: L.sizeFromName('Biomella_Cherry_Hook2_9x16.mp4') }), 'Version 2 · 9x16');
   assert.equal(L.deliverableLabel({ variant: 1, size: '16x9' }), 'Version 1 · 16x9');
   assert.equal(L.sizeFromPixels(1200, 1200), '1x1');
   assert.equal(L.sizeFromPixels(900, 1600), '9x16');
@@ -107,4 +111,6 @@ test('design: layer list and pinned comment wording', () => {
 test('import: modules load and expose the job handlers', () => {
   const imp = require('../src/lib/captain/importer');
   for (const k of ['startImport', 'importFrameioItem', 'importFigmaFile', 'importStatus']) assert.equal(typeof imp[k], 'function');
+  assert.equal(typeof require('../src/lib/captain/video').findItemForLink, 'function');
+  assert.equal(typeof require('../src/lib/captain/monday').findItemByName, 'function');
 });
