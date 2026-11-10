@@ -36,7 +36,8 @@ export default function ReviewQueue({ items, isAdmin, notify, reload }) {
       .filter(i => disc === 'all' || i.discipline === disc || i.discipline === 'both')
       .filter(i => !expiredOnly || i.evidence?.possibly_expired)
       .filter(i => !s || `${i.title} ${i.content || ''} ${(i.evidence?.products || []).join(' ')} ${(i.evidence?.reviewers || []).join(' ')}`.toLowerCase().includes(s))
-      .sort((a, b) => (b.evidence?.count || 1) - (a.evidence?.count || 1) || String(a.title).localeCompare(String(b.title)));
+      .sort((a, b) => (b.evidence?.senior !== false) - (a.evidence?.senior !== false)            // Aviad / Lilian-backed first
+        || (b.evidence?.count || 1) - (a.evidence?.count || 1) || String(a.title).localeCompare(String(b.title)));
   }, [items, type, disc, q, expiredOnly]);
 
   const visible = list.slice(0, shown);
@@ -69,7 +70,7 @@ export default function ReviewQueue({ items, isAdmin, notify, reload }) {
     <div className="trk-glass p-5">
       <div className="flex flex-wrap items-baseline gap-2">
         <div className="trk-label">Review queue · {items.length}</div>
-        <span className="text-[13px] trk-muted">Learned automatically — nothing here is used until it’s approved. Most-said first.</span>
+        <span className="text-[13px] trk-muted">Learned automatically — nothing here is used until it’s approved. Aviad &amp; Lilian first, then most-said.</span>
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -116,6 +117,7 @@ export default function ReviewQueue({ items, isAdmin, notify, reload }) {
                     {ev.count > 1 && <span className="trk-chip">×{ev.count}</span>}
                     {ev.confidence && <span className={`trk-chip ${ev.confidence === 'high' ? 'green' : ev.confidence === 'low' ? 'amber' : 'gray'}`}>{ev.confidence}</span>}
                     {ev.possibly_expired && <span className="trk-chip amber">⚠️ possibly expired</span>}
+                    {ev.senior === false && <span className="trk-chip gray" title="Not backed by Aviad or Lilian">other reviewers</span>}
                   </div>
                   {editing ? (
                     <div className="mt-2 grid gap-2">

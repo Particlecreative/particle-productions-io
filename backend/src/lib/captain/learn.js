@@ -19,6 +19,7 @@ const { execFile } = require('child_process');
 const db = require('../../db');
 const frameio = require('./frameio');
 const figma = require('./figma');
+const { getConfig } = require('./config');
 
 const MODELS = { bulk: 'claude-sonnet-5-5', distil: 'claude-opus-5-5' };
 // USD per 1M tokens (Anthropic first-party list prices); the Batch API bills half.
@@ -529,17 +530,20 @@ function normAuthor(a, fullNames) {
   return m.length === 1 ? m[0] : s;
 }
 
-async function distilRows() {
+/** Text + creative comments for the merge. Reviewers on the exclude list (Tomer's call) are left out entirely. */
+async function distilRows(exclude = []) {
   const { rows } = await db.query(
     `SELECT c.id, c.source, c.author, c.text, c.category, c.analysis, a.product
        FROM captain_import_comments c LEFT JOIN captain_import_assets a ON a.id = c.asset_id
       WHERE c.category IN ('text', 'creative')`);
   const fullNames = [...new Set(rows.map(r => String(r.author || '').trim()).filter(n => /\s/.test(n)))];
   for (const r of rows) r.who = normAuthor(r.author, fullNames);
-  return rows;
+  const ex = exclude.map(x => x.toLowerCase());
+  return rows.filter(r => !ex.includes(String(r.who).toLowerCase()));
 }
 
-function bucketLines(list, kindLabel) {
+function bucketLines(list, kindLabel, senior = []) {
+  const isSenior = (who) => senior.some(s => s.toLowerCase() === String(who).toLowerCase());
   // Merge identical corrections first, so "×N" carries the weight
   const merged = new Map();
   for (const r of list) {
@@ -557,10 +561,11 @@ function bucketLines(list, kindLabel) {
     const fixed = rows.filter(r => r.analysis?.outcome === 'fixed').length;
     const src = [...new Set(rows.map(r => (r.source === 'frameio' ? 'video' : 'design')))].join('+');
     const n = rows.length > 1 ? ` ×${rows.length}` : '';
-    if (kindLabel === 'creative') return `[${ids}]${n} ${src} {${prods}} (${who}) lesson: ${clip(a.lesson, 160)} | "${clip(first.text, 140)}"`;
+    const star = rows.some(r => isSenior(r.who)) ? '★ ' : '';
+    if (kindLabel === 'creative') return `${star}[${ids}]${n} ${src} {${prods}} (${who}) lesson: ${clip(a.lesson, 160)} | "${clip(first.text, 140)}"`;
     const fx = fixed ? ` fixed ${fixed}` : '';
     const parts = [a.found || a.fix ? `"${clip(a.found, 80)}" → "${clip(a.fix, 80)}"` : '', a.rule ? `rule: ${clip(a.rule, 140)}` : '', `"${clip(first.text, 140)}"`].filter(Boolean);
-    return `[${ids}]${n} ${src} ${a.kind}${a.lang && a.lang !== 'en' && a.lang !== 'none' ? `/${a.lang}` : ''} {${prods}} (${who}${fx}) ${parts.join(' | ')}`;
+    return `${star}[${ids}]${n} ${src} ${a.kind}${a.lang && a.lang !== 'en' && a.lang !== 'none' ? `/${a.lang}` : ''} {${prods}} (${who}${fx}) ${parts.join(' | ')}`;
   });
 }
 
@@ -587,7 +592,13 @@ async function pool(list, n, fn) {
  * with every fix confirmed, reuses the creative ones, and refreshes the pending items the fast pass created.
  */
 async function stepDistil(runId, { fast = false } = {}) {
-  const rows = await distilRows();
+  const cfg = await getConfig();
+  const exclude = cfg.import?.exclude_reviewers || [];
+  const senior = cfg.import?.senior_reviewers || [];
+  const seniority = senior.length
+    ? `Senior reviewers: ${senior.join(' and ')} (lines marked ★). Their preferences decide: when reviewers disagree, keep the senior reviewers' version; anything no senior reviewer supports gets confidence "low".`
+    : '';
+  const rows = await distilRows(exclude);
   const byId = new Map(rows.map(r => [String(r.id), r]));
   const text = rows.filter(r => r.category === 'text' && (r.analysis?.found || r.analysis?.fix || r.analysis?.rule));
   const kinds = (ks) => text.filter(r => ks.includes(r.analysis?.kind));
@@ -602,12 +613,11 @@ async function stepDistil(runId, { fast = false } = {}) {
   const key = fast ? 'distil_buckets_fast' : 'distil_buckets';
   const s = await getState(runId);
   const done = { ...(s[key] || {}) };
-  if (!fast) for (const [t, v] of Object.entries(s.distil_buckets_fast || {})) if (t.startsWith('Creative') && !done[t]) done[t] = v;
   const todo = buckets.filter(([title, list]) => !done[title] && list.length);
   await pool(todo, 3, async ([title, list]) => {
-    const lines = bucketLines(list, title.startsWith('Creative') ? 'creative' : 'text');
+    const lines = bucketLines(list, title.startsWith('Creative') ? 'creative' : 'text', senior);
     const items = [];
-    for (let i = 0; i < lines.length; i += 2500) items.push(...await distilCall(runId, title, lines.slice(i, i + 2500)));   // big buckets in slices
+    for (let i = 0; i < lines.length; i += 2500) items.push(...await distilCall(runId, title, lines.slice(i, i + 2500), seniority));   // big buckets in slices
     done[title] = items;
     await setState(runId, { [key]: done });
   });
@@ -616,14 +626,26 @@ async function stepDistil(runId, { fast = false } = {}) {
   const existing = (await db.query(`SELECT type, title, status FROM captain_brain WHERE status IN ('approved', 'pending') ORDER BY type, lower(title)`)).rows;
   const preface = `Already in the Brain (${existing.length}): when a candidate is the same idea as one of these, use that EXACT type and title so it updates that entry instead of creating a duplicate.\n${existing.map(e => `- [${e.type}${e.status === 'approved' ? ', approved' : ''}] ${e.title}`).join('\n')}`;
   const compact = all.map((x, i) => `${i}. [${x.type}|${x.discipline}|×${x.count}|${x.confidence}${x.possibly_expired ? '|expired?' : ''}] ${x.title} — ${x.content} {${(x.products || []).join('/')}} (${(x.reviewers || []).join('/')}) ids:${(x.example_ids || []).join(',')}`);
-  const final = await distilCall(runId, 'FINAL MERGE: these are Brain candidates from several batches. Merge duplicates and overlaps (sum counts, union reviewers/products, keep the best example ids), resolve contradictions (when reviewers disagree, keep the majority rule and mention the exception in its content), drop anything too specific, keep everything else', compact, preface);
-  const saved = await saveBrain(runId, final, byId);
+  const final = await distilCall(runId, 'FINAL MERGE: these are Brain candidates from several batches. Merge duplicates and overlaps (sum counts, union reviewers/products, keep the best example ids), resolve contradictions (keep the senior reviewers\' version, otherwise the majority, and mention the exception in its content), drop anything too specific, keep everything else', compact, [seniority, preface].filter(Boolean).join('\n\n'));
+  const saved = await saveBrain(runId, final, byId, { exclude, senior });
+  if (!fast) {
+    // Pending items from earlier passes that this full pass no longer produces → set aside (approved / rejected untouched)
+    const gone = await db.query(
+      `UPDATE captain_brain SET status = 'rejected', active = false, evidence = COALESCE(evidence, '{}'::jsonb) || '{"superseded": true}'::jsonb, updated_at = NOW()
+        WHERE source = 'import' AND status = 'pending' AND NOT (id = ANY($1::int[])) RETURNING id`, [saved.ids]);
+    saved.superseded = gone.rowCount;
+    log(`brain: ${gone.rowCount} earlier pending items not produced again — set aside`);
+  }
+  delete saved.ids;
   await setState(runId, fast ? { fast: { status: 'done', brain: saved, at: new Date().toISOString() } } : { brain: saved });
   return saved;
 }
 
-async function saveBrain(runId, items, byId) {
+async function saveBrain(runId, items, byId, { exclude = [], senior = [] } = {}) {
   let created = 0, refreshed = 0, existing = 0;
+  const ids = [];
+  const ex = exclude.map(e => e.toLowerCase());
+  const sr = senior.map(e => e.toLowerCase());
   for (const x of items) {
     const title = String(x.title || '').trim().slice(0, 200);
     if (!title) continue;
@@ -632,7 +654,9 @@ async function saveBrain(runId, items, byId) {
       found: r.analysis?.found || null, fix: r.analysis?.fix || null, outcome: r.analysis?.outcome || null,
     }));
     const products = (x.products || []).filter(Boolean);
-    const evidence = { count: x.count, reviewers: x.reviewers || [], products, possibly_expired: !!x.possibly_expired, confidence: x.confidence, examples, run_id: runId };
+    const reviewers = (x.reviewers || []).filter(r => !ex.includes(String(r).toLowerCase()));
+    const isSenior = reviewers.some(r => sr.includes(String(r).toLowerCase()));
+    const evidence = { count: x.count, reviewers, products, possibly_expired: !!x.possibly_expired, confidence: isSenior || !sr.length ? x.confidence : 'low', senior: isSenior, examples: examples.filter(e => !ex.includes(String(e.author).toLowerCase())), run_id: runId };
     // New → pending. Same idea already pending from an earlier pass → refreshed. Approved / rejected / manual → untouched.
     const r = await db.query(
       `INSERT INTO captain_brain (type, title, content, discipline, scope, active, status, source, evidence, added_by)
@@ -643,6 +667,7 @@ async function saveBrain(runId, items, byId) {
        RETURNING id, (xmax = 0) AS inserted`,
       [x.type, title, x.content || null, x.discipline || 'both', JSON.stringify(products.length ? { product: products } : {}), JSON.stringify(evidence)],
     );
+    if (r.rows[0]) ids.push(r.rows[0].id);
     if (r.rows[0]?.inserted) {
       created++;
       await db.query(`INSERT INTO captain_brain_history (brain_id, action, after, actor) VALUES ($1, 'create', $2, 'History import')`, [r.rows[0].id, JSON.stringify({ type: x.type, title, status: 'pending' })]).catch(() => {});
@@ -650,7 +675,7 @@ async function saveBrain(runId, items, byId) {
     else existing++;
   }
   log(`brain: ${created} new pending items, ${refreshed} refreshed, ${existing} already decided / manual`);
-  return { created, refreshed, existing, candidates: items.length };
+  return { created, refreshed, existing, candidates: items.length, ids };
 }
 
 // ── driver ───────────────────────────────────────────────────────────────────

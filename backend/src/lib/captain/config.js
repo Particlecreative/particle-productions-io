@@ -62,7 +62,7 @@ const DEFAULTS = {
   },
   worker: { concurrency: 1 },
   // Brain bootstrap: what the history import reads (read-only)
-  import: { since: '2025-01-01', figma_folders: ['Media Ads'] },
+  import: { since: '2025-01-01', figma_folders: ['Media Ads'], exclude_reviewers: ['Natalie Blenford'], senior_reviewers: ['Aviad Eilam', 'Lilian Krumholz'] },
 };
 
 const isObj = (v) => v && typeof v === 'object' && !Array.isArray(v);
