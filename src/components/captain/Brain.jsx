@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Plus, Loader2, Check, X, Trash2 } from 'lucide-react';
+import { Plus, Loader2, Trash2 } from 'lucide-react';
 import { captainApi } from '../../lib/captainService';
-import { relTime } from './util';
 import HistoryImport from './HistoryImport';
+import ReviewQueue from './ReviewQueue';
 
 const TYPES = [
   ['term', 'Approved terms', 'Exact spelling — product names, ingredients, hashtags'],
@@ -65,28 +65,7 @@ export default function Brain({ notify, isAdmin }) {
 
       <HistoryImport notify={notify} isAdmin={isAdmin} />
 
-      {pending.length > 0 && (
-        <div className="trk-glass p-5">
-          <div className="trk-label">Review queue · {pending.length}</div>
-          <p className="text-[13px] trk-muted mt-1">Learned automatically — nothing here is used until it’s approved.</p>
-          <div className="mt-3 space-y-2">
-            {pending.map(i => (
-              <div key={i.id} className="flex flex-wrap items-center gap-3 py-2" style={{ borderTop: '1px solid var(--trk-line)' }}>
-                <span className="trk-chip gray">{LABEL[i.type] || i.type}</span>
-                <span className="font-semibold">{i.title}</span>
-                {i.content && <span className="text-[13px] trk-muted">{i.content}</span>}
-                <span className="text-[11px] trk-dim">{i.added_by} · {relTime(i.created_at)}</span>
-                {isAdmin && (
-                  <span className="ml-auto flex gap-2">
-                    <button type="button" className="trk-btn !py-1.5" disabled={busy === `u${i.id}`} onClick={() => update(i, { status: 'approved' }, 'Approved')}><Check size={13} /> Approve</button>
-                    <button type="button" className="trk-btn !py-1.5" disabled={busy === `u${i.id}`} onClick={() => update(i, { status: 'rejected', active: false }, 'Rejected')}><X size={13} /> Reject</button>
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {pending.length > 0 && <ReviewQueue items={pending} isAdmin={isAdmin} notify={notify} reload={load} />}
 
       {isAdmin && (
         <form className="trk-glass p-5 grid gap-3 md:grid-cols-[180px_minmax(0,1fr)_minmax(0,1.4fr)_130px_auto] items-end" onSubmit={add}>

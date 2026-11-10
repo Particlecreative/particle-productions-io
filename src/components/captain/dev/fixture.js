@@ -24,6 +24,16 @@ const brain = [
   { id: 20, type: 'rule', title: 'Particle is always capitalised', content: 'The brand name “Particle” is ALWAYS capitalised, even inside lowercase-style subtitles.', discipline: 'both', active: true, status: 'approved', source: 'seed', added_by: 'Tomer Wilf Lezmy', created_at: ago(1000) },
   { id: 21, type: 'rule', title: 'Currency symbol before the number', content: 'Prices use US formatting: “$10”, never “10$”.', discipline: 'both', active: true, status: 'approved', source: 'seed', added_by: 'Tomer Wilf Lezmy', created_at: ago(1000) },
   { id: 30, type: 'do_not_flag', title: 'gonna', content: 'Marked “not a typo”', discipline: 'video', active: true, status: 'pending', source: 'feedback', added_by: 'Omer Barak', created_at: ago(30) },
+  { id: 40, type: 'rule', title: 'No period at the end of on-screen text', content: 'Captions and on-screen lines never end with a full stop, unless they contain two sentences.', discipline: 'both', active: true, status: 'pending', source: 'import', added_by: 'History import', created_at: ago(5),
+    evidence: { count: 64, reviewers: ['Aviad Eilam', 'Lilian Krumholz'], products: [], confidence: 'high', examples: [
+      { id: 1, source: 'frameio', author: 'Aviad Eilam', product: 'Deodorant', text: 'Remove the period', found: 'Stay fresh all day.', fix: 'Stay fresh all day', outcome: 'fixed' },
+      { id: 2, source: 'figma', author: 'Aviad Eilam', product: null, text: 'Remove quotation mark', found: null, fix: null, outcome: 'cant_tell' }] } },
+  { id: 41, type: 'term', title: 'Gravité', content: 'Often written without the accent (“Gravite”).', discipline: 'both', active: true, status: 'pending', source: 'import', added_by: 'History import', created_at: ago(5),
+    evidence: { count: 14, reviewers: ['Aviad Eilam'], products: ['Gravité'], confidence: 'high', examples: [{ id: 3, source: 'frameio', author: 'Aviad Eilam', product: 'Gravité', text: '*Gravité', found: 'Gravite', fix: 'Gravité', outcome: 'fixed' }] } },
+  { id: 42, type: 'learned', title: 'Price Goes Back Up November 23', content: 'Holiday price line used on Ab Firming Cream designs.', discipline: 'design', active: true, status: 'pending', source: 'import', added_by: 'History import', created_at: ago(5),
+    evidence: { count: 3, reviewers: ['Lilian Krumholz'], products: ['Ab Firming Cream'], confidence: 'medium', possibly_expired: true, examples: [] } },
+  { id: 43, type: 'insight', title: 'Keep the bottle on screen while stats show', content: 'When claims or percentages appear, keep the product visible instead of cutting to stock footage.', discipline: 'video', active: true, status: 'pending', source: 'import', added_by: 'History import', created_at: ago(5),
+    evidence: { count: 9, reviewers: ['Lilian Krumholz'], products: ['Face Cream', 'Instant Eye Firming Cream'], confidence: 'medium', examples: [] } },
 ];
 
 const settings = {
@@ -62,7 +72,7 @@ export function fixtureCall(path, { method = 'GET', body } = {}) {
   if (p === '/brain') return method === 'POST' ? { item: body } : { items: brain };
   if (p.startsWith('/brain/')) return { ok: true };
   if (p === '/settings') return { settings: method === 'PUT' ? { ...settings, ...body, posting: { ...settings.posting, ...(body?.posting || {}) } } : settings };
-  if (p === '/import') return { run: { id: 1, status: 'running', since: '2025-01-01', started_at: ago(40), plan: { frameio: { items: 1462 }, figma: { files: 8, items: 501 } } }, progress: { done: 310, all: 1470, failed: 4 }, assets: [{ source: 'frameio', n: 1180, items: 306 }, { source: 'figma', n: 480, items: 480 }], comments: [{ source: 'frameio', n: 2410, authors: 9 }, { source: 'figma', n: 1302, matched: 1104, authors: 7 }], authors: [{ author: 'Anton Shpakovskiy', n: 812 }, { author: 'Lilian Krumholz', n: 640 }, { author: 'Tomer Wilf Lezmy', n: 377 }], estimate: { total: 12.4 } };
+  if (p === '/import') return { run: { id: 1, status: 'done', since: '2025-01-01', started_at: ago(400), finished_at: ago(200), plan: { frameio: { items: 1463 }, figma: { files: 12, items: 1081 }, learn: { phase: 'video', cost: { classify: 4.82, total: 4.82 }, counts: [{ source: 'frameio', cat: 'text', n: 3702, fixed: 0 }, { source: 'frameio', cat: 'creative', n: 5010 }, { source: 'figma', cat: 'text', n: 1405 }] } } }, progress: { done: 1476, all: 1476, failed: 0 }, assets: [{ source: 'frameio', n: 1180, items: 306 }, { source: 'figma', n: 480, items: 480 }], comments: [{ source: 'frameio', n: 2410, authors: 9 }, { source: 'figma', n: 1302, matched: 1104, authors: 7 }], authors: [{ author: 'Anton Shpakovskiy', n: 812 }, { author: 'Lilian Krumholz', n: 640 }, { author: 'Tomer Wilf Lezmy', n: 377 }], estimate: { total: 12.4 } };
   if (p === '/import/start') return { queued: true };
   if (p === '/frameio/connect') return { url: '#' };
   return {};

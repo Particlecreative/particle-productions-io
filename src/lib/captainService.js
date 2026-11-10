@@ -58,6 +58,7 @@ export const captainApi = {
   addBrain: (item) => call('/brain', { method: 'POST', body: item }),
   updateBrain: (id, patch) => call(`/brain/${id}`, { method: 'PUT', body: patch }),
   deleteBrain: (id) => call(`/brain/${id}`, { method: 'DELETE' }),
+  bulkBrain: (ids, status) => call('/brain/bulk', { method: 'POST', body: { ids, status } }),
   settings: () => call('/settings'),
   saveSettings: (patch) => call('/settings', { method: 'PUT', body: patch }),
   importStatus: () => call('/import'),

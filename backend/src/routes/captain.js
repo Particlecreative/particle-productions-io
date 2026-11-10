@@ -17,7 +17,7 @@
  * Admin:
  *   GET  /frameio/connect · DELETE /frameio    the Captain's own Frame.io sign-in
  *   GET|PUT /settings
- *   POST /brain · PUT /brain/:id · DELETE /brain/:id
+ *   POST /brain · PUT /brain/:id · DELETE /brain/:id · POST /brain/bulk (approve / reject many)
  *   POST /import/start                 start the read-only history import (Brain bootstrap)
  */
 const express = require('express');
@@ -277,6 +277,25 @@ router.put('/brain/:id', requireAdmin, async (req, res) => {
     await brainHistory(before.id, 'update', before, rows[0], actor);
     await logEvent({ kind: 'brain', message: `${actor} updated ${rows[0].type} "${rows[0].title}"${before.status !== rows[0].status ? ` (${before.status} → ${rows[0].status})` : ''}`, data: { id: before.id }, actor });
     res.json({ item: rows[0] });
+  } catch (err) { errorJson(res, err); }
+});
+
+// Review queue: approve or reject many learned items at once
+router.post('/brain/bulk', requireAdmin, async (req, res) => {
+  try {
+    const ids = (Array.isArray(req.body?.ids) ? req.body.ids : []).map(Number).filter(Number.isInteger).slice(0, 2000);
+    const status = req.body?.status;
+    if (!ids.length || !['approved', 'rejected', 'pending'].includes(status)) return res.status(400).json({ error: 'Pick items and approve or reject' });
+    const actor = actorOf(req);
+    const { rows: before } = await db.query('SELECT * FROM captain_brain WHERE id = ANY($1::int[])', [ids]);
+    const { rows } = await db.query(
+      `UPDATE captain_brain SET status = $2, active = $3, updated_at = NOW() WHERE id = ANY($1::int[]) RETURNING *`,
+      [ids, status, status !== 'rejected'],
+    );
+    const prev = Object.fromEntries(before.map(b => [b.id, b]));
+    for (const r of rows) await brainHistory(r.id, 'update', prev[r.id], r, actor);
+    await logEvent({ kind: 'brain', message: `${actor} ${status === 'approved' ? 'approved' : status === 'rejected' ? 'rejected' : 'reopened'} ${rows.length} Brain item${rows.length === 1 ? '' : 's'}`, data: { ids: rows.map(r => r.id), status }, actor });
+    res.json({ updated: rows.length });
   } catch (err) { errorJson(res, err); }
 });
 

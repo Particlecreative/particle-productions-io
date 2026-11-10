@@ -4,11 +4,11 @@
  */
 const { getAnthropic } = require('../../anthropic');
 
-// USD per 1M tokens — ESTIMATES for the cost column; check Anthropic's pricing page and adjust in Settings → prices.
+// USD per 1M tokens (Anthropic list prices, Nov 2026) for the cost column; override in Settings → prices.
 const DEFAULT_PRICES = {
-  'claude-sonnet-5-5': { in: 3, out: 15 },
-  'claude-opus-5-5': { in: 5, out: 25 },
-  'claude-haiku-5-5': { in: 1, out: 5 },
+  'claude-sonnet-5-5': { in: 2, out: 10 },
+  'claude-opus-5-5': { in: 4, out: 20 },
+  'claude-haiku-5-5': { in: 0.1, out: 0.5 },
 };
 
 const ISSUE_SCHEMA = {

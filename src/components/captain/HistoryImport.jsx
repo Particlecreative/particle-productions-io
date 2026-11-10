@@ -16,7 +16,9 @@ export default function HistoryImport({ notify, isAdmin }) {
   }, [notify]);
   useEffect(() => { load(); }, [load]);
   const running = s?.run?.status === 'running';
-  useEffect(() => { if (!running) return undefined; const t = setInterval(load, 10000); return () => clearInterval(t); }, [running, load]);
+  const learn = s?.run?.plan?.learn || null;
+  const learning = !!learn?.phase && !['done', 'pilot_done'].includes(learn.phase) && !learn.error;
+  useEffect(() => { if (!running && !learning) return undefined; const t = setInterval(load, running ? 10000 : 30000); return () => clearInterval(t); }, [running, learning, load]);
 
   const start = async () => {
     if (!window.confirm('Start reading every past Frame.io and Figma (Media Ads) comment since 2025? It’s read-only and runs in the background for a few hours.')) return;
@@ -56,11 +58,40 @@ export default function HistoryImport({ notify, isAdmin }) {
             <Stat label="🎬 Video comments" value={by.frameio?.n || 0} sub={`${assets.frameio?.items || 0} tasks · ${assets.frameio?.n || 0} video rounds${plan.frameio ? ` of ${plan.frameio.items} tasks queued` : ''}`} />
             <Stat label="🎨 Design comments" value={by.figma?.n || 0} sub={`${by.figma?.matched || 0} matched to a task · ${plan.figma?.files ?? '–'} Media Ads files`} />
             <Stat label="Reviewers" value={(by.frameio?.authors || 0) + (by.figma?.authors || 0)} sub={(s.authors || []).slice(0, 3).map(a => a.author).filter(Boolean).join(', ')} />
-            <Stat label="AI to analyse (estimate)" value={money(s.estimate?.total || 0)} sub="Only spent after you approve" />
+            {learn?.cost?.total != null
+              ? <Stat label="AI spent learning" value={money(learn.cost.total)} sub={learn.phase === 'done' ? 'Finished' : 'So far — sorted at half price (Batch API)'} />
+              : <Stat label="AI to analyse (estimate)" value={money(s.estimate?.total || 0)} sub="Only spent after you approve" />}
           </div>
+          {learn?.phase && <LearnLine learn={learn} />}
           {s.progress?.failed > 0 && <div className="mt-3 text-[12px]" style={{ color: 'var(--trk-amber)' }}>{s.progress.failed} item{s.progress.failed === 1 ? '' : 's'} couldn’t be read (no access or deleted) — skipped.</div>}
         </>
       )}
+    </div>
+  );
+}
+
+const PHASES = {
+  classify: 'Sorting every comment (text · creative · process · noise)',
+  video: 'Checking video fixes — the text in that round vs the next round',
+  design: 'Checking design fixes — the Figma version then vs today',
+  distil: 'Merging into patterns for the Brain',
+  pilot_done: 'Sample run finished',
+  done: 'Learned',
+};
+
+function LearnLine({ learn }) {
+  const done = learn.phase === 'done';
+  const sorted = (learn.counts || []).filter(c => !['unsorted_yet'].includes(c.cat)).reduce((a, c) => a + c.n, 0);
+  const fixed = (learn.counts || []).reduce((a, c) => a + (c.fixed || 0), 0);
+  return (
+    <div className="mt-4 flex flex-wrap items-center gap-2 text-[13px]" style={{ borderTop: '1px solid var(--trk-line)', paddingTop: 12 }}>
+      <span className={`trk-chip ${learn.error ? 'red' : done ? 'green' : 'amber'}`}>{learn.error ? 'Learning stopped' : done ? '🧠 Learned' : '🧠 Learning…'}</span>
+      <span className="trk-muted">
+        {learn.error ? learn.error : PHASES[learn.phase] || learn.phase}
+        {sorted ? ` · ${sorted.toLocaleString('en-US')} comments sorted` : ''}
+        {fixed ? ` · ${fixed.toLocaleString('en-US')} confirmed fixes` : ''}
+        {done && learn.brain ? ` · ${learn.brain.created} item${learn.brain.created === 1 ? '' : 's'} waiting in the review queue below` : ''}
+      </span>
     </div>
   );
 }
