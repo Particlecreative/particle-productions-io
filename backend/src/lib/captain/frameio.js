@@ -196,6 +196,13 @@ async function resolveTarget(link) {
   return null;
 }
 
+/** A folder's name (the team names a task's Frame.io folder after its Monday task). */
+async function folderName(folderId) {
+  if (!folderId) return null;
+  const a = await accountId();
+  return (await tryGet(`/accounts/${a}/folders/${folderId}`))?.name || null;
+}
+
 /** The rounds of one version stack, oldest first (round 1 = the first upload). */
 async function stackRounds(stackId) {
   const a = await accountId();
@@ -337,5 +344,5 @@ async function keepalive() { const t = await loadTokens().catch(() => null); if 
 
 module.exports = {
   configured, authorizeUrl, captainState, exchangeCode, status, disconnect, keepalive,
-  api, accountId, resolveTarget, deliverablesOfFolder, deliverablesOfShare, deliverablesForTarget, stackRounds, fileInfo, listComments, createComment,
+  api, accountId, resolveTarget, folderName, deliverablesOfFolder, deliverablesOfShare, deliverablesForTarget, stackRounds, fileInfo, listComments, createComment,
 };

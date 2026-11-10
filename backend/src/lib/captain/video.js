@@ -216,7 +216,13 @@ async function findItemForLink({ target, deliverables }) {
   let id = target.folder_id ? await first(`SELECT item_id FROM captain_tracked WHERE discipline = 'video' AND frameio_folder_id = $1 ORDER BY updated_at DESC LIMIT 1`, [target.folder_id]) : null;
   const keys = deliverables.flatMap(d => d.rounds.map(r => `frameio:${r.file_id}`));
   if (!id && keys.length) id = await first(`SELECT item_id FROM captain_import_assets WHERE asset_key = ANY($1::text[]) AND item_id IS NOT NULL LIMIT 1`, [keys]);
-  if (!id && target.name) id = await monday.findItemByName(BOARDS.video.board_id, target.name).catch(() => null);
+  // Same name on the Video board: the link's own name, then its folder's (a file link's task name lives on the folder)
+  const names = [target.name];
+  if (!id && target.kind !== 'folder' && target.folder_id) names.push(await frameio.folderName(target.folder_id).catch(() => null));
+  for (const n of names.filter(Boolean)) {
+    if (id) break;
+    id = await monday.findItemByName(BOARDS.video.board_id, n).catch(() => null);
+  }
   return id ? monday.readItem(id) : null;
 }
 

@@ -46,7 +46,7 @@ async function generate(model, file, prompt, extra) {
     method: 'POST', headers: headers({ 'Content-Type': 'application/json' }), signal: AbortSignal.timeout(300000),
     body: JSON.stringify({
       contents: [{ role: 'user', parts: [{ file_data: { mime_type: file.mimeType || 'video/mp4', file_uri: file.uri }, video_metadata: { fps: 2 } }, { text: prompt }] }],
-      generationConfig: { responseMimeType: 'application/json', temperature: 0, ...extra },
+      generationConfig: { responseMimeType: 'application/json', temperature: 0, maxOutputTokens: 32768, ...extra },
     }),
   });
   const d = await r.json().catch(() => null);
@@ -72,14 +72,20 @@ async function checkVideo({ path, name, prompt, model = 'gemini-3.8-flash', pric
   try {
     // Prefer capped thinking + sharp frames; fall back if a model rejects an option
     const variants = [{ thinkingConfig: { thinkingLevel: 'low' }, mediaResolution: 'MEDIA_RESOLUTION_HIGH' }, { thinkingConfig: { thinkingLevel: 'low' } }, {}];
-    let d = null, lastErr = null;
+    let d = null, lastErr = null, used = null;
     for (const v of variants) {
-      try { d = await generate(model, file, prompt, v); break; } catch (e) { lastErr = e; if (e.status !== 400) throw e; }
+      try { d = await generate(model, file, prompt, v); used = v; break; } catch (e) { lastErr = e; if (e.status !== 400) throw e; }
     }
     if (!d) throw lastErr;
-    const text = d.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '';
-    const json = parseJson(text);
-    if (!json) throw new Error('Gemini did not return valid JSON');
+    const textOf = (x) => x?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '';
+    let json = parseJson(textOf(d));
+    if (!json) {
+      // Long transcripts can come back cut off or malformed — one more try before giving up
+      const first = d;
+      d = await generate(model, file, prompt, used).catch(() => null) || first;
+      json = parseJson(textOf(d));
+      if (!json) throw new Error(`Gemini did not return valid JSON (finish: ${first.candidates?.[0]?.finishReason || '?'}, ${textOf(first).length} chars)`);
+    }
     const u = d.usageMetadata || {};
     const p = prices[model] || DEFAULT_PRICES[model] || DEFAULT_PRICES['gemini-3.8-flash'];
     const outTokens = (u.candidatesTokenCount || 0) + (u.thoughtsTokenCount || 0);
