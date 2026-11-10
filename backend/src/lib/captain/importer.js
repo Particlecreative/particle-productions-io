@@ -197,18 +197,7 @@ async function importFigmaFile({ run_id, file_key, file_name, folder, since, ite
   }
 
   // Version history back to `since` (for the before/after step)
-  const versions = [];
-  let before = null;
-  for (let page = 0; page < 150; page++) {                     // big shared files keep thousands of autosaves
-    const q = new URLSearchParams({ page_size: '50' });
-    if (before) q.set('before', before);
-    const d = await figma.api(`/v1/files/${file_key}/versions?${q}`).catch(() => null);
-    await sleep(500);
-    const vs = d?.versions || [];
-    versions.push(...vs.map(v => ({ id: v.id, at: v.created_at, label: v.label || null, by: v.user?.handle || null })));
-    if (!vs.length || String(vs[vs.length - 1].created_at).slice(0, 10) < since) break;
-    before = vs[vs.length - 1].id;
-  }
+  const versions = await figma.versionsSince(file_key, since).catch(() => []);
   await upsertAsset({ run_id, source: 'figma', asset_key: `figma-file:${file_key}`, file_key, figma_file_name: file_name, folder_name: folder, meta: { versions, items: items.length, missing_nodes: missing.length } });
 
   // One asset per task (its linked node)

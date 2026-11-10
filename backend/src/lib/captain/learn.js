@@ -198,7 +198,7 @@ async function classifyRequests({ limitRequests = null } = {}) {
     groups.get(key).push(r);
   }
   const requests = [];
-  const pushChunk = (list) => {
+  const section = (list) => {
     const h = list[0];
     const head = h.source === 'frameio'
       ? `Video ad (Frame.io) · Task: ${h.item_name || '?'} · Product: ${h.product || '?'}${h.deliverable ? ` · ${h.deliverable}` : ''}${h.round ? ` · Round ${h.round} of ${h.rounds_total || h.round}` : ''}`
@@ -208,19 +208,33 @@ async function classifyRequests({ limitRequests = null } = {}) {
       const reply = c.parent_external_id ? `  ↳ reply${ids.has(c.parent_external_id) ? ` to [${ids.get(c.parent_external_id)}]` : ''} · ` : '';
       return `${reply}[${c.id}] ${c.source === 'frameio' ? fmtTime(c.frame, c.fps) : ''}${c.author || 'Guest'}: ${clip(c.text, 1200)}`;
     });
+    return `${head}\n${lines.join('\n')}`;
+  };
+  // Several small groups share one request (each keeps its own header), ≤ 40 comments per request
+  let packed = [], packedN = 0, firstId = null;
+  const flush = () => {
+    if (!packed.length) return;
     requests.push({
-      custom_id: `c-${list[0].id}-${list.length}`,
+      custom_id: `c-${firstId}-${packedN}`,
       params: {
         model: MODELS.bulk, max_tokens: 12000,
         system: [{ type: 'text', text: CLASSIFY_SYSTEM, cache_control: { type: 'ephemeral' } }],
         output_config: { effort: 'low', format: { type: 'json_schema', schema: CLASSIFY_SCHEMA } },
-        messages: [{ role: 'user', content: `${head}\n\n${lines.join('\n')}` }],
+        messages: [{ role: 'user', content: packed.join('\n\n———\n\n') }],
       },
     });
+    packed = []; packedN = 0; firstId = null;
   };
   for (const list of groups.values()) {
-    for (let i = 0; i < list.length; i += 40) pushChunk(list.slice(i, i + 40));
+    for (let i = 0; i < list.length; i += 40) {
+      const part = list.slice(i, i + 40);
+      if (packedN + part.length > 40) flush();
+      if (firstId == null) firstId = part[0].id;
+      packed.push(section(part));
+      packedN += part.length;
+    }
   }
+  flush();
   if (limitRequests && requests.length > limitRequests) {
     // A spread sample (pilot): every k-th request across video and design
     const k = Math.floor(requests.length / limitRequests);
@@ -394,6 +408,7 @@ Return:
 async function stepDesign(runId, { limit = null } = {}) {
   const s = await getState(runId);
   if (!(s.batches?.design || []).some(b => !b.collected)) {
+    await db.query(`UPDATE captain_import_comments SET analysis = analysis - 'outcome' - 'outcome_note' WHERE source = 'figma' AND analysis->>'outcome_note' = 'version too old'`);
     const { rows } = await db.query(
       `SELECT c.id, c.text, c.file_key, c.node_id, c.created_at, c.analysis
          FROM captain_import_comments c
@@ -402,8 +417,14 @@ async function stepDesign(runId, { limit = null } = {}) {
           AND NOT (c.analysis ? 'outcome')
         ORDER BY c.file_key, c.node_id, c.created_at${limit ? ` LIMIT ${Number(limit)}` : ''}`);
     log(`design: ${rows.length} corrections to compare across Figma versions`);
-    const vrows = (await db.query(`SELECT file_key, meta->'versions' AS versions FROM captain_import_assets WHERE asset_key LIKE 'figma-file:%'`)).rows;
-    const versionsOf = Object.fromEntries(vrows.map(v => [v.file_key, (v.versions || []).slice().sort((x, y) => String(y.at).localeCompare(String(x.at)))]));
+    // Fresh version history per file (the import stored page 1 only), saved back on the file's asset row
+    const versionsOf = {};
+    for (const key of [...new Set(rows.map(r => r.file_key))]) {
+      const since = (await db.query(`SELECT MIN(created_at) AS m FROM captain_import_comments WHERE file_key = $1`, [key])).rows[0]?.m;
+      versionsOf[key] = await figma.versionsSince(key, since ? new Date(since).toISOString() : '2025-01-01');
+      await db.query(`UPDATE captain_import_assets SET meta = meta || jsonb_build_object('versions', $2::jsonb) WHERE asset_key = $1`, [`figma-file:${key}`, JSON.stringify(versionsOf[key])]);
+      log(`design: ${versionsOf[key].length} Figma versions for ${key}`);
+    }
     const cache = new Map();
     const textsAt = async (key, node, version) => {
       const k = `${key}|${node}|${version || 'now'}`;
@@ -420,7 +441,8 @@ async function stepDesign(runId, { limit = null } = {}) {
     const requests = [];
     let i = 0;
     for (const r of rows) {
-      const v = (versionsOf[r.file_key] || []).find(x => String(x.at) <= new Date(r.created_at).toISOString());
+      const at = new Date(r.created_at).getTime();
+      const v = (versionsOf[r.file_key] || []).find(x => new Date(x.at).getTime() <= at);
       const before = v ? await textsAt(r.file_key, r.node_id, v.id) : null;
       const after = await textsAt(r.file_key, r.node_id, null);
       if (++i % 100 === 0) log(`design: ${i}/${rows.length} read`);

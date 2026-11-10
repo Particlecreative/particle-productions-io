@@ -97,6 +97,27 @@ async function renderUrls(key, ids, { scale = 1, format = 'png', version = null 
   return (await api(`/v1/images/${key}?${q}`, { timeoutMs: 120000 }))?.images || {};
 }
 async function versions(key) { return (await api(`/v1/files/${key}/versions`))?.versions || []; }
+
+/**
+ * A file's version history back to `sinceIso`, newest first. Follows Figma's own pagination.next_page links —
+ * the `before=<id>` cursor is ignored by the API (it returned page 1 again and again).
+ */
+async function versionsSince(key, sinceIso, { maxPages = 400, pauseMs = 500 } = {}) {
+  const out = [];
+  const seen = new Set();
+  let path = `/v1/files/${key}/versions?page_size=50`;
+  for (let page = 0; page < maxPages && path; page++) {
+    const d = await api(path).catch(() => null);
+    const vs = d?.versions || [];
+    let fresh = 0;
+    for (const v of vs) if (!seen.has(v.id)) { seen.add(v.id); fresh++; out.push({ id: v.id, at: v.created_at, label: v.label || null, by: v.user?.handle || null }); }
+    if (!vs.length || !fresh || String(vs[vs.length - 1].created_at) < String(sinceIso)) break;
+    const next = d?.pagination?.next_page;
+    path = next ? next.replace(/^https?:\/\/[^/]+/, '') : null;
+    if (pauseMs) await sleep(pauseMs);
+  }
+  return out.sort((x, y) => String(y.at).localeCompare(String(x.at)));
+}
 async function comments(key) { return (await api(`/v1/files/${key}/comments`))?.comments || []; }
 
 /** Pin a comment to a layer: client_meta { node_id, node_offset } puts it exactly on the text. */
@@ -110,4 +131,4 @@ async function status() {
   try { const m = await me(); return { configured: true, connected: true, user_name: m?.handle || null }; } catch (e) { return { configured: true, connected: false, error: e.message }; }
 }
 
-module.exports = { configured, api, parseUrl, framesOf, textsOf, normCopy, contentHash, file, node, renderUrls, versions, comments, postComment, me, status };
+module.exports = { configured, api, parseUrl, framesOf, textsOf, normCopy, contentHash, file, node, renderUrls, versions, versionsSince, comments, postComment, me, status };
