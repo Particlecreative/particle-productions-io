@@ -1,8 +1,9 @@
 /**
  * MEDIUM → Monday: an approved brief becomes a ticket (spec §10), created with CP's token (Tomer's choice), in the
  * board's "Form Requests" group by default. The lane lives in the ticket name (no Lane column — Tomer's choice);
- * Product goes in label9. One evidence update follows (the numbers, links and quotes — never in the brief itself),
- * then Captain Caption locks the approved on-screen text to the item.
+ * Product goes in label9. The update IS the brief, in the team's format (Tomer, 11 Nov 2026: "it's not the brief") —
+ * header line, concept, don'ts, hook, script by beat, test — with one 'Why' line at the end; then Captain Caption
+ * locks the approved on-screen text to the item.
  * Only runs when medium_config.monday_submit is on, and only after a person clicked Approve.
  */
 const { mondayQuery } = require('../monday');
@@ -75,7 +76,49 @@ function columnValues(b, { labels = {}, requesterId = null } = {}) {
   return { values, skipped };
 }
 
-/** The evidence update: lane, source winners, why, examples, references, Captain verdict, and who approved it. */
+/**
+ * The brief as the Monday update, the way the team writes them (pure — tested): a header line, then Video Concept /
+ * Concept, Don'ts, Hook (or hook variations), Script / Message laid out by beat (or Supporting Text), Test, and a
+ * one-line Why at the end. Monday updates take simple HTML.
+ */
+function briefHtml(b, approver) {
+  const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const br = (s) => esc(s).replace(/\n/g, '<br>');
+  const f = b.fields || {};
+  const video = b.format !== 'design';
+  const sizes = (f.sizes || []).map(x => String(x).replace('x', '×')).join(', ');
+  const header = [
+    ['Department', DEPARTMENT[video ? 'video' : 'design']], [video ? 'Product' : 'Product / Bundle', b.product], ['Platform', 'Meta'],
+    b.lane && b.lane !== 'Particle' ? ['Lane', LANE_NAME[b.lane] || b.lane] : null,
+    video ? ['Type', f.video_type] : null, ['Sizes Needed', sizes], video && f.duration ? ['Est. Duration', `${Math.round(Number(f.duration))} sec`] : null,
+    f.template ? ['Template', f.template] : null,
+  ].filter(x => x && x[1]).map(([k, v]) => `<strong>${k}:</strong> ${esc(v)}`).join(' | ');
+  const section = (title, html) => (html ? `<p><strong>${title}</strong></p>${html}` : '');
+  // the concept: the Brief field (its first line is the lane's opening, e.g. "Page: …" / "Ad leads to: …")
+  const concept = String(f.brief || '').trim().split(/\n{2,}/).map(par => `<p>${br(par.trim())}</p>`).join('');
+  const donts = (Array.isArray(f.donts) ? f.donts : String(f.donts || '').split('\n')).map(d => String(d).replace(/^[-•–]\s*/, '').trim()).filter(Boolean);
+  const hooks = String(f.hook || '').split('\n').map(h => h.trim()).filter(Boolean);
+  // the script by beat: "0–4s — THE HOOK" lines bold, SCRIPT: / VISUALS: / VO: / SUPER: labels bold
+  const script = String(f.script || '').trim().split('\n').map(line => {
+    const t = line.trim();
+    if (!t) return '';
+    if (/^(?:\d{1,3}\s*[–-]\s*\d{1,3}\s*s\b|HOOK\s*\d|V\d\b)/i.test(t)) return `<p><strong>${esc(t)}</strong></p>`;
+    const m = t.match(/^(SCRIPT|VISUALS?|VO|SUPERS?|ON[- ]SCREEN|SFX|MUSIC|CTA)\s*:\s*(.*)$/i);
+    return m ? `<p><strong>${esc(m[1].toUpperCase())}:</strong> ${esc(m[2])}</p>` : `<p>${esc(t)}</p>`;
+  }).join('');
+  return [
+    `<p>${header}</p>`,
+    section(video ? 'Video Concept' : 'Concept / Idea', concept),
+    donts.length ? section('Don\u2019ts', `<ul>${donts.map(d => `<li>${esc(d)}</li>`).join('')}</ul>`) : '',
+    video && hooks.length ? section(hooks.length > 1 ? 'Hook Variations' : 'Hook', hooks.length > 1 ? `<ol>${hooks.map(h => `<li>${esc(h)}</li>`).join('')}</ol>` : `<p>${esc(hooks[0])}</p>`) : '',
+    video ? section('Script / Message', script) : section('Supporting Text', f.copy ? `<p>${br(f.copy)}</p>` : ''),
+    f.test ? section('What we\u2019re testing', `<p>${esc(String(f.test).replace(/^test:\s*/i, ''))}</p>`) : '',
+    f.why ? `<p><em>Why: ${esc(String(f.why).replace(/^why:\s*/i, ''))}</em></p>` : '',
+    `<p><em>Brief written by Medium · approved by ${esc(approver)}</em></p>`,
+  ].filter(Boolean).join('');
+}
+
+/** The older evidence update (kept for reference; no longer posted). */
 function evidenceHtml(b, approver) {
   const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const ev = b.evidence || {};
@@ -111,8 +154,8 @@ async function submitBrief(b, { approver, approverEmail = null, cfg = {} } = {})
     { b: boardId, g: group, n: ticketName(b), v: JSON.stringify(values) }, { timeoutMs: 60000 });
   const itemId = d?.create_item?.id;
   if (!itemId) throw new Error('Monday did not return the new item');
-  await mondayQuery('mutation ($i: ID!, $body: String!) { create_update(item_id: $i, body: $body) { id } }', { i: itemId, body: evidenceHtml(b, approver) }).catch(e => skipped.push(`evidence update: ${e.message}`));
+  await mondayQuery('mutation ($i: ID!, $body: String!) { create_update(item_id: $i, body: $body) { id } }', { i: itemId, body: briefHtml(b, approver) }).catch(e => skipped.push(`brief update: ${e.message}`));
   return { item_id: String(itemId), board_id: boardId, skipped };
 }
 
-module.exports = { submitBrief, columnValues, ticketName, evidenceHtml, boardLabels };
+module.exports = { briefHtml, submitBrief, columnValues, ticketName, evidenceHtml, boardLabels };

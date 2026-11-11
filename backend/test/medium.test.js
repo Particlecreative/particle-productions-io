@@ -584,3 +584,23 @@ test('captain: review-attribution placeholders and reading speed are never repor
   assert.equal(cleanPreflight({ verdict: 'passed', must_fix: 0, issues: [] }).verdict, 'passed');
   assert.equal(cleanPreflight(null), null);
 });
+
+test('Monday: the update is the brief (header, concept, don\'ts, hook, script by beat, test, why) — not the evidence', () => {
+  const { briefHtml } = require('../src/lib/medium/monday');
+  const b = { format: 'video', lane: 'Particle', product: 'Face Cream', move: 'NEW_ANGLE', score: { total: 72 },
+    fields: { video_type: 'AI Creator', sizes: ['4x5', '9x16'], duration: 40, brief: 'A 55–62 man at his bathroom sink, mid-morning light.\n\nStructure: proof-first POV hook, then the problem.',
+      donts: ['Not an ad look', 'No real competitor brand on props'], hook: 'I don’t trust anything online. So I’m testing this on camera.',
+      script: '0–4s — THE HOOK (talking to camera)\nSCRIPT: "I don’t trust anything online."\nVISUALS: He’s at the sink, bottle in hand.\n\n4–10s — THE PROBLEM\nSCRIPT: "Eye bags, dark spots, wrinkles."',
+      test: 'Test: hook only — 3 versions.', why: 'Proof-first hooks win in men’s grooming (Upspring).' },
+    evidence: { items: [{ claim: 'Men’s-grooming winners use Demo', source: 'Upspring' }] }, preflight: { verdict: 'issues', must_fix: 2 } };
+  const h = briefHtml(b, 'Tomer Wilf Lezmy');
+  assert.match(h, /^<p><strong>Department:<\/strong> Marketing\/Media \| <strong>Product:<\/strong> Face Cream \| <strong>Platform:<\/strong> Meta \| <strong>Type:<\/strong> AI Creator \| <strong>Sizes Needed:<\/strong> 4×5, 9×16 \| <strong>Est\. Duration:<\/strong> 40 sec<\/p>/);
+  assert.match(h, /<p><strong>Video Concept<\/strong><\/p><p>A 55–62 man at his bathroom sink, mid-morning light\.<\/p><p>Structure: proof-first POV hook/);
+  assert.match(h, /<li>Not an ad look<\/li>/);
+  assert.match(h, /<p><strong>Hook<\/strong><\/p><p>I don’t trust anything online/);
+  assert.match(h, /<p><strong>0–4s — THE HOOK \(talking to camera\)<\/strong><\/p><p><strong>SCRIPT:<\/strong> "I don’t trust anything online\."<\/p><p><strong>VISUALS:<\/strong>/);
+  assert.match(h, /What we’re testing<\/strong><\/p><p>hook only — 3 versions\./);
+  assert.match(h, /<em>Why: Proof-first hooks win/);
+  assert.match(h, /approved by Tomer Wilf Lezmy/);
+  assert.doesNotMatch(h, /Evidence|must-fix|pre-flight|score 72/);
+});
