@@ -55,7 +55,11 @@ export default function Behind({ part, setPart, overview, notify, isAdmin, reloa
               <p className="md-sub mt-1">Phrases Medium borrows for hooks and supers.</p>
               {(overview?.language_bank || []).length
                 ? <div className="mt-3 flex flex-wrap gap-2">{overview.language_bank.slice(0, 12).map((q, i) => <span key={i} className="trk-chip gray !text-[13px] !py-1.5">“{q}”</span>)}</div>
-                : <div className="mt-3 md-sub">Empty for now — add phrases in Sources & settings.</div>}
+                : <div className="mt-3 md-sub">Empty for now — it fills from real ad comments once Upspring is connected.</div>}
+              {overview?.language && [['Objections', 'objections'], ['What moves them', 'motivators'], ['What they ask', 'questions']].map(([label, k]) => (overview.language[k] || []).length > 0 && (
+                <div key={k} className="mt-4"><div className="md-doc-label">{label}</div><ul className="space-y-1 text-[14px]">{overview.language[k].slice(0, 6).map((x, i) => <li key={i}>• {x.text}{x.product ? <span className="trk-dim"> · {x.product}</span> : null}</li>)}</ul></div>
+              ))}
+              {overview?.language && <p className="mt-3 text-[12px] trk-dim">From {overview.language.comments_read} comments on {overview.language.ads_read} of Particle’s ads (Upspring) — no names kept. Refreshed every Sunday.</p>}
             </div>
             {overview?.mix?.current && (
               <div className="trk-glass rounded-3xl p-6">

@@ -61,10 +61,10 @@ function rank(rows) {
 }
 
 /** One Upspring top-ads row → a Medium row (pure — tested). */
-function fromUpspring(x, account = null) {
+function fromUpspring(x, account = null, accountId = null) {
   const name = x.adName || x.title || '';
   return {
-    key: String(x.creative_id), label: name, campaign: x.campaignName || null, account,
+    key: String(x.creative_id), label: name, campaign: x.campaignName || null, account, account_id: accountId,
     lane: laneOf(name, x.campaignName, account), product: productOf(name, x.campaignName), format: x.adType === 'image' ? 'static' : 'video',
     spend: Math.round(Number(x.spend) || 0), roas: x.roas != null ? Number(x.roas) : null, ctr: x.ctr ?? null, cpa: x.cpa ?? null, purchases: x.purchases ?? null,
     image: x.image_url || null, thumb: null, meta_ids: x.externalIds || [], headlines: (x.headlines || []).filter(Boolean).slice(0, 3),
@@ -106,7 +106,7 @@ async function refresh() {
     const rows = [];
     for (const a of accounts) {
       const j = await acct.callTool('get_my_top_ads', { start_date: ymd(start), end_date: ymd(end), sort_metric: 'spend', limit: 100, ad_account: a.id }).catch(e => ({ error: e.message }));
-      for (const x of j.data || []) rows.push(fromUpspring(x, a.name));
+      for (const x of j.data || []) rows.push(fromUpspring(x, a.name, a.id));
     }
     const seen = new Set();
     const uniq = rows.filter(r => (seen.has(r.key) ? false : seen.add(r.key)));

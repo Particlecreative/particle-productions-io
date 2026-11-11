@@ -34,6 +34,7 @@ const medium = { corpus: require('./lib/medium/corpus'), writer: require('./lib/
       medium_improve: medium.writer.runImprove,
       medium_market: () => require('./lib/medium/market').runMarket(),
       medium_ranks: () => require('./lib/medium/ranks').refresh(),
+      medium_account_read: () => require('./lib/medium/accountRead').syncAccountRead(),
       brand_site_read: (p) => require('./lib/captain/site').readSite(p.brand),
       import_start: (p) => importer.startImport(p),
       import_frameio_item: importer.importFrameioItem,

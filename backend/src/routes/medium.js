@@ -103,10 +103,10 @@ router.get('/overview', async (req, res) => {
     res.json({
       counts: counts.rows, beliefs: beliefs.rows, tests: tests.rows, donors: donors.rows, recent: recent.rows,
       sources: {
-        afterlife, upspring: { connected: !!ups.connected, reason: ups.reason || null, snapshot: !!cfg.upspring_snapshot }, upspring_account: { ...upsAccount, ranks: upsRanks }, corpus: corpusRow.rows[0],
+        afterlife, upspring: { connected: !!ups.connected, reason: ups.reason || null, snapshot: !!cfg.upspring_snapshot }, upspring_account: { ...upsAccount, ranks: upsRanks, account_read_at: cfg.state?.account_read_at || null }, corpus: corpusRow.rows[0],
         monday: { submit: !!cfg.monday_submit }, worker: { alive: !!(worker?.at && Date.now() - new Date(worker.at).getTime() < 120000) },
       },
-      language_bank: cfg.language_bank || [], holidays: calendar.upcoming(new Date(), 3),
+      language_bank: cfg.language_bank || [], language: cfg.state?.language || null, holidays: calendar.upcoming(new Date(), 3),
       autopilot: { ...(cfg.autopilot || {}), last_run: cfg.state?.autopilot_at || null }, outcomes_at: cfg.state?.outcomes_at || null, monday_submit: !!cfg.monday_submit,
       digest: { ...(cfg.digest || {}), last_run: cfg.state?.digest_at || null, webhook: !!process.env.SLACK_CREATIVE_WEBHOOK_URL }, articles,
       mix: { current: cfg.lane_mix, history: cfg.state?.mix_history || [] }, market,
@@ -263,6 +263,12 @@ router.post('/upspring/connect', requireAdmin, async (req, res) => {
 });
 router.delete('/upspring', requireAdmin, async (req, res) => {
   try { res.json(await require('../lib/medium/upspringAccount').disconnect()); } catch (err) { errorJson(res, err); }
+});
+router.post('/upspring/sync-read', requireAdmin, async (req, res) => {
+  try {
+    const jobId = await enqueue('medium_account_read', { actor: actorOf(req) }, { dedupeKey: 'medium_account_read', priority: 4, maxAttempts: 1 });
+    res.json({ queued: !!jobId, already_queued: !jobId });
+  } catch (err) { errorJson(res, err); }
 });
 router.post('/upspring/refresh', requireAdmin, async (req, res) => {
   try {

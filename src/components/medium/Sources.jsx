@@ -63,6 +63,9 @@ export default function Sources({ overview, notify, isAdmin, reload }) {
   const refreshUps = async () => {
     try { const r = await mediumApi.upspringRefresh(); notify(r.already_queued ? 'Already refreshing' : 'Refreshing the rankings — about a minute'); setTimeout(async () => setUps(await mediumApi.upspring()), 60000); } catch (e) { notify(e.message, true); }
   };
+  const syncRead = async () => {
+    try { const r = await mediumApi.upspringSyncRead(); notify(r.already_queued ? 'Already syncing' : 'Syncing the account read and the language bank — a few minutes'); } catch (e) { notify(e.message, true); }
+  };
   const saveLink = async () => {
     try { await mediumApi.saveConfig({ upspring_link: linkDraft }); notify('Saved — winning ads now link to Upspring'); setLinkDraft(null); load(); } catch (e) { notify(e.message, true); }
   };
@@ -89,6 +92,7 @@ export default function Sources({ overview, notify, isAdmin, reload }) {
             <div className="flex flex-wrap gap-2">
               <button type="button" className={`trk-btn ${acc.connected ? '' : 'primary'}`} disabled={busy === 'ups'} onClick={connectUps}>{busy === 'ups' ? <Loader2 size={13} className="animate-spin" /> : <ExternalLink size={13} />} {acc.connected ? 'Reconnect' : 'Connect Upspring'}</button>
               {acc.connected && <button type="button" className="trk-btn" onClick={refreshUps}><RefreshCw size={13} /> Refresh now</button>}
+              {acc.connected && <button type="button" className="trk-btn" onClick={syncRead} title="Re-read the account profile, creative patterns and ad comments (about 10–15¢)"><RefreshCw size={13} /> Sync account read</button>}
               {acc.connected && <button type="button" className="trk-btn" onClick={disconnectUps}>Disconnect</button>}
             </div>
           )}
@@ -106,10 +110,13 @@ export default function Sources({ overview, notify, isAdmin, reload }) {
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <Source title="Upspring ranks" ok={src.upspring_account?.connected} detail={src.upspring_account?.connected ? `Particle’s own ads ranked on ROAS per lane (last 90 days)${src.upspring_account?.ranks?.creatives ? ` · ${src.upspring_account.ranks.creatives} ads` : ''}` : 'Connect Upspring above'} />
-        <Source title="Upspring explains" ok={false} warn={src.upspring?.snapshot} detail={src.upspring?.snapshot ? 'Account read pasted below (not synced yet)' : 'Not connected on the server yet — paste an account read below'} />
+        <Source title="Upspring explains" ok={!!overview?.language?.at && !!src.upspring?.snapshot} warn={!!src.upspring_account?.connected || !!src.upspring?.snapshot}
+          detail={overview?.language?.at && src.upspring?.snapshot ? `Synced from Particle’s Upspring account ${relTime(src.upspring_account.account_read_at)} — refreshed every Sunday` : src.upspring_account?.connected ? 'Syncing from Upspring for the first time — a few minutes' : src.upspring?.snapshot ? 'Pasted by hand — connect Upspring above to sync it' : 'Connect Upspring above'} />
         <Source title={`${(c.requesters || []).join(', ')}’s briefs = how to write`} ok={used > 0} detail={used ? `${used} briefs since ${c.since} · imported ${relTime(s.at)}` : 'Not imported yet'} />
-        <Source title="Language bank = what to say" ok={(cfg.language_bank || []).length > 0} warn detail={`${(cfg.language_bank || []).length} phrases`} />
-        <Source title="Market watch = what to borrow" ok={false} detail="Comes with the Upspring connection" />
+        <Source title="Language bank = what to say" ok={(cfg.language_bank || []).length > 0} warn={!overview?.language}
+          detail={overview?.language ? `${(cfg.language_bank || []).length} phrases from ${overview.language.comments_read} real comments on ${overview.language.ads_read} ads · ${relTime(overview.language.at)}` : `${(cfg.language_bank || []).length} phrases (typed by hand — syncs from ad comments once Upspring is connected)`} />
+        <Source title="Market watch = what to borrow" ok={!!overview?.market} warn={!!src.upspring?.connected}
+          detail={overview?.market ? <a className="underline-offset-2 hover:underline" href="/medium?tab=market">{overview.market.brands} brands · {overview.market.new_ads} new ads · read {relTime(overview.market.run_at)} — open Market Watch</a> : src.upspring?.connected ? 'The first market read is on its way' : 'Needs the Upspring key on the server'} />
         <Source title="Brand rules = what to obey" ok detail={<a className="underline-offset-2 hover:underline" href="/captain?tab=brain">Captain Caption’s Brain — the same rules check every brief <ExternalLink size={11} className="inline" /></a>} />
       </div>
 

@@ -114,6 +114,13 @@ async function tick() {
     await stamp('ranks_at');
     out.ranks = await ranks.refresh().catch(e => ({ error: e.message }));
   }
+  // Upspring account read + language bank: Sundays from 06:00, and right after the account is connected
+  if ((now.weekday === 0 && now.hour >= 6 && String(state.account_read_at || '').slice(0, 10) !== now.date) || (!state.account_read_at && state.ranks_at)) {
+    if ((await require('./upspringAccount').status()).connected) {
+      await stamp('account_read_at');
+      out.account_read = await enqueue('medium_account_read', {}, { dedupeKey: 'medium_account_read', priority: 4, maxAttempts: 1 }).catch(e => ({ error: e.message }));
+    }
+  }
   // brand websites → the Brain: read new ones now, re-read each weekly (one brand per tick, at night after the first read)
   try {
     const site = require('../captain/site');

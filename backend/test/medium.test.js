@@ -512,3 +512,11 @@ test('brand websites: sitemaps, product pages, schema.org data, page text and th
   assert.match(one, /Other products:\n• Particle Face Cream/);
   assert.equal(W.siteBlock(null, []), '');
 });
+
+test('language bank: comments are scrubbed of names, handles, links and emails', () => {
+  const { scrub } = require('../src/lib/medium/accountRead');
+  assert.equal(scrub('@John Smith this cream actually works on my neck'), 'this cream actually works on my neck');
+  assert.equal(scrub('My wife noticed!! see https://x.co/abc or mail me a.b@c.com'), 'My wife noticed!! see or mail me');
+  assert.equal(scrub('@mike_88 does it work for 60+?'), 'does it work for 60+?');
+  assert.equal(scrub('x'.repeat(500)).length, 400);
+});

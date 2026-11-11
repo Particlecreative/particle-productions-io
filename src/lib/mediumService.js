@@ -73,6 +73,7 @@ export const mediumApi = {
   upspringConnect: () => call('/upspring/connect', { method: 'POST' }),
   upspringDisconnect: () => call('/upspring', { method: 'DELETE' }),
   upspringRefresh: () => call('/upspring/refresh', { method: 'POST' }),
+  upspringSyncRead: () => call('/upspring/sync-read', { method: 'POST' }),
   massPlan: (request) => call('/mass/plan', { method: 'POST', body: { request } }),
   massProduce: (plan, request) => call('/mass/produce', { method: 'POST', body: { plan, request } }),
   marketRefresh: () => call('/market/refresh', { method: 'POST' }),
