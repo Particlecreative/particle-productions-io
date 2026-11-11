@@ -4,6 +4,7 @@ import {
   LayoutDashboard, DollarSign, BookOpen, Settings, Users, ChevronLeft, ChevronRight,
   History, FileText, FileSignature, Clapperboard, Users2, GripVertical,
   GanttChartSquare, Check, Star, Sun, Moon, Grid3x3, X as XIcon, Scroll, CheckSquare, Presentation, Radar, Library, Landmark, SpellCheck, Sparkles,
+  EyeOff, Plus,
 } from 'lucide-react';
 import {
   DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors,
@@ -71,10 +72,44 @@ export default function Sidebar({ open, onToggle }) {
 
   const [navItems, setNavItems] = useState(() => {
     const saved = getViewOrder('sidebar', userId);
-    return applySavedOrder(DEFAULT_NAV_ITEMS, saved);
+    return applySavedOrder(DEFAULT_NAV_ITEMS, Array.isArray(saved) ? saved : null);   // dev returns the order; live returns a promise (loaded below)
   });
   const [pendingOrder, setPendingOrder] = useState(null);
   const [savedFlash, setSavedFlash] = useState(false);
+
+  // Pages this person hid from their own menu (personal; never the Admin section). Cached locally so the menu
+  // doesn't flicker on load, and saved on the server so it follows them to another computer.
+  const hiddenKey = `cp_sidebar_hidden_${userId}`;
+  const [hidden, setHidden] = useState(() => { try { return JSON.parse(localStorage.getItem(hiddenKey) || '[]'); } catch { return []; } });
+  const [showAdd, setShowAdd] = useState(false);
+  const [hiddenFlash, setHiddenFlash] = useState(null);   // { label, to } → "Hidden · Undo"
+
+  // Load the saved order and hidden pages (the live API answers asynchronously)
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const [order, hid] = await Promise.all([
+        Promise.resolve(getViewOrder('sidebar', userId)).catch(() => null),
+        Promise.resolve(getViewOrder('sidebar_hidden', userId)).catch(() => null),
+      ]);
+      if (!alive) return;
+      if (Array.isArray(order) && order.length) setNavItems(applySavedOrder(DEFAULT_NAV_ITEMS, order));
+      if (Array.isArray(hid)) { setHidden(hid); try { localStorage.setItem(hiddenKey, JSON.stringify(hid)); } catch { /* private mode */ } }
+    })();
+    return () => { alive = false; };
+  }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function saveHidden(next) {
+    setHidden(next);
+    try { localStorage.setItem(hiddenKey, JSON.stringify(next)); } catch { /* private mode */ }
+    Promise.resolve(saveViewOrder('sidebar_hidden', userId, next, false)).catch(e => console.warn('[sidebar] could not save hidden pages:', e?.message));
+  }
+  function hidePage(item) {
+    saveHidden([...new Set([...hidden, item.to])]);
+    setHiddenFlash({ label: item.label, to: item.to });
+    setTimeout(() => setHiddenFlash(f => (f?.to === item.to ? null : f)), 5000);
+  }
+  function showPage(to) { saveHidden(hidden.filter(x => x !== to)); setHiddenFlash(null); }
 
   // Casting risk badge
   const [castingRiskCount, setCastingRiskCount] = useState(0);
@@ -123,7 +158,8 @@ export default function Sidebar({ open, onToggle }) {
   const pageAccess = user?.page_access ?? null;
 
   const isStudio = user?.role === 'Studio';
-  const visibleItems = navItems
+  // Pages this person is allowed to see (role, brand, group access)…
+  const allowedItems = navItems
     .filter(i => !isAccounting || !i.accountingHide)
     .filter(i => !isStudio || !i.studioHide)
     .filter(i => !i.particleOnly || brand.id === 'particle')
@@ -131,6 +167,9 @@ export default function Sidebar({ open, onToggle }) {
     .filter(i => !i.nonEditorOnly || !isEditor)
     // The Library replaced Links: groups that had Links get the Library
     .filter(i => !pageAccess || isAdmin || pageAccess.includes(i.to) || (i.to === '/library' && pageAccess.includes('/links')));
+  // …minus the ones they hid from their own menu
+  const visibleItems = allowedItems.filter(i => !hidden.includes(i.to));
+  const hiddenItems = allowedItems.filter(i => hidden.includes(i.to));
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -200,6 +239,7 @@ export default function Sidebar({ open, onToggle }) {
                   <SortableNavItem
                     key={item.to}
                     {...item}
+                    onHide={() => hidePage(item)}
                     badge={item.to === '/casting-rights' ? castingRiskCount : 0}
                     badgeColor={item.to === '/casting-rights' ? castingBadgeColor : undefined}
                   />
@@ -217,6 +257,49 @@ export default function Sidebar({ open, onToggle }) {
               />
             ))
           )}
+
+          {/* Pages hidden from this person's menu — add them back */}
+          {hiddenItems.length > 0 && (open ? (
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setShowAdd(s => !s)}
+                aria-expanded={showAdd}
+                className="sidebar-link w-full text-white/45 hover:text-white"
+              >
+                <Plus size={16} className="flex-shrink-0" />
+                <span className="truncate">Add pages</span>
+                <span className="ml-auto text-[10px] rounded-full bg-white/10 px-1.5 py-0.5 leading-none">{hiddenItems.length}</span>
+              </button>
+              {showAdd && (
+                <div className="mt-1 mx-1 rounded-lg bg-white/5 border border-white/10 py-1" role="group" aria-label="Hidden pages">
+                  {hiddenItems.map(({ to, icon: Icon, label }) => (
+                    <button
+                      key={to}
+                      type="button"
+                      onClick={() => showPage(to)}
+                      className="w-full flex items-center gap-2 px-2.5 py-1.5 text-[13px] text-white/70 hover:text-white hover:bg-white/10 rounded-md"
+                      title={`Add ${label} back to my menu`}
+                    >
+                      <Icon size={14} className="flex-shrink-0" />
+                      <span className="truncate flex-1 text-left">{label}</span>
+                      <Plus size={13} className="flex-shrink-0 text-white/50" />
+                    </button>
+                  ))}
+                  {hiddenItems.length > 1 && (
+                    <button type="button" onClick={() => { saveHidden(hidden.filter(x => !hiddenItems.some(i => i.to === x))); setShowAdd(false); }}
+                      className="w-full px-2.5 pt-1.5 pb-1 text-[11px] text-white/40 hover:text-white text-left border-t border-white/10 mt-1">
+                      Show all
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            <button type="button" onClick={() => { onToggle?.(); setShowAdd(true); }} className="sidebar-link text-white/45 hover:text-white" title={`Add pages (${hiddenItems.length} hidden)`} aria-label={`Add pages, ${hiddenItems.length} hidden`}>
+              <Plus size={16} />
+            </button>
+          ))}
 
           {isAdmin && (
             <>
@@ -270,8 +353,16 @@ export default function Sidebar({ open, onToggle }) {
           </div>
         )}
 
+        {hiddenFlash && !pendingOrder && !savedFlash && (
+          <div className="px-3 py-2 border-t border-white/10 text-white/70 text-xs flex items-center gap-2" role="status">
+            <EyeOff size={12} className="flex-shrink-0" />
+            {open && <span className="truncate flex-1">{hiddenFlash.label} hidden — “Add pages” brings it back</span>}
+            <button type="button" onClick={() => showPage(hiddenFlash.to)} className="rounded bg-white/10 hover:bg-white/20 px-2 py-0.5 text-white">Undo</button>
+          </div>
+        )}
+
         {/* Dark mode toggle + Version */}
-        {!pendingOrder && !savedFlash && (
+        {!pendingOrder && !savedFlash && !hiddenFlash && (
           <div className={clsx(
             'border-t border-white/10 flex items-center',
             open ? 'px-4 py-3 justify-between' : 'px-2 py-3 justify-center'
@@ -348,7 +439,7 @@ export default function Sidebar({ open, onToggle }) {
                   { to: '/settings', icon: Settings, label: 'Settings' },
                   { to: '/users',    icon: Users,    label: 'Users' },
                 ] : []),
-              ].map(({ to, icon: Icon, label }) => (
+              ].filter(({ to }) => !hidden.includes(to)).map(({ to, icon: Icon, label }) => (
                 <button
                   key={to}
                   onClick={() => { navigate(to); setShowMoreMenu(false); }}
@@ -378,7 +469,7 @@ export default function Sidebar({ open, onToggle }) {
   );
 }
 
-function SortableNavItem({ to, icon: Icon, label, badge, badgeColor }) {
+function SortableNavItem({ to, icon: Icon, label, badge, badgeColor, onHide }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: to });
 
   return (
@@ -414,6 +505,17 @@ function SortableNavItem({ to, icon: Icon, label, badge, badgeColor }) {
         </div>
         <span className="truncate">{label}</span>
       </NavLink>
+      {onHide && (
+        <button
+          type="button"
+          onClick={onHide}
+          className="text-white/45 hover:text-white p-1 flex-shrink-0 rounded sm:opacity-0 opacity-60 sm:group-hover:opacity-100 focus:opacity-100 transition-opacity"
+          title="Hide from my menu"
+          aria-label={`Hide ${label} from my menu`}
+        >
+          <EyeOff size={12} />
+        </button>
+      )}
     </div>
   );
 }
