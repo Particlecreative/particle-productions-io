@@ -213,17 +213,23 @@ router.put('/briefs/:id', async (req, res) => {
     if (ticket !== b.ticket_name) diff.ticket_name = { from: b.ticket_name, to: ticket };
     const textChanged = ['brief', 'script', 'copy', 'hook'].some(k => diff[k]);
     const style = styleCheck({ format: b.format, kind: extra.kind || b.kind, move: b.move, lane: b.lane, fields }, { laneFirst: W.laneFirstFor(b.lane, b.format) });
-    let lines = extra.lines || b.lines, preflight = extra.preflight || b.preflight, cost = Number(b.cost_usd) || 0;
+    let lines = extra.lines || b.lines, preflight = extra.preflight || b.preflight, score = extra.score || b.score, cost = Number(b.cost_usd) || 0;
+    // Words changed (or "Check again") → new line list, Captain pre-flight AND the score + guardrails gate again,
+    // so fixing a blocked line by hand actually unblocks the brief
     if (textChanged || req.body?.recheck) {
+      const cfg = await getConfig();
       const r = await W.relines(fields, b.format);
       lines = r.lines; cost += r.cost;
-      preflight = await W.preflight(b, { ticket_name: ticket, fields, lines });
-      cost += preflight.cost || 0;
+      const out = { ticket_name: ticket, fields, lines, evidence: b.evidence?.items || [] };
+      const [pf, ctx] = await Promise.all([W.preflight(b, out), W.buildContext({ ...(b.request || {}), lane: b.lane, format: b.format, product: b.product, move: b.move === 'FREEFORM' ? 'NEW_ANGLE' : b.move, kind: extra.kind || b.kind }, cfg)]);
+      preflight = pf; cost += pf.cost || 0;
+      const s = await W.score(out, ctx, cfg, { selfId: b.id });
+      score = s.score; cost += s.cost;
     }
     const edits = [...(b.edits || []), ...(Object.keys(diff).length ? [{ at: new Date().toISOString(), by: actor, diff, version: req.body?.version || null }] : [])];
-    await W.setRow(b.id, { ...extra, fields, ticket_name: ticket, lines, preflight, style: { ...style, rewrites: b.style?.rewrites || 0, edited: true }, edits, cost_usd: cost,
+    await W.setRow(b.id, { ...extra, fields, ticket_name: ticket, lines, preflight, score, style: { ...style, rewrites: b.style?.rewrites || 0, edited: Object.keys(diff).length > 0 || !!b.style?.edited }, edits, cost_usd: cost,
       status: b.status === 'DROPPED' && style.passed ? 'PENDING_REVIEW' : b.status });
-    res.json({ ok: true, style, preflight });
+    res.json({ ok: true, style, preflight, score });
   } catch (err) { errorJson(res, err); }
 });
 

@@ -79,7 +79,11 @@ function cleanAiIssues(issues, ids) {
 
 function claimsToIssues(claims, { ids, product, lane, hasArticle }) {
   const out = [];
+  const seen = new Set();   // the same claim said in the voiceover and its subtitle is one claim
   for (const c of claims || []) {
+    const key = bare(c.claim);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
     const line_id = ids.has(c.line_id) ? c.line_id : null;
     if (c.in_sheet === 'no') out.push({ line_id, found: c.claim, fix: 'Use an approved claim, or add this one to the claims sheet', type: 'claim', severity: 'must_fix', rule: `Claims sheet${c.note ? ` — ${c.note}` : ''}` });
     else if (c.in_sheet === 'no_sheet') out.push({ line_id, found: c.claim, fix: `No approved claims stored for ${product || 'this product'} — check it is substantiated`, type: 'claim_unverified', severity: 'should_fix', rule: 'Claims sheet' });

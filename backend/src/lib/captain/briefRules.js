@@ -159,7 +159,8 @@ function guaranteeDays(text) {
 }
 
 const PLACEHOLDER_RE = /\[(?:[A-Z][A-Z0-9 _/-]{1,30})\]|\bX{2,}\s?%|\$\s?0{2,}\b|\$X+\b|\bTBD\b|\bTBC\b|lorem ipsum|\b(?:headline|copy|text) (?:here|goes here)\b/i;
-const CTA_RE = /\b(?:shop now|buy now|order now|shop the sale|get (?:yours|it|started|\d+% off)|try (?:it|now|particle|risk[- ]free)|claim (?:yours|your|the offer)|learn more|read more|see (?:why|which|who|how|the list|the ranking)|find out|take the .{0,20}quiz|tap|click|discover more)\b|[→➜➔»]/i;
+// A call to action in the copy — including the magazine lanes' "See The Full List" / "Read The Article"
+const CTA_RE = /\b(?:shop now|buy now|order now|shop the (?:sale|set|bundle)|get (?:yours|it|started|\d+% off)|try (?:it|now|particle|risk[- ]free)|claim (?:yours|your|the offer)|learn more|read more|see more|find out|take the .{0,20}quiz|tap|click|discover more|(?:see|read|view|check out) (?:the )?(?:full |whole )?(?:list|ranking|rankings|winners?|article|story|guide|top \d+)|see (?:why|which|who|how)|(?:see|read) (?:it|now))\b|[→➜➔»]/i;
 const BA_RE = /\bbefore\s*(?:&|and|\/|\+|-)\s*after\b|\bB\s?&\s?A\b/i;
 const DISCLAIMER_RE = /results (?:may )?vary|individual results|not typical|results not guaranteed|unretouched|unedited|real (?:customer|user) results?|actual results/i;
 const CURRENCY_RE = /[$€£₪¥]|\b(?:USD|EUR|GBP|ILS|dollars?|euros?|pounds? sterling)\b/i;

@@ -34,7 +34,8 @@ export default function BriefDrawer({ id, onClose, notify, onChanged, isAdmin })
   const approve = () => act('approve', () => mediumApi.approve(b.id, reason || undefined), (r) => `Approved — ${r.monday}`);
   const reject = () => act('reject', () => mediumApi.reject(b.id, reason), 'Rejected — Medium learns from the reason').then(() => setRejecting(false));
   const regenerate = () => act('regen', () => mediumApi.regenerate(b.id, reason || undefined), 'A new version is being written — it will appear in the queue');
-  const saveEdit = () => act('save', () => mediumApi.edit(b.id, { fields: edit }), 'Saved — style check and Captain Caption ran again').then(() => setEdit(null));
+  const saveEdit = () => act('save', () => mediumApi.edit(b.id, { fields: edit }), 'Saved — style check, Captain Caption and the score ran again').then(() => setEdit(null));
+  const recheck = () => act('recheck', () => mediumApi.edit(b.id, { recheck: true }), (r) => `Checked again — score ${r.score?.total ?? 'blocked'}, Captain ${r.preflight?.verdict === 'passed' ? 'passed' : `${r.preflight?.must_fix ?? '?'} must-fix`}`);
   const useVersion = (v) => act('version', () => mediumApi.edit(b.id, { version: v }), v === 'mine' ? 'Your version is now the brief' : 'Medium’s version is now the brief');
 
   const view = b?.versions && tab === 'mine' ? { ...b, ...b.versions.mine, score: b.versions.mine.score, preflight: b.versions.mine.preflight } : b;
@@ -85,7 +86,12 @@ export default function BriefDrawer({ id, onClose, notify, onChanged, isAdmin })
 
               <div className="trk-section">
                 <div className="flex items-center gap-2"><div className="trk-label">The Monday item</div>
-                  {b.status === 'PENDING_REVIEW' && !edit && tab === 'medium' && <button type="button" className="trk-btn !py-1 !px-2.5 ml-auto" onClick={() => setEdit({ ...b.fields })}><Pencil size={12} /> Edit</button>}
+                  {b.status === 'PENDING_REVIEW' && !edit && tab === 'medium' && (
+                    <span className="ml-auto flex gap-1.5">
+                      <button type="button" className="trk-btn !py-1 !px-2.5" disabled={!!busy} onClick={recheck} title="Run Captain Caption and the score again (about 2¢)">{busy === 'recheck' ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />} Check again</button>
+                      <button type="button" className="trk-btn !py-1 !px-2.5" onClick={() => setEdit({ ...b.fields })}><Pencil size={12} /> Edit</button>
+                    </span>
+                  )}
                 </div>
                 {edit ? (
                   <div className="mt-3 grid gap-3">

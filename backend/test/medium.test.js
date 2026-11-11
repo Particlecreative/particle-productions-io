@@ -153,6 +153,33 @@ test('Captain brief check: AI findings that change nothing are dropped; an empty
   assert.equal(out[1].line_id, null);
 });
 
+test('freshness: everyday brief words don\'t count; a gentler curve', () => {
+  const { freshnessScore, tokenSet } = require('../src/lib/medium/writer');
+  assert.equal(freshnessScore(0.15), 100);
+  assert.equal(freshnessScore(0.44), 52);    // the WAC gift-guide variant of its own winner was 30 before
+  assert.equal(freshnessScore(0.7), 0);
+  assert.deepEqual([...tokenSet('Please look at attached reference, copy style, apply to Particle design. Gift guide.')], ['gift', 'guide']);
+});
+
+test('CTA: magazine-lane calls to action count', () => {
+  const R2 = require('../src/lib/captain/briefRules');
+  const req = (text, kind = 'pill') => R2.normalizeRequest({ lines: [{ kind, text }] }).req;
+  for (const t of ['See The Full List', 'Read the article', 'See which cologne she picked', 'View the ranking', 'Check out the Top 5']) {
+    assert.deepEqual(R2.requiredElements(req(t).lines, req(t), 'WAC').filter(i => i.type === 'missing_cta'), [], t);
+  }
+  const none = req('5 Colognes She Loves', 'headline');
+  assert.equal(R2.requiredElements(none.lines, none, 'WAC')[0].type, 'missing_cta');
+});
+
+test('Captain brief check: the same claim in VO and subtitle is listed once', () => {
+  const { claimsToIssues } = require('../src/lib/captain/brief');
+  const out = claimsToIssues([
+    { line_id: 'l1', claim: 'Neck skin is thinner and moves all day', in_sheet: 'no_sheet', in_article: 'n/a' },
+    { line_id: 'l2', claim: 'Neck skin is thinner, and moves all day.', in_sheet: 'no_sheet', in_article: 'n/a' },
+  ], { ids: new Set(['l1', 'l2']), product: 'Neck Cream', lane: { name: 'Particle' }, hasArticle: false });
+  assert.equal(out.length, 1);
+});
+
 test('corpus: a Monday item becomes an exemplar row', () => {
   const { toRow } = require('../src/lib/medium/corpus');
   const { DEFAULTS } = require('../src/lib/medium/config');

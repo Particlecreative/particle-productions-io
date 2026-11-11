@@ -99,7 +99,7 @@ async function buildContext(req, cfg) {
   else ev.push(`AfterLife: not available (${winners.reason}). Don't invent numbers — write [AfterLife] where a number would go and base the Why on the corpus or the account read.`);
   if (cfg.upspring_snapshot) ev.push(`Upspring account read (as of the last sync):\n${String(cfg.upspring_snapshot).slice(0, 5000)}`);
   else ev.push('Upspring: not connected on the server yet.');
-  if ((cfg.language_bank || []).length) ev.push(`Customer language bank (use at least one, verbatim):\n${cfg.language_bank.slice(0, 20).map(p => `- “${p}”`).join('\n')}`);
+  if ((cfg.language_bank || []).length) ev.push(`Customer language bank — how customers talk. Borrow their words and themes for hooks and supers where they fit naturally. A phrase that reports a result someone noticed ("my wife said I look younger") is a testimonial: it may appear only as a real attributed review, so write [REAL REVIEW] instead of putting it in an actor's or creator's mouth.\n${cfg.language_bank.slice(0, 20).map(p => `- “${p}”`).join('\n')}`);
   return { lane, format, kind, brain, facts, claims, examples, templates, donors, winners, brand, evidence: ev.join('\n\n') };
 }
 
@@ -165,8 +165,14 @@ async function writeWithStyle(prompt, cfg, meta) {
   return { out, style: { ...style, rewrites }, cost };
 }
 
-const tokenSet = (s) => new Set((String(s || '').toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) || []));
+// everyday brief words every ticket shares — they say nothing about whether the idea is new
+const COMMON = new Set(['the', 'and', 'for', 'with', 'his', 'her', 'not', 'one', 'you', 'your', 'our', 'are', 'that', 'this', 'from', 'into', 'out', 'all', 'each', 'same', 'look', 'please',
+  'attached', 'reference', 'copy', 'style', 'apply', 'particle', 'design', 'static', 'video', 'sizes', 'size', 'real', 'styled', 'man', 'men', 'feel', 'feels', 'keep', 'text', 'version',
+  'versions', 'headline', 'subtitle', 'frame', 'shot', 'light', 'lighting', 'background', 'product', 'bottle', 'layout', 'meta', 'medium', 'vertical', 'seconds', 'native', 'iphone']);
+const tokenSet = (s) => new Set((String(s || '').toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) || []).filter(w => !COMMON.has(w)));
 function jaccard(a, b) { if (!a.size || !b.size) return 0; let n = 0; for (const x of a) if (b.has(x)) n++; return n / (a.size + b.size - n); }
+/** Overlap → 0–100: nothing lost below 20% overlap, 0 at 70% (a near-copy). Pure — tested. */
+const freshnessScore = (sim) => Math.max(0, Math.min(100, Math.round(100 - Math.max(0, sim - 0.2) * 200)));
 
 /** Freshness: too close to the last 60 days of tickets and Medium briefs loses points. */
 async function freshness(out, format, selfId = null) {
@@ -177,7 +183,7 @@ async function freshness(out, format, selfId = null) {
       WHERE format = $1 AND created_at > NOW() - INTERVAL '60 days' AND status NOT IN ('REJECTED', 'DROPPED', 'ERROR', 'QUEUED', 'WRITING') AND ($2::uuid IS NULL OR id <> $2)`, [format, selfId]).catch(() => ({ rows: [] }));
   let best = { sim: 0, name: null };
   for (const r of rows) { const s = jaccard(me, tokenSet(r.t)); if (s > best.sim) best = { sim: s, name: r.name }; }
-  const score = Math.max(0, Math.min(100, Math.round(100 - Math.max(0, best.sim - 0.12) * 220)));
+  const score = freshnessScore(best.sim);
   return { score, why: best.name && best.sim > 0.2 ? `Close to “${best.name}” (${Math.round(best.sim * 100)}% overlap)` : 'Nothing too similar in the last 60 days', nearest: best };
 }
 
@@ -361,4 +367,4 @@ async function runFreeform({ brief_id }) {
   }
 }
 
-module.exports = { runGenerate, runFreeform, relines, preflight, score, gate, buildContext, writerPrompt, normalizeOut, kindFor, laneFirstFor, setRow, toParam, composeBrief, WEIGHTS };
+module.exports = { runGenerate, runFreeform, relines, preflight, score, gate, freshnessScore, tokenSet, buildContext, writerPrompt, normalizeOut, kindFor, laneFirstFor, setRow, toParam, composeBrief, WEIGHTS };
