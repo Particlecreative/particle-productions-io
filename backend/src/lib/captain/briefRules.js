@@ -158,6 +158,8 @@ function guaranteeDays(text) {
   return m ? Number(m[1]) : null;
 }
 
+/** Placeholders Medium writes on purpose — a real review the team adds before production. Never reported. */
+const INTENTIONAL_RE = /real review|review text|attribution|testimonial/i;
 const PLACEHOLDER_RE = /\[(?:[A-Z][A-Z0-9 _/-]{1,30})\]|\bX{2,}\s?%|\$\s?0{2,}\b|\$X+\b|\bTBD\b|\bTBC\b|lorem ipsum|\b(?:headline|copy|text) (?:here|goes here)\b/i;
 // A call to action in the copy — including the magazine lanes' "See The Full List" / "Read The Article"
 const CTA_RE = /\b(?:shop now|buy now|order now|shop the (?:sale|set|bundle)|get (?:yours|it|started|\d+% off)|try (?:it|now|particle|risk[- ]free)|claim (?:yours|your|the offer)|learn more|read more|see more|find out|take the .{0,20}quiz|tap|click|discover more|(?:see|read|view|check out) (?:the )?(?:full |whole )?(?:list|ranking|rankings|winners?|article|story|guide|top \d+)|see (?:why|which|who|how)|(?:see|read) (?:it|now))\b|[→➜➔»]/i;
@@ -338,6 +340,7 @@ function placeholders(lines) {
   const issues = [];
   for (const l of lines) {
     const m = String(l.text).match(PLACEHOLDER_RE);
+    if (m && INTENTIONAL_RE.test(m[0])) continue;
     if (m) issues.push({ line_id: l.id, found: m[0], fix: /price/i.test(m[0]) ? 'Fill in the price' : 'Replace with the real copy', type: 'placeholder', severity: 'must_fix', rule: 'No placeholders' });
   }
   return issues;
@@ -419,7 +422,8 @@ function ruleChecks(req, facts = {}, { bc = {}, today, lane = null } = {}) {
   notes.push(...f.notes, ...o.notes);
   const issues = dedupeIssues([
     ...placeholders(lines),
-    ...readingSpeed(lines, bc),
+    // reading speed isn't checked on briefs any more (Tomer, 11 Nov 2026): brief timings are estimates and the note kept
+    // coming back — the finished video's own check still catches text that's too fast to read
     ...f.issues,
     ...o.issues,
     ...translations(lines),

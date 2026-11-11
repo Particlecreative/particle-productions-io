@@ -1,7 +1,7 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight } from 'lucide-react';
 import { readiness, READY_ORDER, niceDate } from './util';
-import { BriefCard } from './BriefItems';
+import { BriefCard, WritingRow } from './BriefItems';
 
 export const START = [
   { mode: 'idea', emoji: '💡', title: 'I have an idea', line: 'Say it the way you’d say it in the hallway. Medium shapes it into a brief — and writes a sharper version next to yours.' },
@@ -26,7 +26,12 @@ function nextRun(weekday, hour) {
 export default function Today({ overview, briefs, onOpen, go }) {
   const waiting = useMemo(() => (briefs || []).filter(b => b.status === 'PENDING_REVIEW')
     .map(b => ({ b, r: readiness(b) })).sort((x, y) => (READY_ORDER[x.r.key] ?? 9) - (READY_ORDER[y.r.key] ?? 9) || new Date(y.b.created_at) - new Date(x.b.created_at)), [briefs]);
-  const writing = (briefs || []).filter(b => ['QUEUED', 'WRITING'].includes(b.status)).length;
+  // being written: the one in progress first, then the line in order
+  const writingList = (briefs || []).filter(b => ['QUEUED', 'WRITING'].includes(b.status))
+    .sort((a, b) => (a.status === 'WRITING' ? 0 : 1) - (b.status === 'WRITING' ? 0 : 1) || new Date(a.created_at) - new Date(b.created_at));
+  const writing = writingList.length;
+  const [, tick] = useState(0);
+  useEffect(() => { if (!writing) return undefined; const t = setInterval(() => tick(x => x + 1), 5000); return () => clearInterval(t); }, [writing]);
   const ready = waiting.filter(x => x.r.key === 'ready').length;
   const next = (overview?.holidays || []).find(h => h.days_to_brief_by >= 0);
   const ap = overview?.autopilot || {};
@@ -52,14 +57,21 @@ export default function Today({ overview, briefs, onOpen, go }) {
       <section>
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h2 className="md-h2">Waiting for you</h2>
-          <span className="md-sub">{waiting.length ? `${waiting.length} brief${waiting.length === 1 ? '' : 's'}${ready ? ` · ${ready} ready to approve` : ''}` : ''}{writing ? `${waiting.length ? ' · ' : ''}✍️ ${writing} being written` : ''}</span>
+          <span className="md-sub">{waiting.length ? `${waiting.length} brief${waiting.length === 1 ? '' : 's'}${ready ? ` · ${ready} ready to approve` : ''}` : ''}</span>
           {(briefs || []).length > 0 && <button type="button" className="ml-auto text-[13.5px] font-semibold trk-muted hover:underline inline-flex items-center gap-1" onClick={() => go('briefs')}>All briefs <ArrowRight size={14} /></button>}
         </div>
-        {!waiting.length ? (
+        {writing > 0 && (
+          <div className="mt-4 trk-glass rounded-3xl p-3 sm:p-4">
+            <div className="px-2 pb-1 flex items-baseline gap-2"><span className="font-semibold text-[14.5px]">✍️ Medium is writing {writing === 1 ? 'a brief' : `${writing} briefs`}</span><span className="md-sub">— they move to Waiting for you as each one is done</span></div>
+            {writingList.slice(0, 6).map((b, i) => <WritingRow key={b.id} b={b} ahead={b.status === 'QUEUED' ? i : 0} onOpen={() => onOpen(b.id)} />)}
+            {writing > 6 && <div className="px-2 pt-2 text-[12.5px] trk-dim">+ {writing - 6} more in line · all done in about {Math.max(1, Math.round((writing * 80) / 60))} min</div>}
+          </div>
+        )}
+        {!waiting.length && !writing ? (
           <div className="mt-4 trk-glass md-empty rounded-3xl">
-            <div className="md-emoji" aria-hidden>{writing ? '✍️' : '☕️'}</div>
-            <div className="mt-3 text-[17px] font-semibold">{writing ? 'Medium is writing — they’ll show up here' : 'You’re all caught up'}</div>
-            <div className="mt-1 md-sub">{writing ? 'Each brief takes about a minute: written, style-checked, scored and proofread by Captain Caption.' : 'Start something above — or let Autopilot bring Sunday’s briefs.'}</div>
+            <div className="md-emoji" aria-hidden>☕️</div>
+            <div className="mt-3 text-[17px] font-semibold">You’re all caught up</div>
+            <div className="mt-1 md-sub">Start something above — or let Autopilot bring Sunday’s briefs.</div>
           </div>
         ) : (
           <div className="mt-4 grid gap-4 md:grid-cols-2 2xl:grid-cols-3">

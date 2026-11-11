@@ -36,7 +36,7 @@ export default function Briefs({ briefs, overview, onOpen }) {
         </div>
       </div>
       <div className="mt-3">
-        {list.length ? list.map(b => <BriefRow key={b.id} b={b} onOpen={() => onOpen(b.id)} />)
+        {list.length ? list.map(b => <BriefRow key={b.id} b={b} ahead={b.status === 'QUEUED' ? (briefs || []).filter(x => ['QUEUED', 'WRITING'].includes(x.status) && new Date(x.created_at) < new Date(b.created_at)).length : 0} onOpen={() => onOpen(b.id)} />)
           : <div className="md-empty"><div className="md-emoji" aria-hidden>🔍</div><div className="mt-2 font-semibold">Nothing here</div><div className="md-sub mt-1">{q || lane ? 'Try another search or lane.' : 'Briefs show up here as soon as Medium writes them.'}</div></div>}
       </div>
     </div>

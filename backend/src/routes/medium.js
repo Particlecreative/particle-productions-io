@@ -329,6 +329,7 @@ router.delete('/market/brands/:id', requireAdmin, async (req, res) => {
 // ── the queue ────────────────────────────────────────────────────────────────
 router.get('/briefs', async (req, res) => {
   try {
+    await require('../lib/medium/writer').ensureProgress();
     const where = [], params = [];
     const add = (sql, v) => { params.push(v); where.push(sql.replace('?', `$${params.length}`)); };
     if (req.query.status) add('status = ANY(?)', String(req.query.status).split(','));
@@ -338,7 +339,7 @@ router.get('/briefs', async (req, res) => {
     const { rows } = await db.query(
       `SELECT id, status, source, author, lane, product, format, move, kind, ticket_name, fields->>'hook' AS hook, fields->>'why' AS why,
               (score->>'total')::int AS score, score->>'band' AS band, preflight->>'verdict' AS preflight, (preflight->>'must_fix')::int AS must_fix,
-              style->'passed' AS style_passed, error, cost_usd, reviewer, review_reason, created_at, updated_at
+              style->'passed' AS style_passed, error, cost_usd, reviewer, review_reason, created_at, updated_at, progress, request->>'note' AS note, request->>'headline' AS req_headline
          FROM medium_briefs ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY created_at DESC LIMIT 200`, params);
     res.json({ briefs: rows });
   } catch (err) { errorJson(res, err); }

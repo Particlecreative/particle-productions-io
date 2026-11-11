@@ -172,6 +172,7 @@ async function writeWithStyle(prompt, cfg, meta) {
   let style = check(out);
   let rewrites = 0;
   if (!style.passed) {
+    if (meta.onRewrite) await meta.onRewrite();
     r = await callWriter(prompt + rewriteBlock(r.json, style.failures), cfg);
     cost += r.cost_usd;
     out = normalizeOut(r.json, meta.format);
@@ -264,6 +265,21 @@ async function setRow(id, fields) {
   await db.query(`UPDATE medium_briefs SET ${cols.map((c, i) => `${c} = $${i + 2}`).join(', ')}, updated_at = NOW() WHERE id = $1`, [id, ...cols.map(c => toParam(c, fields[c]))]);
 }
 
+// ── progress, so the screen can show what's being written, how far along, and about how long is left ──
+const STAGES = {
+  context: [5, 'Reading past briefs, winners and the Brain'], transfer: [10, 'Checking the transfer'], writing: [15, 'Writing it in the team’s style'],
+  rewrite: [45, 'Rewriting to the house style'], scoring: [58, 'Scoring it'], proofreading: [70, 'Captain Caption is proofreading'],
+  improving1: [80, 'Improving it (round 1)'], improving2: [90, 'Improving it (round 2)'],
+  references: [5, 'Reading your references'], freeform_writing: [15, 'Writing your idea — twice'], freeform_checking: [60, 'Scoring and proofreading both versions'],
+};
+let progressCol = null;
+const ensureProgress = () => (progressCol ||= db.query('ALTER TABLE medium_briefs ADD COLUMN IF NOT EXISTS progress JSONB').catch(() => { progressCol = null; }));
+async function progress(id, stage) {
+  const [pct, label] = STAGES[stage] || [0, stage];
+  await ensureProgress();
+  await db.query(`UPDATE medium_briefs SET progress = jsonb_build_object('stage', $2::text, 'pct', $3::int, 'label', $4::text, 'at', NOW(), 'started_at', COALESCE(progress->'started_at', to_jsonb(NOW()))) WHERE id = $1`, [id, stage, pct, label]).catch(() => null);
+}
+
 async function claimRow(id) {
   const { rows } = await db.query(`UPDATE medium_briefs SET status = 'WRITING', updated_at = NOW() WHERE id = $1 AND status IN ('QUEUED', 'WRITING') RETURNING *`, [id]);
   return rows[0] || null;
@@ -278,11 +294,13 @@ async function runGenerate({ brief_id }) {
     const cfg = await getConfig();
     const req = { ...(row.request || {}) };
     // a batch of several: each one must differ from the ones already written
+    await progress(row.id, 'context');
     if (req.batch_id) req.siblings = (await db.query(`SELECT ticket_name FROM medium_briefs WHERE request->>'batch_id' = $1 AND id <> $2 AND ticket_name IS NOT NULL`, [req.batch_id, row.id])).rows.map(r => r.ticket_name);
     const ctx = await buildContext(req, cfg);
     // Transfers: the analyst's keep / swap plan and prerequisite checks come first (spec §6.3–6.4)
     let transfer = null;
     if (String(req.move || '').startsWith('TRANSFER_')) {
+      await progress(row.id, 'transfer');
       const T = require('./transfer');
       const a = await T.analyzeTransfer(req, ctx, cfg);
       cost += a.cost;
@@ -310,7 +328,8 @@ async function runGenerate({ brief_id }) {
         } else headline.image_note = read.reason;
       }
     }
-    const meta = { format: ctx.format, kind: ctx.kind, move: req.move, lane: ctx.lane.name };
+    const meta = { format: ctx.format, kind: ctx.kind, move: req.move, lane: ctx.lane.name, onRewrite: () => progress(row.id, 'rewrite') };
+    await progress(row.id, 'writing');
     const w = await writeWithStyle(writerPrompt(ctx, req, cfg), cfg, meta);
     cost += w.cost;
     const base = { kind: w.out.kind || ctx.kind, ticket_name: w.out.ticket_name, fields: w.out.fields, lines: w.out.lines, style: w.style, exemplar_ids: ctx.examples.map(e => e.id),
@@ -319,8 +338,10 @@ async function runGenerate({ brief_id }) {
       await setRow(row.id, { ...base, status: 'DROPPED', error: `Failed the house-style check twice: ${w.style.failures.join(' · ')}`, cost_usd: cost });
       return { dropped: true };
     }
+    await progress(row.id, 'scoring');
     const s = await score(w.out, ctx, cfg, { selfId: row.id });
     cost += s.cost;
+    await progress(row.id, 'proofreading');
     const pf = await preflight(row, w.out);
     cost += pf.cost;
     // under the bar or Captain must-fix → Medium improves it first (the row stays "Writing…" meanwhile)
@@ -388,6 +409,7 @@ async function autoImprove(ctx, req, cfg, first, meta, row) {
   let cur = first, cost = 0;
   const rounds = [];
   for (let round = 1; round <= AUTO_ROUNDS && needsAutoFix(cur.score, cur.pf); round++) {
+    if (row?.id) await progress(row.id, round === 1 ? 'improving1' : 'improving2');
     let next;
     try { next = await improveOnce(ctx, req, cfg, cur, meta, row); } catch (e) { rounds.push({ round, error: String(e.message).slice(0, 200) }); break; }
     cost += next.cost;
@@ -488,6 +510,7 @@ async function runFreeform({ brief_id }) {
   try {
     const cfg = await getConfig();
     const req = row.request || {};
+    await progress(row.id, 'references');
     const refs = await resolveReferences(req.references || []);
     const siblings = await corpus.similar(req.idea, { limit: 5 }).catch(() => []);
     const guess = { lane: req.lane || 'Particle', format: req.format || 'video', product: req.product || null, move: 'NEW_ANGLE' };
@@ -497,6 +520,7 @@ async function runFreeform({ brief_id }) {
       siblings.length ? `Similar past briefs in the corpus:\n${siblings.map(s => `- ${s.name} (${s.kind}, ${s.lane})`).join('\n')}` : 'Similar past briefs: none found'].join('\n\n');
     const prompt = writerPrompt(ctx, { ...guess, note: null }, cfg).replace(/THE JOB\n[\s\S]*?\nOUTPUT\n/, () => `THE JOB\n${job}${FREEFORM_RULES}\n\nOUTPUT\n`)
       + '\nReturn chips, findings, changed, question, and the two versions "mine" and "medium", each with the brief fields above.';
+    await progress(row.id, 'freeform_writing');
     const r = await callWriter(prompt, cfg, FREEFORM_SCHEMA, 28000, refs.filter(x => x.kind === 'image' && x.data).slice(0, 4));
     cost += r.cost_usd;
     const j = r.json;
@@ -505,6 +529,7 @@ async function runFreeform({ brief_id }) {
     const product = j.chips.product || guess.product;
     const ctx2 = lane !== ctx.lane.name || format !== ctx.format || product !== guess.product ? await buildContext({ lane, format, product, move: 'NEW_ANGLE', campaign: req.campaign }, cfg) : ctx;
     const versions = {};
+    await progress(row.id, 'freeform_checking');
     for (const key of ['medium', 'mine']) {
       const out = normalizeOut(j[key], format);
       const style = styleCheck({ format, kind: out.kind, move: 'NEW_ANGLE', lane, fields: out.fields }, { laneFirst: laneFirstFor(lane, format) });
@@ -537,4 +562,4 @@ async function runFreeform({ brief_id }) {
   }
 }
 
-module.exports = { needsAutoFix, isBetter, improveBlock, runGenerate, runFreeform, runImprove, canImprove, relines, preflight, score, gate, freshnessScore, tokenSet, buildContext, writerPrompt, normalizeOut, kindFor, laneFirstFor, setRow, toParam, composeBrief, WEIGHTS };
+module.exports = { STAGES, ensureProgress, needsAutoFix, isBetter, improveBlock, runGenerate, runFreeform, runImprove, canImprove, relines, preflight, score, gate, freshnessScore, tokenSet, buildContext, writerPrompt, normalizeOut, kindFor, laneFirstFor, setRow, toParam, composeBrief, WEIGHTS };

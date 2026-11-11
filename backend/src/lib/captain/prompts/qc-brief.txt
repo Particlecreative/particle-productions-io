@@ -12,7 +12,7 @@ Check every line for:
 - The same word or name spelled differently across lines or versions.
 - Brand, product and ingredient names that don't exactly match the approved terms (accents and capitals included, e.g. Gravité).
 - The house rules from the Brain below. They apply to brief copy exactly as they apply to finished ads. Skip rules that are only about editing, footage, timing, music or layout.
-- Placeholders or notes that leaked into the copy ("[PRICE]", "TBD", "headline here", "as the headline", "toda").
+- Placeholders or notes that leaked into the copy ("[PRICE]", "TBD", "headline here", "as the headline", "toda"). Exception: [REAL REVIEW] and a note asking for the review text and attribution are intentional — the team adds a real review before production; never report them.
 - Lane fit: copy that breaks this lane's job or rules (e.g. Particle branding in a Science For You static, revealing the #1 product in a Gentleman Today ad).
 
 Claims: list EVERY line that makes a product claim — what the product does or achieves, a number or statistic, a ranking or award, "clinically", "doctor", "dermatologist", "expert", "#1", "proven", an ingredient benefit.

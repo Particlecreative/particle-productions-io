@@ -109,7 +109,12 @@ export function fixtureCall(path, { method = 'GET', body } = {}) {
     if (q.get('status')) list = list.filter(b => q.get('status').split(',').includes(b.status));
     if (q.get('lane')) list = list.filter(b => b.lane === q.get('lane'));
     if (q.get('ids')) list = list.filter(b => q.get('ids').split(',').includes(b.id));
-    return { briefs: list.map(summary) };
+    const writing = q.get('ids') ? [] : [
+      { id: 'w1', status: 'WRITING', source: 'autopilot', author: 'Medium autopilot', lane: 'Particle', product: 'Neck Cream', format: 'video', move: 'ITERATE', created_at: ago(2), progress: { stage: 'proofreading', pct: 70, label: 'Captain Caption is proofreading', at: new Date(Date.now() - 6000).toISOString() } },
+      { id: 'w2', status: 'QUEUED', source: 'autopilot', author: 'Medium autopilot', lane: 'Particle', product: 'Face Cream', format: 'design', move: 'REFRESH', created_at: ago(1) },
+      { id: 'w3', status: 'QUEUED', source: 'generator', author: 'Tomer', lane: 'Particle', product: 'Hand Cream', format: 'video', move: 'HEADLINE_HOOK', req_headline: 'Your Hands Are Telling Everyone Your Age', created_at: ago(0.5) },
+    ];
+    return { briefs: [...writing, ...list.map(summary)] };
   }
   if (p.startsWith('/briefs/') && p.split('/').length === 3) {
     const b = briefs.find(x => x.id === p.split('/')[2]) || briefs[0];

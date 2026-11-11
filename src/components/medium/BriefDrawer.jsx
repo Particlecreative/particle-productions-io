@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { X, Check, Pencil, RotateCcw, Ban, Loader2, ExternalLink, Save, Sparkles } from 'lucide-react';
 import { mediumApi } from '../../lib/mediumService';
-import { BAND, SUB_LABEL, SUB_WEIGHT, MOVE_LABEL, KIND_LABEL, FINDING, LANE_LABEL, Chip, money, readiness, origin, headline } from './util';
+import { BAND, SUB_LABEL, SUB_WEIGHT, MOVE_LABEL, KIND_LABEL, FINDING, LANE_LABEL, Chip, money, readiness, origin, headline, progressInfo } from './util';
 
 const ISSUE_SEV = { must_fix: ['Must fix', 'red'], should_fix: ['Please check', 'amber'], info: ['Note', 'gray'] };
 const EDITABLE = [['hook', 'Hook', 2], ['brief', 'Brief', 8], ['script', 'Script', 14], ['copy', 'Copy', 12], ['why', 'Why it should work', 2], ['test', 'How we’ll know', 2]];
@@ -84,7 +84,10 @@ export default function BriefDrawer({ id, onClose, notify, onChanged, isAdmin, m
                   {view.score?.total != null && <div className="text-right flex-none"><div className="cc-stat !text-[34px]">{view.score.total}</div><div className="text-[11px] trk-dim">score</div></div>}
                 </div>
               )}
-              {['QUEUED', 'WRITING'].includes(b.status) && <div className="md-verdict amber mt-5"><span className="md-emoji" aria-hidden>✍️</span><div><div className="font-semibold">Writing…</div><div className="text-[13.5px] trk-muted mt-0.5">Medium is writing it, checking the house style, scoring it and sending it past Captain Caption — about a minute.</div></div></div>}
+              {['QUEUED', 'WRITING'].includes(b.status) && (() => { const p = progressInfo(b); return (
+                <div className="md-verdict amber mt-5"><span className="md-emoji" aria-hidden>✍️</span><div className="flex-1 min-w-0"><div className="font-semibold">{p.label}</div>
+                  <div className="mt-2 h-[6px] rounded-full overflow-hidden" style={{ background: 'var(--trk-glass-hi)' }}><div className="h-full rounded-full transition-all duration-700" style={{ width: `${Math.max(3, p.pct)}%`, background: 'var(--trk-electric)' }} /></div>
+                  <div className="text-[12.5px] trk-muted mt-1.5">{p.pct}% · {p.left} — written, style-checked, scored and proofread by Captain Caption{b.status === 'WRITING' ? ', then improved if it needs it' : ''}.</div></div></div>); })()}
               {(() => { const ar = b.evidence?.auto_improve || []; const kept = ar.filter(x => x.kept); if (!ar.length) return null; const from = ar[0].from, to = kept.length ? kept[kept.length - 1].to : null;
                 return <p className="mt-3 text-[13.5px] trk-muted">✨ {kept.length ? <>Medium improved this itself before you saw it{from != null && to != null ? <>: <b style={{ color: 'var(--trk-text)' }}>{from} → {to}</b></> : ''}{kept.length > 1 ? ` in ${kept.length} rounds` : ''}{ar.some(x => x.must_fix_from > x.must_fix_to && x.kept) ? ', fixing Captain’s notes' : ''}. The first draft is in its own tab.</> : 'Medium tried to improve it, but the first draft stayed stronger.'}</p>; })()}
               {b.review_reason && <p className="mt-3 text-[13.5px] trk-muted">{b.status === 'REJECTED' ? 'Rejected' : 'Note'} by {b.reviewer}: {b.review_reason}</p>}

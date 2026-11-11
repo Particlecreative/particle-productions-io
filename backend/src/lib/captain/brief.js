@@ -68,13 +68,18 @@ function buildPrompt({ req, brand, lane, brain, facts, hasArticle }) {
  * empty / "null" fix means "remove it".
  */
 const bare = (s) => String(s ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+const NOT_REPORTED = /reading[_ ]speed|words? ?(?:per|\/) ?s(?:ec(?:ond)?)?\b|\d+ words in \d|too fast to read|real review|review text|attribution|first name \+ last initial/i;
+
 function cleanAiIssues(issues, ids) {
   return (issues || [])
     .map(i => {
       const fix = i.fix && !/^(null|none|n\/a)$/i.test(String(i.fix).trim()) ? i.fix : (i.found ? 'Remove it' : null);
       return { line_id: ids.has(i.line_id) ? i.line_id : null, found: i.found || null, fix, type: i.type || 'other', severity: SEV_IN[i.severity] ? i.severity : 'must_fix', rule: i.rule || null };
     })
-    .filter(i => (i.found || i.fix) && (!i.found || bare(i.found) !== bare(i.fix)));
+    .filter(i => (i.found || i.fix) && (!i.found || bare(i.found) !== bare(i.fix)))
+    // never these (Tomer, 11 Nov 2026): reading speed (code used to check it; brief timings are estimates) and the
+    // intentional [REAL REVIEW] placeholder / its attribution, which the team fills in before production
+    .filter(i => !NOT_REPORTED.test(`${i.found || ''} ${i.fix || ''} ${i.rule || ''} ${i.type || ''}`));
 }
 
 function claimsToIssues(claims, { ids, product, lane, hasArticle }) {

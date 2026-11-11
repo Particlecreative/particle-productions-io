@@ -97,3 +97,21 @@ export function niceDate(ymd) {
   const d = new Date(`${String(ymd).slice(0, 10)}T12:00:00`);
   return Number.isNaN(d.getTime()) ? String(ymd) : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
+
+// typical seconds left at the start of each writing step (measured roughly; the screen counts down from there)
+const LEFT = { context: 80, transfer: 75, writing: 65, rewrite: 45, scoring: 30, proofreading: 18, improving1: 70, improving2: 45, references: 100, freeform_writing: 90, freeform_checking: 40 };
+const PER_BRIEF = 80;
+const fmtLeft = (s) => (s < 60 ? `about ${Math.max(5, Math.round(s / 5) * 5)}s left` : `about ${Math.round(s / 60)} min left`);
+
+/** Where a brief that's being written is: { pct, label, left } — ahead = briefs before it in the line (pure). */
+export function progressInfo(b, ahead = 0, now = Date.now()) {
+  if (b.status === 'QUEUED' || (b.status === 'WRITING' && !b.progress)) {
+    if (b.status === 'WRITING') return { pct: 3, label: 'Starting…', left: fmtLeft(PER_BRIEF) };
+    return { pct: 0, label: ahead > 0 ? `Waiting in line — ${ahead} ahead` : 'Next in line', left: fmtLeft(PER_BRIEF * (ahead + 1)) };
+  }
+  const p = b.progress || {};
+  const elapsed = (now - new Date(p.at || now).getTime()) / 1000;
+  const base = LEFT[p.stage] ?? PER_BRIEF;
+  const left = base - elapsed;
+  return { pct: Math.min(97, Number(p.pct) || 3), label: p.label || 'Writing…', left: left > 4 ? fmtLeft(left) : 'almost done…' };
+}
