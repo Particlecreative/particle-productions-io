@@ -28,7 +28,8 @@ export default function BrandSites({ isAdmin, notify }) {
       {!sites ? <div className="py-6 text-center trk-muted"><Loader2 className="inline animate-spin" size={16} /></div> : (
         <div className="mt-4 grid gap-1">
           {sites.map(s => {
-            const [emoji, label] = STATE[s.status] || ['⚪', 'Not read yet'];
+            const stalled = s.status === 'reading' && s.tried_at && Date.now() - new Date(s.tried_at).getTime() > 30 * 60000;
+            const [emoji, label] = stalled ? ['⚪', 'Interrupted — read it again'] : STATE[s.status] || ['⚪', 'Not read yet'];
             return (
               <div key={s.brand} className="md-row !cursor-default flex-wrap">
                 <span className="font-semibold w-[90px]" style={{ color: 'var(--trk-text)' }}>{s.brand}</span>
@@ -39,7 +40,7 @@ export default function BrandSites({ isAdmin, notify }) {
                 {isAdmin && (
                   <span className="flex gap-1.5 ml-auto">
                     {edit[s.brand] == null && <button type="button" className="trk-btn !p-1.5" onClick={() => setEdit({ ...edit, [s.brand]: s.url })} aria-label={`Change the ${s.brand} website`}><Pencil size={12} /></button>}
-                    <button type="button" className="trk-btn !py-1 !text-[12.5px]" disabled={busy === s.brand || s.status === 'reading'} onClick={() => read(s.brand)}>{busy === s.brand ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Read now</button>
+                    <button type="button" className="trk-btn !py-1 !text-[12.5px]" disabled={busy === s.brand || (s.status === 'reading' && !stalled)} onClick={() => read(s.brand)}>{busy === s.brand ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} Read now</button>
                   </span>
                 )}
               </div>

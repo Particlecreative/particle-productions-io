@@ -118,7 +118,9 @@ async function tick() {
   try {
     const site = require('../captain/site');
     const ago = (t) => (t ? Date.now() - new Date(t).getTime() : Infinity);
-    const due = (await site.status()).find(x => x.status !== 'reading' && (!x.tried_at || (now.hour >= 2 && now.hour < 6 && ago(x.read_at) > 7 * 86400000 && ago(x.tried_at) > 20 * 3600000)));
+    // a reading that's been going 30+ minutes was cut off (a restart) — pick it up again
+    const stalled = (x) => x.status === 'reading' && ago(x.tried_at) > 30 * 60000;
+    const due = (await site.status()).find(x => stalled(x) || (x.status !== 'reading' && (!x.tried_at || (now.hour >= 2 && now.hour < 6 && ago(x.read_at) > 7 * 86400000 && ago(x.tried_at) > 20 * 3600000))));
     if (due) out.site = await enqueue('brand_site_read', { brand: due.brand }, { dedupeKey: `brand_site_read:${due.brand}`, priority: 3, maxAttempts: 1 });
   } catch (e) { out.site = { error: e.message }; }
   // autopilot once a week, on the set weekday/hour
