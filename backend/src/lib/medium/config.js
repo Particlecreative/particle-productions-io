@@ -29,7 +29,7 @@ const DEFAULTS = {
   // Where Medium's tickets land (CP's token; lane in the name — Tomer's choices, 11 Nov 2026). "Form Requests" on both boards.
   monday_groups: { video: 'new_group__1', design: 'new_group__1' },
   // Weekly autopilot (spec §12): Sunday 07:00 Asia/Jerusalem Medium picks winners and queues briefs. Off until switched on.
-  autopilot: { enabled: false, weekday: 0, hour: 7, per_week: 12 },
+  autopilot: { enabled: false, weekday: 0, hour: 7, per_week: 12, headline_hooks: 3 },
   // Weekly Growth digest to the creative Slack channel (spec §9.3). Off until switched on.
   digest: { enabled: false, weekday: 1, hour: 9 },
   corpus: { requesters: ['Lilian Krumholz'], since: '2026-03-15', thin_chars: 60 },
@@ -72,6 +72,7 @@ const MOVES = {
   TRANSFER_PRODUCT: 'Take a winning concept to another product in the same lane — one variable only.',
   TRANSFER_LANE: 'Take a winning concept to another lane for the same product — one variable only.',
   TRANSFER_FORMAT: 'Turn a video winner into a static set, or the reverse.',
+  HEADLINE_HOOK: 'Open a new video with the headline of a winning static, word for word — it already proved it stops the scroll.',
   REVIVE: 'A never-ran sibling of a current winner, brought back.',
   NEW_ANGLE: 'An underused angle or a category gap (at most 20% of a batch).',
 };

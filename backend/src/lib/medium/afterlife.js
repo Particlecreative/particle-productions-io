@@ -32,10 +32,26 @@ async function winners({ lane = null, product = null, format = null, since = '20
   return call(`/api/export/winners?${q}`);
 }
 
+/** One AfterLife media file (a creative's thumbnail, e.g. "/media/thumbs/…") as base64 — for reading a static's headline. */
+async function media(p) {
+  if (!configured()) return { ok: false, reason: 'AFTERLIFE is not connected to CP' };
+  if (!/^\/media\/[\w./-]+$/.test(String(p || '')) || String(p).includes('..')) return { ok: false, reason: 'Not an AfterLife media path' };
+  try {
+    const r = await fetch(`${process.env.AFTERLIFE_URL.replace(/\/$/, '')}${p}`, { headers: { ...headers(), Accept: 'image/*' }, signal: AbortSignal.timeout(20000) });
+    if (r.status === 401 || r.status === 403) return { ok: false, reason: "AfterLife doesn't share images with CP yet" };
+    if (!r.ok) return { ok: false, reason: `AfterLife image ${r.status}` };
+    const type = String(r.headers.get('content-type') || '').split(';')[0].trim();
+    if (!/^image\/(jpeg|png|webp|gif)$/.test(type)) return { ok: false, reason: `Not an image (${type || 'unknown'})` };
+    const buf = Buffer.from(await r.arrayBuffer());
+    if (buf.length > 4 * 1024 * 1024) return { ok: false, reason: 'Image too large' };
+    return { ok: true, media_type: type, data: buf.toString('base64') };
+  } catch (e) { return { ok: false, reason: `AfterLife unreachable (${e.message})` }; }
+}
+
 async function status() {
   if (!configured()) return { connected: false, reason: 'AFTERLIFE is not connected to CP' };
   const r = await winners({ limit: 1 });
   return { connected: !!r.available, reason: r.available ? null : r.reason };
 }
 
-module.exports = { configured, winners, status };
+module.exports = { configured, winners, media, status };

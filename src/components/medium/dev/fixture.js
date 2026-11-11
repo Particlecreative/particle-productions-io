@@ -137,6 +137,13 @@ export function fixtureCall(path, { method = 'GET', body } = {}) {
   }
   if (p === '/holiday/campaigns') return { campaigns: [{ batch_id: 'c0ffee00-0000-4000-8000-000000000001', holiday: 'Christmas 2026', briefs: 3, writing: 0, waiting: 2, approved: 1 }] };
   if (p.startsWith('/holiday/') && method === 'GET') return { briefs: briefs.slice(0, 3).map(b => ({ ...summary(b), source: 'holiday' })) };
+  if (p === '/static-hooks') return { available: true, items: [
+    { key: 'k1', label: 'NC_Static_NeckTruth_4x5_v2', lane: 'Particle', product: 'Neck Cream', percentile: 94, roas: 2.41, spend: 8120, thumb: '/media/thumbs/k1.webp', headline: 'Your Neck Is Telling Everyone Your Age', headline_from: 'brief copy', candidates: [{ text: 'Your Neck Is Telling Everyone Your Age', from: 'brief copy' }, { text: 'Why Is Nobody Talking About Neck Skin?', from: 'brief copy' }], tickets: [{ board_id: '8036329818', item_id: '111' }], briefed: null },
+    { key: 'k2', label: 'FC_Static_Barber_1x1', lane: 'Particle', product: 'Face Cream', percentile: 88, roas: 1.97, spend: 4300, thumb: '/media/thumbs/k2.webp', headline: null, headline_from: null, candidates: [], tickets: [], briefed: null },
+    { key: 'k3', label: 'GT_Listicle_Static_7Best', lane: 'GT', product: 'Face Cream', percentile: 91, roas: 2.2, spend: 5200, thumb: null, headline: 'The 7 Best Anti-Aging Creams For Men', headline_from: 'brief', candidates: [{ text: 'The 7 Best Anti-Aging Creams For Men', from: 'brief' }], tickets: [{ board_id: '8036329818', item_id: '222' }], briefed: { at: ago(60 * 24 * 5), n: 1 } },
+  ] };
+  if (p === '/static-hooks/read') return { ok: true, headline: 'Barber Asked If I Got Work Done' };
+  if (p === '/static-hooks/generate') return { queued: (body?.items || []).length, ids: [], skipped: [] };
   if (p === '/digest/preview') return { text: '*🔮 Medium — the week* (9 briefs written · 4 approved · 2 on Monday · 1 rejected)\n*Tests decided:* 1 won, 0 failed — winners: Neck Cream carries the thinnest-skin hook\n*Next holiday:* Christmas 2026 — briefs due in 23 days (2026-12-04)\nAI cost this week: $1.12' };
   if (p === '/digest/send') return { sent: true };
   if (/^\/briefs\/\d+\/static-version$/.test(p)) return { id: 999, queued: true };

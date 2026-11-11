@@ -296,3 +296,39 @@ test('digestText: headline counts, decided tests, next holiday and cost', () => 
   const empty = digestText({});
   assert.equal(empty.split('\n').length, 2);
 });
+
+test('extractHeadlines: labelled lines, option lists, Hebrew label, junk dropped', () => {
+  const { extractHeadlines, headlinesForRow, cleanHeadline } = require('../src/lib/medium/headlines');
+  const copy = [
+    'Headline: “The Cream Men Are Quietly Switching To”',
+    'Subheadline: Science-backed. Barber-approved.',
+    'CTA: Shop Now',
+    '',
+    'Headline options:',
+    '1. Your Neck Is Telling Everyone Your Age',
+    '2) Why Is Nobody Talking About Neck Skin?',
+    '- Same as reference',
+    '',
+    'כותרת: הקרם שגברים עוברים אליו',
+    'Title: https://example.com/page',
+    'H1: **Stop Looking Tired**',
+  ].join('\n');
+  const got = extractHeadlines(copy).map(c => c.text);
+  assert.deepEqual(got, ['The Cream Men Are Quietly Switching To', 'Your Neck Is Telling Everyone Your Age', 'Why Is Nobody Talking About Neck Skin?', 'הקרם שגברים עוברים אליו', 'Stop Looking Tired']);
+  assert.equal(cleanHeadline('TBD'), '');
+  assert.equal(cleanHeadline('One'), '');
+  assert.equal(cleanHeadline('"Barber asked if I dyed my hair"'), 'Barber asked if I dyed my hair');
+  const row = headlinesForRow({ copy: 'Headline: Stop Looking Tired', brief: 'Headline: Stop looking tired\nTitle: Look Rested in 2 Minutes', hook: 'Look Rested in 2 Minutes' });
+  assert.deepEqual(row.map(c => c.text), ['Stop Looking Tired', 'Look Rested in 2 Minutes']);
+  assert.equal(row[0].from, 'brief copy');
+});
+
+test('planWeek: headline hooks only for winning statics with a known headline, once per static', () => {
+  const { planWeek } = require('../src/lib/medium/autopilot');
+  const W = (key, extra) => ({ key, lane: 'Particle', format: 'static', product: 'Neck Cream', winner: true, percentile: 90, ...extra });
+  const winners = [W('a', { headline: 'Your Neck Is Telling Everyone Your Age', headline_from: 'brief copy' }), W('b', {}), W('c', { headline: 'Stop Looking Tired' }), W('d', { headline: 'x y', winner: false })];
+  const plan = planWeek(winners, { mix: {}, perWeek: 10, hooks: 5, hooked: { c: 1 } });
+  assert.deepEqual(plan.map(p => [p.move, p.winner.key, p.format]), [['HEADLINE_HOOK', 'a', 'video']]);
+  assert.equal(plan[0].headline, 'Your Neck Is Telling Everyone Your Age');
+  assert.equal(planWeek(winners, { mix: {}, perWeek: 10, hooks: 0 }).length, 0);
+});

@@ -57,7 +57,7 @@ const FREEFORM_SCHEMA = {
 
 // ── what kind of job each move is, per format ────────────────────────────────
 const KIND_FOR = {
-  video: { ITERATE: 'new_hooks', REFRESH: 'original', TRANSFER_PRODUCT: 'original', TRANSFER_LANE: 'original', TRANSFER_FORMAT: 'original', REVIVE: 'original', NEW_ANGLE: 'original' },
+  video: { HEADLINE_HOOK: 'original', ITERATE: 'new_hooks', REFRESH: 'original', TRANSFER_PRODUCT: 'original', TRANSFER_LANE: 'original', TRANSFER_FORMAT: 'original', REVIVE: 'original', NEW_ANGLE: 'original' },
   design: { ITERATE: 'template_swap', REFRESH: 'reference_adaptation', TRANSFER_PRODUCT: 'template_swap', TRANSFER_LANE: 'reference_adaptation', TRANSFER_FORMAT: 'original', REVIVE: 'reference_adaptation', NEW_ANGLE: 'reference_adaptation' },
 };
 const kindFor = (move, format, kind = null) => (kind && KINDS.includes(kind) ? kind : KIND_FOR[format]?.[move] || 'original');
@@ -112,6 +112,17 @@ function writerPrompt(ctx, req, cfg) {
     req.template ? `Use the named template: ${req.template}` : null,
     req.ticket_hint ? `Ticket name, exactly: ${req.ticket_hint}` : null,
     req.source ? `Source to build on: ${req.source}` : null,
+    req.headline ? [
+      `PROVEN HOOK — this exact line was the headline of a winning static ad (${req.headline_from || 'from its brief'}):`,
+      `"${req.headline}"`,
+      '- Hook version 1 is this line WORD FOR WORD, on screen in the first 2 seconds (and the first spoken line if there is VO). Do not polish, shorten or "improve" it — the exact wording is what won.',
+      '- Write 2 more hook versions that keep the same promise with a different delivery (a question, a first-person / POV line, a visual demo opener), so the test can tell whether the words or the idea did the work.',
+      '- The body pays off exactly what the headline promises — the static won on that promise; do not drift to another benefit.',
+      '- If the headline is a customer quote or reports a result someone noticed ("Barber asked if I got work done"), it stays a REAL attributed review in the video — on screen as a quote with the reviewer, never spoken by an actor or creator as their own experience. Mark it [REAL REVIEW] if the source review is not named.',
+      '- Claims stay within what the static claimed and the approved claims. If the headline makes a claim the brand rules do not support, say so in the evidence as "to verify".',
+      '- Test: does a proven static headline hold as a video hook? Read the 3-second hook rate and ROAS against this product\'s video median; version 1 vs the other two tells words vs idea.',
+      req.headline_other?.length ? `Other text on the winning static (context, not hooks): ${req.headline_other.join(' · ')}` : null,
+    ].filter(Boolean).join('\n') : null,
     req.transfer ? `TRANSFER PLAN (from the analyst — follow it; change only what it says to swap):\n${JSON.stringify(req.transfer, null, 1).slice(0, 4000)}` : null,
     req.note ? `Note from ${req.author || 'the requester'}: ${req.note}` : null,
     req.siblings?.length ? `This is one of several briefs in a batch — make it clearly different from: ${req.siblings.join(' · ')}` : null,
@@ -282,11 +293,27 @@ async function runGenerate({ brief_id }) {
       }
       req.transfer = { keep: transfer.keep, swap: transfer.swap, proof: transfer.proof_check, claims: transfer.claims_check, hypothesis: transfer.hypothesis, verdict: transfer.verdict };
     }
+    // Headline hooks: read the static itself when AfterLife shares its image — what ran beats what the brief proposed
+    let headline = null;
+    if (req.move === 'HEADLINE_HOOK' && req.headline) {
+      headline = { used: req.headline, from: req.headline_from || 'brief', edited: !!req.headline_edited };
+      if (req.thumb && !req.headline_edited && req.headline_from !== 'the ad image') {
+        const H = require('./headlines');
+        const read = await H.readFromImage({ key: req.source_key, thumb: req.thumb }).catch(e => ({ ok: false, reason: e.message }));
+        cost += read.cost || 0;
+        if (read.ok) {
+          headline.image = read.headline;
+          if (read.headline.toLowerCase() !== req.headline.toLowerCase()) { headline.brief = req.headline; req.headline = read.headline; headline.used = read.headline; }
+          req.headline_from = 'the ad image'; headline.from = 'the ad image';
+          req.headline_other = (read.other_text || []).slice(0, 6);
+        } else headline.image_note = read.reason;
+      }
+    }
     const meta = { format: ctx.format, kind: ctx.kind, move: req.move, lane: ctx.lane.name };
     const w = await writeWithStyle(writerPrompt(ctx, req, cfg), cfg, meta);
     cost += w.cost;
     const base = { kind: w.out.kind || ctx.kind, ticket_name: w.out.ticket_name, fields: w.out.fields, lines: w.out.lines, style: w.style, exemplar_ids: ctx.examples.map(e => e.id),
-      evidence: { items: w.out.evidence, afterlife: ctx.winners.available ? (ctx.winners.winners || []).slice(0, 5) : { available: false, reason: ctx.winners.reason }, examples: ctx.examples.map(e => ({ id: e.id, item_id: e.item_id, name: e.name })), ...(transfer ? { transfer } : {}) } };
+      evidence: { items: w.out.evidence, afterlife: ctx.winners.available ? (ctx.winners.winners || []).slice(0, 5) : { available: false, reason: ctx.winners.reason }, examples: ctx.examples.map(e => ({ id: e.id, item_id: e.item_id, name: e.name })), ...(transfer ? { transfer } : {}), ...(headline ? { headline } : {}) } };
     if (!w.style.passed) {
       await setRow(row.id, { ...base, status: 'DROPPED', error: `Failed the house-style check twice: ${w.style.failures.join(' · ')}`, cost_usd: cost });
       return { dropped: true };

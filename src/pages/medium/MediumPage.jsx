@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { LayoutDashboard, Sparkles, Wand2, BookOpen, FlaskConical, CalendarDays } from 'lucide-react';
+import { LayoutDashboard, Sparkles, Wand2, BookOpen, FlaskConical, CalendarDays, Quote } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useBrand } from '../../context/BrandContext';
 import { mediumApi } from '../../lib/mediumService';
@@ -10,6 +10,7 @@ import Freeform from '../../components/medium/Freeform';
 import Sources from '../../components/medium/Sources';
 import Lab from '../../components/medium/Lab';
 import Holiday from '../../components/medium/Holiday';
+import HeadlineHooks from '../../components/medium/HeadlineHooks';
 import BriefDrawer from '../../components/medium/BriefDrawer';
 import '../../components/tracker/tracker.css';
 import '../../components/captain/captain.css';
@@ -18,6 +19,7 @@ const TABS = [
   ['room', 'Strategy Room', LayoutDashboard],
   ['generate', 'Brief Generator', Sparkles],
   ['freeform', 'Freeform Brief', Wand2],
+  ['hooks', 'Headline → Hook', Quote],
   ['learns', 'What it learns from', BookOpen],
   ['lab', 'A/B Lab & Transfers', FlaskConical],
   ['holiday', 'Holiday Builder', CalendarDays],
@@ -92,6 +94,7 @@ export default function MediumPage() {
           {tab === 'room' && <StrategyRoom overview={overview} briefs={briefs} onOpen={openBrief} go={go} />}
           {tab === 'generate' && <Generator overview={overview} notify={notify} onOpen={openBrief} onQueued={load} />}
           {tab === 'freeform' && <Freeform overview={overview} notify={notify} onOpen={openBrief} onQueued={load} />}
+          {tab === 'hooks' && <HeadlineHooks overview={overview} notify={notify} onOpen={openBrief} onQueued={load} />}
           {tab === 'learns' && <Sources overview={overview} notify={notify} isAdmin={isAdmin} reload={load} />}
           {tab === 'lab' && <Lab overview={overview} notify={notify} onOpen={openBrief} />}
           {tab === 'holiday' && <Holiday overview={overview} notify={notify} onOpen={openBrief} />}

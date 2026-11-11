@@ -23,7 +23,7 @@ function jerusalemNow(d = new Date()) {
  * winners: AfterLife rows (with lane, format, key, product, winner, percentile); recent: { key → open count };
  * mix: { Particle: { video, static }, … }; perWeek: cap. Returns [{ lane, format, move, product, winner }].
  */
-function planWeek(winners, { mix = {}, recent = {}, perWeek = 12, perWinner = 3, edges = [] } = {}) {
+function planWeek(winners, { mix = {}, recent = {}, perWeek = 12, perWinner = 3, edges = [], hooks = 0, hooked = {} } = {}) {
   const out = [];
   const take = (w, move, extra = {}) => { out.push({ lane: w.lane, format: w.format === 'static' ? 'design' : 'video', move, product: w.product, winner: w, ...extra }); recent[w.key] = (recent[w.key] || 0) + 1; };
   for (const [lane, m] of Object.entries(mix)) {
@@ -36,6 +36,14 @@ function planWeek(winners, { mix = {}, recent = {}, perWeek = 12, perWinner = 3,
         need--;
       }
     }
+  }
+  // headline hooks: a winning static's headline opens a new video (only statics whose headline is known)
+  let hNeed = Number(hooks) || 0;
+  for (const w of winners.filter(x => x.winner && x.format === 'static' && x.product && x.headline && !hooked[x.key])) {
+    if (hNeed <= 0 || out.length >= perWeek) break;
+    out.push({ lane: w.lane, format: 'video', move: 'HEADLINE_HOOK', product: w.product, winner: w, headline: w.headline, headline_from: w.headline_from });
+    hooked[w.key] = 1;
+    hNeed--;
   }
   // transfers: the strongest untested edge out of each winning product
   let tNeed = (Number(mix.transfers?.video) || 0) + (Number(mix.transfers?.static) || 0);
@@ -57,14 +65,20 @@ async function runAutopilot({ actor = 'Medium autopilot', force = false } = {}) 
   const { rows: rec } = await db.query(`SELECT request->>'source_key' AS k, COUNT(*)::int AS n FROM medium_briefs WHERE request->>'source_key' IS NOT NULL AND created_at > NOW() - INTERVAL '30 days' AND status NOT IN ('REJECTED', 'ERROR') GROUP BY 1`);
   const { rows: thisWeek } = await db.query(`SELECT COUNT(*)::int AS n FROM medium_briefs WHERE created_at > NOW() - INTERVAL '7 days' AND source IN ('autopilot', 'generator', 'holiday')`);
   const { rows: edges } = await db.query('SELECT source, target, score FROM medium_affinity');
+  const { rows: hk } = await db.query(`SELECT DISTINCT request->>'source_key' AS k FROM medium_briefs WHERE move = 'HEADLINE_HOOK' AND status NOT IN ('REJECTED', 'ERROR') AND created_at > NOW() - INTERVAL '60 days'`);
+  const statics = (r.winners || []).filter(w => w.format === 'static' && w.winner && w.product);
+  const withHl = statics.length ? await require('./headlines').attachHeadlines(statics).catch(() => statics) : [];
+  const hl = new Map(withHl.map(w => [w.key, w]));
+  const winners = (r.winners || []).map(w => hl.get(w.key) || w);
   const room = Math.max(0, Math.min(Number(cfg.autopilot?.per_week) || 12, (Number(cfg.caps?.per_week) || 40) - thisWeek[0].n));
-  const plan = planWeek(r.winners || [], { mix: cfg.lane_mix, recent: Object.fromEntries(rec.map(x => [x.k, x.n])), perWeek: room, perWinner: Number(cfg.caps?.per_winner) || 3, edges });
+  const plan = planWeek(winners, { mix: cfg.lane_mix, recent: Object.fromEntries(rec.map(x => [x.k, x.n])), perWeek: room, perWinner: Number(cfg.caps?.per_winner) || 3, edges, hooks: Number(cfg.autopilot?.headline_hooks ?? 3), hooked: Object.fromEntries(hk.map(x => [x.k, 1])) });
   const batch = require('crypto').randomUUID();
   const ids = [];
   for (const p of plan) {
     const w = p.winner, t = (w.tickets || [])[0];
-    const source = `${w.label} — AfterLife ${w.percentile}th pct in its ${w.peer?.level || 'peer set'}, ROAS ${w.roas != null ? Number(w.roas).toFixed(2) : '?'} on $${Math.round(w.spend || 0).toLocaleString()} spend${t ? ` · Monday: ${MONDAY_URL(t.board_id, t.item_id)}` : ''}`;
-    const request = { lane: p.lane, format: p.format, move: p.move, product: p.product, source, source_key: w.key, source_product: p.source_product || null, note: null, author: actor, batch_id: batch, autopilot: true };
+    const source = p.move === 'HEADLINE_HOOK' ? require('./headlines').sourceLine(w) : `${w.label} — AfterLife ${w.percentile}th pct in its ${w.peer?.level || 'peer set'}, ROAS ${w.roas != null ? Number(w.roas).toFixed(2) : '?'} on $${Math.round(w.spend || 0).toLocaleString()} spend${t ? ` · Monday: ${MONDAY_URL(t.board_id, t.item_id)}` : ''}`;
+    const request = { lane: p.lane, format: p.format, move: p.move, product: p.product, source, source_key: w.key, source_product: p.source_product || null, note: null, author: actor, batch_id: batch, autopilot: true,
+      ...(p.move === 'HEADLINE_HOOK' ? { headline: p.headline, headline_from: p.headline_from, thumb: w.thumb || null } : {}) };
     const { rows } = await db.query(`INSERT INTO medium_briefs (status, source, author, lane, product, format, move, request) VALUES ('QUEUED', 'autopilot', $1, $2, $3, $4, $5, $6) RETURNING id`,
       [actor, p.lane, p.product, p.format, p.move, JSON.stringify(request)]);
     ids.push(rows[0].id);

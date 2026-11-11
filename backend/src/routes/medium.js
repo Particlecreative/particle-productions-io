@@ -121,6 +121,8 @@ function cleanRequest(b, actor) {
     campaign: str(b.campaign, 120), offer, article_url: str(b.article_url, 500), source: str(b.source, 1000), author: actor,
     // transfers: where the concept comes from (one axis per test)
     source_product: str(b.source_product, 120), source_lane: LANE_NAMES.includes(b.source_lane) ? b.source_lane : null, source_format: ['video', 'design'].includes(b.source_format) ? b.source_format : null,
+    // headline hooks: a winning static's headline, typed or picked
+    headline: move === 'HEADLINE_HOOK' ? str(b.headline, 200) : null, headline_from: move === 'HEADLINE_HOOK' && b.headline ? `typed by ${actor}` : null, headline_edited: move === 'HEADLINE_HOOK' && !!b.headline,
   };
 }
 
@@ -129,6 +131,7 @@ router.post('/generate', async (req, res) => {
     const actor = actorOf(req);
     const r = cleanRequest(req.body || {}, actor);
     if (!r.product) throw bad('Pick a product');
+    if (r.move === 'HEADLINE_HOOK') { if (!r.headline) throw bad('Type the winning static’s headline'); r.format = 'video'; }
     const count = Math.min(Math.max(Number(req.body?.count) || 1, 1), 6);
     const batch = count > 1 ? require('crypto').randomUUID() : null;
     const ids = [];
@@ -156,6 +159,52 @@ router.post('/freeform', async (req, res) => {
       [actor, request.lane, request.product, request.format, JSON.stringify(request)]);
     await enqueue('medium_freeform', { brief_id: rows[0].id }, { dedupeKey: `medium_freeform:${rows[0].id}`, priority: 8, maxAttempts: 1 });
     res.json({ queued: 1, id: rows[0].id });
+  } catch (err) { errorJson(res, err); }
+});
+
+// ── headline hooks: winning statics' headlines → video hooks ──────────────────
+router.get('/static-hooks', async (req, res) => {
+  try {
+    const H = require('../lib/medium/headlines');
+    res.json(await H.staticWinners({ lane: LANE_NAMES.includes(req.query.lane) ? req.query.lane : null, product: req.query.product ? String(req.query.product).slice(0, 120) : null, limit: 40 }));
+  } catch (err) { errorJson(res, err); }
+});
+
+// read the headline off the ad image itself (~0.2¢); cached per creative
+router.post('/static-hooks/read', async (req, res) => {
+  try {
+    const H = require('../lib/medium/headlines');
+    const all = await H.staticWinners({ limit: 60 });
+    const w = (all.items || []).find(x => x.key === String(req.body?.key || ''));
+    if (!w) throw bad('That static is not among the current winners');
+    res.json(await H.readFromImage(w));
+  } catch (err) { errorJson(res, err); }
+});
+
+router.post('/static-hooks/generate', async (req, res) => {
+  try {
+    const actor = actorOf(req);
+    const H = require('../lib/medium/headlines');
+    const picks = (Array.isArray(req.body?.items) ? req.body.items : []).slice(0, 8);
+    if (!picks.length) throw bad('Pick at least one static');
+    const all = await H.staticWinners({ limit: 60 });
+    if (!all.available) throw bad(`AfterLife is unavailable: ${all.reason}`);
+    const byKey = new Map(all.items.map(w => [w.key, w]));
+    const batch = picks.length > 1 ? require('crypto').randomUUID() : null;
+    const ids = [], skipped = [];
+    for (const p of picks) {
+      const w = byKey.get(String(p.key || ''));
+      const headline = H.cleanHeadline(p.headline) || w?.headline;
+      if (!w || !headline) { skipped.push(p.key); continue; }
+      const edited = !!p.headline && headline.toLowerCase() !== String(w.headline || '').toLowerCase();
+      const request = { lane: w.lane, format: 'video', move: 'HEADLINE_HOOK', product: w.product, source: H.sourceLine(w), source_key: w.key, author: actor, batch_id: batch,
+        headline, headline_from: edited ? `typed by ${actor}` : w.headline_from || 'brief', headline_edited: edited, thumb: w.thumb || null, note: p.note ? String(p.note).slice(0, 1000) : null };
+      const { rows } = await db.query(`INSERT INTO medium_briefs (status, source, author, lane, product, format, move, request) VALUES ('QUEUED', 'generator', $1, $2, $3, 'video', 'HEADLINE_HOOK', $4) RETURNING id`,
+        [actor, w.lane, w.product, JSON.stringify(request)]);
+      ids.push(rows[0].id);
+      await enqueue('medium_generate', { brief_id: rows[0].id }, { dedupeKey: `medium_generate:${rows[0].id}`, priority: 8, maxAttempts: 1 });
+    }
+    res.json({ queued: ids.length, ids, skipped });
   } catch (err) { errorJson(res, err); }
 });
 

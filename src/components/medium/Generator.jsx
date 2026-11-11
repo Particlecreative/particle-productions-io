@@ -7,7 +7,7 @@ import { BriefRow } from './StrategyRoom';
 /** Lane → product → format → move → count → Generate. Each brief arrives with its Why, its Test, a score and the Captain's check. */
 export default function Generator({ overview, notify, onOpen, onQueued }) {
   const opts = overview?.options || {};
-  const [f, setF] = useState({ lane: 'Particle', product: '', format: 'video', move: 'NEW_ANGLE', kind: '', count: 2, note: '', template: '', campaign: '', code: '', tier: '', ends: '', article_url: '', source_product: '', source_lane: '', source: '' });
+  const [f, setF] = useState({ lane: 'Particle', product: '', format: 'video', move: 'NEW_ANGLE', kind: '', count: 2, note: '', template: '', campaign: '', code: '', tier: '', ends: '', article_url: '', source_product: '', source_lane: '', source: '', headline: '' });
   const [more, setMore] = useState(false);
   const [busy, setBusy] = useState(false);
   const [ids, setIds] = useState([]);
@@ -84,6 +84,12 @@ export default function Generator({ overview, notify, onOpen, onQueued }) {
             <select className="trk-input" value={f.source_lane} onChange={set('source_lane')}><option value="">Pick the lane it won in</option>{(opts.lanes || []).filter(l => l !== f.lane).map(l => <option key={l} value={l}>{LANE_LABEL[l] || l}</option>)}</select>
           </label>
         )}
+        {f.move === 'HEADLINE_HOOK' && (
+          <label className="grid gap-1"><span className="trk-label">The winning static’s headline</span>
+            <input className="trk-input" value={f.headline} onChange={set('headline')} placeholder="Exactly as it ran, e.g. Your Neck Is Telling Everyone Your Age" required />
+            <span className="text-[12px] trk-dim">It opens the video word for word. Always a video. To pick from AfterLife’s winning statics, use the Headline → Hook tab.</span>
+          </label>
+        )}
         {f.move.startsWith('TRANSFER_') && (
           <label className="grid gap-1"><span className="trk-label">The winning concept (optional)</span>
             <input className="trk-input" value={f.source} onChange={set('source')} placeholder="e.g. SFY “Understand the Why” — thinnest skin fact → narrator" />
@@ -114,7 +120,7 @@ export default function Generator({ overview, notify, onOpen, onQueued }) {
             </div>
           </div>
         )}
-        <button type="submit" className="trk-btn primary justify-center" disabled={busy || !f.product.trim()}>{busy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} Generate {f.count} brief{f.count === 1 ? '' : 's'}</button>
+        <button type="submit" className="trk-btn primary justify-center" disabled={busy || !f.product.trim() || (f.move === 'HEADLINE_HOOK' && !f.headline.trim())}>{busy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} Generate {f.count} brief{f.count === 1 ? '' : 's'}</button>
         <p className="text-[12px] trk-dim">Each brief: written in house style from 3 of the team’s own briefs, style-checked, scored, then proofread by Captain Caption. About 5–10¢ each. Source winners come from AfterLife once its feed is live.</p>
       </form>
 
