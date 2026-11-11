@@ -39,11 +39,6 @@ export default function Sources({ overview, notify, isAdmin, reload }) {
       notify('Saved — used from the next brief'); load(); reload?.();
     } catch (e) { notify(e.message, true); } finally { setBusy(null); }
   };
-  const [digest, setDigest] = useState(null);
-  const previewDigest = async () => {
-    setBusy('dg');
-    try { setDigest((await mediumApi.digestPreview()).text); } catch (e) { notify(e.message, true); } finally { setBusy(null); }
-  };
   const toggleSwitch = async (patch, msg) => {
     setBusy('sw');
     try { await mediumApi.saveConfig(patch); notify(msg); await load(); reload?.(); } catch (e) { notify(e.message, true); } finally { setBusy(null); }
@@ -136,15 +131,6 @@ export default function Sources({ overview, notify, isAdmin, reload }) {
             </label>
             <p className="mt-1 text-[12.5px] trk-muted">Every Sunday 07:00 (Israel) Medium picks the week’s AfterLife winners per lane and writes up to <b>{cfg.autopilot?.per_week ?? 12}</b> briefs into the queue — hook iterations, refreshes and transfers. About {money((cfg.autopilot?.per_week ?? 12) * 0.08)} a week. {overview?.autopilot?.last_run ? `Last run ${relTime(overview.autopilot.last_run)}.` : 'Never run.'}</p>
             {isAdmin && <button type="button" className="trk-btn !py-1.5 mt-2" disabled={busy === 'ap'} onClick={runNow}>{busy === 'ap' ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Run it now</button>}
-          </div>
-          <div className="rounded-xl p-4 md:col-span-2" style={{ background: 'var(--trk-glass-hi)' }}>
-            <label className="flex items-center gap-2 font-semibold text-[14px]">
-              <input type="checkbox" checked={!!cfg.digest?.enabled} disabled={!isAdmin || busy === 'sw' || !overview?.digest?.webhook} onChange={(e) => toggleSwitch({ digest: { ...cfg.digest, enabled: e.target.checked } }, e.target.checked ? 'Weekly digest on — Mondays 09:00 in the creative Slack channel' : 'Weekly digest off')} />
-              Weekly Growth digest to Slack
-            </label>
-            <p className="mt-1 text-[12.5px] trk-muted">{overview?.digest?.webhook ? 'Every Monday 09:00 (Israel) in the creative Slack channel: what Medium wrote and what was approved, tests decided, what the transfer map learned, Article Opportunities and the next holiday deadline.' : 'Needs the creative Slack webhook on the server (SLACK_CREATIVE_WEBHOOK_URL).'}</p>
-            <button type="button" className="trk-btn !py-1.5 mt-2" disabled={busy === 'dg'} onClick={previewDigest}>{busy === 'dg' ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Preview this week’s digest</button>
-            {digest && <pre className="cc-pre mt-2">{digest}</pre>}
           </div>
         </div>
       </div>
