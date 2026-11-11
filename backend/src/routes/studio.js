@@ -174,7 +174,7 @@ router.get('/items/:itemId/updates', async (req, res) => {
 router.post('/items/:itemId/updates', async (req, res) => {
   try {
     const config = await getCreativeConfig(req.brandId);
-    res.json(await postUpdate(config, req.params.itemId, req.body?.text, req.user?.name || req.user?.email || null));
+    res.json(await postUpdate(config, req.params.itemId, req.body?.text, req.user?.name || req.user?.email || null, req.body?.mentions));
   } catch (err) { errorJson(res, err); }
 });
 

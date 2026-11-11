@@ -98,14 +98,48 @@ async function getUpdates(config, itemId, { limit = 10 } = {}) {
 }
 
 /** Post an update on a task, signed with the CP user's name (Monday shows the API account as the author). */
-async function postUpdate(config, itemId, text, author) {
+const MONDAY_ACCOUNT = () => process.env.MONDAY_ACCOUNT_SLUG || 'particle-for-men';
+
+/**
+ * Post an update on a Monday task, signed with the CP user's name. mentions = [{ id, name }] of Monday users tagged
+ * as "@Name" in the text: each becomes a real Monday mention (the chip + a notification to that person).
+ */
+/** Update text → Monday HTML: escaped, "@Name" of each tagged person turned into a mention chip, signed. Pure. */
+function updateHtml(body, author, mentions = []) {
+  const tags = [];
+  const seen = new Set();
+  for (const m of Array.isArray(mentions) ? mentions.slice(0, 20) : []) {
+    const id = String(m?.id || '');
+    const name = String(m?.name || '').trim().slice(0, 80);
+    if (!/^\d{1,15}$/.test(id) || !name || seen.has(id) || !body.includes(`@${name}`)) continue;   // only people still tagged in the text
+    seen.add(id);
+    tags.push({ id, name });
+  }
+  let html = esc(body);
+  // Longest names first, so "@Dan" never eats the start of "@Dana Levi"
+  for (const t of [...tags].sort((a, b) => b.name.length - a.name.length)) {
+    const chip = `<a class="user_mention_editor router" href="https://${MONDAY_ACCOUNT()}.monday.com/users/${t.id}" data-mention-type="User" data-mention-id="${t.id}" target="_blank" rel="noopener noreferrer">\u0000${t.id}\u0000</a>`;
+    html = html.split(`@${esc(t.name)}`).join(chip);
+  }
+  for (const t of tags) html = html.split(`\u0000${t.id}\u0000`).join(`@${esc(t.name)}`);
+  html = html.replace(/\n/g, '<br>') + (author ? `<br><br><em>— ${esc(author)}, via CP Studio</em>` : '');
+  return { html, tags };
+}
+
+async function postUpdate(config, itemId, text, author, mentions = []) {
   const body = String(text || '').trim();
   if (!body) throw bad('Write something first');
   if (body.length > 5000) throw bad('That update is too long');
   await boardOf(config, itemId);
-  const html = esc(body).replace(/\n/g, '<br>') + (author ? `<br><br><em>— ${esc(author)}, via CP Studio</em>` : '');
-  const r = await mondayQuery('mutation ($item: ID!, $body: String!) { create_update(item_id: $item, body: $body) { id } }', { item: String(itemId), body: html }, { retries: 0 });
-  return { id: String(r?.create_update?.id || '') };
+  const { html, tags } = updateHtml(body, author, mentions);
+  const vars = { item: String(itemId), body: html };
+  if (tags.length) {
+    vars.mentions = tags.map(t => ({ id: t.id, type: 'User' }));
+    const r = await mondayQuery('mutation ($item: ID!, $body: String!, $mentions: [UpdateMention]) { create_update(item_id: $item, body: $body, mentions_list: $mentions) { id } }', vars, { retries: 0 });
+    return { id: String(r?.create_update?.id || ''), mentioned: tags.map(t => t.id) };
+  }
+  const r = await mondayQuery('mutation ($item: ID!, $body: String!) { create_update(item_id: $item, body: $body) { id } }', vars, { retries: 0 });
+  return { id: String(r?.create_update?.id || ''), mentioned: [] };
 }
 
 /** Create a Monday item. columnValues is already in Monday's JSON shape. No retries (create isn't idempotent). */
@@ -127,4 +161,4 @@ async function addUpdate(itemId, body) {
 
 const updateSchedule = updateTask; // older name
 
-module.exports = { updateTask, updateSchedule, createItem, addUpdate, getUpdates, postUpdate, archiveTask, boardsFor, boardOf };
+module.exports = { updateHtml, updateTask, updateSchedule, createItem, addUpdate, getUpdates, postUpdate, archiveTask, boardsFor, boardOf };

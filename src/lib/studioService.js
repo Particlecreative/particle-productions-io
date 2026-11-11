@@ -53,7 +53,7 @@ export const studioApi = {
   patchItem: async (itemId, body) => (LIVE ? call(`/items/${itemId}`, { method: 'PATCH', body }) : { ok: true }),
   archiveItem: async (itemId) => (LIVE ? call(`/items/${itemId}/archive`, { method: 'POST', body: { confirm: true } }) : { ok: true }),
   updates: async (itemId) => (LIVE ? call(`/items/${itemId}/updates`) : (await fx()).fixtureUpdates(itemId)),
-  postUpdate: async (itemId, text) => (LIVE ? call(`/items/${itemId}/updates`, { method: 'POST', body: { text } }) : { id: String(Date.now()) }),
+  postUpdate: async (itemId, text, mentions = []) => (LIVE ? call(`/items/${itemId}/updates`, { method: 'POST', body: { text, mentions } }) : { id: String(Date.now()), mentioned: mentions.map(m => m.id) }),
   /** A file for the ticket creator (multipart) → { id, name, mime, size, kind, readable } */
   uploadTicketFile: async (file) => {
     if (!LIVE) {
