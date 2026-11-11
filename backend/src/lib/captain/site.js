@@ -1,7 +1,7 @@
 /**
  * The brand websites → an add-on to the Brain, per brand (Tomer, 11 Nov 2026): products, prices, promises, claims,
  * ingredients, how to use, ratings and review counts, guarantees and shipping — as the brand says them publicly.
- * Read politely (an honest user-agent, one page every 2 s, sitemaps first, "too many requests" respected), extracted by a cheap model, stored in
+ * Read politely (an honest user-agent, one page every 2 s — 10 s on Shopify stores — sitemaps first, "too many requests" respected), extracted by a cheap model, stored in
  * brand_site_pages, refreshed weekly. Captain Caption and Medium both see it through loadBrain() → brainText().
  * The team's approved claims and price list still win over the website; website text is data, never instructions.
  */
@@ -109,26 +109,37 @@ function siteBlock(brandRow, products, { product = null } = {}) {
 // ── fetching ─────────────────────────────────────────────────────────────────
 // Polite by design: an honest user-agent, one page every 2 s per website, and a "too many requests" answer is
 // respected — we wait only when the site says when (Retry-After ≤ 30 s), once; otherwise that site is left for this run.
-const pace = new Map();   // host → { last, stopped }
+const pace = new Map();   // host → { last, gap, stopped }
 async function get(url, { retried = false } = {}) {
   const host = new URL(url).hostname.replace(/^www\./, '');
-  const p = pace.get(host) || { last: 0, stopped: false };
+  const p = pace.get(host) || { last: 0, gap: 2000, stopped: false };
   pace.set(host, p);
   if (p.stopped) return { ok: false, status: 429, url, text: '', stopped: true };
-  const wait = p.last + 2000 - Date.now();
+  const wait = p.last + p.gap - Date.now();
   if (wait > 0) await new Promise(r => setTimeout(r, wait));
   p.last = Date.now();
   const r = await fetch(url, { headers: { 'User-Agent': UA, Accept: 'text/html,application/xml;q=0.9,*/*;q=0.8' }, redirect: 'follow', signal: AbortSignal.timeout(25000) });
   if (r.status === 429) {
     const after = Number(r.headers.get('retry-after'));
-    if (!retried && after > 0 && after <= 30) { await new Promise(res => setTimeout(res, after * 1000)); return get(url, { retried: true }); }
+    if (!retried && after > 0 && after <= 120) { await new Promise(res => setTimeout(res, after * 1000)); return get(url, { retried: true }); }
     p.stopped = true;
   }
   return { ok: r.ok, status: r.status, url: r.url, text: r.ok ? await r.text() : '' };
 }
 
+/** Shopify stores limit fast readers — read them slowly (one page every 10 s); it takes a few minutes, that's fine. */
+function slowDownIfShopify(url, html) {
+  if (!/cdn\.shopify\.com|Shopify\.shop|myshopify\.com/.test(String(html || ''))) return false;
+  const host = new URL(url).hostname.replace(/^www\./, '');
+  const p = pace.get(host) || { last: Date.now(), gap: 2000, stopped: false };
+  p.gap = 10000;
+  pace.set(host, p);
+  return true;
+}
+
 async function discover(site) {
   const home = await get(site.url);
+  if (home.ok) slowDownIfShopify(home.url || site.url, home.text);
   const base = new URL(home.url || site.url);
   const host = base.hostname;
   let urls = [];
