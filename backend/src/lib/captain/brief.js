@@ -68,7 +68,19 @@ function buildPrompt({ req, brand, lane, brain, facts, hasArticle }) {
  * empty / "null" fix means "remove it".
  */
 const bare = (s) => String(s ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
-const NOT_REPORTED = /reading[_ ]speed|words? ?(?:per|\/) ?s(?:ec(?:ond)?)?\b|\d+ words in \d|too fast to read|real review|review text|attribution|first name \+ last initial/i;
+const NOT_REPORTED = /reading[_ ]speed|words? ?(?:per|\/) ?s(?:ec(?:ond)?)?\b|\d+ words in \d|too fast to read|real review|review text|attribution|first name ?\+ ?last initial|last initial|age, city/i;
+
+/** Never these, whoever found them (code rules, the AI read or the claims check) — Tomer, 11 Nov 2026. */
+const notReported = (i) => !NOT_REPORTED.test(`${i.found || ''} ${i.fix || ''} ${i.rule || ''} ${i.type || ''}`);
+
+/** A stored pre-flight without the notes we no longer report (briefs checked before the change), counts redone. */
+function cleanPreflight(pf) {
+  if (!pf || !Array.isArray(pf.issues)) return pf;
+  const issues = pf.issues.filter(notReported);
+  if (issues.length === pf.issues.length) return pf;
+  const mustFix = issues.filter(i => i.severity === 'must_fix').length;
+  return { ...pf, issues, must_fix: mustFix, verdict: pf.verdict === 'error' || pf.verdict === 'running' ? pf.verdict : mustFix > 0 ? 'issues' : 'passed' };
+}
 
 function cleanAiIssues(issues, ids) {
   return (issues || [])
@@ -102,9 +114,9 @@ function claimsToIssues(claims, { ids, product, lane, hasArticle }) {
 async function briefResult(checkId) {
   const c = (await db.query('SELECT id, status, asset, raw, cost_usd, finished_at, item_id, error FROM captain_checks WHERE id = $1', [checkId])).rows[0];
   if (!c) return null;
-  const issues = (await db.query('SELECT id, line_id, found, fix, type, severity, rule, data FROM captain_issues WHERE check_id = $1 ORDER BY idx', [checkId])).rows;
+  const issues = (await db.query('SELECT id, line_id, found, fix, type, severity, rule, data FROM captain_issues WHERE check_id = $1 ORDER BY idx', [checkId])).rows.filter(notReported);
   return {
-    verdict: c.status === 'issues' || c.status === 'passed' ? c.status : c.status === 'error' ? 'error' : 'running',
+    verdict: c.status === 'issues' ? (issues.some(i => i.severity === 'must_fix') ? 'issues' : 'passed') : c.status === 'passed' ? 'passed' : c.status === 'error' ? 'error' : 'running',
     check_id: c.id, brief_id: c.asset?.brief_id || null, lane: c.asset?.lane || null, lines_checked: c.asset?.lines || 0,
     must_fix: issues.filter(i => i.severity === 'must_fix').length,
     issues: issues.map(i => ({ id: i.id, line_id: i.line_id, found: i.found, fix: i.fix, type: i.type, severity: SEV_OUT[i.severity] || i.severity, rule: i.rule, ...(i.data?.suggestion ? { suggestion: i.data.suggestion } : {}) })),
@@ -162,7 +174,7 @@ async function runBriefCheck(body, { trigger = 'medium', actor = null, force = f
     const r = await claude.checkBrief({ prompt, model: engine.model, prices: cfg.prices || {} });
     const ids = new Set(req.lines.map(l => l.id));
     const ai = cleanAiIssues(r.issues, ids);
-    const all = R.dedupeIssues([...rules.issues, ...ai, ...claimsToIssues(r.claims, { ids, product: req.product, lane, hasArticle })]);
+    const all = R.dedupeIssues([...rules.issues, ...ai, ...claimsToIssues(r.claims, { ids, product: req.product, lane, hasArticle })]).filter(notReported);
     const mustFix = all.filter(i => i.severity === 'must_fix').length;
     const byId = Object.fromEntries(req.lines.map(l => [l.id, l]));
     for (const [idx, i] of all.entries()) {
@@ -355,4 +367,4 @@ async function insights(days = 90) {
   return { days: d, stages: stages.rows, types: types.rows, approved_items: approved.rows[0].n, overrides: approved.rows[0].overrides };
 }
 
-module.exports = { runBriefCheck, rerunBriefCheck, briefResult, attachApproved, startBatch, runBriefBatch, batchStatus, insights, buildPrompt, linesBlock, claimsToIssues, cleanAiIssues };
+module.exports = { cleanPreflight, notReported, runBriefCheck, rerunBriefCheck, briefResult, attachApproved, startBatch, runBriefBatch, batchStatus, insights, buildPrompt, linesBlock, claimsToIssues, cleanAiIssues };

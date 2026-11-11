@@ -24,6 +24,9 @@ const { getConfig, saveConfig, seed, LANES, MOVES, PRODUCTS, LANE_RULES } = requ
 const { enqueue } = require('../lib/captain/queue');
 const { KINDS, KIND_LABEL } = require('../lib/medium/classify');
 const calendar = require('../lib/medium/calendar');
+const { cleanPreflight } = require('../lib/captain/brief');
+/** A brief as stored, minus the Captain notes we no longer report (its versions too). */
+const cleanBrief = (b) => (b ? { ...b, preflight: cleanPreflight(b.preflight), versions: b.versions ? Object.fromEntries(Object.entries(b.versions).map(([k, v]) => [k, v && v.preflight ? { ...v, preflight: cleanPreflight(v.preflight) } : v])) : b.versions } : b);
 
 const router = express.Router();
 const RANK = { Viewer: 0, Accounting: 1, Studio: 1, Editor: 2, Admin: 3 };
@@ -338,10 +341,10 @@ router.get('/briefs', async (req, res) => {
     if (req.query.ids) add('id = ANY(?::uuid[])', String(req.query.ids).split(',').filter(x => UUID_RE.test(x)));
     const { rows } = await db.query(
       `SELECT id, status, source, author, lane, product, format, move, kind, ticket_name, fields->>'hook' AS hook, fields->>'why' AS why,
-              (score->>'total')::int AS score, score->>'band' AS band, preflight->>'verdict' AS preflight, (preflight->>'must_fix')::int AS must_fix,
+              (score->>'total')::int AS score, score->>'band' AS band, preflight->>'verdict' AS preflight, (preflight->>'must_fix')::int AS must_fix, preflight->'issues' AS pf_issues,
               style->'passed' AS style_passed, error, cost_usd, reviewer, review_reason, created_at, updated_at, progress, request->>'note' AS note, request->>'headline' AS req_headline
          FROM medium_briefs ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY created_at DESC LIMIT 200`, params);
-    res.json({ briefs: rows });
+    res.json({ briefs: rows.map(({ pf_issues, ...r }) => { const pf = cleanPreflight({ verdict: r.preflight, must_fix: r.must_fix, issues: pf_issues }); return pf && Array.isArray(pf_issues) ? { ...r, preflight: pf.verdict, must_fix: pf.must_fix } : r; }) });
   } catch (err) { errorJson(res, err); }
 });
 
@@ -350,7 +353,7 @@ router.get('/briefs/:id', async (req, res) => {
     if (!UUID_RE.test(req.params.id)) return res.status(404).json({ error: 'Not found' });
     const { rows } = await db.query('SELECT * FROM medium_briefs WHERE id = $1', [req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
-    const b = rows[0];
+    const b = cleanBrief(rows[0]);
     const examples = b.exemplar_ids?.length ? (await db.query('SELECT id, board_id, item_id, name, kind, lane, product FROM medium_exemplars WHERE id = ANY($1::int[])', [b.exemplar_ids])).rows : [];
     res.json({ brief: { ...b, brief_text: require('../lib/medium/style').composeBrief(b.fields || {}) }, examples });
   } catch (err) { errorJson(res, err); }
@@ -409,7 +412,7 @@ router.put('/briefs/:id', async (req, res) => {
 router.post('/briefs/:id/approve', async (req, res) => {
   try {
     if (!UUID_RE.test(req.params.id)) return res.status(404).json({ error: 'Not found' });
-    const b = (await db.query('SELECT * FROM medium_briefs WHERE id = $1', [req.params.id])).rows[0];
+    const b = cleanBrief((await db.query('SELECT * FROM medium_briefs WHERE id = $1', [req.params.id])).rows[0]);
     if (!b) return res.status(404).json({ error: 'Not found' });
     if (b.status !== 'PENDING_REVIEW') throw bad(`This brief is ${b.status.toLowerCase().replace('_', ' ')}`, 409);
     const reason = String(req.body?.override_reason || '').trim();

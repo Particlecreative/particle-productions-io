@@ -572,3 +572,15 @@ test('product must-knows: Face Cream carries eye bags, dark spots and wrinkles i
   assert.equal(productNotes(cfg, 'Neck Cream').length, 0);
   assert.equal(productNotes(cfg, null).length, 1);                        // Freeform: all of them
 });
+
+test('captain: review-attribution placeholders and reading speed are never reported — stored briefs cleaned on read', () => {
+  const { cleanPreflight, notReported } = require('../src/lib/captain/brief');
+  assert.equal(notReported({ found: '[First name + last initial | age, city]', fix: 'Insert the real attribution, e.g. - Mark R., Miami, FL' }), false);
+  assert.equal(notReported({ found: '18 words in 4s', fix: 'Split across 31–35s / 35–39s (≤12 words each), or cut to 12 words', type: 'reading_speed' }), false);
+  assert.equal(notReported({ found: 'Neck Creme', fix: 'Neck Cream', type: 'brand_name' }), true);
+  const pf = { verdict: 'issues', must_fix: 2, issues: [{ severity: 'must_fix', found: '[First name + last initial | age, city]', fix: 'Insert the real attribution' }, { severity: 'must_fix', found: '18 words in 4s', fix: 'Split across…', type: 'reading_speed' }, { severity: 'should_fix', found: 'Tone', fix: 'Softer' }] };
+  const c = cleanPreflight(pf);
+  assert.deepEqual([c.verdict, c.must_fix, c.issues.length], ['passed', 0, 1]);
+  assert.equal(cleanPreflight({ verdict: 'passed', must_fix: 0, issues: [] }).verdict, 'passed');
+  assert.equal(cleanPreflight(null), null);
+});
