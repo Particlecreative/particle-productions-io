@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Send, Sparkles, Loader2, RotateCcw, CheckCircle2, ExternalLink, AlertTriangle, X, Film, PenTool, Plus, Paperclip, FileText, FileVideo, Image as ImageIcon, File as FileIcon, Link2, UploadCloud } from 'lucide-react';
 import { studioApi } from '../../lib/studioService';
 import { useAuth } from '../../context/AuthContext';
+import RequestLink from './RequestLink';
 
 const STARTERS = [
   'Resize the Face Cream static to 9x16 and 4x5 for Meta, by Thursday',
@@ -117,9 +118,13 @@ function Field({ f, value, onChange, missing }) {
   );
 }
 
-/** ChatGPT-style ticket creator: describe it, Claude fills the Monday form, you review and approve. */
-export default function TicketCreator() {
+/**
+ * ChatGPT-style ticket creator: describe it, Claude fills the Monday form, you review and approve.
+ * Inside CP it uses the studio API; on the public request link (share) it gets that link's API and the requester.
+ */
+export default function TicketCreator({ api = studioApi, share = null }) {
   const { user } = useAuth();
+  const firstName = (share?.requester?.name || user?.name || '').split(' ')[0];
   const [form, setForm] = useState(null);
   const [error, setError] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -138,11 +143,13 @@ export default function TicketCreator() {
   const scroller = useRef(null);
 
   useEffect(() => {
-    studioApi.ticketForm().then(f => { setForm(f); setDraft(f.empty); }).catch(e => setError(e.message));
-  }, []);
+    api.ticketForm().then(f => { setForm(f); setDraft(f.empty); }).catch(e => setError(e.message));
+  }, [api]);
   useEffect(() => { scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: 'smooth' }); }, [messages, busy]);
 
   const def = form?.boards?.[board];
+  // on the request link the studio assigns, and the requester is whoever filled it in
+  const fields = (def?.fields || []).filter(f => !share || !["requested_by", "assignee"].includes(f.key));
   const reset = () => {
     files.forEach(f => f.preview && URL.revokeObjectURL(f.preview));
     setFiles([]); sentFiles.current = new Set();
@@ -154,7 +161,7 @@ export default function TicketCreator() {
       const key = `${Date.now()}-${Math.random()}`;
       const kind = guessKind(file);
       setFiles(fs => [...fs, { key, name: file.name || 'pasted-image.png', size: file.size, kind, readable: READABLE.has(kind), read: true, attach: true, uploading: true, preview: kind === 'image' ? URL.createObjectURL(file) : null }]);
-      studioApi.uploadTicketFile(file)
+      api.uploadTicketFile(file)
         .then(r => setFiles(fs => fs.map(f => (f.key === key ? { ...f, ...r, uploading: false } : f))))
         .catch(e => setFiles(fs => fs.map(f => (f.key === key ? { ...f, uploading: false, error: e.message } : f))));
     }
@@ -167,7 +174,7 @@ export default function TicketCreator() {
     const next = [...messages, { role: 'user', content, files: fresh.map(f => f.name) }];
     setMessages(next); setInput(''); setBusy(true); setError(null);
     try {
-      const r = await studioApi.draftTicket({ messages: next.map(({ role, content: c }) => ({ role, content: c })), draft, board, files: files.filter(f => f.id && f.read && f.readable).map(f => f.id) });
+      const r = await api.draftTicket({ messages: next.map(({ role, content: c }) => ({ role, content: c })), draft, board, files: files.filter(f => f.id && f.read && f.readable).map(f => f.id) });
       fresh.forEach(f => sentFiles.current.add(f.id));
       setMessages(m => [...m, { role: 'assistant', content: r.reply, sources: r.sources }]);
       setBoard(r.board); setDraft(r.fields); setMissing(r.missing || []);
@@ -175,12 +182,12 @@ export default function TicketCreator() {
       setMessages(m => [...m, { role: 'assistant', content: `Sorry — ${e.message}`, error: true }]);
     } finally { setBusy(false); }
   };
-  const required = (def?.fields || []).filter(f => f.required);
+  const required = fields.filter(f => f.required);
   const stillMissing = required.filter(f => !(Array.isArray(draft?.[f.key]) ? draft[f.key].length : draft?.[f.key])).map(f => f.key);
   const submit = async () => {
     setSubmitting(true); setError(null);
     try {
-      const r = await studioApi.submitTicket({ board, fields: draft, conversation: messages.map(({ role, content }) => ({ role, content })), files: files.filter(f => f.id && f.attach).map(f => f.id) });
+      const r = await api.submitTicket({ board, fields: draft, conversation: messages.map(({ role, content }) => ({ role, content })), files: files.filter(f => f.id && f.attach).map(f => f.id) });
       setCreated(r); setConfirm(false);
     } catch (e) { setError(e.message); setConfirm(false); } finally { setSubmitting(false); }
   };
@@ -192,13 +199,13 @@ export default function TicketCreator() {
     return (
       <div className="max-w-xl mx-auto mt-10 bg-white rounded-3xl border border-gray-200 p-10 text-center">
         <CheckCircle2 size={44} className="mx-auto text-emerald-500" />
-        <div className="text-xl font-bold text-[#030b2e] mt-3">Ticket created on {board === 'video' ? 'Video Projects' : 'Design Projects 2.0'}</div>
+        <div className="text-xl font-bold text-[#030b2e] mt-3">{share ? `Thanks, ${firstName} — the studio has it` : `Ticket created on ${board === 'video' ? 'Video Projects' : 'Design Projects 2.0'}`}</div>
         <div className="text-sm text-gray-600 mt-1">{created.name}</div>
-        <div className="text-xs text-gray-400 mt-1">In “Form Requests” · the brief is posted as an update{created.attached ? ` · ${created.attached} file${created.attached === 1 ? '' : 's'} attached` : ''}</div>
+        <div className="text-xs text-gray-400 mt-1">{share ? <>On {board === 'video' ? 'Video Projects' : 'Design Projects 2.0'} · requested by <b className="text-gray-600">{created.requester || share.requester?.name}</b>{created.tagged ? ' (tagged on Monday)' : ''}</> : 'In “Form Requests” · the brief is posted as an update'}{created.attached ? ` · ${created.attached} file${created.attached === 1 ? '' : 's'} attached` : ''}</div>
         {created.failed?.length > 0 && <div className="text-xs text-amber-700 mt-2">Couldn’t attach: {created.failed.join(', ')}</div>}
         <div className="flex justify-center gap-2 mt-6">
           {created.url && <a href={created.url} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold px-5 py-2.5 rounded-xl text-white flex items-center gap-1.5" style={{ background: '#0808f8' }}>Open in Monday <ExternalLink size={14} /></a>}
-          <button type="button" onClick={reset} className="text-sm font-semibold px-5 py-2.5 rounded-xl border border-gray-200 hover:bg-gray-50">New ticket</button>
+          <button type="button" onClick={reset} className="text-sm font-semibold px-5 py-2.5 rounded-xl border border-gray-200 hover:bg-gray-50">{share ? 'Request another' : 'New ticket'}</button>
         </div>
       </div>
     );
@@ -219,13 +226,16 @@ export default function TicketCreator() {
         <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
           <Sparkles size={16} className="text-[#0808f8]" />
           <span className="text-sm font-bold text-[#030b2e]">Ticket assistant</span>
-          <span className="text-xs text-gray-400">· describe the task, I’ll fill the Monday form</span>
-          {messages.length > 0 && <button type="button" onClick={reset} className="ml-auto text-xs font-semibold text-gray-500 hover:text-gray-800 flex items-center gap-1"><RotateCcw size={12} /> Start over</button>}
+          <span className="text-xs text-gray-400 hidden sm:inline">· describe the task, I’ll fill the form</span>
+          <span className="ml-auto flex items-center gap-3">
+            {messages.length > 0 && <button type="button" onClick={reset} className="text-xs font-semibold text-gray-500 hover:text-gray-800 flex items-center gap-1"><RotateCcw size={12} /> Start over</button>}
+            {share ? <button type="button" onClick={share.onChangeRequester} className="text-xs text-gray-500 hover:text-[#0808f8]" title="Change who the request is from">as <b className="text-gray-800">{share.requester?.name}</b></button> : <RequestLink />}
+          </span>
         </div>
         <div ref={scroller} className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-3">
           {!messages.length && (
             <div className="m-auto max-w-lg text-center">
-              <div className="text-2xl font-black text-[#030b2e] uppercase" style={{ fontFamily: '"Sofia Sans Extra Condensed", sans-serif' }}>What do you need made, {user?.name?.split(' ')[0] || 'there'}?</div>
+              <div className="text-2xl font-black text-[#030b2e] uppercase" style={{ fontFamily: '"Sofia Sans Extra Condensed", sans-serif' }}>What do you need made, {firstName || 'there'}?</div>
               <p className="text-sm text-gray-500 mt-1">Write it like you’d tell the team. Paste links (Google Docs, Dropbox, references) and add files or screenshots — I’ll read them, pick the board, fill every field and ask only if something essential is missing.</p>
               <div className="flex flex-col gap-2 mt-5">
                 {STARTERS.map(s => <button key={s} type="button" onClick={() => send(s)} className="text-left text-sm px-4 py-2.5 rounded-xl border border-gray-200 hover:border-[#0808f8] hover:bg-[#0808f8]/5 text-gray-700">{s}</button>)}
@@ -287,7 +297,7 @@ export default function TicketCreator() {
           {(draft.product || draft.task_name) && <div className="mt-3 text-xs text-gray-500">Monday name: <b className="text-gray-900">{itemName(draft) || '—'}</b></div>}
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-3.5">
-          {def.fields.map(f => (
+          {fields.map(f => (
             <Field key={f.key} f={f} value={draft[f.key]} missing={missing.includes(f.key) && stillMissing.includes(f.key)}
               onChange={(v) => setDraft(d => ({ ...d, [f.key]: v }))} />
           ))}
@@ -301,14 +311,14 @@ export default function TicketCreator() {
           </div>
         </div>
         <div className="px-5 py-3 border-t border-gray-100 flex items-center gap-3">
-          <span className="text-xs text-gray-500 flex-1">{stillMissing.length ? `Missing: ${stillMissing.map(k => def.fields.find(f => f.key === k)?.label).join(', ')}` : 'Ready — review and submit'}</span>
+          <span className="text-xs text-gray-500 flex-1">{stillMissing.length ? `Missing: ${stillMissing.map(k => fields.find(f => f.key === k)?.label).join(', ')}` : 'Ready — review and submit'}</span>
           <button type="button" disabled={!!stillMissing.length} onClick={() => setConfirm(true)}
-            className="text-sm font-semibold px-5 py-2.5 rounded-xl text-white disabled:opacity-40" style={{ background: '#0808f8' }}>Submit to Monday</button>
+            className="text-sm font-semibold px-5 py-2.5 rounded-xl text-white disabled:opacity-40" style={{ background: '#0808f8' }}>{share ? 'Send to the studio' : 'Submit to Monday'}</button>
         </div>
         {error && <div className="mx-5 mb-3 px-3 py-2 rounded-xl bg-red-50 text-red-700 text-xs">{error}</div>}
       </div>
 
-      {form.recent?.length > 0 && (
+      {!share && form.recent?.length > 0 && (
         <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-200 px-5 py-3">
           <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2">Recently created here</div>
           <div className="flex flex-col gap-1">
@@ -326,11 +336,11 @@ export default function TicketCreator() {
       {confirm && createPortal(
         <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" style={{ background: 'rgba(3,11,46,.5)' }} onClick={() => !submitting && setConfirm(false)}>
           <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl p-6" onClick={e => e.stopPropagation()}>
-            <div className="text-lg font-bold text-[#030b2e]">Create this ticket on Monday?</div>
-            <div className="text-sm text-gray-500 mt-1">{board === 'video' ? 'Video Projects' : 'Design Projects 2.0'} → Form Requests</div>
+            <div className="text-lg font-bold text-[#030b2e]">{share ? 'Send this to the studio?' : 'Create this ticket on Monday?'}</div>
+            <div className="text-sm text-gray-500 mt-1">{board === 'video' ? 'Video Projects' : 'Design Projects 2.0'} → Form Requests{share ? ` · requested by ${share.requester?.name}` : ''}</div>
             <div className="mt-4 rounded-xl bg-gray-50 p-4 text-sm flex flex-col gap-1.5 max-h-[50vh] overflow-y-auto">
               <div className="font-bold text-gray-900">{itemName(draft)}</div>
-              {def.fields.filter(f => !['task_name'].includes(f.key)).map(f => {
+              {fields.filter(f => !["task_name"].includes(f.key)).map(f => {
                 const v = draft[f.key];
                 const txt = Array.isArray(v) ? v.join(', ') : v;
                 return txt ? <div key={f.key} className="text-gray-700"><span className="text-gray-400">{f.label}:</span> <span className="whitespace-pre-wrap">{f.type === 'long_text' && txt.length > 220 ? `${txt.slice(0, 220)}…` : txt}</span></div> : null;

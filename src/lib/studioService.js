@@ -70,6 +70,10 @@ export const studioApi = {
     return data;
   },
   ticketForm: async () => (LIVE ? call('/ticket-form') : (await fx()).fixtureTicketForm),
+  /** The public request link (anyone can request a ticket; they say who they are) */
+  ticketLink: async () => (LIVE ? call('/ticket-link') : { link: { path: '/request/dev-link-1234567890abcd', uses: 3, created_by: 'Tomer' }, can_manage: true }),
+  rotateTicketLink: async () => (LIVE ? call('/ticket-link', { method: 'POST' }) : { link: { path: `/request/dev-${Date.now()}`, uses: 0, created_by: 'Tomer' } }),
+  disableTicketLink: async () => (LIVE ? call('/ticket-link', { method: 'DELETE' }) : { ok: true }),
   draftTicket: async (body) => (LIVE ? call('/ticket/draft', { method: 'POST', body }) : (await new Promise(r => setTimeout(r, 700)), (await fx()).fixtureDraft(body))),
   submitTicket: async (body) => (LIVE ? call('/ticket/submit', { method: 'POST', body: { ...body, confirm: true } }) : { ok: true, id: '1', url: 'https://monday.com', name: 'Test ticket' }),
   /** Per-user dashboard layout (stored like the sidebar order) */

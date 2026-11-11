@@ -53,6 +53,7 @@ const StudioPage = lazyPage(() => import('./pages/studio/StudioPage'));
 const TrackerPage = lazyPage(() => import('./pages/tracker/TrackerPage'));
 const LibraryPage = lazyPage(() => import('./pages/library/LibraryPage'));
 const CreativeReportsPage = lazyPage(() => import('./pages/creative/CreativeReportsPage'));
+const TicketRequestPage = lazyPage(() => import('./pages/studio/TicketRequestPage'));
 const CreativeReportEditorPage = lazyPage(() => import('./pages/creative/CreativeReportEditorPage'));
 const CreativeReportPresentPage = lazyPage(() => import('./pages/creative/CreativeReportPresentPage'));
 const CreativeReportSharePage = lazyPage(() => import('./pages/creative/CreativeReportSharePage'));
@@ -175,6 +176,7 @@ function AppRoutes() {
         <Route path="/cc-payment/:productionId" element={<CCPaymentForm />} />
         <Route path="/sign/:contractId/:token" element={<ErrorBoundary><ContractSign /></ErrorBoundary>} />
         <Route path="/weekly/:token" element={<WeeklySharePage />} />
+        <Route path="/request/:token" element={<ErrorBoundary>{lazyEl(<TicketRequestPage />, <div className="min-h-screen" style={{ background: '#f5f6fb' }} />)}</ErrorBoundary>} />
         <Route path="/script/:token" element={<ScriptSharePage />} />
         <Route path="/scripts" element={<ProtectedRoute blockForAccounting><AppShell><ErrorBoundary><Scripts /></ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />

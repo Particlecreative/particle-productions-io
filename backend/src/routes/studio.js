@@ -230,6 +230,23 @@ router.post('/ticket/files', (req, res) => {
   });
 });
 
+// ── the public request link (anyone with it can request a ticket; they say who they are) ──
+const ticketLinks = require('../lib/studio/ticketLinks');
+const linkJson = (l) => (l ? { url: `${(process.env.APP_URL || '').replace(/\/$/, '')}/request/${l.token}`, path: `/request/${l.token}`, created_by: l.created_by, created_at: l.created_at, uses: l.uses, last_used_at: l.last_used_at } : null);
+router.get('/ticket-link', async (req, res) => {
+  try { res.json({ link: linkJson(await ticketLinks.current(req.brandId)), can_manage: (RANK[req.user?.role] ?? -1) >= RANK.Admin || !!req.user?.super_admin }); } catch (err) { errorJson(res, err); }
+});
+router.post('/ticket-link', (req, res, next) => requireAdminTL(req, res, next), async (req, res) => {
+  try { res.json({ link: linkJson(await ticketLinks.rotate(req.brandId, req.user?.name || req.user?.email)) }); } catch (err) { errorJson(res, err); }
+});
+router.delete('/ticket-link', (req, res, next) => requireAdminTL(req, res, next), async (req, res) => {
+  try { res.json(await ticketLinks.disable(req.brandId)); } catch (err) { errorJson(res, err); }
+});
+function requireAdminTL(req, res, next) {
+  if ((RANK[req.user?.role] ?? -1) < RANK.Admin && !req.user?.super_admin) return res.status(403).json({ error: 'Only an admin can change the request link' });
+  next();
+}
+
 router.post('/ticket/submit', async (req, res) => {
   try {
     if (req.body?.confirm !== true) return res.status(400).json({ error: 'Confirm the ticket first' });
@@ -296,3 +313,4 @@ router.delete('/connections/tmdb', requireAdmin, async (req, res) => {
 });
 
 module.exports = router;
+module.exports.ticketPeople = ticketPeople;   // the public request link uses the same people lists

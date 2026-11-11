@@ -102,6 +102,7 @@ app.use('/api/finance-sheet',  require('./routes/financeSheet'));
 app.use('/api/taxi',           require('./routes/taxi'));
 app.use('/api/creative-reports', require('./routes/creativeReports'));
 app.use('/api/studio', require('./routes/studio'));
+app.use('/api/ticket-share', rateLimit({ windowMs: 15 * 60 * 1000, max: 150, standardHeaders: true, legacyHeaders: false, message: { error: 'Too many requests' } }), require('./routes/ticketShare'));   // public request link (no login)
 app.use('/api/tracker', require('./routes/tracker'));
 app.use('/api/library', require('./routes/library'));
 app.use('/api/finance', require('./routes/finance'));

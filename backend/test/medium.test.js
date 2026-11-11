@@ -548,3 +548,14 @@ test('autopilot by product: 20 + 20, Particle only, spread across top spenders, 
   assert.deepEqual([stat[1].product, stat[1].move], ['Neck Cream', 'ITERATE']);
   assert.ok(plan.filter(p => p.winner?.key === 'fv1').length <= 3);           // one ad isn't briefed more than 3 times
 });
+
+test('request link: files uploaded through a link only work through that same link', () => {
+  process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret-for-signing';
+  const L = require('../src/lib/studio/ticketLinks');
+  const id = '3f2b8c1e-9d4a-4b7e-a1c2-123456789abc';
+  const signed = L.signFile(id, 'linkA_aaaaaaaaaaaaaaaa');
+  assert.equal(L.readFile(signed, 'linkA_aaaaaaaaaaaaaaaa'), id);
+  assert.equal(L.readFile(signed, 'linkB_bbbbbbbbbbbbbbbb'), null);          // another link can't use it
+  assert.equal(L.readFile(id, 'linkA_aaaaaaaaaaaaaaaa'), null);              // a bare internal file id is refused
+  assert.equal(L.readFile(`${id}.${'x'.repeat(22)}`, 'linkA_aaaaaaaaaaaaaaaa'), null);
+});
