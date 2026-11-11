@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Home, PenLine, Inbox, Telescope } from 'lucide-react';
+import { Home, PenLine, Inbox, Telescope, Globe } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useBrand } from '../../context/BrandContext';
 import { mediumApi } from '../../lib/mediumService';
@@ -8,6 +8,7 @@ import Today from '../../components/medium/Today';
 import Create from '../../components/medium/Create';
 import Briefs from '../../components/medium/Briefs';
 import Behind from '../../components/medium/Behind';
+import Market from '../../components/medium/Market';
 import BriefDrawer from '../../components/medium/BriefDrawer';
 import '../../components/tracker/tracker.css';
 import '../../components/captain/captain.css';
@@ -17,6 +18,7 @@ const TABS = [
   ['today', 'Today', Home],
   ['create', 'Create', PenLine],
   ['briefs', 'Briefs', Inbox],
+  ['market', 'Market Watch', Globe],
   ['behind', 'Behind the scenes', Telescope],
 ];
 // old links (?tab=generate…) still land in the right place
@@ -87,6 +89,7 @@ export default function MediumPage() {
           {tab === 'today' && <Today overview={overview} briefs={briefs} onOpen={openBrief} go={go} />}
           {tab === 'create' && <Create mode={sub} setMode={setSub} overview={overview} notify={notify} onOpen={openBrief} onQueued={load} />}
           {tab === 'briefs' && <Briefs briefs={briefs} overview={overview} onOpen={openBrief} />}
+          {tab === 'market' && <Market notify={notify} isAdmin={isAdmin} go={go} />}
           {tab === 'behind' && <Behind part={sub} setPart={setSub} overview={overview} notify={notify} isAdmin={isAdmin} reload={load} onOpen={openBrief} />}
         </div>
       </div>

@@ -3,13 +3,17 @@ import { Wand2, Loader2, Plus, X } from 'lucide-react';
 import { mediumApi } from '../../lib/mediumService';
 import { LANE_LABEL } from './util';
 import { BriefRow } from './BriefItems';
+import { PREFILL_KEY } from './Market';
 
 /** Your idea, the way you'd say it in the hallway, crossed with everything Medium knows — then written twice. */
 export default function Freeform({ overview, notify, onOpen, onQueued }) {
   const opts = overview?.options || {};
-  const [idea, setIdea] = useState('');
-  const [refs, setRefs] = useState(['']);
-  const [lane, setLane] = useState('');
+  // "Brief from this" in Market Watch hands over an idea and its reference
+  const [prefill] = useState(() => { try { return JSON.parse(sessionStorage.getItem(PREFILL_KEY) || 'null'); } catch { return null; } });
+  useEffect(() => { try { sessionStorage.removeItem(PREFILL_KEY); } catch { /* ignore */ } }, []);
+  const [idea, setIdea] = useState(prefill?.idea || '');
+  const [refs, setRefs] = useState(prefill?.references?.length ? [...prefill.references, ''] : ['']);
+  const [lane, setLane] = useState(prefill?.lane || '');
   const [product, setProduct] = useState('');
   const [format, setFormat] = useState('');
   const [busy, setBusy] = useState(false);
@@ -54,12 +58,12 @@ export default function Freeform({ overview, notify, onOpen, onQueued }) {
           <span className="trk-label">References</span>
           {refs.map((r, i) => (
             <div key={i} className="flex gap-2">
-              <input className="trk-input" value={r} onChange={(e) => setRefs(refs.map((x, k) => (k === i ? e.target.value : x)))} placeholder="Upspring ad link, Monday ticket, web page…" aria-label={`Reference ${i + 1}`} />
+              <input className="trk-input" value={r} onChange={(e) => setRefs(refs.map((x, k) => (k === i ? e.target.value : x)))} placeholder="Monday ticket, web page, image or Upspring ad…" aria-label={`Reference ${i + 1}`} />
               {refs.length > 1 && <button type="button" className="trk-btn !p-2" aria-label="Remove reference" onClick={() => setRefs(refs.filter((_, k) => k !== i))}><X size={13} /></button>}
             </div>
           ))}
           {refs.length < 8 && <button type="button" className="trk-btn !py-1.5 justify-self-start" onClick={() => setRefs([...refs, ''])}><Plus size={13} /> Add a reference</button>}
-          <p className="text-[12px] trk-dim">Monday tickets, web pages and image links (mood boards, screenshots) are read. Upspring links are kept as references until Upspring is connected on the server.</p>
+          <p className="text-[12px] trk-dim">Monday tickets, web pages, image links (mood boards, screenshots) and Upspring ads are all read.</p>
         </div>
         <div className="grid sm:grid-cols-3 gap-3">
           <label className="grid gap-1"><span className="trk-label">Lane</span>

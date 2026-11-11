@@ -70,7 +70,7 @@ export default function Today({ overview, briefs, onOpen, go }) {
 
       <section>
         <h2 className="md-h2">Coming up</h2>
-        <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <button type="button" className="md-action compact" onClick={() => go('create', 'holiday')}>
             <span className="md-emoji" aria-hidden>🗓️</span>
             <span className="min-w-0"><span className="md-action-title block">{next ? next.name : 'No holiday soon'}</span>
@@ -80,6 +80,11 @@ export default function Today({ overview, briefs, onOpen, go }) {
             <span className="md-emoji" aria-hidden>🤖</span>
             <span className="min-w-0"><span className="md-action-title block">{ap.enabled ? `Autopilot: ${ap.per_week || 12} briefs ${nextRun(ap.weekday ?? 0, ap.hour ?? 7)}` : 'Autopilot is off'}</span>
               <span className="md-action-line block">{ap.enabled ? 'From this week’s AfterLife winners — they land here for review.' : 'Turn it on and Medium briefs the week’s winners every Sunday.'}</span></span>
+          </button>
+          <button type="button" className="md-action compact" onClick={() => go('market')}>
+            <span className="md-emoji" aria-hidden>🌍</span>
+            <span className="min-w-0"><span className="md-action-title block">{overview?.market ? `${overview.market.new_ads} new competitor ads` : 'Market Watch'}</span>
+              <span className="md-action-line block">{overview?.market ? `From ${overview.market.brands} men’s grooming brands — and what’s worth briefing.` : 'What men’s grooming brands are running, every Sunday.'}</span></span>
           </button>
           <div className="md-action compact" style={{ cursor: 'default' }}>
             <span className="md-emoji" aria-hidden>📮</span>

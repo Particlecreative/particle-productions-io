@@ -103,6 +103,11 @@ async function tick() {
     await stamp('outcomes_at');
     out.outcomes = await require('./outcomes').runOutcomes().catch(e => ({ error: e.message }));
   }
+  // Market Watch: Sundays 06:00 (before the 07:00 run), and once right away when there is no snapshot yet
+  if (require('./upspring').configured() && ((now.weekday === 0 && now.hour >= 6 && String(state.market_at || '').slice(0, 10) !== now.date) || !state.market_at)) {
+    await stamp('market_at');
+    out.market = await enqueue('medium_market', { reason: 'weekly' }, { dedupeKey: 'medium_market', priority: 5, maxAttempts: 1 }).catch(e => ({ error: e.message }));
+  }
   // autopilot once a week, on the set weekday/hour
   const ap = cfg.autopilot || {};
   if (ap.enabled && now.weekday === Number(ap.weekday ?? 0) && now.hour >= Number(ap.hour ?? 7) && String(state.autopilot_at || '').slice(0, 10) !== now.date) {

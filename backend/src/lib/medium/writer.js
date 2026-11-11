@@ -98,7 +98,8 @@ async function buildContext(req, cfg) {
   if (winners.available && (winners.winners || []).length) ev.push(`AfterLife winners (ranked within their lane):\n${winners.winners.slice(0, 5).map(w => `- ${w.label} — ${w.product || ''} · ${w.percentile != null ? `${w.percentile}th pct` : ''} · spend $${Math.round(w.spend || 0)} · ROAS ${w.roas ?? '?'} (AfterLife)`).join('\n')}`);
   else ev.push(`AfterLife: not available (${winners.reason}). Don't invent numbers — write [AfterLife] where a number would go and base the Why on the corpus or the account read.`);
   if (cfg.upspring_snapshot) ev.push(`Upspring account read (as of the last sync):\n${String(cfg.upspring_snapshot).slice(0, 5000)}`);
-  else ev.push('Upspring: not connected on the server yet.');
+  else ev.push('Upspring account read: not pasted in yet.');
+  if (cfg.state?.market_norms) ev.push(String(cfg.state.market_norms).slice(0, 2000));
   if ((cfg.language_bank || []).length) ev.push(`Customer language bank — how customers talk. Borrow their words and themes for hooks and supers where they fit naturally. A phrase that reports a result someone noticed ("my wife said I look younger") is a testimonial: it may appear only as a real attributed review, so write [REAL REVIEW] instead of putting it in an actor's or creator's mouth.\n${cfg.language_bank.slice(0, 20).map(p => `- “${p}”`).join('\n')}`);
   return { lane, format, kind, brain, facts, claims, examples, templates, donors, winners, brand, evidence: ev.join('\n\n') };
 }
@@ -379,8 +380,11 @@ async function resolveReferences(refs = []) {
       if (mon) {
         const it = await monday.readItem(mon[1]);
         out.push(it ? { kind: 'monday', url, text: `Monday ticket “${it.name}” — brief: ${String(it.brief?.concept || '').slice(0, 1500)} · script/copy: ${String(it.brief?.script || it.brief?.supporting_text || '').slice(0, 1500)}` } : { kind: 'monday', url, text: 'Monday ticket not found' });
-      } else if (/upspring\.ai/i.test(url)) {
-        out.push({ kind: 'upspring', url, text: 'Upspring ad link — Upspring is not connected on the server yet, so its descriptors could not be read. Treat it as the structure reference the idea names.' });
+      } else if (/upspring\.ai|^upspring-ad:/i.test(url)) {
+        const U = require('./upspring');
+        const adId = U.upspringAdId(url);
+        if (adId && U.configured()) out.push({ kind: 'upspring', url, text: U.adAsReference(await U.ad(adId, 'narrative')) });
+        else out.push({ kind: 'upspring', url, text: 'Upspring link — could not be read on the server. Treat it as the structure reference the idea names.' });
       } else if (/^https?:\/\//i.test(url)) {
         const r = await fetch(url, { signal: AbortSignal.timeout(15000), headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CP-Medium/1.0)' } });
         const type = r.headers.get('content-type') || '';

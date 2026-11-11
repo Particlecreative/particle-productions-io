@@ -69,7 +69,7 @@ export function fixtureCall(path, { method = 'GET', body } = {}) {
       ],
       tests: [], donors: [{ brand: 'Kizik', takes: 'live demo with timer', usage_count: 14 }, { brand: 'Hello Klean', takes: 'CGI product demo; split-screen testimonial relay', usage_count: 9 }, { brand: 'Saltair', takes: 'search-result format', usage_count: 6 }],
       recent: briefs.map(summary),
-      sources: { afterlife: { connected: false, reason: "AFTERLIFE's winners endpoint isn't live yet" }, upspring: { connected: false, snapshot: false }, corpus: { used: 1298, total: 1357, at: ago(60) }, monday: { submit: false }, worker: { alive: true } },
+      sources: { afterlife: { connected: false, reason: "AFTERLIFE's winners endpoint isn't live yet" }, upspring: { connected: true, snapshot: true }, corpus: { used: 1298, total: 1357, at: ago(60) }, monday: { submit: false }, worker: { alive: true } },
       articles: [
         { id: 1, lane: 'SFY', url: 'https://scienceforyou.co/neck-skin-thinnest', title: 'Why neck skin ages first', products: ['Neck Cream'], opportunity: false },
         { id: 2, lane: 'GT', url: 'https://gentlemantoday.co/best-anti-aging-creams-men', title: 'The 7 best anti-aging creams for men', products: ['Face Cream'], opportunity: false },
@@ -77,7 +77,7 @@ export function fixtureCall(path, { method = 'GET', body } = {}) {
         { id: 4, lane: 'SFY', url: 'opportunity:sfy-hand-skin', title: 'Why hands give your age away', products: ['Hand Cream'], opportunity: true },
       ],
       digest: { enabled: false, weekday: 1, hour: 9, webhook: true },
-      autopilot: { enabled: true, weekday: 0, hour: 7, per_week: 12, headline_hooks: 3 }, monday_submit: true,
+      autopilot: { enabled: true, weekday: 0, hour: 7, per_week: 12, headline_hooks: 3 }, monday_submit: true, market: { new_ads: 3, brands: 3, run_at: ago(60 * 26) },
       mix: { current: { Particle: { video: 4, static: 3 }, SFY: { video: 0, static: 2 }, GT: { video: 0, static: 1 }, WAC: { video: 0, static: 1 }, transfers: { video: 1, static: 0 } },
         history: [{ at: ago(60 * 24 * 3), changes: [{ lane: 'SFY', format: 'static', from: 1, to: 2, why: 'SFY statics won 4 of 5 tests — one more slot a week (1 → 2).' }, { lane: 'Particle', format: 'static', from: 4, to: 3, why: 'Particle statics won 1 of 6 tests — one slot fewer a week (4 → 3).' }] }] },
       language_bank: ['Barber asked if I dyed my hair.', 'My wife said I look younger.', 'No mess on the pillowcase.'],
@@ -147,6 +147,28 @@ export function fixtureCall(path, { method = 'GET', body } = {}) {
   ] };
   if (p === '/static-hooks/read') return { ok: true, headline: 'Barber Asked If I Got Work Done' };
   if (p === '/static-hooks/generate') return { queued: (body?.items || []).length, ids: [], skipped: [] };
+  if (p === '/market') return { connected: true, watch: { countries: 'US', brands: [] }, run: {
+    run_at: ago(60 * 26), calls: 34,
+    summary: { bullets: ['Lumin sends half its ads to a “7 reasons” listicle and a quiz — the most listicle-heavy brand in men’s grooming right now.', 'Caldera + Lab launched new statics built on customer testimonials for men 50+ — close to our own audience.', 'Brickell is pushing a free-sample offer hard; three of its most-backed ads lead with it.', 'Winning ads in the category open with a demo or a pattern interrupt more often than the rest.'], try_this: 'A Neck Cream demo that opens on the result in the first second — the category’s winners over-index on proof-first openings.' },
+    brands: [{ id: 'b1', name: 'Caldera + Lab', new_count: 2, spend: 'B', one_line: 'Clean, high-performance skincare for men, leaning on clinical proof.', lp_types: ['Collection 66%', 'Long product page 10%'], hook_themes: [{ name: 'SCIENTIFIC SUPERIORITY' }, { name: 'SOCIAL PROOF & TESTIMONIALS' }] },
+      { id: 'b2', name: 'Lumin', new_count: 1, spend: 'B', one_line: 'Simple skincare routines for men.', lp_types: ['Listicle 54%', 'Product page 30%'], hook_themes: [{ name: 'PROBLEM → SOLUTION' }] },
+      { id: 'b3', name: 'Brickell Men’s Products', new_count: 0, spend: 'B', lp_types: ['Bundle offer 75%'], hook_themes: [{ name: 'FREE SAMPLE OFFER' }] }],
+    ads: [
+      { id: 'a1', brand: 'Caldera + Lab', brand_id: 'b1', media_type: 'image', new: true, days: 5, one_line: 'Static product hero built on customer testimonials, promising year-round skin stability for men 50+.', backed: false, ad_library_url: 'https://www.facebook.com/ads/library/?id=1' },
+      { id: 'a2', brand: 'Lumin', brand_id: 'b2', media_type: 'video', new: true, days: 9, hook: 'If you’re over 40 and still using bar soap on your face…', one_line: 'Talking-head creator video calling out a common mistake, then the 3-step routine.', backed: true, strength: { impressions: 4 }, ad_library_url: 'https://www.facebook.com/ads/library/?id=2' },
+      { id: 'a3', brand: 'Caldera + Lab', brand_id: 'b1', media_type: 'video', new: true, days: 12, hook: 'My dermatologist asked what I changed.', one_line: 'Testimonial-first video with before/after close-ups.', backed: false },
+      { id: 'a4', brand: 'Brickell Men’s Products', brand_id: 'b3', media_type: 'image', new: false, days: 140, one_line: 'Free sample offer — try the routine, pay shipping only.', backed: true, best: true, strength: { impressions: 5 } },
+    ],
+    pages: [
+      { id: 'p1', brand: 'Lumin', ours: false, title: 'lumalean-listicle – Lumin', url: 'https://trylumin.co/pages/7-reasons', display_url: 'trylumin.co/pages/7-reasons', type: 'Listicle', ads: 51, share: 54 },
+      { id: 'p2', brand: 'Brickell Men’s Products', ours: false, title: '7 Reasons Why Men Are Saying This Is Their Secret Weapon for 2026', url: 'https://brickellmensproducts.com', display_url: 'brickellmensproducts.com', type: 'Listicle', ads: 12, share: 9 },
+      { id: 'p3', brand: 'Particle', ours: true, title: 'Particle Neck Cream - 10 Reasons', url: 'https://particleformen.com/lpage/particle-neck-cream-el', type: 'Listicle', ads: 2, share: 2 },
+      { id: 'p4', brand: 'Testolite', ours: false, title: 'Men’s Health Doctors Are Surprised: This Device Helps Men…', url: 'https://blog.testolite.com', type: 'Advertorial', ads: 30, share: 40 },
+    ],
+    norms: { hook_archetype: [{ id: 'demo', label: 'Demo / proof-first', all: 3.5, winners: 5.2, lift: 1.7 }, { id: 'pattern_interrupt', label: 'Pattern interrupt', all: 3.5, winners: 5.2, lift: 1.7 }, { id: 'question', label: 'Question', all: 9.2, winners: 7.5, lift: -1.7 }, { id: 'myth_correction', label: 'Myth correction', all: 11, winners: 8.8, lift: -2.2 }], persona: [] },
+  } };
+  if (p === '/market/refresh') return { queued: true };
+  if (p === '/market/brands') return { id: 'b9', name: 'New Brand' };
   if (p === '/digest/preview') return { text: '*🔮 Medium — the week* (9 briefs written · 4 approved · 2 on Monday · 1 rejected)\n*Tests decided:* 1 won, 0 failed — winners: Neck Cream carries the thinnest-skin hook\n*Next holiday:* Christmas 2026 — briefs due in 23 days (2026-12-04)\nAI cost this week: $1.12' };
   if (p === '/digest/send') return { sent: true };
   if (/^\/briefs\/\d+\/static-version$/.test(p)) return { id: 999, queued: true };

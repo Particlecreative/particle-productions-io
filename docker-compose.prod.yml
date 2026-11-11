@@ -62,6 +62,8 @@ services:
       CAPTAIN_MONDAY_TOKEN: ${CAPTAIN_MONDAY_TOKEN:-}
       CAPTAIN_SERVICE_TOKEN: ${CAPTAIN_SERVICE_TOKEN:-}   # Medium → /api/captain/check-brief (brief pre-flight)
       MEDIUM_SERVICE_TOKEN: ${MEDIUM_SERVICE_TOKEN:-}     # the medium-brief plugin → /api/medium (falls back to CAPTAIN_SERVICE_TOKEN)
+      UPSPRING_API_KEY: ${UPSPRING_API_KEY:-}             # Medium Market Watch + competitor references (Upspring Public API)
+      UPSPRING_API_BASE: ${UPSPRING_API_BASE:-https://public-api.upspring.ai}
       PORT: 3001
       NODE_ENV: production
     depends_on:

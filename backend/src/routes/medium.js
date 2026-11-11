@@ -81,16 +81,19 @@ router.get('/overview', async (req, res) => {
       db.query(`SELECT id, status, source, lane, product, format, move, ticket_name, score->>'total' AS score, preflight->>'verdict' AS preflight, created_at FROM medium_briefs ORDER BY created_at DESC LIMIT 8`),
     ]);
     const articles = (await db.query(`SELECT id, lane, url, title, products, last_seen, opportunity FROM medium_articles ORDER BY opportunity, last_seen DESC NULLS LAST LIMIT 120`).catch(() => ({ rows: [] }))).rows;
+    const ups = await require('../lib/medium/upspring').status();
+    const market = (await db.query(`SELECT run_at, data->'summary' AS summary, (SELECT COUNT(*)::int FROM jsonb_array_elements(data->'ads') e WHERE (e->>'new')::boolean) AS new_ads,
+        jsonb_array_length(COALESCE(data->'brands', '[]'::jsonb)) AS brands FROM medium_market_runs ORDER BY run_at DESC LIMIT 1`).catch(() => ({ rows: [] }))).rows[0] || null;
     res.json({
       counts: counts.rows, beliefs: beliefs.rows, tests: tests.rows, donors: donors.rows, recent: recent.rows,
       sources: {
-        afterlife, upspring: { connected: false, snapshot: !!cfg.upspring_snapshot }, corpus: corpusRow.rows[0],
+        afterlife, upspring: { connected: !!ups.connected, reason: ups.reason || null, snapshot: !!cfg.upspring_snapshot }, corpus: corpusRow.rows[0],
         monday: { submit: !!cfg.monday_submit }, worker: { alive: !!(worker?.at && Date.now() - new Date(worker.at).getTime() < 120000) },
       },
       language_bank: cfg.language_bank || [], holidays: calendar.upcoming(new Date(), 3),
       autopilot: { ...(cfg.autopilot || {}), last_run: cfg.state?.autopilot_at || null }, outcomes_at: cfg.state?.outcomes_at || null, monday_submit: !!cfg.monday_submit,
       digest: { ...(cfg.digest || {}), last_run: cfg.state?.digest_at || null, webhook: !!process.env.SLACK_CREATIVE_WEBHOOK_URL }, articles,
-      mix: { current: cfg.lane_mix, history: cfg.state?.mix_history || [] },
+      mix: { current: cfg.lane_mix, history: cfg.state?.mix_history || [] }, market,
       options: { lanes: LANE_NAMES, moves: MOVES, products: PRODUCTS, kinds: KINDS.map(k => ({ id: k, label: KIND_LABEL[k] })), lane_rules: LANE_RULES },
     });
   } catch (err) { errorJson(res, err); }
@@ -233,6 +236,28 @@ router.post('/static-hooks/generate', async (req, res) => {
     }
     res.json({ queued: ids.length, ids, skipped });
   } catch (err) { errorJson(res, err); }
+});
+
+// ── Market Watch (Upspring Public API) ───────────────────────────────────────
+router.get('/market', async (req, res) => {
+  try {
+    const M = require('../lib/medium/market');
+    const U = require('../lib/medium/upspring');
+    const [run, cfg, st] = [await M.latest(), await getConfig(), await U.status()];
+    res.json({ connected: st.connected, reason: st.reason || null, run: run ? { ...run.data, id: run.id, run_at: run.run_at, calls: run.calls } : null, watch: cfg.market_watch || {}, refreshing: !!cfg.state?.market_at && !run });
+  } catch (err) { errorJson(res, err); }
+});
+router.post('/market/refresh', requireAdmin, async (req, res) => {
+  try {
+    const jobId = await enqueue('medium_market', { actor: actorOf(req) }, { dedupeKey: 'medium_market', priority: 4, maxAttempts: 1 });
+    res.json({ queued: !!jobId, already_queued: !jobId });
+  } catch (err) { errorJson(res, err); }
+});
+router.post('/market/brands', requireAdmin, async (req, res) => {
+  try { res.json(await require('../lib/medium/market').watchBrand(req.body?.domain)); } catch (err) { errorJson(res, err); }
+});
+router.delete('/market/brands/:id', requireAdmin, async (req, res) => {
+  try { res.json(await require('../lib/medium/market').unwatchBrand(req.params.id)); } catch (err) { errorJson(res, err); }
 });
 
 // ── the queue ────────────────────────────────────────────────────────────────

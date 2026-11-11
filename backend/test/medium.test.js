@@ -379,3 +379,28 @@ test('rebalance: each cell moves at most one slot a week', () => {
   assert.equal(r.changes.length, 4);
   assert.ok(r.changes.every(c => Math.abs(c.to - c.from) === 1));
 });
+
+test('market: winner norms, plain-sentence norms, slim ads and Upspring references', () => {
+  const M = require('../src/lib/medium/market');
+  const U = require('../src/lib/medium/upspring');
+  const all = [{ id: 'problem_statement', label: 'Problem statement', share: 0.268 }, { id: 'demo', label: 'Demo', share: 0.035 }, { id: 'myth_correction', label: 'Myth correction', share: 0.11 }, { id: 'rare', label: 'Rare', share: 0.002 }];
+  const win = [{ id: 'problem_statement', label: 'Problem statement', share: 0.278 }, { id: 'demo', label: 'Demo', share: 0.052 }, { id: 'myth_correction', label: 'Myth correction', share: 0.088 }, { id: 'pov_format', label: 'POV', share: 0.045 }];
+  const n = M.computeNorms(all, win);
+  assert.equal(n[0].id, 'pov_format');
+  assert.deepEqual(n.find(r => r.id === 'demo'), { id: 'demo', label: 'Demo', all: 3.5, winners: 5.2, lift: 1.7 });
+  assert.ok(!n.some(r => r.id === 'rare'));
+  const text = M.normsText({ Hooks: n });
+  assert.match(text, /winners use POV more \(4\.5% vs 0%\)/);
+  assert.match(text, /less: Myth correction \(8\.8% vs 11%\)/);
+  assert.equal(M.normsText({ Hooks: [] }), '');
+  const now = Date.parse('2026-11-11T12:00:00Z');
+  const a = M.slimAd({ id: 9, advertiser: { id: 5, name: 'Lumin' }, media_type: 'video', is_active: true, started_at: '2026-11-08T07:00:00Z', hook_text: 'Men over 50, listen', strength: { impressions: 4, engagement: 'high' }, media: { thumbnail_url: 't.webp' }, ad_library_url: 'https://fb/ad' }, now);
+  assert.equal(a.new, true); assert.equal(a.backed, true); assert.equal(a.days, 3); assert.equal(a.image, 't.webp'); assert.equal(a.id, '9');
+  assert.equal(U.upspringAdId('upspring-ad:1636030538'), '1636030538');
+  assert.equal(U.upspringAdId('https://app.upspring.ai/ads/abc123def'), 'abc123def');
+  assert.equal(U.upspringAdId('https://example.com/ads/abc123def'), null);
+  const ref = U.adAsReference({ advertiser: { name: 'Caldera + Lab' }, media_type: 'image', is_active: true, one_line: 'Static product hero', hook_text: null, offer: { text: '20% off', cta_label: 'Shop now' }, dimensions: [{ field: 'persona', label: 'Men 50+' }], strength: { impressions: 3, engagement: 'observed' } });
+  assert.match(ref, /Caldera \+ Lab \(image, running\)/);
+  assert.match(ref, /Offer: 20% off · CTA “Shop now”/);
+  assert.match(ref, /persona: Men 50\+/);
+});
