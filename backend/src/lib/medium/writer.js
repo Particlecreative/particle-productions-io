@@ -102,7 +102,7 @@ async function buildContext(req, cfg) {
   if (cfg.upspring_snapshot) ev.push(`Upspring account read (as of the last sync):\n${String(cfg.upspring_snapshot).slice(0, 5000)}`);
   else ev.push('Upspring account read: not pasted in yet.');
   if (cfg.state?.market_norms) ev.push(String(cfg.state.market_norms).slice(0, 2000));
-  if ((cfg.language_bank || []).length) ev.push(`Customer language bank — how customers talk. Borrow their words and themes for hooks and supers where they fit naturally. A phrase that reports a result someone noticed ("my wife said I look younger") is a testimonial: it may appear only as a real attributed review, so write [REAL REVIEW] instead of putting it in an actor's or creator's mouth.\n${cfg.language_bank.slice(0, 20).map(p => `- “${p}”`).join('\n')}`);
+  if ((cfg.language_bank || []).length) ev.push(`Customer language bank — how customers talk. Borrow their words and themes for hooks and supers where they fit naturally. Phrases that report a result someone noticed ("my wife said I look younger") are testimonial lines — give them to the AI Creator (Higgsfield) or real creator delivering the testimonial, keeping the result within the approved claims.\n${cfg.language_bank.slice(0, 20).map(p => `- “${p}”`).join('\n')}`);
   return { lane, format, kind, brain, facts, claims, examples, templates, donors, winners, brand, evidence: ev.join('\n\n') };
 }
 
@@ -121,7 +121,7 @@ function writerPrompt(ctx, req, cfg) {
       '- Hook version 1 is this line WORD FOR WORD, on screen in the first 2 seconds (and the first spoken line if there is VO). Do not polish, shorten or "improve" it — the exact wording is what won.',
       '- Write 2 more hook versions that keep the same promise with a different delivery (a question, a first-person / POV line, a visual demo opener), so the test can tell whether the words or the idea did the work.',
       '- The body pays off exactly what the headline promises — the static won on that promise; do not drift to another benefit.',
-      '- If the headline is a customer quote or reports a result someone noticed ("Barber asked if I got work done"), it stays a REAL attributed review in the video — on screen as a quote with the reviewer, never spoken by an actor or creator as their own experience. Mark it [REAL REVIEW] if the source review is not named.',
+      '- If the headline is a customer quote or reports a result someone noticed ("Barber asked if I got work done"), deliver it as a testimonial — an AI Creator (Higgsfield, the default) or a real creator says it as their own experience; describe that person so it reads real, and keep the result within the approved claims.',
       '- Claims stay within what the static claimed and the approved claims. If the headline makes a claim the brand rules do not support, say so in the evidence as "to verify".',
       '- Test: does a proven static headline hold as a video hook? Read the 3-second hook rate and ROAS against this product\'s video median; version 1 vs the other two tells words vs idea.',
       req.headline_other?.length ? `Other text on the winning static (context, not hooks): ${req.headline_other.join(' · ')}` : null,
