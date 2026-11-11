@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2, RefreshCw, Save, ExternalLink } from 'lucide-react';
 import { mediumApi } from '../../lib/mediumService';
-import { KIND_LABEL, Chip, relTime } from './util';
+import { KIND_LABEL, Chip, relTime, money } from './util';
 
 const BELIEF = { proven: ['Proven', 'green'], testing: ['Testing', 'amber'], assumption: ['Assumption', 'gray'], retired: ['Retired', 'gray'] };
 
@@ -38,6 +38,15 @@ export default function Sources({ overview, notify, isAdmin, reload }) {
       await mediumApi.saveConfig({ style_guide: draft.style_guide, upspring_snapshot: draft.upspring_snapshot, language_bank: draft.language_bank.split('\n').map(s => s.trim()).filter(Boolean) });
       notify('Saved — used from the next brief'); load(); reload?.();
     } catch (e) { notify(e.message, true); } finally { setBusy(null); }
+  };
+  const toggleSwitch = async (patch, msg) => {
+    setBusy('sw');
+    try { await mediumApi.saveConfig(patch); notify(msg); await load(); reload?.(); } catch (e) { notify(e.message, true); } finally { setBusy(null); }
+  };
+  const runNow = async () => {
+    if (!window.confirm(`Run the autopilot now? Medium picks this week's AfterLife winners and writes up to ${cfg.autopilot?.per_week ?? 12} briefs (about ${money((cfg.autopilot?.per_week ?? 12) * 0.08)}).`)) return;
+    setBusy('ap');
+    try { const r = await mediumApi.runAutopilot(); notify(r.skipped ? r.skipped : `${r.queued} briefs queued — they appear in the Strategy Room`); reload?.(); } catch (e) { notify(e.message, true); } finally { setBusy(null); }
   };
   const setBelief = async (b, status) => {
     try { await mediumApi.setBelief(b.id, status, 'Changed in Medium → What it learns from'); notify('Belief updated (logged)'); reload?.(); } catch (e) { notify(e.message, true); }
@@ -101,6 +110,27 @@ export default function Sources({ overview, notify, isAdmin, reload }) {
                 <div className="text-[12px] trk-dim mt-1">Because: {b.because} · Would change its mind: {b.change_condition}</div>
               </div>
             ); })}
+          </div>
+        </div>
+      </div>
+
+      <div className="trk-glass p-5 grid gap-4">
+        <div className="trk-label">Switches</div>
+        <div className="grid md:grid-cols-2 gap-4">
+          <div className="rounded-xl p-4" style={{ background: 'var(--trk-glass-hi)' }}>
+            <label className="flex items-center gap-2 font-semibold text-[14px]">
+              <input type="checkbox" checked={!!cfg.monday_submit} disabled={!isAdmin || busy === 'sw'} onChange={(e) => toggleSwitch({ monday_submit: e.target.checked }, e.target.checked ? 'Approved briefs will now be created on Monday' : 'Back to shadow mode — nothing is created on Monday')} />
+              Create approved briefs on Monday
+            </label>
+            <p className="mt-1 text-[12.5px] trk-muted">Off = shadow mode. On: every approval creates the ticket in “Form Requests” with CP’s token — lane in the task name, Product in “Product (old)” — plus one evidence update, and Captain Caption locks the approved text to it. Nothing reaches Monday without an approve click.</p>
+          </div>
+          <div className="rounded-xl p-4" style={{ background: 'var(--trk-glass-hi)' }}>
+            <label className="flex items-center gap-2 font-semibold text-[14px]">
+              <input type="checkbox" checked={!!cfg.autopilot?.enabled} disabled={!isAdmin || busy === 'sw'} onChange={(e) => toggleSwitch({ autopilot: { ...cfg.autopilot, enabled: e.target.checked } }, e.target.checked ? 'Autopilot on — every Sunday 07:00' : 'Autopilot off')} />
+              Weekly autopilot
+            </label>
+            <p className="mt-1 text-[12.5px] trk-muted">Every Sunday 07:00 (Israel) Medium picks the week’s AfterLife winners per lane and writes up to <b>{cfg.autopilot?.per_week ?? 12}</b> briefs into the queue — hook iterations, refreshes and transfers. About {money((cfg.autopilot?.per_week ?? 12) * 0.08)} a week. {overview?.autopilot?.last_run ? `Last run ${relTime(overview.autopilot.last_run)}.` : 'Never run.'}</p>
+            {isAdmin && <button type="button" className="trk-btn !py-1.5 mt-2" disabled={busy === 'ap'} onClick={runNow}>{busy === 'ap' ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Run it now</button>}
           </div>
         </div>
       </div>

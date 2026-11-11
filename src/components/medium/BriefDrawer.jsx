@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { X, Check, Pencil, RotateCcw, Ban, Loader2, ExternalLink, Save } from 'lucide-react';
+import { X, Check, Pencil, RotateCcw, Ban, Loader2, ExternalLink, Save, Sparkles } from 'lucide-react';
 import { mediumApi } from '../../lib/mediumService';
 import { STATUS, BAND, SUB_LABEL, SUB_WEIGHT, MOVE_LABEL, KIND_LABEL, FINDING, LANE_LABEL, Chip, money } from './util';
 
@@ -20,10 +20,12 @@ export default function BriefDrawer({ id, onClose, notify, onChanged, isAdmin })
   }, [id, notify, onClose]);
   useEffect(() => { setData(null); setEdit(null); load(); }, [load]);
   useEffect(() => { const k = (e) => e.key === 'Escape' && !edit && onClose(); window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [onClose, edit]);
+  const [improving, setImproving] = useState(null);   // the improve round we're waiting for
   useEffect(() => {
-    if (!data || !['QUEUED', 'WRITING'].includes(data.brief.status)) return undefined;
+    const waiting = data && (['QUEUED', 'WRITING'].includes(data.brief.status) || (improving && Number(data.brief.versions?.improved?.round || 0) < improving));
+    if (!waiting) { if (improving && data && Number(data.brief.versions?.improved?.round || 0) >= improving) { setImproving(null); setTab('improved'); } return undefined; }
     const t = setInterval(load, 4000); return () => clearInterval(t);
-  }, [data, load]);
+  }, [data, load, improving]);
 
   const b = data?.brief;
   const act = async (key, fn, msg) => {
@@ -36,9 +38,12 @@ export default function BriefDrawer({ id, onClose, notify, onChanged, isAdmin })
   const regenerate = () => act('regen', () => mediumApi.regenerate(b.id, reason || undefined), 'A new version is being written — it will appear in the queue');
   const saveEdit = () => act('save', () => mediumApi.edit(b.id, { fields: edit }), 'Saved — style check, Captain Caption and the score ran again').then(() => setEdit(null));
   const recheck = () => act('recheck', () => mediumApi.edit(b.id, { recheck: true }), (r) => `Checked again — score ${r.score?.total ?? 'blocked'}, Captain ${r.preflight?.verdict === 'passed' ? 'passed' : `${r.preflight?.must_fix ?? '?'} must-fix`}`);
-  const useVersion = (v) => act('version', () => mediumApi.edit(b.id, { version: v }), v === 'mine' ? 'Your version is now the brief' : 'Medium’s version is now the brief');
+  const useVersion = (v) => act('version', () => mediumApi.edit(b.id, { version: v }), v === 'mine' ? 'Your version is now the brief' : v === 'improved' ? 'The improved version is now the brief' : 'Medium’s version is now the brief').then(() => setTab('medium'));
+  const improve = () => act('improve', () => mediumApi.improve(b.id), 'Improving — applying the fixes, then scoring and checking again (about a minute)').then(r => { if (r) setImproving(Number(b.versions?.improved?.round || 0) + 1); });
+  const submit = () => act('submit', () => mediumApi.submit(b.id), (r) => r.monday);
 
-  const view = b?.versions && tab === 'mine' ? { ...b, ...b.versions.mine, score: b.versions.mine.score, preflight: b.versions.mine.preflight } : b;
+  const VERSION_LABEL = { medium: b?.source === 'freeform' ? 'Medium’s version' : 'Current', mine: 'Your idea, as written', improved: `Improved${b?.versions?.improved?.round > 1 ? ` (round ${b.versions.improved.round})` : ''}` };
+  const view = b?.versions && tab !== 'medium' && b.versions[tab] ? { ...b, ...b.versions[tab], score: b.versions[tab].score, preflight: b.versions[tab].preflight } : b;
   const f = view?.fields || {};
   const locked = b && (Number(b.preflight?.must_fix) > 0 || ['blocked', 'below_bar'].includes(b.score?.band) || !b.preflight || b.preflight?.verdict === 'error');
   const [statusLabel, statusTone] = STATUS[b?.status] || [b?.status, 'gray'];
@@ -72,16 +77,23 @@ export default function BriefDrawer({ id, onClose, notify, onChanged, isAdmin })
               {b.versions && (
                 <div className="mt-5 flex flex-wrap items-center gap-2">
                   <div className="trk-seg" role="tablist">
-                    <button type="button" role="tab" aria-selected={tab === 'medium'} className={tab === 'medium' ? 'on' : ''} onClick={() => setTab('medium')}>Medium’s version{b.versions.medium?.score?.total != null ? ` · ${b.versions.medium.score.total}` : ''}</button>
-                    <button type="button" role="tab" aria-selected={tab === 'mine'} className={tab === 'mine' ? 'on' : ''} onClick={() => setTab('mine')}>Your idea, as written{b.versions.mine?.score?.total != null ? ` · ${b.versions.mine.score.total}` : ''}</button>
+                    {['medium', ...Object.keys(b.versions).filter(k => k !== 'medium')].map(k => {
+                      const sc = k === 'medium' ? b.score?.total : b.versions[k]?.score?.total;
+                      return <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{VERSION_LABEL[k] || k}{sc != null ? ` · ${sc}` : ''}</button>;
+                    })}
                   </div>
-                  {b.status === 'PENDING_REVIEW' && <button type="button" className="trk-btn !py-1.5" disabled={!!busy} onClick={() => useVersion(tab)}>{busy === 'version' ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} Use this version</button>}
+                  {b.status === 'PENDING_REVIEW' && tab !== 'medium' && <button type="button" className="trk-btn !py-1.5" disabled={!!busy} onClick={() => useVersion(tab)}>{busy === 'version' ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} Use this version</button>}
+                  {tab === 'improved' && b.versions.improved?.gain != null && <span className="text-[12px] trk-muted">{b.versions.improved.gain >= 0 ? '+' : ''}{b.versions.improved.gain} points</span>}
                 </div>
               )}
               {b.evidence?.changed && <p className="mt-3 text-[13.5px]"><b>What Medium changed:</b> {b.evidence.changed}</p>}
               {b.evidence?.question && <p className="mt-2 text-[13.5px]" style={{ color: 'var(--trk-amber)' }}><b>Medium asks:</b> {b.evidence.question}</p>}
 
-              {view.score && <ScorePanel s={view.score} />}
+              {improving && <p className="mt-4 text-sm trk-muted"><Loader2 size={13} className="inline animate-spin mr-1" /> Improving — the new version appears as its own tab when it’s scored and checked.</p>}
+              {view.score && <ScorePanel s={view.score} onImprove={tab === 'medium' && b.status === 'PENDING_REVIEW' && !improving && (b.versions?.improved ? b.versions.improved.round < 3 && b.versions.improved.gain >= 3 : true) ? improve : null} busy={busy === 'improve'} />}
+              {b.evidence?.transfer && <TransferPanel t={b.evidence.transfer} />}
+              {b.status === 'APPROVED' && <div className="trk-section flex flex-wrap items-center gap-2"><button type="button" className="trk-btn primary" disabled={!!busy} onClick={submit}>{busy === 'submit' ? <Loader2 size={13} className="animate-spin" /> : <ExternalLink size={13} />} Create on Monday</button><span className="text-[12px] trk-dim">Creates the ticket in “Form Requests” with CP’s token (only when Monday submission is switched on).</span></div>}
+              {b.status === 'SUBMITTED' && b.monday_item_id && <div className="trk-section"><a className="trk-btn" href={`https://particle-for-men.monday.com/boards/${b.format === 'design' ? '8036329818' : '5433027071'}/pulses/${b.monday_item_id}`} target="_blank" rel="noopener noreferrer"><ExternalLink size={13} /> Open the Monday ticket</a></div>}
               {view.preflight && <PreflightPanel p={view.preflight} />}
 
               <div className="trk-section">
@@ -192,7 +204,29 @@ function Field({ label, value, pre }) {
   );
 }
 
-function ScorePanel({ s }) {
+function TransferPanel({ t }) {
+  const OK = { yes: ['✓', 'var(--trk-green)'], no: ['✗', 'var(--trk-red)'], unknown: ['?', 'var(--trk-amber)'] };
+  return (
+    <div className="trk-section">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="trk-label">Transfer plan</div>
+        <Chip tone={t.verdict === 'go' ? 'green' : t.verdict === 'block' ? 'red' : 'amber'}>{t.verdict === 'go' ? 'Go' : t.verdict === 'block' ? 'Blocked' : 'Promise rewritten'}</Chip>
+        <span className="text-[12.5px] trk-muted">{t.source?.product || t.source?.lane || t.source?.format} → {t.target?.product || t.target?.lane || t.target?.format}{t.edge ? ` · map score ${t.edge.score}` : ''}</span>
+      </div>
+      {t.hypothesis && <p className="mt-1 text-[13.5px]">{t.hypothesis}</p>}
+      <div className="mt-2 grid md:grid-cols-2 gap-4 text-[13px]">
+        <div><div className="text-[11px] uppercase tracking-wide trk-dim mb-1">Keeps</div><ul className="space-y-0.5">{(t.keep || []).map((k, i) => <li key={i}>• {k}</li>)}</ul></div>
+        <div><div className="text-[11px] uppercase tracking-wide trk-dim mb-1">Swaps</div><ul className="space-y-0.5">{(t.swap || []).map((s, i) => <li key={i}><span className="cc-strike">{s.from}</span> → {s.to}</li>)}</ul></div>
+      </div>
+      <div className="mt-2 space-y-0.5 text-[12.5px]">
+        {(t.prerequisites || []).map((p, i) => <div key={i}><span style={{ color: (OK[p.ok] || OK.unknown)[1] }}>{(OK[p.ok] || OK.unknown)[0]}</span> {p.check} <span className="trk-dim">— {p.note}</span></div>)}
+        {t.proof_check && <div className="trk-muted">Proof: needs {t.proof_check.needs} · {t.proof_check.have ? 'available' : `not available — ${t.proof_check.fallback}`}</div>}
+      </div>
+    </div>
+  );
+}
+
+function ScorePanel({ s, onImprove, busy }) {
   const [label, tone] = BAND[s.band] || ['', 'gray'];
   return (
     <div className="trk-section">
@@ -230,7 +264,10 @@ function ScorePanel({ s }) {
         </div>
       )}
       {s.fixes?.length > 0 && (
-        <div className="mt-3 text-[13px]"><span className="trk-label">What would raise it</span>
+        <div className="mt-3 text-[13px]">
+          <div className="flex flex-wrap items-center gap-2"><span className="trk-label">What would raise it</span>
+            {onImprove && <button type="button" className="trk-btn !py-1 !px-2.5 ml-auto" disabled={busy} onClick={onImprove} title="Medium applies these fixes as a new version, then scores and checks it again (about 10¢) — you choose which to keep">{busy ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />} Improve with these fixes</button>}
+          </div>
           <ul className="mt-1 space-y-0.5">{s.fixes.map((x, i) => <li key={i}>+{Math.round(x.gain)} · {x.fix} <span className="trk-dim">({x.evidence})</span></li>)}</ul>
         </div>
       )}

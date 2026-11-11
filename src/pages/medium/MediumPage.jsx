@@ -8,7 +8,8 @@ import StrategyRoom from '../../components/medium/StrategyRoom';
 import Generator from '../../components/medium/Generator';
 import Freeform from '../../components/medium/Freeform';
 import Sources from '../../components/medium/Sources';
-import Lab, { Holiday } from '../../components/medium/Lab';
+import Lab from '../../components/medium/Lab';
+import Holiday from '../../components/medium/Holiday';
 import BriefDrawer from '../../components/medium/BriefDrawer';
 import '../../components/tracker/tracker.css';
 import '../../components/captain/captain.css';
@@ -92,8 +93,8 @@ export default function MediumPage() {
           {tab === 'generate' && <Generator overview={overview} notify={notify} onOpen={openBrief} onQueued={load} />}
           {tab === 'freeform' && <Freeform overview={overview} notify={notify} onOpen={openBrief} onQueued={load} />}
           {tab === 'learns' && <Sources overview={overview} notify={notify} isAdmin={isAdmin} reload={load} />}
-          {tab === 'lab' && <Lab overview={overview} notify={notify} />}
-          {tab === 'holiday' && <Holiday overview={overview} />}
+          {tab === 'lab' && <Lab overview={overview} notify={notify} onOpen={openBrief} />}
+          {tab === 'holiday' && <Holiday overview={overview} notify={notify} onOpen={openBrief} />}
         </div>
       </div>
 

@@ -47,7 +47,7 @@ router.get('/overview', async (req, res) => {
     const [counts, beliefs, tests, donors, corpusRow, afterlife, worker, recent] = await Promise.all([
       db.query(`SELECT status, lane, COUNT(*)::int AS n FROM medium_briefs GROUP BY status, lane`),
       db.query(`SELECT * FROM medium_beliefs WHERE status <> 'retired' ORDER BY CASE status WHEN 'proven' THEN 0 WHEN 'testing' THEN 1 ELSE 2 END, id`),
-      db.query(`SELECT * FROM medium_tests WHERE status IN ('idea', 'running') ORDER BY created_at DESC LIMIT 20`),
+      db.query(`SELECT * FROM medium_tests WHERE status IN ('idea', 'waiting', 'running', 'won', 'failed', 'inconclusive') ORDER BY created_at DESC LIMIT 30`),
       db.query(`SELECT brand, takes, usage_count FROM medium_donors ORDER BY usage_count DESC, brand LIMIT 8`),
       db.query(`SELECT COUNT(*) FILTER (WHERE NOT excluded)::int AS used, COUNT(*)::int AS total, MAX(ingested_at) AS at FROM medium_exemplars`),
       require('../lib/medium/afterlife').status(),

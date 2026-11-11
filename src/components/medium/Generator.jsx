@@ -7,7 +7,7 @@ import { BriefRow } from './StrategyRoom';
 /** Lane → product → format → move → count → Generate. Each brief arrives with its Why, its Test, a score and the Captain's check. */
 export default function Generator({ overview, notify, onOpen, onQueued }) {
   const opts = overview?.options || {};
-  const [f, setF] = useState({ lane: 'Particle', product: '', format: 'video', move: 'NEW_ANGLE', kind: '', count: 2, note: '', template: '', campaign: '', code: '', tier: '', ends: '', article_url: '' });
+  const [f, setF] = useState({ lane: 'Particle', product: '', format: 'video', move: 'NEW_ANGLE', kind: '', count: 2, note: '', template: '', campaign: '', code: '', tier: '', ends: '', article_url: '', source_product: '', source_lane: '', source: '' });
   const [more, setMore] = useState(false);
   const [busy, setBusy] = useState(false);
   const [ids, setIds] = useState([]);
@@ -73,6 +73,22 @@ export default function Generator({ overview, notify, onOpen, onQueued }) {
             </label>
           ))}
         </fieldset>
+        {f.move === 'TRANSFER_PRODUCT' && (
+          <label className="grid gap-1"><span className="trk-label">Transfer from product (the winner)</span>
+            <input className="trk-input" list="md-products" value={f.source_product} onChange={set('source_product')} placeholder="e.g. Face Cream" />
+            <span className="text-[12px] trk-dim">Same lane, only the product changes. The analyst checks claims, proof and saturation first — a transfer the target can’t carry is blocked.</span>
+          </label>
+        )}
+        {f.move === 'TRANSFER_LANE' && (
+          <label className="grid gap-1"><span className="trk-label">Transfer from lane</span>
+            <select className="trk-input" value={f.source_lane} onChange={set('source_lane')}><option value="">Pick the lane it won in</option>{(opts.lanes || []).filter(l => l !== f.lane).map(l => <option key={l} value={l}>{LANE_LABEL[l] || l}</option>)}</select>
+          </label>
+        )}
+        {f.move.startsWith('TRANSFER_') && (
+          <label className="grid gap-1"><span className="trk-label">The winning concept (optional)</span>
+            <input className="trk-input" value={f.source} onChange={set('source')} placeholder="e.g. SFY “Understand the Why” — thinnest skin fact → narrator" />
+          </label>
+        )}
         {magazine && (
           <label className="grid gap-1"><span className="trk-label">Destination article</span>
             <input className="trk-input" value={f.article_url} onChange={set('article_url')} placeholder="https://… (the ad must point at an article that exists)" />

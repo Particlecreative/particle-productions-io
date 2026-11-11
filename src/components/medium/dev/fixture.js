@@ -118,5 +118,18 @@ export function fixtureCall(path, { method = 'GET', body } = {}) {
     return { affinity: rows.map(([cluster, source, target, score, note], i) => ({ id: i, cluster, source, target, score, note: note || null, tested: 0, won: 0 })) };
   }
   if (p.startsWith('/beliefs/')) return { belief: { id: 1, status: body?.status } };
+  if (p === '/holiday/plan') {
+    const tiers = (body?.tiers || []).filter(t => Number(t.tier));
+    const parents = (body?.products || []).flatMap(product => [
+      ...(body?.static_templates || []).flatMap(template => tiers.map(t => ({ kind: 'static', format: 'design', product, template, tier: Number(t.tier), code: String(t.code || '').toUpperCase(), ticket_name: `${product} | ${body.holiday} 2026 | Meta | Medium | ${template} ${t.tier}` }))),
+      ...(body?.video_templates || []).map(template => ({ kind: 'video', format: 'video', product, template, ticket_name: `${product} | ${body.holiday} 2026 | Meta | Medium | ${template}` })),
+    ]);
+    return { plan: { holiday: `${body?.holiday} 2026`, parents, counts: { statics: parents.filter(x => x.kind === 'static').length, videos: parents.filter(x => x.kind === 'video').length, derivatives: (body?.products || []).length * 3 },
+      prices: (body?.products || []).flatMap(product => tiers.map(t => (product === 'Neck Cream' ? { product, list: 59, text: `$59.00 → $${(59 * (100 - t.tier) / 100).toFixed(2)} (${t.tier}% off)` } : { product, list: null, text: `[PRICE] — add ${product}'s list price in Captain → Brain → Price list` }))),
+      est_cost: Math.round(parents.length * 8) / 100 } };
+  }
+  if (p === '/holiday/campaigns') return { campaigns: [{ batch_id: 'c0ffee00-0000-4000-8000-000000000001', holiday: 'Christmas 2026', briefs: 3, writing: 0, waiting: 2, approved: 1 }] };
+  if (p.startsWith('/holiday/') && method === 'GET') return { briefs: briefs.slice(0, 3).map(b => ({ ...summary(b), source: 'holiday' })) };
+  if (p === '/scorecard') return { rows: [{ lane: 'Particle', source: 'generator', move: 'TRANSFER_PRODUCT', briefs: 3, approved: 1, rejected: 0, shipped: 0, edited: 1, avg_score: 78, cost: 0.31 }], tests: [] };
   return {};
 }
