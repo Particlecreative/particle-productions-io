@@ -61,6 +61,7 @@ router.get('/overview', async (req, res) => {
         monday: { submit: !!cfg.monday_submit }, worker: { alive: !!(worker?.at && Date.now() - new Date(worker.at).getTime() < 120000) },
       },
       language_bank: cfg.language_bank || [], holidays: calendar.upcoming(new Date(), 3),
+      autopilot: { ...(cfg.autopilot || {}), last_run: cfg.state?.autopilot_at || null }, outcomes_at: cfg.state?.outcomes_at || null, monday_submit: !!cfg.monday_submit,
       options: { lanes: LANE_NAMES, moves: MOVES, products: PRODUCTS, kinds: KINDS.map(k => ({ id: k, label: KIND_LABEL[k] })), lane_rules: LANE_RULES },
     });
   } catch (err) { errorJson(res, err); }
@@ -116,6 +117,8 @@ function cleanRequest(b, actor) {
   return {
     lane, format, move, kind: KINDS.includes(b.kind) ? b.kind : null, product: str(b.product, 120), note: str(b.note, 2000), template: str(b.template, 120),
     campaign: str(b.campaign, 120), offer, article_url: str(b.article_url, 500), source: str(b.source, 1000), author: actor,
+    // transfers: where the concept comes from (one axis per test)
+    source_product: str(b.source_product, 120), source_lane: LANE_NAMES.includes(b.source_lane) ? b.source_lane : null, source_format: ['video', 'design'].includes(b.source_format) ? b.source_format : null,
   };
 }
 
@@ -248,10 +251,50 @@ router.post('/briefs/:id/approve', async (req, res) => {
     else if (b.score?.band === 'below_bar') needsReason.push(`score ${b.score.total} is below the bar (65)`);
     if (needsReason.length && (!reason || !isAdmin(req))) throw bad(`Approval locked — ${needsReason.join(' · ')}. ${isAdmin(req) ? 'Approve with an override reason (logged).' : 'An admin can approve with an override reason.'}`, 409);
     const cfg = await getConfig();
+    const reviewReason = needsReason.length ? `Override: ${reason} (${needsReason.join(' · ')})` : null;
     await db.query(
       `UPDATE medium_briefs SET status = 'APPROVED', reviewer = $2, reviewed_at = NOW(), review_reason = $3, updated_at = NOW() WHERE id = $1`,
-      [b.id, actorOf(req), needsReason.length ? `Override: ${reason} (${needsReason.join(' · ')})` : null]);
-    res.json({ ok: true, status: 'APPROVED', monday: cfg.monday_submit ? 'Monday submission is not built yet — the brief stays approved in CP' : 'Shadow mode — nothing was created on Monday' });
+      [b.id, actorOf(req), reviewReason]);
+    await require('../lib/medium/transfer').createTest(b).catch(e => console.warn('[medium] test row:', e.message));   // its Test: line, scored by AfterLife once it ships
+    if (!cfg.monday_submit) return res.json({ ok: true, status: 'APPROVED', monday: 'Shadow mode — nothing was created on Monday' });
+    const r = await submitToMonday({ ...b, review_reason: reviewReason }, req, cfg);
+    res.json({ ok: true, status: r.ok ? 'SUBMITTED' : 'APPROVED', monday: r.message, item_id: r.item_id || null });
+  } catch (err) { errorJson(res, err); }
+});
+
+/**
+ * Approved brief → Monday ticket (CP's token, "Form Requests" group, lane in the name) + evidence update, then
+ * Captain Caption locks the approved on-screen text to the new item. Never throws: a Monday failure leaves the brief
+ * APPROVED with the reason, and "Create on Monday" can try again.
+ */
+async function submitToMonday(b, req, cfg) {
+  try {
+    const r = await require('../lib/medium/monday').submitBrief(b, { approver: actorOf(req), approverEmail: req.user?.email, cfg });
+    let captain = '';
+    if (b.preflight?.check_id) {
+      const override = Number(b.preflight.must_fix) > 0 ? { by: actorOf(req), reason: b.review_reason || 'Approved in Medium' } : null;
+      captain = await require('../lib/captain/brief').attachApproved(b.preflight.check_id, { item_id: r.item_id, board_id: r.board_id, actor: `Medium · ${actorOf(req)}`, override })
+        .then(x => ` · approved text locked (Captain update ${x.monday_update})`).catch(e => ` · approved text not locked: ${e.message}`);
+    }
+    await db.query(`UPDATE medium_briefs SET status = 'SUBMITTED', monday_item_id = $2, error = NULL, updated_at = NOW() WHERE id = $1`, [b.id, r.item_id]);
+    return { ok: true, item_id: r.item_id, message: `Created on Monday (item ${r.item_id})${captain}${r.skipped.length ? ` · not set: ${r.skipped.join('; ')}` : ''}` };
+  } catch (e) {
+    await db.query(`UPDATE medium_briefs SET error = $2, updated_at = NOW() WHERE id = $1`, [b.id, `Monday: ${String(e.message).slice(0, 500)}`]).catch(() => null);
+    return { ok: false, message: `Approved, but Monday creation failed: ${e.message} — use "Create on Monday" to try again` };
+  }
+}
+
+router.post('/briefs/:id/submit', async (req, res) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.status(404).json({ error: 'Not found' });
+    const cfg = await getConfig();
+    if (!cfg.monday_submit) throw bad('Monday submission is off (shadow mode) — an admin can turn it on in “What it learns from”', 409);
+    const b = (await db.query('SELECT * FROM medium_briefs WHERE id = $1', [req.params.id])).rows[0];
+    if (!b) return res.status(404).json({ error: 'Not found' });
+    if (b.status !== 'APPROVED') throw bad(b.status === 'SUBMITTED' ? 'Already on Monday' : 'Approve it first', 409);
+    const r = await submitToMonday(b, req, cfg);
+    if (!r.ok) return res.status(502).json({ error: r.message });
+    res.json({ ok: true, status: 'SUBMITTED', monday: r.message, item_id: r.item_id });
   } catch (err) { errorJson(res, err); }
 });
 
@@ -304,6 +347,119 @@ router.put('/beliefs/:id', requireAdmin, async (req, res) => {
       [Number(req.params.id), status, actorOf(req), String(req.body?.reason || '').slice(0, 500)]);
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
     res.json({ belief: rows[0] });
+  } catch (err) { errorJson(res, err); }
+});
+
+// ── improve loop ─────────────────────────────────────────────────────────────
+router.post('/briefs/:id/improve', async (req, res) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.status(404).json({ error: 'Not found' });
+    const b = (await db.query('SELECT * FROM medium_briefs WHERE id = $1', [req.params.id])).rows[0];
+    if (!b) return res.status(404).json({ error: 'Not found' });
+    if (!require('../lib/medium/writer').canImprove(b)) throw bad(b.versions?.improved ? 'No more rounds — the last one gained less than 3 points, or 3 rounds are done' : 'Nothing to improve — the panel suggested no fixes', 409);
+    const jobId = await enqueue('medium_improve', { brief_id: b.id }, { dedupeKey: `medium_improve:${b.id}`, priority: 8, maxAttempts: 1 });
+    res.json({ queued: !!jobId });
+  } catch (err) { errorJson(res, err); }
+});
+
+// ── Holiday Builder ──────────────────────────────────────────────────────────
+const holiday = () => require('../lib/medium/holiday');
+async function holidayPlan(body) {
+  const facts = await require('../lib/captain/brain').loadFacts({ brand: 'Particle' });
+  return holiday().planHoliday(body || {}, { prices: facts.prices });
+}
+router.post('/holiday/plan', async (req, res) => {
+  try { res.json({ plan: await holidayPlan(req.body), templates: { static: holiday().STATIC_TEMPLATES, video: holiday().VIDEO_TEMPLATES } }); } catch (err) { errorJson(res, err); }
+});
+router.post('/holiday/generate', async (req, res) => {
+  try {
+    const plan = await holidayPlan(req.body);
+    if (!plan.parents.length) throw bad('Pick at least one product and one template');
+    if (plan.parents.length > 120) throw bad(`${plan.parents.length} parent briefs is too many in one go (120 at most) — split the campaign`);
+    if (req.body?.confirm !== plan.parents.length) throw bad(`Confirm the number of parent briefs (${plan.parents.length}, about $${plan.est_cost})`, 409);
+    res.json({ ...(await holiday().generateParents(plan, { actor: actorOf(req) })), plan: { holiday: plan.holiday, counts: plan.counts, est_cost: plan.est_cost } });
+  } catch (err) { errorJson(res, err); }
+});
+router.get('/holiday/campaigns', async (req, res) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT request->>'holiday_batch' AS batch_id, MIN(request->'holiday'->>'name') AS holiday, COUNT(*)::int AS briefs,
+              COUNT(*) FILTER (WHERE status IN ('QUEUED', 'WRITING'))::int AS writing, COUNT(*) FILTER (WHERE status = 'PENDING_REVIEW')::int AS waiting,
+              COUNT(*) FILTER (WHERE status IN ('APPROVED', 'SUBMITTED'))::int AS approved, MIN(created_at) AS created_at
+         FROM medium_briefs WHERE request->>'holiday_batch' IS NOT NULL GROUP BY 1 ORDER BY MIN(created_at) DESC LIMIT 20`);
+    res.json({ campaigns: rows });
+  } catch (err) { errorJson(res, err); }
+});
+router.get('/holiday/:batch', async (req, res) => {
+  try {
+    if (!UUID_RE.test(req.params.batch)) return res.status(404).json({ error: 'Not found' });
+    const { rows } = await db.query(
+      `SELECT id, status, source, lane, product, format, kind, ticket_name, (score->>'total')::int AS score, score->>'band' AS band, preflight->>'verdict' AS preflight,
+              (preflight->>'must_fix')::int AS must_fix, request->'holiday' AS holiday, request->>'derivative' AS derivative, error, cost_usd, created_at
+         FROM medium_briefs WHERE request->>'holiday_batch' = $1 ORDER BY source, product, created_at`, [req.params.batch]);
+    res.json({ briefs: rows });
+  } catch (err) { errorJson(res, err); }
+});
+// Captain Caption's campaign-wide pre-flight over every parent: one code, one end date, one price per product × tier
+router.post('/holiday/:batch/preflight', async (req, res) => {
+  try {
+    if (!UUID_RE.test(req.params.batch)) return res.status(404).json({ error: 'Not found' });
+    const { rows } = await db.query(`SELECT * FROM medium_briefs WHERE request->>'holiday_batch' = $1 AND source = 'holiday' AND status IN ('PENDING_REVIEW', 'APPROVED') AND jsonb_array_length(lines) > 0`, [req.params.batch]);
+    if (!rows.length) throw bad('No written parent briefs yet');
+    const h = rows[0].request?.holiday || {};
+    const r = await require('../lib/captain/brief').startBatch({
+      campaign: h.name, briefs: rows.map(b => ({ brief_id: `medium:${b.id}`, name: b.ticket_name, lane: b.lane, product: b.product, board: b.format, offer: b.request?.offer || null, layout_ref: b.fields?.template || null, lines: b.lines, author: 'Medium' })),
+    }, { actor: `Medium · ${actorOf(req)}` });
+    res.json(r);
+  } catch (err) { errorJson(res, err); }
+});
+router.get('/holiday/preflight/:id', async (req, res) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.status(404).json({ error: 'Not found' });
+    const b = await require('../lib/captain/brief').batchStatus(req.params.id);
+    if (!b) return res.status(404).json({ error: 'Not found' });
+    res.json(b);
+  } catch (err) { errorJson(res, err); }
+});
+// Bulk approve exists only here, only for parents, only 80+ with Captain passed (spec §16.2)
+router.post('/holiday/:batch/approve', async (req, res) => {
+  try {
+    if (!UUID_RE.test(req.params.batch)) return res.status(404).json({ error: 'Not found' });
+    const { rows } = await db.query(`SELECT * FROM medium_briefs WHERE request->>'holiday_batch' = $1 AND source = 'holiday' AND status = 'PENDING_REVIEW'`, [req.params.batch]);
+    const ready = rows.filter(b => (b.score?.total ?? 0) >= 80 && b.score?.band === 'ready' && b.preflight?.verdict === 'passed');
+    const cfg = await getConfig();
+    const results = [];
+    for (const b of ready) {
+      await db.query(`UPDATE medium_briefs SET status = 'APPROVED', reviewer = $2, reviewed_at = NOW(), review_reason = 'Bulk approve (Holiday Builder, 80+ and Captain passed)', updated_at = NOW() WHERE id = $1`, [b.id, actorOf(req)]);
+      await require('../lib/medium/transfer').createTest(b).catch(() => null);
+      results.push(cfg.monday_submit ? await submitToMonday(b, req, cfg) : { ok: true, message: 'approved (shadow mode)' });
+    }
+    res.json({ approved: ready.length, left: rows.length - ready.length, monday: cfg.monday_submit ? `${results.filter(r => r.ok).length} created on Monday` : 'Shadow mode — nothing created on Monday' });
+  } catch (err) { errorJson(res, err); }
+});
+router.post('/holiday/:batch/derivatives', async (req, res) => {
+  try {
+    if (!UUID_RE.test(req.params.batch)) return res.status(404).json({ error: 'Not found' });
+    res.json(await holiday().proposeDerivatives(req.params.batch, { actor: actorOf(req) }));
+  } catch (err) { errorJson(res, err); }
+});
+
+// ── autopilot + scorecard ────────────────────────────────────────────────────
+router.post('/autopilot/run', requireAdmin, async (req, res) => {
+  try { res.json(await require('../lib/medium/autopilot').runAutopilot({ actor: `Medium autopilot (run by ${actorOf(req)})`, force: true })); } catch (err) { errorJson(res, err); }
+});
+router.get('/scorecard', async (req, res) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT lane, source, move, COUNT(*)::int AS briefs,
+              COUNT(*) FILTER (WHERE status IN ('APPROVED', 'SUBMITTED'))::int AS approved,
+              COUNT(*) FILTER (WHERE status = 'REJECTED')::int AS rejected,
+              COUNT(*) FILTER (WHERE status = 'SUBMITTED')::int AS shipped,
+              COUNT(*) FILTER (WHERE jsonb_array_length(edits) > 0)::int AS edited,
+              ROUND(AVG((score->>'total')::numeric))::int AS avg_score, ROUND(SUM(cost_usd)::numeric, 2)::float AS cost
+         FROM medium_briefs WHERE status NOT IN ('QUEUED', 'WRITING') GROUP BY 1, 2, 3 ORDER BY briefs DESC`);
+    const tests = await db.query(`SELECT axis, status, COUNT(*)::int AS n FROM medium_tests GROUP BY 1, 2`);
+    res.json({ rows, tests: tests.rows });
   } catch (err) { errorJson(res, err); }
 });
 

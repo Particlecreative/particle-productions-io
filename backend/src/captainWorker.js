@@ -31,6 +31,7 @@ const medium = { corpus: require('./lib/medium/corpus'), writer: require('./lib/
       medium_ingest: medium.corpus.ingestCorpus,
       medium_generate: medium.writer.runGenerate,
       medium_freeform: medium.writer.runFreeform,
+      medium_improve: medium.writer.runImprove,
       import_start: (p) => importer.startImport(p),
       import_frameio_item: importer.importFrameioItem,
       import_figma_file: importer.importFigmaFile,
@@ -41,6 +42,13 @@ const medium = { corpus: require('./lib/medium/corpus'), writer: require('./lib/
   // Adobe refresh tokens lapse after ~14 days unused — keep the Captain's Frame.io sign-in alive
   const keep = () => require('./lib/captain/frameio').keepalive().catch(e => console.warn('[captain-worker] Frame.io keepalive failed:', e.message));
   setInterval(keep, 12 * 3600 * 1000);
+
+  // MEDIUM's clock: daily AfterLife outcomes (free) and, when switched on, the Sunday autopilot
+  const mediumTick = () => require('./lib/medium/autopilot').tick()
+    .then(r => { if (Object.keys(r).length) console.log('[captain-worker] medium:', JSON.stringify(r).slice(0, 300)); })
+    .catch(e => console.warn('[captain-worker] medium tick failed:', e.message));
+  setTimeout(mediumTick, 60 * 1000);
+  setInterval(mediumTick, 10 * 60 * 1000);
 })();
 
 process.on('unhandledRejection', (e) => console.warn('[captain-worker] unhandled:', e?.message || e));

@@ -26,6 +26,10 @@ const BOARDS = {
 const DEFAULTS = {
   // Off = shadow mode: briefs are written, checked and reviewed in CP, nothing is created on Monday (spec §14 phase 1)
   monday_submit: false,
+  // Where Medium's tickets land (CP's token; lane in the name — Tomer's choices, 11 Nov 2026). "Form Requests" on both boards.
+  monday_groups: { video: 'new_group__1', design: 'new_group__1' },
+  // Weekly autopilot (spec §12): Sunday 07:00 Asia/Jerusalem Medium picks winners and queues briefs. Off until switched on.
+  autopilot: { enabled: false, weekday: 0, hour: 7, per_week: 12 },
   corpus: { requesters: ['Lilian Krumholz'], since: '2026-03-15', thin_chars: 60 },
   // Separate test brands — never Particle lanes, never winners, peer sets, templates or transfers (spec §2)
   test_brands: [
@@ -135,7 +139,7 @@ async function getConfig(brandId = 'particle') {
   return merge(DEFAULTS, typeof saved === 'string' ? JSON.parse(saved) : saved);
 }
 
-const EDITABLE = ['monday_submit', 'corpus', 'test_brands', 'lane_mix', 'caps', 'models', 'style_guide', 'upspring_snapshot', 'language_bank'];
+const EDITABLE = ['monday_submit', 'monday_groups', 'autopilot', 'corpus', 'test_brands', 'lane_mix', 'caps', 'models', 'style_guide', 'upspring_snapshot', 'language_bank'];
 async function saveConfig(patch, brandId = 'particle') {
   const clean = Object.fromEntries(Object.entries(patch || {}).filter(([k]) => EDITABLE.includes(k)));
   if ('style_guide' in clean && String(clean.style_guide).length > 60000) throw Object.assign(new Error('The style guide is too long (60,000 characters at most)'), { status: 400 });

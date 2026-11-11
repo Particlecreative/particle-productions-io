@@ -110,7 +110,9 @@ function writerPrompt(ctx, req, cfg) {
     `Kind of job: ${ctx.kind}`,
     req.campaign ? `Campaign: ${req.campaign}${req.offer ? ` · offer ${[req.offer.tier && `${req.offer.tier}% off`, req.offer.code && `code ${req.offer.code}`, req.offer.ends && `ends ${req.offer.ends}`].filter(Boolean).join(', ')}` : ''} — code and end date go on every asset.` : null,
     req.template ? `Use the named template: ${req.template}` : null,
+    req.ticket_hint ? `Ticket name, exactly: ${req.ticket_hint}` : null,
     req.source ? `Source to build on: ${req.source}` : null,
+    req.transfer ? `TRANSFER PLAN (from the analyst — follow it; change only what it says to swap):\n${JSON.stringify(req.transfer, null, 1).slice(0, 4000)}` : null,
     req.note ? `Note from ${req.author || 'the requester'}: ${req.note}` : null,
     req.siblings?.length ? `This is one of several briefs in a batch — make it clearly different from: ${req.siblings.join(' · ')}` : null,
   ].filter(Boolean).join('\n');
@@ -264,11 +266,25 @@ async function runGenerate({ brief_id }) {
     // a batch of several: each one must differ from the ones already written
     if (req.batch_id) req.siblings = (await db.query(`SELECT ticket_name FROM medium_briefs WHERE request->>'batch_id' = $1 AND id <> $2 AND ticket_name IS NOT NULL`, [req.batch_id, row.id])).rows.map(r => r.ticket_name);
     const ctx = await buildContext(req, cfg);
+    // Transfers: the analyst's keep / swap plan and prerequisite checks come first (spec §6.3–6.4)
+    let transfer = null;
+    if (String(req.move || '').startsWith('TRANSFER_')) {
+      const T = require('./transfer');
+      const a = await T.analyzeTransfer(req, ctx, cfg);
+      cost += a.cost;
+      transfer = a.plan;
+      if (transfer.needs_article) await T.logArticleOpportunity(ctx.lane.name, `${req.product}: ${transfer.hypothesis}`);
+      if (transfer.verdict === 'block') {
+        await setRow(row.id, { status: 'DROPPED', error: `Transfer blocked — ${transfer.verdict_reason}`, evidence: { transfer }, cost_usd: cost });
+        return { dropped: true, transfer: 'blocked' };
+      }
+      req.transfer = { keep: transfer.keep, swap: transfer.swap, proof: transfer.proof_check, claims: transfer.claims_check, hypothesis: transfer.hypothesis, verdict: transfer.verdict };
+    }
     const meta = { format: ctx.format, kind: ctx.kind, move: req.move, lane: ctx.lane.name };
     const w = await writeWithStyle(writerPrompt(ctx, req, cfg), cfg, meta);
     cost += w.cost;
     const base = { kind: w.out.kind || ctx.kind, ticket_name: w.out.ticket_name, fields: w.out.fields, lines: w.out.lines, style: w.style, exemplar_ids: ctx.examples.map(e => e.id),
-      evidence: { items: w.out.evidence, afterlife: ctx.winners.available ? (ctx.winners.winners || []).slice(0, 5) : { available: false, reason: ctx.winners.reason }, examples: ctx.examples.map(e => ({ id: e.id, item_id: e.item_id, name: e.name })) } };
+      evidence: { items: w.out.evidence, afterlife: ctx.winners.available ? (ctx.winners.winners || []).slice(0, 5) : { available: false, reason: ctx.winners.reason }, examples: ctx.examples.map(e => ({ id: e.id, item_id: e.item_id, name: e.name })), ...(transfer ? { transfer } : {}) } };
     if (!w.style.passed) {
       await setRow(row.id, { ...base, status: 'DROPPED', error: `Failed the house-style check twice: ${w.style.failures.join(' · ')}`, cost_usd: cost });
       return { dropped: true };
@@ -281,6 +297,43 @@ async function runGenerate({ brief_id }) {
     return { ok: true, score: s.score.total, preflight: pf.verdict };
   } catch (e) {
     await setRow(row.id, { status: 'ERROR', error: String(e.message).slice(0, 1000), cost_usd: cost });
+    return { error: e.message };
+  }
+}
+
+// ── Improve: apply the scorer's fixes as a new version, re-score, keep both (spec §18.3) ──
+/** Stop rule (pure, tested): at most 3 rounds, and stop once a round gains less than 3 points. */
+function canImprove(b) {
+  const rounds = Number(b.versions?.improved?.round || 0);
+  const gain = b.versions?.improved ? Number(b.versions.improved.gain ?? 99) : 99;
+  return !!(b.score?.fixes?.length) && rounds < 3 && gain >= 3 && b.status === 'PENDING_REVIEW';
+}
+
+async function runImprove({ brief_id }) {
+  const { rows } = await db.query('SELECT * FROM medium_briefs WHERE id = $1', [brief_id]);
+  const b = rows[0];
+  if (!b || !canImprove(b)) return { skipped: true };
+  let cost = 0;
+  try {
+    const cfg = await getConfig();
+    const req = { ...(b.request || {}), lane: b.lane, format: b.format, product: b.product, move: b.move === 'FREEFORM' ? 'NEW_ANGLE' : b.move, kind: b.kind };
+    const ctx = await buildContext(req, cfg);
+    const current = { ticket_name: b.ticket_name, kind: b.kind, ...b.fields, lines: b.lines, evidence: b.evidence?.items || [] };
+    const prompt = `${writerPrompt(ctx, req, cfg)}\n\nIMPROVE THIS BRIEF. Current version:\n${JSON.stringify(current).slice(0, 30000)}\n\nApply these fixes from the review panel, each one, and change nothing else:\n${b.score.fixes.map(f => `- ${f.fix} (${f.evidence})`).join('\n')}${(b.preflight?.issues || []).filter(i => i.severity === 'must_fix').length ? `\nAlso fix Captain Caption's must-fix items:\n${b.preflight.issues.filter(i => i.severity === 'must_fix').map(i => `- ${i.found} → ${i.fix} (${i.rule})`).join('\n')}` : ''}`;
+    const meta = { format: ctx.format, kind: b.kind, move: req.move, lane: ctx.lane.name };
+    const w = await writeWithStyle(prompt, cfg, meta);
+    cost += w.cost;
+    const s = await score(w.out, ctx, cfg, { selfId: b.id });
+    cost += s.cost;
+    const pf = await preflight(b, w.out);
+    cost += pf.cost;
+    const before = b.versions?.improved?.score?.total ?? b.score?.total ?? 0;
+    const versions = { ...(b.versions || {}), medium: b.versions?.medium || { ticket_name: b.ticket_name, kind: b.kind, fields: b.fields, lines: b.lines, score: b.score, preflight: b.preflight, style: b.style, evidence: b.evidence?.items || [] },
+      improved: { ...w.out, style: w.style, score: s.score, preflight: pf, round: Number(b.versions?.improved?.round || 0) + 1, gain: (s.score.total ?? 0) - before, fixes_applied: b.score.fixes } };
+    await setRow(b.id, { versions, cost_usd: Number(b.cost_usd || 0) + cost });
+    return { ok: true, score: s.score.total, gain: versions.improved.gain };
+  } catch (e) {
+    await setRow(b.id, { error: `Improve failed: ${String(e.message).slice(0, 500)}`, cost_usd: Number(b.cost_usd || 0) + cost });
     return { error: e.message };
   }
 }
@@ -367,4 +420,4 @@ async function runFreeform({ brief_id }) {
   }
 }
 
-module.exports = { runGenerate, runFreeform, relines, preflight, score, gate, freshnessScore, tokenSet, buildContext, writerPrompt, normalizeOut, kindFor, laneFirstFor, setRow, toParam, composeBrief, WEIGHTS };
+module.exports = { runGenerate, runFreeform, runImprove, canImprove, relines, preflight, score, gate, freshnessScore, tokenSet, buildContext, writerPrompt, normalizeOut, kindFor, laneFirstFor, setRow, toParam, composeBrief, WEIGHTS };

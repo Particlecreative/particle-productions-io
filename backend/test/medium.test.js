@@ -191,3 +191,72 @@ test('corpus: a Monday item becomes an exemplar row', () => {
   assert.equal(row.requester, 'Lilian Krumholz');
   assert.equal(row.excluded, false);
 });
+
+// ── phases 2–5 ───────────────────────────────────────────────────────────────
+test('Monday: column values use the board labels; lane goes in the ticket name', () => {
+  const M = require('../src/lib/medium/monday');
+  const labels = { label9: ['Neck Cream', 'Gravité'], label: ['Marketing/Media'], single_selectu06tevn: ['Meta'], multi_select_Mjj2VFZH: ['4x5', '9x16', '1x1', '16x9'], label4: ['UGC/Creator', 'Script (<1 min)'] };
+  const b = { format: 'video', lane: 'Particle', product: 'Neck Cream', ticket_name: 'Neck Cream | Meta | Medium | Mirror', fields: { brief: 'A man…', why: 'w', test: 't', donts: ['x'], hook: '"Hi"', script: '0–4s', sizes: ['9x16', '5x7'], duration: 29.4, video_type: 'UGC' } };
+  const { values, skipped } = M.columnValues(b, { labels, requesterId: '101019167' });
+  assert.deepEqual(values.label9, { label: 'Neck Cream' });
+  assert.deepEqual(values.label, { label: 'Marketing/Media' });
+  assert.deepEqual(values.multi_select_Mjj2VFZH, { labels: ['9x16'] });   // 5x7 isn't a size on the board
+  assert.equal(values.numeric_mm209bwg, '29');
+  assert.deepEqual(values.label4, { label: 'UGC/Creator' });
+  assert.deepEqual(values.person, { personsAndTeams: [{ id: 101019167, kind: 'person' }] });
+  assert.match(values.long_text_mkn8c1ax.text, /Why: w/);
+  assert.deepEqual(skipped, []);
+  const odd = M.columnValues({ ...b, product: 'Mystery Serum' }, { labels });
+  assert.equal(odd.values.label9, undefined);
+  assert.match(odd.skipped[0], /Mystery Serum/);
+  assert.equal(M.ticketName({ ...b, lane: 'SFY', ticket_name: 'Face Cream | Meta | Medium | Why' }), 'Face Cream | Science For You | Meta | Medium | Why');
+  assert.equal(M.ticketName({ ...b, lane: 'WAC', ticket_name: 'Gravité | WAC | Meta | Medium | Gift' }), 'Gravité | WAC | Meta | Medium | Gift');
+});
+
+test('Holiday Builder: the matrix, price math and derivative wording', () => {
+  const H = require('../src/lib/medium/holiday');
+  const prices = [{ title: 'Neck Cream', data: { list_price: 59 } }];
+  const plan = H.planHoliday({ holiday: 'Christmas', ends: '2026-12-21', lanes: ['Particle'], tiers: [{ tier: 25, code: 'xmas25' }, { tier: 30, code: 'XMAS30' }], products: ['Neck Cream', 'Hand Cream'],
+    static_templates: ['Hero', 'Extra / Stock-Up'], video_templates: ['Three Quick Reasons'], derivatives: { gif: true, imessage: true, translations: true, remarketing: false } }, { prices });
+  assert.equal(plan.holiday, 'Christmas 2026');
+  assert.deepEqual(plan.counts, { statics: 8, videos: 2, derivatives: 8 });   // 2 products × 2 templates × 2 tiers; 2 × 1; (2 gif + 1 imessage + 1 translation) × 2
+  assert.equal(plan.parents[0].ticket_name, 'Neck Cream | Christmas 2026 | Meta | Medium | Hero 25');
+  assert.equal(plan.parents[0].code, 'XMAS25');
+  assert.equal(plan.parents[0].price.text, '$59.00 → $44.25 (25% off)');
+  assert.match(plan.parents.find(p => p.product === 'Hand Cream').price.text, /\[PRICE\]/);
+  assert.equal(plan.parents.find(p => p.kind === 'video').tier, 30);   // videos carry the top tier
+  const gif = H.derivativeBrief('gif', { ticket_name: 'Neck Cream | Christmas 2026 | Meta | Medium | Extra / Stock-Up 30', monday_item_id: '123', request: { holiday: { template: 'Extra / Stock-Up', tier: 30 } } });
+  assert.match(gif.fields.brief, /^Turn the approved Extra \/ Stock-Up 30 static into a GIF design: https:\/\/particle-for-men\.monday\.com\/boards\/8036329818\/pulses\/123 — keep the layout and copy as designed/);
+  assert.equal(gif.format, 'video');
+  assert.match(H.derivativeBrief('translation', { ticket_name: 'x', request: { holiday: {} } }).fields.brief, /Percentage only, no currency/);
+});
+
+test('autopilot: the weekly plan follows the lane mix, skips briefed winners, adds transfers', () => {
+  const { planWeek } = require('../src/lib/medium/autopilot');
+  const w = (key, lane, format, product, winner = true) => ({ key, lane, format, product, winner, percentile: 90, spend: 2000 });
+  const winners = [w('a', 'Particle', 'video', 'Face Cream'), w('b', 'Particle', 'video', 'Shampoo'), w('c', 'Particle', 'static', 'Neck Cream'), w('d', 'SFY', 'static', 'Face Cream'), w('e', 'Particle', 'video', 'Gravité', false)];
+  const plan = planWeek(winners, { mix: { Particle: { video: 1, static: 1 }, SFY: { video: 0, static: 1 }, transfers: { video: 1, static: 0 } }, recent: { a: 3 }, perWeek: 10, edges: [{ source: 'Shampoo', target: 'Hair Revival Kit', score: 0.7 }] });
+  assert.deepEqual(plan.map(p => `${p.lane}:${p.format}:${p.move}:${p.product}`), ['Particle:video:ITERATE:Shampoo', 'Particle:design:REFRESH:Neck Cream', 'SFY:design:REFRESH:Face Cream', 'Particle:video:TRANSFER_PRODUCT:Hair Revival Kit']);
+  assert.equal(planWeek(winners, { mix: { Particle: { video: 5, static: 5 } }, perWeek: 2 }).length, 2);
+});
+
+test('outcomes: decision rule and learned transfer scores', () => {
+  const { decide, updatedEdge } = require('../src/lib/medium/outcomes');
+  assert.equal(decide({ percentile: null, spend: 0 }), 'waiting');
+  assert.equal(decide({ percentile: 75, spend: 400 }, { days: 5 }), 'running');
+  assert.equal(decide({ percentile: 75, spend: 1200 }, { days: 5 }), 'won');
+  assert.equal(decide({ percentile: 30, spend: 100 }, { days: 15 }), 'failed');
+  assert.equal(decide({ percentile: 50, spend: 1500 }, { days: 3 }), 'inconclusive');
+  assert.equal(updatedEdge(0.8, 0, true), 0.84);
+  assert.equal(updatedEdge(0.8, 0, false), 0.64);
+});
+
+test('improve loop: up to 3 rounds, stops when a round gains under 3 points', () => {
+  const { canImprove } = require('../src/lib/medium/writer');
+  const b = { status: 'PENDING_REVIEW', score: { fixes: [{ fix: 'x' }] } };
+  assert.equal(canImprove(b), true);
+  assert.equal(canImprove({ ...b, versions: { improved: { round: 1, gain: 6 } } }), true);
+  assert.equal(canImprove({ ...b, versions: { improved: { round: 1, gain: 2 } } }), false);
+  assert.equal(canImprove({ ...b, versions: { improved: { round: 3, gain: 9 } } }), false);
+  assert.equal(canImprove({ ...b, score: { fixes: [] } }), false);
+});
