@@ -1,0 +1,7 @@
+{
+  "name": "medium-brief",
+  "version": "0.1.0",
+  "description": "Ask MEDIUM, the CP's creative strategist, for an ad brief from Claude desktop or Cowork: transfers, new hooks for a winner, new angles, a winning static's headline as a video hook, or your own idea. Briefs land in the CP review queue; nothing reaches Monday until someone approves it.",
+  "author": { "name": "Particle Creative" },
+  "keywords": ["medium", "creative", "brief", "ads"]
+}

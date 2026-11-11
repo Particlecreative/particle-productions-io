@@ -1,0 +1,11 @@
+{
+  "name": "particle-medium",
+  "owner": { "name": "Particle Creative" },
+  "plugins": [
+    {
+      "name": "medium-brief",
+      "source": "./",
+      "description": "Ask MEDIUM (the CP's creative strategist) for an ad brief from Claude desktop or Cowork."
+    }
+  ]
+}

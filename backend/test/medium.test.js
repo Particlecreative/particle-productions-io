@@ -332,3 +332,50 @@ test('planWeek: headline hooks only for winning statics with a known headline, o
   assert.equal(plan[0].headline, 'Your Neck Is Telling Everyone Your Age');
   assert.equal(planWeek(winners, { mix: {}, perWeek: 10, hooks: 0 }).length, 0);
 });
+
+test('rebalance: a slot moves from the weakest cell to the strongest, total unchanged, plain reasons', () => {
+  const { rebalance } = require('../src/lib/medium/mix');
+  const mix = { Particle: { video: 3, static: 3 }, SFY: { video: 2, static: 2 }, GT: { video: 1, static: 0 }, WAC: { video: 0, static: 2 }, transfers: { video: 2, static: 2 } };
+  const before = JSON.stringify(mix);
+  const sum = (m) => Object.values(m).reduce((a, x) => a + x.video + x.static, 0);
+  const r = rebalance(mix, [
+    { lane: 'SFY', format: 'static', won: 4, failed: 1, inconclusive: 0 },
+    { lane: 'Particle', format: 'video', won: 0, failed: 3, inconclusive: 1 },
+    { lane: 'WAC', format: 'static', won: 1, failed: 0, inconclusive: 0 },     // < 3 decided → never moves
+  ]);
+  assert.equal(JSON.stringify(mix), before, 'input untouched');
+  assert.equal(r.mix.SFY.static, 3);
+  assert.equal(r.mix.Particle.video, 2);
+  assert.equal(r.mix.WAC.static, 2);
+  assert.equal(sum(r.mix), sum(mix));
+  assert.deepEqual(r.changes.map(c => c.why), [
+    'SFY statics won 4 of 5 tests — one more slot a week (2 → 3).',
+    'Particle videos won 0 of 4 tests — one slot moves to SFY statics (3 → 2).',
+  ]);
+});
+
+test('rebalance: no move without 3 decided tests, a 20-point gap, or when a lane would drop to zero', () => {
+  const { rebalance } = require('../src/lib/medium/mix');
+  const mix = { Particle: { video: 3, static: 3 }, GT: { video: 1, static: 0 }, transfers: { video: 2, static: 2 } };
+  assert.equal(rebalance(mix, [{ lane: 'Particle', format: 'video', won: 2, failed: 0, inconclusive: 0 }, { lane: 'GT', format: 'video', won: 0, failed: 2, inconclusive: 0 }]).changes.length, 0);
+  assert.equal(rebalance(mix, [{ lane: 'Particle', format: 'video', won: 2, failed: 2, inconclusive: 0 }, { lane: 'Particle', format: 'static', won: 1, failed: 2, inconclusive: 0 }]).changes.length, 0);
+  // GT has one slot in total — it keeps it, however badly it tested
+  assert.equal(rebalance(mix, [{ lane: 'Particle', format: 'static', won: 3, failed: 0, inconclusive: 0 }, { lane: 'GT', format: 'video', won: 0, failed: 5, inconclusive: 0 }]).changes.length, 0);
+  // transfers move the same way (inside the transfers budget here)
+  const t = rebalance(mix, [{ lane: 'transfers', format: 'video', won: 3, failed: 0, inconclusive: 0 }, { lane: 'transfers', format: 'design', won: 0, failed: 3, inconclusive: 0 }]);
+  assert.deepEqual(t.mix.transfers, { video: 3, static: 1 });
+  assert.match(t.changes[0].why, /^Video transfers won 3 of 3 tests/);
+  assert.match(t.changes[1].why, /one slot moves to video transfers/);
+});
+
+test('rebalance: each cell moves at most one slot a week', () => {
+  const { rebalance } = require('../src/lib/medium/mix');
+  const mix = { Particle: { video: 3, static: 3 }, SFY: { video: 2, static: 2 } };
+  const r = rebalance(mix, [
+    { lane: 'SFY', format: 'video', won: 5, failed: 0, inconclusive: 0 }, { lane: 'SFY', format: 'static', won: 4, failed: 1, inconclusive: 0 },
+    { lane: 'Particle', format: 'video', won: 0, failed: 5, inconclusive: 0 }, { lane: 'Particle', format: 'static', won: 0, failed: 4, inconclusive: 1 },
+  ]);
+  assert.deepEqual(r.mix, { Particle: { video: 2, static: 2 }, SFY: { video: 3, static: 3 } });
+  assert.equal(r.changes.length, 4);
+  assert.ok(r.changes.every(c => Math.abs(c.to - c.from) === 1));
+});

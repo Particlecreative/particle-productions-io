@@ -107,6 +107,8 @@ async function tick() {
   const ap = cfg.autopilot || {};
   if (ap.enabled && now.weekday === Number(ap.weekday ?? 0) && now.hour >= Number(ap.hour ?? 7) && String(state.autopilot_at || '').slice(0, 10) !== now.date) {
     await stamp('autopilot_at');
+    // the lane mix learns from decided tests first, so this week's plan already uses it
+    out.mix = await require('./mix').runReweight().catch(e => ({ error: e.message }));
     out.autopilot = await runAutopilot().catch(e => ({ error: e.message }));
   }
   // the weekly Growth digest to Slack, when switched on

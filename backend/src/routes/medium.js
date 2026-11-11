@@ -11,6 +11,9 @@
  *   POST /briefs/:id/approve|reject|regenerate
  *   GET|PUT /config · GET /affinity · GET /beliefs · PUT /beliefs/:id
  *
+ * The medium-brief plugin may call POST /generate · /freeform · /static-hooks/generate and GET /briefs · /briefs/:id ·
+ * /overview with the service token (X-Medium-Token, or Authorization: Bearer) — nothing else.
+ *
  * Nothing reaches Monday without an approve click, and nothing reaches Monday at all while monday_submit is off
  * (shadow mode, the default).
  */
@@ -35,7 +38,30 @@ function errorJson(res, err) {
 }
 const bad = (msg, status = 400) => Object.assign(new Error(msg), { status });
 
-router.use(verifyJWT);
+// ── the medium-brief plugin (Claude desktop / Cowork) calls a few routes with a service token instead of a session ──
+// Header X-Medium-Token: <token> (or Authorization: Bearer <token>) = MEDIUM_SERVICE_TOKEN, else CAPTAIN_SERVICE_TOKEN.
+// A Bearer value that isn't the service token is treated as a normal user JWT. The token is never logged.
+const SERVICE_ROUTES = [['POST', /^\/generate$/], ['POST', /^\/freeform$/], ['POST', /^\/static-hooks\/generate$/], ['GET', /^\/briefs$/],
+  ['GET', /^\/briefs\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i], ['GET', /^\/overview$/]];
+function serviceTokenOk(got) {
+  const want = process.env.MEDIUM_SERVICE_TOKEN || process.env.CAPTAIN_SERVICE_TOKEN || '';
+  if (want.length < 32 || !got) return false;
+  const a = Buffer.from(String(got)), b = Buffer.from(want);
+  return a.length === b.length && require('crypto').timingSafeEqual(a, b);
+}
+router.use((req, res, next) => {
+  const header = req.get('x-medium-token');
+  const bearer = (String(req.get('authorization') || '').match(/^Bearer\s+(.+)$/i) || [])[1]?.trim() || null;
+  const ok = serviceTokenOk(header || bearer);
+  if (!ok) return header ? res.status(401).json({ error: 'Invalid Medium token' }) : next();
+  if (!SERVICE_ROUTES.some(([m, re]) => m === req.method && re.test(req.path))) return res.status(403).json({ error: 'The Medium token can only create and read briefs' });
+  const author = req.body?.author ? String(req.body.author).trim().slice(0, 80) : '';
+  req.service = 'medium-plugin';
+  req.user = { id: 'medium-plugin', name: author || 'Medium plugin', role: 'Editor' };
+  return next();
+});
+
+router.use((req, res, next) => (req.service ? next() : verifyJWT(req, res, next)));
 router.use((req, res, next) => ((RANK[req.user?.role] ?? -1) >= RANK.Editor || req.user?.super_admin ? next() : res.status(403).json({ error: 'Editor access required' })));
 const requireAdmin = (req, res, next) => (isAdmin(req) ? next() : res.status(403).json({ error: 'Admin access required' }));
 
@@ -64,6 +90,7 @@ router.get('/overview', async (req, res) => {
       language_bank: cfg.language_bank || [], holidays: calendar.upcoming(new Date(), 3),
       autopilot: { ...(cfg.autopilot || {}), last_run: cfg.state?.autopilot_at || null }, outcomes_at: cfg.state?.outcomes_at || null, monday_submit: !!cfg.monday_submit,
       digest: { ...(cfg.digest || {}), last_run: cfg.state?.digest_at || null, webhook: !!process.env.SLACK_CREATIVE_WEBHOOK_URL }, articles,
+      mix: { current: cfg.lane_mix, history: cfg.state?.mix_history || [] },
       options: { lanes: LANE_NAMES, moves: MOVES, products: PRODUCTS, kinds: KINDS.map(k => ({ id: k, label: KIND_LABEL[k] })), lane_rules: LANE_RULES },
     });
   } catch (err) { errorJson(res, err); }
