@@ -1,43 +1,45 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { LayoutDashboard, Sparkles, Wand2, BookOpen, FlaskConical, CalendarDays, Quote } from 'lucide-react';
+import { Home, PenLine, Inbox, Telescope } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useBrand } from '../../context/BrandContext';
 import { mediumApi } from '../../lib/mediumService';
-import StrategyRoom from '../../components/medium/StrategyRoom';
-import Generator from '../../components/medium/Generator';
-import Freeform from '../../components/medium/Freeform';
-import Sources from '../../components/medium/Sources';
-import Lab from '../../components/medium/Lab';
-import Holiday from '../../components/medium/Holiday';
-import HeadlineHooks from '../../components/medium/HeadlineHooks';
+import Today from '../../components/medium/Today';
+import Create from '../../components/medium/Create';
+import Briefs from '../../components/medium/Briefs';
+import Behind from '../../components/medium/Behind';
 import BriefDrawer from '../../components/medium/BriefDrawer';
 import '../../components/tracker/tracker.css';
 import '../../components/captain/captain.css';
+import '../../components/medium/medium.css';
 
 const TABS = [
-  ['room', 'Strategy Room', LayoutDashboard],
-  ['generate', 'Brief Generator', Sparkles],
-  ['freeform', 'Freeform Brief', Wand2],
-  ['hooks', 'Headline → Hook', Quote],
-  ['learns', 'What it learns from', BookOpen],
-  ['lab', 'A/B Lab & Transfers', FlaskConical],
-  ['holiday', 'Holiday Builder', CalendarDays],
+  ['today', 'Today', Home],
+  ['create', 'Create', PenLine],
+  ['briefs', 'Briefs', Inbox],
+  ['behind', 'Behind the scenes', Telescope],
 ];
+// old links (?tab=generate…) still land in the right place
+const LEGACY = { room: ['today'], generate: ['create', 'winner'], freeform: ['create', 'idea'], hooks: ['create', 'hooks'], holiday: ['create', 'holiday'], learns: ['behind', 'sources'], lab: ['behind', 'tests'] };
 
-function Pill({ ok, warn, label, title }) {
-  return <span className="trk-chip gray" title={title}><span className="cc-dot" style={{ background: ok ? 'var(--trk-green)' : warn ? 'var(--trk-amber)' : 'var(--trk-red)' }} /> {label}</span>;
+function hello(name) {
+  const h = new Date().getHours();
+  const first = String(name || '').trim().split(/\s+/)[0];
+  return `${h < 5 ? 'Up late' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'}${first ? `, ${first}` : ''}`;
 }
 
 /**
- * MEDIUM 🔮 — the creative strategy room. It talks to the afterlife (what won) and brings back the next brief:
- * written in the team's house style, scored, proofread by Captain Caption, and approved by a person.
+ * MEDIUM 🔮 — the creative strategy room. It studies what won and drafts the next briefs in the team's house style;
+ * Captain Caption proofreads them; a person approves before anything is made.
  */
 export default function MediumPage() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
   const { brandId } = useBrand();
   const [params, setParams] = useSearchParams();
-  const tab = TABS.some(t => t[0] === params.get('tab')) ? params.get('tab') : 'room';
+  const raw = params.get('tab');
+  const legacy = LEGACY[raw];
+  const tab = legacy ? legacy[0] : TABS.some(t => t[0] === raw) ? raw : 'today';
+  const sub = (legacy && legacy[1]) || params.get('mode') || '';
   const open = params.get('brief');
   const [overview, setOverview] = useState(null);
   const [briefs, setBriefs] = useState([]);
@@ -58,50 +60,38 @@ export default function MediumPage() {
   useEffect(() => { if (!toast) return undefined; const t = setTimeout(() => setToast(null), 5000); return () => clearTimeout(t); }, [toast]);
 
   const setParam = useCallback((key, value) => setParams(prev => { const n = new URLSearchParams(prev); if (value) n.set(key, value); else n.delete(key); return n; }), [setParams]);
-  const go = useCallback((t) => setParam('tab', t), [setParam]);
+  const go = useCallback((t, mode) => setParams(prev => { const n = new URLSearchParams(prev); n.set('tab', t); if (mode) n.set('mode', mode); else n.delete('mode'); return n; }), [setParams]);
+  const setSub = useCallback((mode) => go(tab, mode), [go, tab]);
   const openBrief = useCallback((id) => setParam('brief', id), [setParam]);
 
   if (brandId && brandId !== 'particle') return <div className="p-10 text-center text-sm text-gray-500">Medium works for Particle — switch to the Particle brand to use it.</div>;
 
-  const src = overview?.sources || {};
+  const waiting = briefs.filter(b => b.status === 'PENDING_REVIEW').length;
+  const mondayOn = !!(overview?.monday_submit ?? overview?.sources?.monday?.submit);
   return (
     <div className="trk cc md max-w-[2400px] mx-auto pb-16">
       <div className="trk-canvas p-5 sm:p-8 md:p-10">
-        <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
-          <div className="min-w-0">
-            <div className="trk-eyebrow">Creative strategy room · Particle</div>
-            <h1 className="trk-title text-[52px] sm:text-[76px] md:text-[92px] mt-2">Medium <span aria-hidden>🔮</span></h1>
-            <p className="mt-2 text-[15px] trk-muted max-w-[760px]">Talks to the afterlife and brings back the next brief: what won and why, written in the team’s house style, scored, proofread by Captain Caption — and approved by a person before anything is made.</p>
-          </div>
-          {overview && (
-            <div className="ml-auto flex flex-wrap gap-2 justify-end">
-              <Pill ok={src.afterlife?.connected} label="AfterLife" title={src.afterlife?.reason || 'Winners feed connected'} />
-              <Pill ok={false} warn={src.upspring?.snapshot} label="Upspring" title={src.upspring?.snapshot ? 'Account read pasted in (not synced)' : 'Not connected on the server yet'} />
-              <Pill ok={(src.corpus?.used || 0) > 0} label={`Corpus ${src.corpus?.used || 0}`} title="Briefs Medium learns the house style from" />
-              <Pill ok={src.worker?.alive} label="Worker" />
-              <span className="trk-chip amber" title="Briefs are written, checked and approved in CP; nothing is created on Monday">Shadow mode</span>
-            </div>
-          )}
-        </div>
+        <div className="trk-eyebrow">🔮 Medium · creative strategy</div>
+        <h1 className="md-hello mt-3">{hello(user?.name)}</h1>
+        <p className="md-lead mt-3">Medium studies what won and drafts your next briefs in the team’s style. Captain Caption proofreads every line — and nothing gets made until you approve it.</p>
 
-        <div className="mt-7 trk-seg overflow-x-auto max-w-full" role="tablist">
+        <nav className="md-tabs mt-8" role="tablist" aria-label="Medium">
           {TABS.map(([key, label, Icon]) => (
-            <button key={key} type="button" role="tab" aria-selected={tab === key} className={tab === key ? 'on' : ''} onClick={() => go(key)}><Icon size={13} /> {label}</button>
+            <button key={key} type="button" role="tab" aria-selected={tab === key} className={tab === key ? 'on' : ''} onClick={() => go(key)}>
+              <Icon size={16} /> {label}{key === 'briefs' && waiting > 0 && <span className="md-count">{waiting}</span>}
+            </button>
           ))}
-        </div>
+        </nav>
 
-        <div className="mt-6">
-          {tab === 'room' && <StrategyRoom overview={overview} briefs={briefs} onOpen={openBrief} go={go} />}
-          {tab === 'generate' && <Generator overview={overview} notify={notify} onOpen={openBrief} onQueued={load} />}
-          {tab === 'freeform' && <Freeform overview={overview} notify={notify} onOpen={openBrief} onQueued={load} />}
-          {tab === 'hooks' && <HeadlineHooks overview={overview} notify={notify} onOpen={openBrief} onQueued={load} />}
-          {tab === 'learns' && <Sources overview={overview} notify={notify} isAdmin={isAdmin} reload={load} />}
-          {tab === 'lab' && <Lab overview={overview} notify={notify} onOpen={openBrief} />}
-          {tab === 'holiday' && <Holiday overview={overview} notify={notify} onOpen={openBrief} />}
+        <div className="mt-8">
+          {tab === 'today' && <Today overview={overview} briefs={briefs} onOpen={openBrief} go={go} />}
+          {tab === 'create' && <Create mode={sub} setMode={setSub} overview={overview} notify={notify} onOpen={openBrief} onQueued={load} />}
+          {tab === 'briefs' && <Briefs briefs={briefs} overview={overview} onOpen={openBrief} />}
+          {tab === 'behind' && <Behind part={sub} setPart={setSub} overview={overview} notify={notify} isAdmin={isAdmin} reload={load} onOpen={openBrief} />}
         </div>
       </div>
 
-      {open && <BriefDrawer id={open} isAdmin={isAdmin} notify={notify} onClose={() => setParam('brief', '')} onChanged={load} />}
+      {open && <BriefDrawer id={open} isAdmin={isAdmin} mondayOn={mondayOn} notify={notify} onClose={() => setParam('brief', '')} onChanged={load} />}
       {toast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[80] px-4 py-2.5 rounded-full text-sm font-semibold shadow-lg" style={{ background: toast.error ? '#ff5c7a' : '#0808f8', color: '#fff' }} role="status">{toast.text}</div>
       )}

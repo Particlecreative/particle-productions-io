@@ -1,0 +1,86 @@
+/* MEDIUM — the friendly layer on top of the Tracker / Captain look (.trk .cc). Everything is scoped to .md and uses
+   the shared --trk-* tokens, so light and dark mode both work. */
+
+.md .md-hello { font-family: 'Sofia Sans Extra Condensed', sans-serif; font-weight: 800; font-size: clamp(40px, 5vw, 60px); line-height: 0.95; letter-spacing: -0.01em; color: var(--trk-text); }
+.md .md-lead { font-size: 15.5px; line-height: 1.55; color: var(--trk-muted); max-width: 640px; }
+.md .md-h2 { font-size: 19px; font-weight: 700; letter-spacing: -0.01em; color: var(--trk-text); }
+.md .md-sub { font-size: 13.5px; color: var(--trk-muted); }
+
+/* tabs: bigger, calmer than the segmented control */
+.md .md-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--trk-line); overflow-x: auto; scrollbar-width: none; }
+.md .md-tabs::-webkit-scrollbar { display: none; }
+.md .md-tabs button { position: relative; display: inline-flex; align-items: center; gap: 8px; padding: 12px 14px 13px; font-size: 14.5px; font-weight: 600; color: var(--trk-muted); white-space: nowrap; border-radius: 12px 12px 0 0; transition: color 0.15s, background 0.15s; }
+.md .md-tabs button:hover { color: var(--trk-text); background: var(--trk-glass); }
+.md .md-tabs button.on { color: var(--trk-text); }
+.md .md-tabs button.on::after { content: ''; position: absolute; left: 10px; right: 10px; bottom: -1px; height: 3px; border-radius: 3px; background: var(--trk-electric); }
+.md .md-count { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; font-size: 11.5px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; background: var(--trk-electric); color: #fff; }
+
+/* big friendly action cards */
+.md .md-action { display: flex; flex-direction: column; gap: 6px; text-align: left; padding: 20px; border-radius: 24px; border: 1px solid var(--trk-line); background: var(--trk-glass); transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s; min-height: 148px; }
+.md .md-action:hover { transform: translateY(-2px); border-color: rgba(74, 85, 255, 0.45); box-shadow: 0 16px 34px -22px rgba(8, 8, 248, 0.55); }
+.md .md-action.on { border-color: var(--trk-electric); box-shadow: inset 0 0 0 1px var(--trk-electric); }
+.md .md-action .md-emoji { font-size: 28px; line-height: 1; }
+.md .md-action .md-action-title { font-size: 16.5px; font-weight: 700; color: var(--trk-text); margin-top: 6px; }
+.md .md-action .md-action-line { font-size: 13.5px; line-height: 1.45; color: var(--trk-muted); }
+.md .md-action .md-action-foot { margin-top: auto; font-size: 12.5px; font-weight: 600; color: var(--trk-ink); }
+.md .md-action.compact { min-height: 0; padding: 14px 16px; flex-direction: row; align-items: center; gap: 12px; border-radius: 18px; }
+.md .md-action.compact .md-emoji { font-size: 22px; }
+.md .md-action.compact .md-action-title { margin-top: 0; font-size: 14.5px; }
+
+/* brief cards */
+.md .md-brief { display: flex; flex-direction: column; gap: 10px; text-align: left; width: 100%; padding: 18px 18px 16px; border-radius: 22px; border: 1px solid var(--trk-line); background: var(--trk-glass); transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s; }
+.md .md-brief:hover { transform: translateY(-2px); border-color: rgba(74, 85, 255, 0.4); box-shadow: 0 14px 30px -22px rgba(8, 8, 248, 0.6); }
+.md .md-brief-top { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--trk-muted); min-width: 0; }
+.md .md-brief-hook { font-size: 17px; font-weight: 650; line-height: 1.35; color: var(--trk-text); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.md .md-brief-why { font-size: 13.5px; line-height: 1.45; color: var(--trk-muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.md .md-brief-meta { margin-top: auto; font-size: 12px; color: var(--trk-dim); }
+
+/* readiness pill */
+.md .md-ready { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px 3px 8px; border-radius: 999px; font-size: 12px; font-weight: 650; white-space: nowrap; flex: none; }
+.md .md-ready.green { background: rgba(47, 211, 138, 0.15); color: #9ff0c8; }
+.md .md-ready.amber { background: rgba(255, 181, 71, 0.15); color: #ffd699; }
+.md .md-ready.red { background: rgba(255, 92, 122, 0.16); color: #ffb3c2; }
+.md .md-ready.gray { background: var(--trk-glass-hi); color: var(--trk-muted); }
+
+/* compact row (lists) */
+.md .md-row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 12px 10px; border-radius: 16px; transition: background 0.15s; }
+.md .md-row:hover { background: var(--trk-glass-hi); }
+.md .md-row + .md-row { border-top: 1px solid var(--trk-line); }
+
+/* verdict card in the drawer */
+.md .md-verdict { display: flex; gap: 14px; align-items: flex-start; padding: 16px 18px; border-radius: 20px; border: 1px solid var(--trk-line); }
+.md .md-verdict.green { background: rgba(47, 211, 138, 0.09); border-color: rgba(47, 211, 138, 0.35); }
+.md .md-verdict.amber { background: rgba(255, 181, 71, 0.09); border-color: rgba(255, 181, 71, 0.35); }
+.md .md-verdict.red { background: rgba(255, 92, 122, 0.08); border-color: rgba(255, 92, 122, 0.35); }
+.md .md-verdict.gray { background: var(--trk-glass); }
+.md .md-verdict .md-emoji { font-size: 26px; line-height: 1; }
+
+/* the brief, readable */
+.md .md-doc-label { font-size: 12px; font-weight: 700; color: var(--trk-dim); margin-bottom: 6px; }
+.md .md-doc { font-size: 15px; line-height: 1.65; color: var(--trk-text); white-space: pre-wrap; word-break: break-word; }
+.md .md-hookline { font-size: 22px; font-weight: 650; line-height: 1.3; color: var(--trk-text); }
+
+/* collapsibles */
+.md .md-more { border-top: 1px solid var(--trk-line); }
+.md .md-more > summary { display: flex; align-items: center; gap: 10px; padding: 14px 2px; font-size: 14.5px; font-weight: 650; color: var(--trk-text); }
+.md .md-more > summary::after { content: '›'; margin-left: auto; font-size: 20px; color: var(--trk-dim); transition: transform 0.15s; }
+.md .md-more[open] > summary::after { transform: rotate(90deg); }
+.md .md-more > summary .md-more-hint { font-size: 12.5px; font-weight: 500; color: var(--trk-dim); }
+
+/* sticky action bar at the bottom of the drawer */
+.md .md-actionbar { position: sticky; bottom: 0; z-index: 2; margin: 24px -32px -32px; padding: 14px 32px 18px; border-top: 1px solid var(--trk-line); background: var(--trk-navy-2, #0b1440); backdrop-filter: blur(10px); }
+@media (max-width: 768px) { .md .md-actionbar { margin: 24px -24px -24px; padding: 12px 24px 16px; } }
+
+.md .md-empty { text-align: center; padding: 40px 16px; }
+.md .md-empty .md-emoji { font-size: 40px; }
+
+/* light mode */
+html:not(.dark) .md .md-action, html:not(.dark) .md .md-brief { background: #fff; box-shadow: 0 1px 2px rgba(13, 19, 48, 0.04); }
+html:not(.dark) .md .md-ready.green { background: rgba(5, 150, 105, 0.12); color: #047857; }
+html:not(.dark) .md .md-ready.amber { background: rgba(217, 119, 6, 0.12); color: #a16207; }
+html:not(.dark) .md .md-ready.red { background: rgba(225, 29, 72, 0.1); color: #be123c; }
+html:not(.dark) .md .md-verdict.green { background: rgba(5, 150, 105, 0.06); border-color: rgba(5, 150, 105, 0.3); }
+html:not(.dark) .md .md-verdict.amber { background: rgba(217, 119, 6, 0.06); border-color: rgba(217, 119, 6, 0.3); }
+html:not(.dark) .md .md-verdict.red { background: rgba(225, 29, 72, 0.05); border-color: rgba(225, 29, 72, 0.3); }
+html:not(.dark) .md .md-actionbar { background: rgba(255, 255, 255, 0.94); }
+html:not(.dark) .md .md-action .md-action-foot { color: #2b35e0; }

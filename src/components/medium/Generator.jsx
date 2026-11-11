@@ -1,8 +1,17 @@
 import { useEffect, useState } from 'react';
 import { Sparkles, Loader2, Minus, Plus, ChevronDown } from 'lucide-react';
 import { mediumApi } from '../../lib/mediumService';
-import { LANE_LABEL, MOVE_LABEL } from './util';
-import { BriefRow } from './StrategyRoom';
+import { LANE_LABEL, MOVE_INFO } from './util';
+import { BriefRow } from './BriefItems';
+
+function Step({ n, title, children }) {
+  return (
+    <section>
+      <div className="flex items-baseline gap-2.5"><span className="font-bold text-[15px]" style={{ color: 'var(--trk-ink)' }}>{n}</span><h3 className="md-h2 !text-[17px]">{title}</h3></div>
+      <div className="mt-3">{children}</div>
+    </section>
+  );
+}
 
 /** Lane → product → format → move → count → Generate. Each brief arrives with its Why, its Test, a score and the Captain's check. */
 export default function Generator({ overview, notify, onOpen, onQueued }) {
@@ -41,94 +50,101 @@ export default function Generator({ overview, notify, onOpen, onQueued }) {
   };
 
   const magazine = f.lane !== 'Particle';
+  const moves = Object.keys(MOVE_INFO).filter(k => (!opts.moves || k in opts.moves) && k !== 'FREEFORM' && k !== 'HEADLINE_HOOK');
+  const top = (opts.products || []).slice(0, 8);
   return (
-    <div className="grid xl:grid-cols-[420px_minmax(0,1fr)] gap-5 items-start">
-      <form className="trk-glass p-5 grid gap-3" onSubmit={run}>
-        <p className="text-sm trk-muted">Pick a lane, a product and a move. Medium does the rest — in house style.</p>
-        <label className="grid gap-1"><span className="trk-label">Lane</span>
-          <select className="trk-input" value={f.lane} onChange={set('lane')}>{(opts.lanes || ['Particle']).map(l => <option key={l} value={l}>{LANE_LABEL[l] || l}</option>)}</select>
-        </label>
-        <label className="grid gap-1"><span className="trk-label">Product</span>
-          <input className="trk-input" list="md-products" value={f.product} onChange={set('product')} placeholder="e.g. Neck Cream" required />
+    <div className="max-w-[1100px] space-y-6">
+      <form className="trk-glass rounded-3xl p-5 sm:p-7 grid gap-7" onSubmit={run}>
+        <Step n="1" title="Which product?">
+          <div className="flex flex-wrap gap-2">
+            {top.map(p => <button key={p} type="button" className={`trk-btn !py-1.5 ${f.product === p ? 'primary' : ''}`} onClick={() => setF(x => ({ ...x, product: p }))}>{p}</button>)}
+          </div>
+          <input className="trk-input mt-2 max-w-[360px]" list="md-products" value={f.product} onChange={set('product')} placeholder="…or type any product" aria-label="Product" required />
           <datalist id="md-products">{(opts.products || []).map(p => <option key={p} value={p} />)}</datalist>
-        </label>
-        <div className="grid grid-cols-2 gap-3">
-          <label className="grid gap-1"><span className="trk-label">Format</span>
-            <select className="trk-input" value={f.format} onChange={set('format')}><option value="video">🎬 Video</option><option value="design">🎨 Static</option></select>
-          </label>
-          <label className="grid gap-1"><span className="trk-label">How many</span>
-            <div className="flex items-center gap-2">
-              <button type="button" className="trk-btn !p-2" aria-label="Fewer" onClick={() => setF(x => ({ ...x, count: Math.max(1, x.count - 1) }))}><Minus size={13} /></button>
-              <span className="tabular-nums font-semibold w-6 text-center" aria-live="polite">{f.count}</span>
-              <button type="button" className="trk-btn !p-2" aria-label="More" onClick={() => setF(x => ({ ...x, count: Math.min(6, x.count + 1) }))}><Plus size={13} /></button>
-            </div>
-          </label>
-        </div>
-        <fieldset className="grid gap-1.5">
-          <legend className="trk-label mb-1">Move</legend>
-          {Object.entries(opts.moves || {}).map(([k, d]) => (
-            <label key={k} className="flex items-start gap-2 text-[13px] cursor-pointer">
-              <input type="radio" name="move" value={k} checked={f.move === k} onChange={set('move')} className="mt-1" />
-              <span><b>{MOVE_LABEL[k] || k}</b> <span className="trk-muted">— {d}</span></span>
+        </Step>
+
+        <Step n="2" title="What kind of brief?">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" role="radiogroup" aria-label="Kind of brief">
+            {moves.map(k => { const [emoji, label, line] = MOVE_INFO[k]; return (
+              <button key={k} type="button" role="radio" aria-checked={f.move === k} className={`md-action !min-h-0 !p-4 ${f.move === k ? 'on' : ''}`} onClick={() => setF(x => ({ ...x, move: k }))}>
+                <span className="flex items-center gap-2"><span className="text-[20px]" aria-hidden>{emoji}</span><span className="md-action-title !mt-0 !text-[15px]">{label}</span></span>
+                <span className="md-action-line">{line}</span>
+              </button>
+            ); })}
+          </div>
+          {f.move === 'TRANSFER_PRODUCT' && (
+            <label className="grid gap-1 mt-4 max-w-[420px]"><span className="md-doc-label">Which product did it win on?</span>
+              <input className="trk-input" list="md-products" value={f.source_product} onChange={set('source_product')} placeholder="e.g. Face Cream" />
+              <span className="text-[12.5px] trk-dim">Medium checks the claims and proof first — if the new product can’t carry it, it says so instead of writing it.</span>
             </label>
-          ))}
-        </fieldset>
-        {f.move === 'TRANSFER_PRODUCT' && (
-          <label className="grid gap-1"><span className="trk-label">Transfer from product (the winner)</span>
-            <input className="trk-input" list="md-products" value={f.source_product} onChange={set('source_product')} placeholder="e.g. Face Cream" />
-            <span className="text-[12px] trk-dim">Same lane, only the product changes. The analyst checks claims, proof and saturation first — a transfer the target can’t carry is blocked.</span>
-          </label>
-        )}
-        {f.move === 'TRANSFER_LANE' && (
-          <label className="grid gap-1"><span className="trk-label">Transfer from lane</span>
-            <select className="trk-input" value={f.source_lane} onChange={set('source_lane')}><option value="">Pick the lane it won in</option>{(opts.lanes || []).filter(l => l !== f.lane).map(l => <option key={l} value={l}>{LANE_LABEL[l] || l}</option>)}</select>
-          </label>
-        )}
-        {f.move === 'HEADLINE_HOOK' && (
-          <label className="grid gap-1"><span className="trk-label">The winning static’s headline</span>
-            <input className="trk-input" value={f.headline} onChange={set('headline')} placeholder="Exactly as it ran, e.g. Your Neck Is Telling Everyone Your Age" required />
-            <span className="text-[12px] trk-dim">It opens the video word for word. Always a video. To pick from AfterLife’s winning statics, use the Headline → Hook tab.</span>
-          </label>
-        )}
-        {f.move.startsWith('TRANSFER_') && (
-          <label className="grid gap-1"><span className="trk-label">The winning concept (optional)</span>
-            <input className="trk-input" value={f.source} onChange={set('source')} placeholder="e.g. SFY “Understand the Why” — thinnest skin fact → narrator" />
-          </label>
-        )}
-        {magazine && (
-          <label className="grid gap-1"><span className="trk-label">Destination article</span>
-            <input className="trk-input" list="md-articles" value={f.article_url} onChange={set('article_url')} placeholder="https://… (the ad must point at an article that exists)" />
-            <datalist id="md-articles">{(overview?.articles || []).filter(a => a.lane === f.lane && !a.opportunity).map(a => <option key={a.url} value={a.url}>{a.title || a.url}</option>)}</datalist>
-            <span className="text-[12px] trk-dim">{(overview?.articles || []).filter(a => a.lane === f.lane && !a.opportunity).length} {f.lane} articles known from past tickets. No article yet? Medium logs an Article Opportunity for the editor.</span>
-          </label>
-        )}
-        <label className="grid gap-1"><span className="trk-label">Note to Medium (optional)</span>
-          <textarea className="trk-input" rows={3} value={f.note} onChange={set('note')} placeholder="e.g. Lean on the wedding season; keep it under 30 seconds" />
-        </label>
-        <button type="button" className="text-[12.5px] trk-muted flex items-center gap-1 hover:underline justify-self-start" onClick={() => setMore(!more)} aria-expanded={more}><ChevronDown size={13} style={{ transform: more ? 'rotate(180deg)' : 'none' }} /> Template, kind of job, sale offer</button>
-        {more && (
-          <div className="grid gap-3">
-            <label className="grid gap-1"><span className="trk-label">Kind of job</span>
-              <select className="trk-input" value={f.kind} onChange={set('kind')}><option value="">Medium decides from the move</option>{(opts.kinds || []).map(k => <option key={k.id} value={k.id}>{k.label}</option>)}</select>
+          )}
+          {f.move === 'TRANSFER_LANE' && (
+            <label className="grid gap-1 mt-4 max-w-[420px]"><span className="md-doc-label">Which lane did it win in?</span>
+              <select className="trk-input" value={f.source_lane} onChange={set('source_lane')}><option value="">Pick the lane</option>{(opts.lanes || []).filter(l => l !== f.lane).map(l => <option key={l} value={l}>{LANE_LABEL[l] || l}</option>)}</select>
             </label>
-            <label className="grid gap-1"><span className="trk-label">Named template</span><input className="trk-input" value={f.template} onChange={set('template')} placeholder="e.g. Receipt Vertical" /></label>
-            <label className="grid gap-1"><span className="trk-label">Campaign</span><input className="trk-input" value={f.campaign} onChange={set('campaign')} placeholder="e.g. Christmas 2026" /></label>
-            <div className="grid grid-cols-3 gap-2">
-              <label className="grid gap-1"><span className="trk-label">Code</span><input className="trk-input" value={f.code} onChange={set('code')} placeholder="XMAS30" /></label>
-              <label className="grid gap-1"><span className="trk-label">%</span><input className="trk-input" inputMode="numeric" value={f.tier} onChange={set('tier')} placeholder="30" /></label>
-              <label className="grid gap-1"><span className="trk-label">Ends</span><input type="date" className="trk-input" value={f.ends} onChange={set('ends')} /></label>
+          )}
+          {(f.move.startsWith('TRANSFER_') || ['ITERATE', 'REFRESH', 'REVIVE'].includes(f.move)) && (
+            <label className="grid gap-1 mt-4"><span className="md-doc-label">Which winner? (optional — Medium picks from AfterLife if empty)</span>
+              <input className="trk-input" value={f.source} onChange={set('source')} placeholder="e.g. the Neck Cream “Mirror Timer” video, or a Monday link" />
+            </label>
+          )}
+        </Step>
+
+        <Step n="3" title="The details">
+          <div className="grid sm:grid-cols-3 gap-4">
+            <label className="grid gap-1"><span className="md-doc-label">Where it runs</span>
+              <select className="trk-input" value={f.lane} onChange={set('lane')}>{(opts.lanes || ['Particle']).map(l => <option key={l} value={l}>{LANE_LABEL[l] || l}</option>)}</select>
+            </label>
+            <label className="grid gap-1"><span className="md-doc-label">Format</span>
+              <select className="trk-input" value={f.format} onChange={set('format')}><option value="video">🎬 Video</option><option value="design">🎨 Static</option></select>
+            </label>
+            <div className="grid gap-1"><span className="md-doc-label">How many versions</span>
+              <div className="flex items-center gap-2">
+                <button type="button" className="trk-btn !p-2" aria-label="Fewer" onClick={() => setF(x => ({ ...x, count: Math.max(1, x.count - 1) }))}><Minus size={13} /></button>
+                <span className="tabular-nums font-semibold w-6 text-center text-[16px]" aria-live="polite">{f.count}</span>
+                <button type="button" className="trk-btn !p-2" aria-label="More" onClick={() => setF(x => ({ ...x, count: Math.min(6, x.count + 1) }))}><Plus size={13} /></button>
+              </div>
             </div>
           </div>
-        )}
-        <button type="submit" className="trk-btn primary justify-center" disabled={busy || !f.product.trim() || (f.move === 'HEADLINE_HOOK' && !f.headline.trim())}>{busy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} Generate {f.count} brief{f.count === 1 ? '' : 's'}</button>
-        <p className="text-[12px] trk-dim">Each brief: written in house style from 3 of the team’s own briefs, style-checked, scored, then proofread by Captain Caption. About 5–10¢ each. Source winners come from AfterLife once its feed is live.</p>
+          {magazine && (
+            <label className="grid gap-1 mt-4"><span className="md-doc-label">The article the ad leads to</span>
+              <input className="trk-input" list="md-articles" value={f.article_url} onChange={set('article_url')} placeholder="https://…" />
+              <datalist id="md-articles">{(overview?.articles || []).filter(a => a.lane === f.lane && !a.opportunity).map(a => <option key={a.url} value={a.url}>{a.title || a.url}</option>)}</datalist>
+              <span className="text-[12.5px] trk-dim">{(overview?.articles || []).filter(a => a.lane === f.lane && !a.opportunity).length || 'No'} {LANE_LABEL[f.lane] || f.lane} articles known. No article yet? Medium flags it for the editor.</span>
+            </label>
+          )}
+          <label className="grid gap-1 mt-4"><span className="md-doc-label">Anything Medium should know? (optional)</span>
+            <textarea className="trk-input" rows={2} value={f.note} onChange={set('note')} placeholder="e.g. Lean on wedding season; keep it under 30 seconds" />
+          </label>
+          <button type="button" className="mt-3 text-[13px] trk-muted flex items-center gap-1 hover:underline" onClick={() => setMore(!more)} aria-expanded={more}><ChevronDown size={14} style={{ transform: more ? 'rotate(180deg)' : 'none' }} /> Template, campaign, sale code</button>
+          {more && (
+            <div className="grid sm:grid-cols-2 gap-4 mt-3">
+              <label className="grid gap-1"><span className="md-doc-label">Kind of job</span>
+                <select className="trk-input" value={f.kind} onChange={set('kind')}><option value="">Medium decides</option>{(opts.kinds || []).map(k => <option key={k.id} value={k.id}>{k.label}</option>)}</select>
+              </label>
+              <label className="grid gap-1"><span className="md-doc-label">Named template</span><input className="trk-input" value={f.template} onChange={set('template')} placeholder="e.g. Receipt Vertical" /></label>
+              <label className="grid gap-1"><span className="md-doc-label">Campaign</span><input className="trk-input" value={f.campaign} onChange={set('campaign')} placeholder="e.g. Christmas 2026" /></label>
+              <div className="grid grid-cols-3 gap-2">
+                <label className="grid gap-1"><span className="md-doc-label">Code</span><input className="trk-input" value={f.code} onChange={set('code')} placeholder="XMAS30" /></label>
+                <label className="grid gap-1"><span className="md-doc-label">% off</span><input className="trk-input" inputMode="numeric" value={f.tier} onChange={set('tier')} placeholder="30" /></label>
+                <label className="grid gap-1"><span className="md-doc-label">Ends</span><input type="date" className="trk-input" value={f.ends} onChange={set('ends')} /></label>
+              </div>
+            </div>
+          )}
+        </Step>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <button type="submit" className="trk-btn primary !px-5 !py-2.5 !text-[14px]" disabled={busy || !f.product.trim()}>{busy ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />} Write {f.count} brief{f.count === 1 ? '' : 's'}</button>
+          <span className="md-sub">About a minute and 5–10¢ each. Each one is written in the team’s style, checked by Captain Caption, and waits for you.</span>
+        </div>
       </form>
 
-      <div className="trk-glass p-5 min-h-[240px]">
-        <div className="trk-label">This run</div>
-        {!rows.length && <div className="py-12 text-center trk-muted text-sm">Nothing generated yet. Choose your settings and press Generate.</div>}
-        {rows.map(b => <BriefRow key={b.id} b={b} onOpen={() => onOpen(b.id)} />)}
-      </div>
+      {rows.length > 0 && (
+        <div className="trk-glass rounded-3xl p-5">
+          <h3 className="md-h2 !text-[17px]">This run</h3>
+          <div className="mt-2">{rows.map(b => <BriefRow key={b.id} b={b} onOpen={() => onOpen(b.id)} />)}</div>
+        </div>
+      )}
     </div>
   );
 }

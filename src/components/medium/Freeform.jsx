@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Wand2, Loader2, Plus, X } from 'lucide-react';
 import { mediumApi } from '../../lib/mediumService';
 import { LANE_LABEL } from './util';
-import { BriefRow } from './StrategyRoom';
+import { BriefRow } from './BriefItems';
 
 /** Your idea, the way you'd say it in the hallway, crossed with everything Medium knows — then written twice. */
 export default function Freeform({ overview, notify, onOpen, onQueued }) {

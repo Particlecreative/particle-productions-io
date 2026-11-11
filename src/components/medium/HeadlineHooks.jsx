@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Quote, Loader2, ScanText, ExternalLink, RefreshCw } from 'lucide-react';
 import { mediumApi } from '../../lib/mediumService';
 import { LANE_LABEL, relTime } from './util';
-import { BriefRow } from './StrategyRoom';
+import { BriefRow } from './BriefItems';
 
 const FROM = { 'the ad image': 'read from the ad', 'brief copy': 'from the Monday brief', brief: 'from the Monday brief', 'brief hook': 'from the Monday brief' };
 

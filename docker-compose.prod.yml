@@ -61,6 +61,7 @@ services:
       CAPTAIN_FIGMA_TOKEN: ${CAPTAIN_FIGMA_TOKEN:-}
       CAPTAIN_MONDAY_TOKEN: ${CAPTAIN_MONDAY_TOKEN:-}
       CAPTAIN_SERVICE_TOKEN: ${CAPTAIN_SERVICE_TOKEN:-}   # Medium → /api/captain/check-brief (brief pre-flight)
+      MEDIUM_SERVICE_TOKEN: ${MEDIUM_SERVICE_TOKEN:-}     # the medium-brief plugin → /api/medium (falls back to CAPTAIN_SERVICE_TOKEN)
       PORT: 3001
       NODE_ENV: production
     depends_on:
