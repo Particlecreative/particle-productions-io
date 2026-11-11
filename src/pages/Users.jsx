@@ -549,6 +549,7 @@ const ALL_PAGES = [
   { to: '/studio-tickets', label: 'Studio tickets (classic)' },
   { to: '/creative-reports', label: 'Creative Weekly' },
   { to: '/captain', label: 'Captain Caption' },
+  { to: '/medium', label: 'Medium (creative strategist)' },
   { to: '/gantts',         label: 'Gantts' },
   { to: '/call-sheets',    label: 'Call Sheets' },
   { to: '/financial',      label: 'Financial' },

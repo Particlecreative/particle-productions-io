@@ -15,6 +15,7 @@ const { runVideoJob } = require('./lib/captain/video');
 const { runDesignJob } = require('./lib/captain/design');
 const importer = require('./lib/captain/importer');
 const brief = require('./lib/captain/brief');
+const medium = { corpus: require('./lib/medium/corpus'), writer: require('./lib/medium/writer') };
 
 (async () => {
   const cfg = await getConfig().catch(() => null);
@@ -26,6 +27,10 @@ const brief = require('./lib/captain/brief');
       design_check: runDesignJob,
       brief_check: brief.rerunBriefCheck,      // HQ → Re-run on a brief check
       brief_batch: brief.runBriefBatch,        // Holiday Builder: up to 200 briefs
+      // MEDIUM 🔮 — the creative strategist shares this worker (the spec's "medium-worker")
+      medium_ingest: medium.corpus.ingestCorpus,
+      medium_generate: medium.writer.runGenerate,
+      medium_freeform: medium.writer.runFreeform,
       import_start: (p) => importer.startImport(p),
       import_frameio_item: importer.importFrameioItem,
       import_figma_file: importer.importFigmaFile,

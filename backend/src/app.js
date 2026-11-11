@@ -106,6 +106,7 @@ app.use('/api/tracker', require('./routes/tracker'));
 app.use('/api/library', require('./routes/library'));
 app.use('/api/finance', require('./routes/finance'));
 app.use('/api/captain', require('./routes/captain'));   // Captain Caption 🧑‍✈️ (checks run in the separate captain-worker)
+app.use('/api/medium', require('./routes/medium'));     // MEDIUM 🔮 creative strategist (writing runs in the captain-worker)
 
 // Google OAuth callback redirect — the callback URL registered with Google
 // points to /api/auth/google/callback, so we redirect to the drive router
