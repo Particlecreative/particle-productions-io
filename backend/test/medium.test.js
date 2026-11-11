@@ -120,6 +120,15 @@ test('writer: kinds per move, lane first lines, output cleaning', () => {
   assert.deepEqual(o.lines, [{ id: 'l1', kind: 'super', text: 'Hi', version: null, size: '9x16', start: null, end: null, lang: 'en' }]);
 });
 
+test('writer: database parameters — Postgres arrays stay arrays, JSONB becomes JSON text', () => {
+  const { toParam } = require('../src/lib/medium/writer');
+  assert.deepEqual(toParam('exemplar_ids', [353, 364, 17]), [353, 364, 17]);   // INT[] — the bug that lost the first two test briefs
+  assert.deepEqual(toParam('exemplar_ids', null), []);
+  assert.equal(toParam('lines', [{ id: 'l1' }]), '[{"id":"l1"}]');
+  assert.equal(toParam('fields', { why: 'x' }), '{"why":"x"}');
+  assert.equal(toParam('status', 'PENDING_REVIEW'), 'PENDING_REVIEW');
+});
+
 test('corpus: a Monday item becomes an exemplar row', () => {
   const { toRow } = require('../src/lib/medium/corpus');
   const { DEFAULTS } = require('../src/lib/medium/config');

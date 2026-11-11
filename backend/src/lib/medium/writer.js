@@ -226,10 +226,12 @@ async function relines(fields, format) {
 }
 
 // ── jobs ─────────────────────────────────────────────────────────────────────
+// Postgres array columns take a JS array as-is; every other object/array column is JSONB and gets JSON text
+const PG_ARRAY_COLS = new Set(['exemplar_ids']);
+const toParam = (col, x) => (PG_ARRAY_COLS.has(col) ? (Array.isArray(x) ? x.map(Number).filter(Number.isFinite) : []) : x && typeof x === 'object' && !(x instanceof Date) ? JSON.stringify(x) : x);
 async function setRow(id, fields) {
   const cols = Object.keys(fields);
-  const v = (x) => (x && typeof x === 'object' && !(x instanceof Date) ? JSON.stringify(x) : x);
-  await db.query(`UPDATE medium_briefs SET ${cols.map((c, i) => `${c} = $${i + 2}`).join(', ')}, updated_at = NOW() WHERE id = $1`, [id, ...cols.map(c => v(fields[c]))]);
+  await db.query(`UPDATE medium_briefs SET ${cols.map((c, i) => `${c} = $${i + 2}`).join(', ')}, updated_at = NOW() WHERE id = $1`, [id, ...cols.map(c => toParam(c, fields[c]))]);
 }
 
 async function claimRow(id) {
@@ -351,4 +353,4 @@ async function runFreeform({ brief_id }) {
   }
 }
 
-module.exports = { runGenerate, runFreeform, relines, preflight, score, buildContext, writerPrompt, normalizeOut, kindFor, laneFirstFor, setRow, composeBrief, WEIGHTS };
+module.exports = { runGenerate, runFreeform, relines, preflight, score, buildContext, writerPrompt, normalizeOut, kindFor, laneFirstFor, setRow, toParam, composeBrief, WEIGHTS };
