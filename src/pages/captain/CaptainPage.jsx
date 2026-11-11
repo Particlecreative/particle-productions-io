@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Activity as ActivityIcon, ScanText, Brain as BrainIcon, SlidersHorizontal, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Activity as ActivityIcon, ScanText, Brain as BrainIcon, SlidersHorizontal, AlertTriangle, CheckCircle2, BarChart3 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useBrand } from '../../context/BrandContext';
 import { captainApi } from '../../lib/captainService';
 import Activity from '../../components/captain/Activity';
 import ManualCheck from '../../components/captain/ManualCheck';
 import Brain from '../../components/captain/Brain';
+import Insights from '../../components/captain/Insights';
 import CaptainSettings from '../../components/captain/Settings';
 import '../../components/tracker/tracker.css';
 import '../../components/captain/captain.css';
@@ -14,6 +15,7 @@ import '../../components/captain/captain.css';
 const TABS = [
   ['activity', 'Activity', ActivityIcon],
   ['check', 'Check a link', ScanText],
+  ['insights', 'Insights', BarChart3],
   ['brain', 'Brain', BrainIcon],
   ['settings', 'Settings', SlidersHorizontal],
 ];
@@ -68,9 +70,9 @@ export default function CaptainPage() {
       <div className="trk-canvas p-5 sm:p-8 md:p-10">
         <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
           <div className="min-w-0">
-            <div className="trk-eyebrow">Text QC · Frame.io + Figma</div>
+            <div className="trk-eyebrow">Text QC · Briefs · Frame.io · Figma</div>
             <h1 className="trk-title text-[52px] sm:text-[76px] md:text-[92px] mt-2">Captain Caption <span aria-hidden>🧑‍✈️</span></h1>
-            <p className="mt-2 text-[15px] trk-muted max-w-[720px]">Proofreads every video and design that goes to review, and comments exactly where the problem is — on the frame in Frame.io, on the layer in Figma — with a summary on Monday.</p>
+            <p className="mt-2 text-[15px] trk-muted max-w-[720px]">Proofreads every brief before it’s made, then every video and design that goes to review — and comments exactly where the problem is: on the frame in Frame.io, on the layer in Figma, with a summary on Monday.</p>
           </div>
           {status && (
             <div className="ml-auto flex flex-wrap gap-2 justify-end">
@@ -97,6 +99,7 @@ export default function CaptainPage() {
         <div className="mt-6">
           {tab === 'activity' && <Activity notify={notify} />}
           {tab === 'check' && <ManualCheck notify={notify} isAdmin={isAdmin} status={status} onQueued={() => go('activity')} />}
+          {tab === 'insights' && <Insights notify={notify} />}
           {tab === 'brain' && <Brain notify={notify} isAdmin={isAdmin} />}
           {tab === 'settings' && <CaptainSettings notify={notify} isAdmin={isAdmin} status={status} reloadStatus={loadStatus} />}
         </div>

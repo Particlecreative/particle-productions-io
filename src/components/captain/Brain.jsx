@@ -10,7 +10,15 @@ const TYPES = [
   ['do_not_flag', 'Do not flag', 'Intentional slang or creator spellings'],
   ['learned', 'Learned corrections', 'From feedback and past comments'],
   ['insight', 'Reviewer insights', '💡 Heads-up suggestions, never typo comments'],
+  ['offer', 'Offer calendar', 'Each campaign’s code, discount % and end date — briefs are checked against it'],
+  ['price', 'Price list', 'List price per product — sale prices in briefs are checked against it'],
+  ['claim', 'Claims sheet', 'Approved claims — a brief may only claim what is here'],
+  ['layout_limit', 'Layout limits', 'Max characters per element and size, per named template'],
 ];
+const FACTS = new Set(['offer', 'price', 'claim', 'layout_limit']);
+const LANES = ['Particle', 'SFY', 'GT', 'WAC'];
+const TITLE_LABEL = { term: 'Term', offer: 'Campaign', price: 'Product', claim: 'The claim', layout_limit: 'Template' };
+const TITLE_HINT = { term: 'e.g. Gravité', rule: 'e.g. CTA wording', offer: 'e.g. Christmas 2026', price: 'e.g. Neck Cream', claim: 'e.g. Firms, lifts and moisturizes', layout_limit: 'e.g. 5 Bucks. 5 Problems.' };
 const LABEL = Object.fromEntries(TYPES.map(([k, l]) => [k, l]));
 
 /**
@@ -24,6 +32,9 @@ export default function Brain({ notify, isAdmin }) {
   const [content, setContent] = useState('');
   const [discipline, setDiscipline] = useState('both');
   const [brand, setBrand] = useState('');
+  const [lane, setLane] = useState('');
+  const [fact, setFact] = useState({ code: '', tiers: '', starts: '', ends: '', list_price: '', limits: '', product: '' });
+  const setF = (k) => (e) => setFact(f => ({ ...f, [k]: e.target.value }));
   const [busy, setBusy] = useState(null);
   const [q, setQ] = useState('');
 
@@ -56,8 +67,11 @@ export default function Brain({ notify, isAdmin }) {
     if (!title.trim()) return;
     setBusy('add');
     try {
-      await captainApi.addBrain({ type, title: title.trim(), content: content.trim() || null, discipline, scope: brand ? { brand } : {} });
-      setTitle(''); setContent('');
+      const scope = { ...(brand ? { brand } : {}), ...(lane ? { lane } : {}), ...(type === 'claim' && fact.product.trim() ? { product: fact.product.trim() } : {}) };
+      const data = type === 'offer' ? { code: fact.code, tiers: fact.tiers, starts: fact.starts || null, ends: fact.ends || null }
+        : type === 'price' ? { list_price: fact.list_price } : undefined;   // layout limits are parsed from the text
+      await captainApi.addBrain({ type, title: title.trim(), content: type === 'layout_limit' ? fact.limits : content.trim() || null, discipline, scope, data });
+      setTitle(''); setContent(''); setFact({ code: '', tiers: '', starts: '', ends: '', list_price: '', limits: '', product: '' });
       notify('Added — used from the next check');
       load();
     } catch (err) { notify(err.message, true); } finally { setBusy(null); }
@@ -89,23 +103,51 @@ export default function Brain({ notify, isAdmin }) {
       {pending.length > 0 && <ReviewQueue items={pending} isAdmin={isAdmin} notify={notify} reload={load} />}
 
       {isAdmin && (
-        <form className="trk-glass p-5 grid gap-3 md:grid-cols-[170px_minmax(0,1fr)_minmax(0,1.4fr)_120px_120px_auto] items-end" onSubmit={add}>
-          <label className="grid gap-1"><span className="trk-label">Type</span>
-            <select className="trk-input" value={type} onChange={(e) => setType(e.target.value)}>{TYPES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
-          </label>
-          <label className="grid gap-1"><span className="trk-label">{type === 'term' ? 'Term' : 'Title'}</span>
-            <input className="trk-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={type === 'term' ? 'e.g. Gravité' : type === 'rule' ? 'e.g. CTA wording' : 'e.g. obsessed!!'} />
-          </label>
-          <label className="grid gap-1"><span className="trk-label">{type === 'rule' ? 'The rule' : 'Note (optional)'}</span>
-            <input className="trk-input" value={content} onChange={(e) => setContent(e.target.value)} placeholder={type === 'rule' ? 'e.g. The CTA must say “Shop Now”' : ''} />
-          </label>
-          <label className="grid gap-1"><span className="trk-label">For</span>
-            <select className="trk-input" value={discipline} onChange={(e) => setDiscipline(e.target.value)}><option value="both">Video + design</option><option value="video">🎬 Video</option><option value="design">🎨 Design</option></select>
-          </label>
-          <label className="grid gap-1"><span className="trk-label">Brand</span>
-            <select className="trk-input" value={brand} onChange={(e) => setBrand(e.target.value)}><option value="">All brands</option><option value="Particle">Particle</option><option value="Ashford">Ashford</option></select>
-          </label>
-          <button type="submit" className="trk-btn primary" disabled={busy === 'add' || !title.trim()}>{busy === 'add' ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Add</button>
+        <form className="trk-glass p-5 grid gap-3" onSubmit={add}>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-[170px_minmax(0,1fr)_minmax(0,1.4fr)_120px_120px_110px_auto] items-end">
+            <label className="grid gap-1"><span className="trk-label">Type</span>
+              <select className="trk-input" value={type} onChange={(e) => setType(e.target.value)}>{TYPES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+            </label>
+            <label className="grid gap-1"><span className="trk-label">{TITLE_LABEL[type] || 'Title'}</span>
+              <input className="trk-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={TITLE_HINT[type] || 'e.g. obsessed!!'} />
+            </label>
+            {FACTS.has(type) && type !== 'claim' ? (
+              <div className="hidden 2xl:block text-[12px] trk-muted self-center">{type === 'offer' ? 'Code, discount and dates below.' : type === 'price' ? 'Price below.' : 'Limits below.'}</div>
+            ) : (
+              <label className="grid gap-1"><span className="trk-label">{type === 'rule' ? 'The rule' : type === 'claim' ? 'Source (optional)' : 'Note (optional)'}</span>
+                <input className="trk-input" value={content} onChange={(e) => setContent(e.target.value)} placeholder={type === 'rule' ? 'e.g. The CTA must say “Shop Now”' : type === 'claim' ? 'e.g. Clinical study, Mar 2026' : ''} />
+              </label>
+            )}
+            <label className="grid gap-1"><span className="trk-label">For</span>
+              <select className="trk-input" value={discipline} onChange={(e) => setDiscipline(e.target.value)}><option value="both">Video + design</option><option value="video">🎬 Video</option><option value="design">🎨 Design</option></select>
+            </label>
+            <label className="grid gap-1"><span className="trk-label">Brand</span>
+              <select className="trk-input" value={brand} onChange={(e) => setBrand(e.target.value)}><option value="">All brands</option><option value="Particle">Particle</option><option value="Ashford">Ashford</option></select>
+            </label>
+            <label className="grid gap-1"><span className="trk-label">Lane</span>
+              <select className="trk-input" value={lane} onChange={(e) => setLane(e.target.value)} title="Particle direct, Science For You, Gentleman Today, We Are Colognes"><option value="">All lanes</option>{LANES.map(l => <option key={l} value={l}>{l}</option>)}</select>
+            </label>
+            <button type="submit" className="trk-btn primary" disabled={busy === 'add' || !title.trim()}>{busy === 'add' ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Add</button>
+          </div>
+          {type === 'offer' && (
+            <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+              <label className="grid gap-1"><span className="trk-label">Code</span><input className="trk-input" value={fact.code} onChange={setF('code')} placeholder="XMAS30" /></label>
+              <label className="grid gap-1"><span className="trk-label">Discount %</span><input className="trk-input" value={fact.tiers} onChange={setF('tiers')} placeholder="25, 30" /></label>
+              <label className="grid gap-1"><span className="trk-label">Starts</span><input type="date" className="trk-input" value={fact.starts} onChange={setF('starts')} /></label>
+              <label className="grid gap-1"><span className="trk-label">Ends</span><input type="date" className="trk-input" value={fact.ends} onChange={setF('ends')} /></label>
+            </div>
+          )}
+          {type === 'price' && (
+            <label className="grid gap-1 max-w-[220px]"><span className="trk-label">List price ($)</span><input className="trk-input" inputMode="decimal" value={fact.list_price} onChange={setF('list_price')} placeholder="59" /></label>
+          )}
+          {type === 'claim' && (
+            <label className="grid gap-1 max-w-[320px]"><span className="trk-label">Product (empty = every product)</span><input className="trk-input" value={fact.product} onChange={setF('product')} placeholder="Neck Cream" /></label>
+          )}
+          {type === 'layout_limit' && (
+            <label className="grid gap-1"><span className="trk-label">Limits — one per line: element, size, max characters</span>
+              <textarea className="trk-input min-h-[88px] font-mono !text-[13px]" value={fact.limits} onChange={setF('limits')} placeholder={'headline 9x16: 32\nheadline 4x5: 40\nsubtitle * 60   (* = every size; no element = headline)'} />
+            </label>
+          )}
         </form>
       )}
 
@@ -122,7 +164,9 @@ export default function Brain({ notify, isAdmin }) {
                     <span className="font-semibold">{i.title}</span>
                     {i.discipline !== 'both' && <span className="trk-chip gray ml-2">{i.discipline === 'video' ? '🎬' : '🎨'}</span>}
                     {i.scope?.brand && <span className="trk-chip gray ml-2">{i.scope.brand}</span>}
-                    {i.content && <div className="text-[12.5px] trk-muted">{i.content}</div>}
+                    {i.scope?.lane && <span className="trk-chip gray ml-2" title="Only for this lane">{[].concat(i.scope.lane).join(' / ')}</span>}
+                    {k === 'claim' && i.scope?.product && <span className="trk-chip gray ml-2">{[].concat(i.scope.product).join(', ')}</span>}
+                    {i.content && <div className="text-[12.5px] trk-muted whitespace-pre-line">{i.content}</div>}
                   </div>
                   {isAdmin && (
                     <span className="flex gap-1 shrink-0">

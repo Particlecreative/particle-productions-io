@@ -48,6 +48,8 @@ const qs = (o) => {
 export const captainApi = {
   status: () => call('/status'),
   check: (link, opts = {}) => call('/check', { method: 'POST', body: { link, ...opts } }),
+  checkBrief: (brief) => call('/check-brief', { method: 'POST', body: brief }),
+  insights: (days = 90) => call(`/insights?days=${days}`),
   jobs: () => call('/jobs'),
   checks: (filters) => call(`/checks${qs(filters)}`),
   check1: (id) => call(`/checks/${id}`),

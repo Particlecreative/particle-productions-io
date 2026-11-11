@@ -18,7 +18,7 @@ export function mmss(sec) {
 
 export function statusMeta(c) {
   switch (c.status) {
-    case 'passed': return { label: 'Passed', tone: 'green', icon: '✅' };
+    case 'passed': return { label: c.issue_count ? `Passed · ${c.issue_count} to look at` : 'Passed', tone: 'green', icon: '✅' };
     case 'issues': return { label: `${c.issue_count} issue${c.issue_count === 1 ? '' : 's'}`, tone: 'red', icon: '🔴' };
     case 'error': return { label: 'Error', tone: 'red', icon: '⚠️' };
     case 'skipped': return { label: 'Skipped', tone: 'gray', icon: '⏭' };
@@ -27,12 +27,24 @@ export function statusMeta(c) {
   }
 }
 
-export const TRIGGERS = { review: 'Review', for_approval: 'For Approval', new_version: 'New version', manual: 'Manual' };
+export const TRIGGERS = { review: 'Review', for_approval: 'For Approval', new_version: 'New version', manual: 'Manual', medium: 'From Medium', batch: 'Holiday batch' };
+
+export const DISCIPLINES = { video: ['🎬', 'Video'], design: ['🎨', 'Design'], brief: ['📝', 'Brief'] };
+export const discIcon = (d) => (DISCIPLINES[d] || DISCIPLINES.video)[0];
 
 export const ISSUE_TYPES = {
   spelling: 'Spelling', wrong_word: 'Wrong word', inconsistent: 'Inconsistent', brand_name: 'Brand name', cut_off: 'Cut off',
   caption_vs_voiceover: 'Caption ≠ voice', vo_unclear: 'Voice unclear', vo_wrong_word: 'Voice: wrong word', vo_script_mismatch: 'Voice ≠ script',
   vo_order: 'Sentence order', script_mismatch: 'Differs from brief', size_mismatch: 'Differs from master', placeholder: 'Placeholder', overflow: 'Overflow',
+  vo_pronunciation: 'Pronunciation', label_mismatch: 'Label', claim: 'Claim not in the sheet', baked_text: 'Text in image', grammar: 'Grammar', rule: 'House rule', lane: 'Lane rule', translation: 'Translation',
+  // brief pre-flight
+  reading_speed: 'Reading speed', vo_speed: 'VO pace', timing: 'Timing', fit: 'Too long for the layout', offer_code: 'Offer code', offer_date: 'End date', offer_tier: 'Discount %',
+  price: 'Price math', leftover_code: 'Old code', leftover_date: 'Old date', translation_currency: 'Currency in translation', inconsistent_code: 'Code differs',
+  inconsistent_date: 'Date differs', inconsistent_guarantee: 'Guarantee differs', missing_cta: 'No CTA', missing_disclaimer: 'No B&A disclaimer', missing_code: 'Code missing',
+  missing_end_date: 'End date missing', claim_unverified: 'Claim to verify', claim_article: 'Not in the article', campaign_code: 'Campaign code', campaign_date: 'Campaign date',
+  campaign_price: 'Campaign price', brief_mismatch: 'Changed from approved brief', brief_missing: 'Missing from approved brief',
 };
+
+export const SEVERITY = { must_fix: ['Must fix', 'red'], check: ['Please check', 'amber'], info: ['Note', 'gray'] };
 
 export const money = (n) => (n == null ? '' : n < 0.01 ? '<1¢' : n < 1 ? `${Math.round(n * 100)}¢` : `$${Number(n).toFixed(2)}`);

@@ -49,6 +49,7 @@ const DEFAULTS = {
   engines: {
     video:  { engine: 'gemini', model: 'gemini-3.8-flash' },
     design: { engine: 'claude', model: 'claude-sonnet-5-5' },
+    brief:  { engine: 'claude', model: 'claude-sonnet-5-5' },
   },
   second_opinion: { video: false, design: false },
   max_reference_images: 4,
@@ -67,6 +68,15 @@ const DEFAULTS = {
     { name: 'Particle', default: true, match: ['particle'], about: "the men's skincare brand Particle (DTC, particleformen.com)", site: 'particleformen.com' },
     { name: 'Ashford', match: ['ashford'], about: 'Ashford Formulary & Co., a men\'s joint and wellness supplement brand (DTC, houseashford.com)', site: 'houseashford.com' },
   ],
+  // Particle's four lanes (Medium spec §5). Brain items can be scoped to one lane (e.g. the CTA "Shop Now" is Particle-only).
+  lanes: [
+    { name: 'Particle', default: true, match: [], destination: 'particleformen.com', about: 'Particle direct — the ad sells the product now and leads to particleformen.com' },
+    { name: 'SFY', match: ['science for you', 'sfy', 'scienceforyou'], destination: 'scienceforyou.co', about: 'Science For You — an editorial science magazine (scienceforyou.co). The ad qualifies the reader and earns the click; the article does the persuading. Statics carry no Particle branding.' },
+    { name: 'GT', match: ['gentleman today', 'gt', 'gentlemantoday'], destination: 'gentlemantoday.co', about: "Gentleman Today — a men's lifestyle listicle magazine (gentlemantoday.co). The ad sparks curiosity about a ranking and never reveals the #1 product; the article reveals Particle." },
+    { name: 'WAC', match: ['we are colognes', 'wac', 'wearecolognes'], destination: 'wearecolognes.com', about: 'We Are Colognes — a cologne magazine (wearecolognes.com): occasion and identity listicles that lead to Gravité.' },
+  ],
+  // Brief pre-flight (Medium → POST /api/captain/check-brief)
+  brief: { max_words_per_second: 3, vo_max_words_per_second: 3.5, price_tolerance: 0.01, max_lines: 300, cache_hours: 24, batch_concurrency: 4 },
   import: { since: '2025-01-01', figma_folders: ['Media Ads'], exclude_reviewers: ['Natalie Blenford'], senior_reviewers: ['Aviad Eilam', 'Lilian Krumholz'] },
 };
 
@@ -84,7 +94,7 @@ async function getConfig(brandId = 'particle') {
   return merge(DEFAULTS, typeof saved === 'string' ? JSON.parse(saved) : saved);
 }
 
-const EDITABLE = ['triggers', 'done_statuses', 'scope', 'auto_versions', 'engines', 'second_opinion', 'max_reference_images', 'insights', 'posting', 'worker', 'import'];
+const EDITABLE = ['triggers', 'done_statuses', 'scope', 'auto_versions', 'engines', 'second_opinion', 'max_reference_images', 'insights', 'posting', 'worker', 'import', 'brief'];
 async function saveConfig(patch, brandId = 'particle') {
   const clean = Object.fromEntries(Object.entries(patch || {}).filter(([k]) => EDITABLE.includes(k)));
   const { rows } = await db.query('SELECT captain_config FROM settings WHERE brand_id = $1', [brandId]);

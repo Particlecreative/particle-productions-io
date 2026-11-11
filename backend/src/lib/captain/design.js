@@ -17,9 +17,10 @@ const { loadBrain, brainText } = require('./brain');
 const claude = require('./engines/claude');
 const { logEvent } = require('./log');
 const { figmaMatcher } = require('./dedupe');
-const { brandOf } = require('./brand');
+const { brandOf, laneOf } = require('./brand');
 const { postingFor } = require('./video');
-const { insertCheck, updateCheck, lastCheckOf, insertIssue, setIssueComment } = require('./store');
+const { insertCheck, updateCheck, lastCheckOf, insertIssue, setIssueComment, approvedTextFor } = require('./store');
+const { matchDesign } = require('./briefMatch');
 
 const PREFIX = monday.PREFIX;
 const PROMPT = fs.readFileSync(path.join(__dirname, 'prompts', 'qc-design.txt'), 'utf8');
@@ -53,6 +54,8 @@ function commentText(i) {
     case 'overflow': return `${PREFIX} text is cut off or overflowing: ${q(i.found)}${i.note ? ` — ${i.note}` : ''}`;
     case 'size_mismatch': return `${PREFIX} please check — copy differs from the other size: ${q(i.found)} (other size: ${q(i.fix)})`;
     case 'script_mismatch': return `${PREFIX} please check — differs from the brief: ${q(i.found)} (brief: ${q(i.fix)})`;
+    case 'brief_mismatch': return `${PREFIX} please check — differs from the approved brief: ${q(i.found)} (approved: ${q(i.fix)})`;
+    case 'brief_missing': return `${PREFIX} please check — approved line missing: ${q(i.fix)}${i.note ? ` (${i.note})` : ''}`;
     case 'baked_text': return `${PREFIX} text in the image: ${q(i.found)} → ${q(i.fix)}${tail}`;
     default: return `${PREFIX} ${q(i.found)} → ${q(i.fix)}${tail}`;
   }
@@ -175,12 +178,16 @@ async function runDesignJob(payload) {
     const thumb = await thumbFrom(images[0].bytes);
 
     const brand = brandOf({ itemName: item?.name, names: [name, nodeRes?.fileName] }, cfg);
-    const brain = await loadBrain({ discipline: 'design', product: item?.product, campaign: item?.campaign, department: item?.department, brand: brand.name });
+    const lane = brand.default ? laneOf({ names: [item?.name, name], text: item?.brief?.concept || '' }, cfg).name : null;
+    const brain = await loadBrain({ discipline: 'design', product: item?.product, campaign: item?.campaign, department: item?.department, brand: brand.name, lane });
     const prompt = PROMPT.replaceAll('{{BRAND_ABOUT}}', brand.about).replaceAll('{{BRAND}}', brand.name).replace('{{BRAIN}}', brainText(brain)).replace('{{BRIEF}}', briefBlock(item)).replace('{{LAYERS}}', layersBlock(frames));
     const r = await claude.checkDesign({ images: images.map(({ bytes, ...i }) => i), prompt, model: engine.model, prices: cfg.prices || {} });
 
     const known = new Set(frames.flatMap(f => [f.id, ...f.texts.map(t => t.id)]));
-    const issues = r.issues.map((i, idx) => {
+    // Brief-match: the item's brief passed pre-flight → compare the layers with the approved copy
+    const approved = item ? await approvedTextFor(item.id) : null;
+    const matched = approved ? matchDesign(approved.lines, frames) : [];
+    const issues = [...r.issues, ...matched.map(m => ({ ...m, frame_id: m.frame_node_id }))].map((i, idx) => {
       const frame = frames.find(f => f.id === i.frame_id) || frames.find(f => f.texts.some(t => t.id === i.node_id)) || frames[0];
       return {
         idx, node_id: known.has(i.node_id) ? i.node_id : frame.id, frame_node_id: frame.id,
@@ -190,7 +197,8 @@ async function runDesignJob(payload) {
     for (const i of issues) await insertIssue(checkId, i);
     await updateCheck(checkId, {
       status: issues.length ? 'issues' : 'passed', issue_count: issues.length, cost_usd: r.cost_usd, duration_ms: r.ms, usage: r.usage, model: r.model,
-      raw: { issues: r.issues, brain_ids: brain.ids, prompt_chars: prompt.length, layers: frames.map(f => ({ id: f.id, size: f.size, texts: f.texts.map(t => ({ id: t.id, text: t.text })) })) },
+      raw: { issues: r.issues, brain_ids: brain.ids, prompt_chars: prompt.length, layers: frames.map(f => ({ id: f.id, size: f.size, texts: f.texts.map(t => ({ id: t.id, text: t.text })) })),
+        ...(approved ? { brief_match: { approved_check: approved.check_id, lines: approved.lines.length, found: matched.length } } : {}) },
       thumb, finished_at: new Date(),
     });
 

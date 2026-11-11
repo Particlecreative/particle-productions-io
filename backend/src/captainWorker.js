@@ -14,6 +14,7 @@ const { getConfig } = require('./lib/captain/config');
 const { runVideoJob } = require('./lib/captain/video');
 const { runDesignJob } = require('./lib/captain/design');
 const importer = require('./lib/captain/importer');
+const brief = require('./lib/captain/brief');
 
 (async () => {
   const cfg = await getConfig().catch(() => null);
@@ -23,6 +24,8 @@ const importer = require('./lib/captain/importer');
     handlers: {
       video_check: runVideoJob,
       design_check: runDesignJob,
+      brief_check: brief.rerunBriefCheck,      // HQ → Re-run on a brief check
+      brief_batch: brief.runBriefBatch,        // Holiday Builder: up to 200 briefs
       import_start: (p) => importer.startImport(p),
       import_frameio_item: importer.importFrameioItem,
       import_figma_file: importer.importFigmaFile,

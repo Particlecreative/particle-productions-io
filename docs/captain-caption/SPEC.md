@@ -321,3 +321,73 @@ Log every event from the start in the final format, so history is complete when 
 - Every bot comment and Monday update starts with `🧑‍✈️ Captain Caption:`.
 - Fail loudly: if a check errors out, post a Monday update saying so.
 - Name the module/service `captain-caption`.
+
+## Brief pre-flight (Medium) — added 11 Nov 2026
+
+A third check type, **Brief**, next to Video (Frame.io) and Design (Figma). Medium sends every brief here before it can be approved, so text errors are caught at the brief stage, where fixing them costs a keystroke, instead of in round 2 of a finished asset. Nothing about the existing checks changes, except that they also compare against the approved text when it exists (brief-match, below). Source addendum: `captain-caption-brief-preflight.md` (Medium spec §20).
+
+**Auth:** internal to CP Panel. Medium sends `Authorization: Bearer $CAPTAIN_SERVICE_TOKEN` (or `X-Captain-Service-Token`), not a user session. A signed-in Editor can call the same routes; that's how HQ → Check a link → "Check brief text" works.
+
+**`POST /api/captain/check-brief`**, synchronous, about 5–20 s:
+```json
+{ "brief_id": "mb_123", "name": "Neck Cream | Christmas 2026 | Meta | …", "lane": "SFY", "brand": "Particle", "board": "video|design",
+  "product": "Neck Cream", "campaign": "Christmas 2026", "offer": { "tier": 30, "code": "XMAS30", "ends": "2026-12-21" },
+  "layout_ref": "5 Bucks. 5 Problems.", "article_text": "…(lanes ≠ Particle)", "flags": { "before_after": false }, "author": "Tomer", "force": false,
+  "lines": [{ "id": "l1", "kind": "super|vo|headline|subtitle|kicker|badge|cta|code|price|disclaimer|translation|…", "text": "…",
+              "version": "V1", "size": "9x16", "start": 0, "end": 3, "lang": "en" }] }
+```
+Response:
+```json
+{ "verdict": "passed|issues", "check_id": "uuid", "brief_id": "mb_123", "lane": "SFY", "lines_checked": 14, "must_fix": 2,
+  "issues": [{ "id": 1, "line_id": "l1", "found": "…", "fix": "…", "type": "reading_speed", "severity": "must_fix|should_fix|info",
+               "rule": "Max ~3 words/second", "suggestion": { "split": [{ "start": 0, "end": 3, "text": "…" }] } }],
+  "notes": ["No layout limits stored for “X” — fit not checked"], "claims": [{ "line_id": "l3", "claim": "…", "in_sheet": "yes|no|no_sheet", "in_article": "yes|no|n/a" }],
+  "cost_usd": 0.012, "cached": false }
+```
+- `verdict` is `passed` when there are zero must-fix issues. `line_id: null` means the issue is about the whole brief ("No CTA").
+- `suggestion` is machine-applicable for "Apply Captain's fixes": `{ split: [...] }` for reading speed, `{ replace: [from, to] }` for codes, dates, percentages and prices. For AI findings, `found → fix` is an exact text swap.
+- `notes` lists what could not be verified (no layout limits, no offer-calendar entry, no list price, no article text). Notes never block.
+- The same brief with the same Brain within 24 h returns the cached answer (`cached: true`, no cost). `force: true` re-checks.
+- A failed check returns 502 `{ error, check_id, verdict: "error" }`.
+
+**Checks**, code first (`lib/captain/briefRules.js`, unit-tested), then Claude Sonnet 5.5 (`prompts/qc-brief.txt`):
+
+| Check | How | Severity |
+|---|---|---|
+| Spelling, wrong words, grammar, inconsistent spelling, Brain terms and rules, placeholders, lane fit | Claude, with the Brain (brand- and lane-scoped) | must fix / should fix |
+| Reading speed | Code: words ÷ (end − start) > 3/s on on-screen lines → must fix, with a split. VO over 3.5/s → should fix. | |
+| Fit | Code: characters vs Brain → Layout limits (`headline 9x16: 32`). A line on every size must fit the tightest limit. | must fix |
+| Offer facts | Code: code / end date / tier vs Brain → Offer calendar (looked up by campaign name). Codes or dates in the copy that differ or belong to another campaign. Discount % in the copy vs the tier. Price = list × (1 − tier), from Brain → Price list; the list price and the saving are allowed too. | must fix |
+| Cross-version | Code: the same code, end date and guarantee on every version and size; the code and end date present on every version × size of a sale brief. Translations carry no currency. | must fix |
+| Claims | Claude lists every claim; it must be in Brain → Claims sheet ("no_sheet" when none are stored → should fix). For lanes ≠ Particle, also stated in `article_text`. | must fix |
+| Required elements | Code: a CTA (should fix only for magazine-lane videos, which end on the article); the B&A disclaimer when B&A is referenced. | must fix |
+
+**`POST /api/captain/check-brief/:check_id/attach`** `{ item_id, board_id?, override?: { by, reason } }`: once Medium creates the Monday item, the lines are stored as `captain_approved_text` for it. The Captain posts `🧑‍✈️ Captain Caption: brief passed pre-flight ✅ (N lines)` as a Monday update, subject to the posting switch. A brief with open must-fix issues is refused (409) unless an `override` with a reason is given. Overrides are logged in HQ and stated in the Monday update.
+
+**Batch (Holiday Builder):**
+- `POST /api/captain/check-brief/batch` `{ campaign, offer, …shared fields, briefs: [≤200] }` returns 202 `{ batch_id }`. It runs on the captain-worker, 4 at a time.
+- `GET /api/captain/check-brief/batch/:id` returns `{ status, total, done, verdicts: [one per brief, with issues], summary: { lines_checked, must_fix, issues_by_type, cross_brief: [...] } }`.
+- Cross-brief checks: one code and one end date across the campaign; one sale price per product × tier across templates; no code or date left over from another campaign. Their issues are added to the brief they belong to, so per-brief verdicts include them.
+
+**Brief-match on delivery:** when the normal Frame.io or Figma check runs for an item with approved text, it also reports:
+- `brief_mismatch` when the wording changed
+- `brief_missing` when an approved line is missing, also per version and size
+
+These are always "please check", at most 8 per deliverable. Video matches the on-screen text and voiceover the AI transcribed; V1/V2 map to the deliverable's version number. Design matches the exact text layers: shared lines must be in every frame of their size, and a version's lines in at least one frame per size.
+
+**HQ:**
+- **📝 Brief** in the activity log and its filters.
+- The brief check panel shows every line in a table with its issues inline, plus the claims found and what wasn't checked.
+- **Insights** tab: caught before production vs after, by issue family, with team feedback and AI cost.
+- **Check a link → Check brief text:** paste lines with optional tags (`V1 9x16 headline 0-3s: …`).
+
+**Brain:**
+- Items can be scoped to a **lane** (Particle / SFY / GT / WAC). A lane item applies only when the ad is known to be in that lane: Video and Design checks detect the lane from the task name and the brief's destination link.
+- New fact types:
+  - **Offer calendar** (code, tiers, start, end)
+  - **Price list** (list price per product)
+  - **Claims sheet** (approved claims, optionally per product)
+  - **Layout limits** (max characters per element and size, per template)
+- Feedback on brief issues feeds the review queue exactly like asset feedback.
+
+**Tables (migration 034):** `captain_issues.line_id / rule / data`, `captain_brain.data`, `captain_approved_text`, `captain_brief_batches`.

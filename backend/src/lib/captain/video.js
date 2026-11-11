@@ -20,10 +20,11 @@ const { loadBrain, brainText } = require('./brain');
 const gemini = require('./engines/gemini');
 const { logEvent } = require('./log');
 const { enqueue } = require('./queue');
-const { insertCheck, updateCheck, lastCheckOf, insertIssue, setIssueComment } = require('./store');
+const { insertCheck, updateCheck, lastCheckOf, insertIssue, setIssueComment, approvedTextFor } = require('./store');
 const L = require('./labels');
 const { frameioMatcher } = require('./dedupe');
-const { brandOf } = require('./brand');
+const { brandOf, laneOf } = require('./brand');
+const { matchVideo } = require('./briefMatch');
 
 const PREFIX = monday.PREFIX;
 const PROMPT = fs.readFileSync(path.join(__dirname, 'prompts', 'qc-video.txt'), 'utf8');
@@ -74,6 +75,8 @@ function commentText(issue) {
   if (issue.type === 'script_mismatch' || issue.type === 'vo_script_mismatch') return `${PREFIX} please check — differs from the brief: ${q(issue.found)} (brief: ${q(issue.fix)})${issue.note ? ` · ${issue.note}` : ''}`;
   if (issue.type === 'vo_order') return `${PREFIX} please check — sentence order differs from the script${issue.note ? `: ${issue.note}` : ''}`;
   if (issue.type === 'size_mismatch') return `${PREFIX} please check — copy differs from the master: ${q(issue.found)} (master: ${q(issue.fix)})`;
+  if (issue.type === 'brief_mismatch') return `${PREFIX} please check — differs from the approved brief: ${q(issue.found)} (approved: ${q(issue.fix)})`;
+  if (issue.type === 'brief_missing') return `${PREFIX} please check — approved line missing: ${q(issue.fix)}${issue.note ? ` (${issue.note})` : ''}`;
   if (issue.type === 'vo_unclear') return `${PREFIX} voiceover: ${issue.note || q(issue.found)}`;
   if (issue.type === 'vo_pronunciation') return `${PREFIX} voiceover mispronounces ${q(issue.fix || issue.found)}${issue.note ? ` — should sound like ${issue.note}` : ''} (please check)`;
   if (issue.type === 'label_mismatch') return `${PREFIX} packaging/label shows ${q(issue.found)} — should be ${q(issue.fix)}${issue.note ? ` · ${issue.note}` : ''}`;
@@ -158,12 +161,15 @@ async function checkDeliverable({ d, round, ctx, cfg, posting, master }) {
     const prompt = buildPrompt({ brain, item, master, brand });
     if (engine.engine !== 'gemini') throw new Error(`Video engine "${engine.engine}" isn't available yet — set Gemini in Settings`);
     const r = await gemini.checkVideo({ path: tmp, name: `${base.item_name} · ${d.label} · r${round.round}`, prompt, model: engine.model, prices: cfg.prices || {} });
-    const issues = normIssues(r.issues, fps);
+    // Brief-match: the item's brief passed pre-flight → compare with the approved on-screen text and voiceover
+    const matched = ctx.approved ? matchVideo(ctx.approved.lines, { onScreen: r.on_screen_text || [], voiceover: r.voiceover || [] }, { variant: d.variant, size: d.size }) : [];
+    const issues = normIssues([...(r.issues || []), ...matched], fps);
 
     for (const i of issues) await insertIssue(checkId, i);
     await updateCheck(checkId, {
       status: issues.length ? 'issues' : 'passed', issue_count: issues.length, cost_usd: r.cost_usd, duration_ms: r.ms, usage: r.usage,
-      raw: { on_screen_text: r.on_screen_text, voiceover: r.voiceover, issues: r.issues, brain_ids: brain.ids, prompt_chars: prompt.length },
+      raw: { on_screen_text: r.on_screen_text, voiceover: r.voiceover, issues: r.issues, brain_ids: brain.ids, prompt_chars: prompt.length,
+        ...(ctx.approved ? { brief_match: { approved_check: ctx.approved.check_id, lines: ctx.approved.lines.length, found: matched.length } } : {}) },
       thumb, finished_at: new Date(),
       asset: { file_id: fileId, stack_id: d.stack_id, folder_id: target.folder_id, project_id: info.project_id, name: info.name, fps, duration: info.duration, view_url: info.view_url, size: d.size, variant: d.variant, master: master ? master.label : null, brand: brand?.name || null },
     });
@@ -271,9 +277,11 @@ async function runVideoJob(payload) {
   }
 
   const brand = brandOf({ itemName: item?.name, names: [target.name, deliverables[0]?.name] }, cfg);
-  const brain = await loadBrain({ discipline: 'video', product: item?.product, campaign: item?.campaign, department: item?.department, brand: brand.name });
+  const lane = brand.default ? laneOf({ names: [item?.name, target.name], text: item?.brief?.concept || '' }, cfg).name : null;
+  const brain = await loadBrain({ discipline: 'video', product: item?.product, campaign: item?.campaign, department: item?.department, brand: brand.name, lane });
   const posting = postingFor(cfg, { frameioFolderId: target.folder_id, itemId: fromLink ? null : item?.id });
-  const ctx = { item, brain, trigger, actor, force, scopeReason, target, fromLink, brand };
+  const approved = item ? await approvedTextFor(item.id) : null;
+  const ctx = { item, brain, trigger, actor, force, scopeReason, target, fromLink, brand, approved };
 
   // Master first (biggest size per version); cut-downs are compared with their master's copy
   const results = [];

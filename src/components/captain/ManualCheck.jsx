@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ScanText, Loader2, Info } from 'lucide-react';
 import { captainApi } from '../../lib/captainService';
+import BriefCheck from './BriefCheck';
 
 /** Paste any Frame.io, Figma or Monday link → check now. Respects scope unless an admin overrides it. */
 export default function ManualCheck({ notify, isAdmin, status, onQueued }) {
@@ -23,6 +24,7 @@ export default function ManualCheck({ notify, isAdmin, status, onQueued }) {
 
   const posting = status?.posting?.mode;
   return (
+    <div className="space-y-5">
     <div className="grid lg:grid-cols-[minmax(0,1fr)_360px] gap-5">
       <form className="trk-glass p-5 sm:p-6" onSubmit={run}>
         <div className="trk-label">Check a link now</div>
@@ -50,6 +52,8 @@ export default function ManualCheck({ notify, isAdmin, status, onQueued }) {
           {!posting && 'Loading…'}
         </div>
       </div>
+    </div>
+    <BriefCheck notify={notify} />
     </div>
   );
 }

@@ -11,7 +11,29 @@ const issuesH1 = [
   { id: 5, idx: 4, start_s: 31, end_s: 33.5, frame: 745, duration_frames: 60, found: 'particle', fix: 'Particle', type: 'brand_name', severity: 'must_fix', note: 'House rule: always capitalised' },
 ];
 
+// A brief from Medium, checked before production (brief pre-flight)
+const briefLines = [
+  { id: 'l1', kind: 'headline', version: 'V1', size: '9x16', text: 'Your neck ages faster than your face — fix it', start: null, end: null, lang: 'en' },
+  { id: 'l2', kind: 'super', version: null, size: null, text: 'The skin on your neck has fewer oil glands, so it thins first and nobody treats it', start: 0, end: 3, lang: 'en' },
+  { id: 'l3', kind: 'subtitle', version: 'V2', size: null, text: 'Firms, lifts and moisturises in one night', start: null, end: null, lang: 'en' },
+  { id: 'l4', kind: 'code', version: null, size: null, text: 'USE CODE: BLACK30 · Ends Dec 1', start: null, end: null, lang: 'en' },
+  { id: 'l5', kind: 'price', version: null, size: null, text: '$59 → $42', start: null, end: null, lang: 'en' },
+  { id: 'l6', kind: 'cta', version: null, size: null, text: 'Shop Now', start: null, end: null, lang: 'en' },
+];
+const briefIssues = [
+  { id: 101, idx: 0, line_id: 'l1', found: '45 characters', fix: 'At most 32 for the headline in 9x16 — cut 13', type: 'fit', severity: 'must_fix', rule: 'Layout limit: 5 Bucks. 5 Problems.' },
+  { id: 102, idx: 1, line_id: 'l2', found: '17 words in 3s', fix: 'Split across 0–3s / 3–6s (≤9 words each), or cut to 9 words', type: 'reading_speed', severity: 'must_fix', rule: 'Max ~3 words/second' },
+  { id: 103, idx: 2, line_id: 'l3', found: 'moisturises', fix: 'moisturizes', type: 'spelling', severity: 'must_fix', rule: 'Spelling (US English)' },
+  { id: 104, idx: 3, line_id: 'l3', found: 'in one night', fix: 'Use an approved claim, or add this one to the claims sheet', type: 'claim', severity: 'must_fix', rule: 'Claims sheet — no overnight results' },
+  { id: 105, idx: 4, line_id: 'l4', found: 'BLACK30', fix: 'XMAS30', type: 'leftover_code', severity: 'must_fix', rule: 'Leftover code from Black Friday 2026' },
+  { id: 106, idx: 5, line_id: 'l4', found: 'Dec 1', fix: 'Dec 21', type: 'leftover_date', severity: 'must_fix', rule: 'Leftover date from Black Friday 2026' },
+  { id: 107, idx: 6, line_id: 'l5', found: '$42', fix: '$41.30', type: 'price', severity: 'must_fix', rule: 'List $59.00 × (1 − 30%) = $41.30' },
+  { id: 108, idx: 7, line_id: null, found: 'No code on V2', fix: 'Add “USE CODE: XMAS30”', type: 'missing_code', severity: 'check', rule: 'Code + end date on every asset' },
+];
+
 const checks = [
+  { id: '66666666-6666-4666-8666-666666666666', discipline: 'brief', status: 'issues', trigger: 'medium', item_name: 'Neck Cream | Christmas 2026 | Meta | 5 Bucks. 5 Problems. — Medium', product: 'Neck Cream', campaign: 'Christmas 2026', person: 'Medium', deliverable: '6 lines · 5 Bucks. 5 Problems.', scope_reason: 'Brief pre-flight · Particle', engine: 'claude', model: 'claude-sonnet-5-5', issue_count: 8, cost_usd: 0.014, duration_ms: 9200, created_at: ago(3), asset: { brief_id: 'mb_123', lane: 'Particle', brand: 'Particle', board: 'design', layout_ref: '5 Bucks. 5 Problems.', offer: { tier: 30, code: 'XMAS30', ends: '2026-12-21' }, lines: 6 },
+    top_issues: briefIssues.slice(0, 4).map(({ idx, found, fix, type, severity }) => ({ idx, found, fix, type, severity })) },
   { id: '11111111-1111-4111-8111-111111111111', discipline: 'video', status: 'issues', trigger: 'manual', board_id: '5433027071', item_id: '12818442030', item_name: 'Face Cream | Meta | Claude | COPYCAT Campaign | RESELLERS', department: 'Marketing/Media', product: 'Face Cream', person: 'Omri Tabachnik', scope_reason: 'Department: Marketing/Media', deliverable: 'Version 1 · 16x9', round: 2, engine: 'gemini', model: 'gemini-3.8-flash', issue_count: 5, cost_usd: 0.021, duration_ms: 16400, posting: 'test', posted_at: ago(4), created_at: ago(5), asset: { view_url: 'https://next.frame.io/' }, top_issues: issuesH1.map(({ idx, found, fix, type, severity }) => ({ idx, found, fix, type, severity })) },
   { id: '22222222-2222-4222-8222-222222222222', discipline: 'video', status: 'running', trigger: 'manual', item_name: 'Face Cream | Meta | Claude | COPYCAT Campaign | RESELLERS', deliverable: 'Version 2 · 16x9', round: 2, person: 'Omri Tabachnik', product: 'Face Cream', issue_count: 0, created_at: ago(1), asset: {} },
   { id: '33333333-3333-4333-8333-333333333333', discipline: 'video', status: 'skipped', skip_reason: 'TV project (Department: TV)', trigger: 'review', item_name: 'Face Cream | Claude | The Hunt TV commercial Offline', department: 'TV', issue_count: 0, created_at: ago(90), asset: {} },
@@ -32,6 +54,11 @@ const brain = [
     evidence: { count: 14, reviewers: ['Aviad Eilam'], products: ['Gravité'], confidence: 'high', examples: [{ id: 3, source: 'frameio', author: 'Aviad Eilam', product: 'Gravité', text: '*Gravité', found: 'Gravite', fix: 'Gravité', outcome: 'fixed' }] } },
   { id: 42, type: 'learned', title: 'Price Goes Back Up November 23', content: 'Holiday price line used on Ab Firming Cream designs.', discipline: 'design', active: true, status: 'pending', source: 'import', added_by: 'History import', created_at: ago(5),
     evidence: { count: 3, reviewers: ['Lilian Krumholz'], products: ['Ab Firming Cream'], confidence: 'medium', possibly_expired: true, examples: [] } },
+  { id: 50, type: 'offer', title: 'Christmas 2026', content: 'Code XMAS30 · 30% off · 2026-12-10 → 2026-12-21', data: { code: 'XMAS30', tiers: [30], starts: '2026-12-10', ends: '2026-12-21' }, discipline: 'both', active: true, status: 'approved', source: 'manual', added_by: 'Tomer', created_at: ago(60), scope: {} },
+  { id: 51, type: 'price', title: 'Neck Cream', content: 'List price $59.00', data: { list_price: 59, currency: 'USD' }, discipline: 'both', active: true, status: 'approved', source: 'manual', added_by: 'Tomer', created_at: ago(60), scope: { brand: 'Particle' } },
+  { id: 52, type: 'layout_limit', title: '5 Bucks. 5 Problems.', content: 'headline · 9x16 · 32 chars\nheadline · 4x5 · 40 chars', data: { limits: [{ kind: 'headline', size: '9x16', max: 32 }, { kind: 'headline', size: '4x5', max: 40 }] }, discipline: 'design', active: true, status: 'approved', source: 'manual', added_by: 'Tomer', created_at: ago(60), scope: {} },
+  { id: 53, type: 'claim', title: 'Firms, lifts and moisturizes', content: null, discipline: 'both', active: true, status: 'approved', source: 'manual', added_by: 'Tomer', created_at: ago(60), scope: { brand: 'Particle', product: 'Neck Cream' } },
+  { id: 54, type: 'rule', title: 'SFY CTA', content: 'Science For You ads end on “SEE WHY IT WON →”, never “Shop Now”.', discipline: 'both', active: true, status: 'approved', source: 'manual', added_by: 'Tomer', created_at: ago(60), scope: { lane: 'SFY' } },
   { id: 43, type: 'insight', title: 'Keep the bottle on screen while stats show', content: 'When claims or percentages appear, keep the product visible instead of cutting to stock footage.', discipline: 'video', active: true, status: 'pending', source: 'import', added_by: 'History import', created_at: ago(5),
     evidence: { count: 9, reviewers: ['Lilian Krumholz'], products: ['Face Cream', 'Instant Eye Firming Cream'], confidence: 'medium', examples: [] } },
 ];
@@ -60,6 +87,13 @@ export function fixtureCall(path, { method = 'GET', body } = {}) {
   }
   if (p.startsWith('/checks/') && !p.endsWith('/rerun')) {
     const c = checks.find(x => x.id === p.split('/')[2]) || checks[0];
+    if (c.discipline === 'brief') {
+      return {
+        check: { ...c, raw: { request: { brief_id: 'mb_123', lines: briefLines, product: 'Neck Cream', campaign: 'Christmas 2026', offer: c.asset.offer }, notes: ['No article text was sent — claims weren’t checked against the article'], claims: [{ line_id: 'l3', claim: 'Firms, lifts and moisturises in one night', in_sheet: 'no', in_article: 'n/a', note: 'no overnight results' }] } },
+        issues: briefIssues,
+        events: [{ id: 1, created_at: c.created_at, message: 'Checking brief “Neck Cream · Christmas 2026” (6 lines)' }, { id: 2, created_at: c.created_at, message: 'Brief: 7 must-fix issues' }],
+      };
+    }
     return {
       check: { ...c, monday_url: c.item_id ? `https://particle-for-men.monday.com/boards/5433027071/pulses/${c.item_id}` : null, raw: c.status === 'issues' ? { on_screen_text: [{ start: 0.5, text: 'SAVE 10$ ON PARTICLE?' }, { start: 2.5, text: 'IT MIGHT COST YOU MORE' }, { start: 7.5, text: 'TO THE NEXT CUSTUMER' }, { start: 26.5, text: 'DEDICATED CUSTUMER SUPPORT' }], voiceover: [{ start: 0.4, text: 'Save ten dollars on Particle?' }, { start: 3.9, text: 'Here’s the problem.' }], issues: [] } : {}, usage: { promptTokenCount: 29448 } },
       issues: c.status === 'issues' ? issuesH1 : [],
@@ -69,6 +103,24 @@ export function fixtureCall(path, { method = 'GET', body } = {}) {
   if (p.endsWith('/rerun')) return { queued: true };
   if (p.startsWith('/issues/')) return { ok: true, learned: body?.feedback === 'not_a_typo' ? 99 : null };
   if (p === '/check') return { queued: true, job_id: 10 };
+  if (p === '/check-brief') {
+    const lines = (body?.lines || []).map((l, i) => ({ ...l, id: l.id || `l${i + 1}` }));
+    const bad = lines.find(l => /recieve|moisturises/i.test(l.text));
+    return { verdict: bad ? 'issues' : 'passed', check_id: checks[0].id, lines_checked: lines.length, must_fix: bad ? 1 : 0, notes: body?.layout_ref ? [`No layout limits stored for “${body.layout_ref}” — fit not checked`] : [],
+      issues: bad ? [{ id: 1, line_id: bad.id, found: 'moisturises', fix: 'moisturizes', type: 'spelling', severity: 'must_fix', rule: 'Spelling (US English)' }] : [], claims: [] };
+  }
+  if (p === '/insights') {
+    return { days: 90, approved_items: 12, overrides: 1,
+      stages: [{ discipline: 'brief', checks: 48, with_issues: 21, issues: 63, cost: 0.71 }, { discipline: 'video', checks: 212, with_issues: 96, issues: 301, cost: 6.4 }, { discipline: 'design', checks: 133, with_issues: 51, issues: 118, cost: 9.3 }],
+      types: [
+        { discipline: 'brief', type: 'spelling', severity: 'must_fix', n: 14, good: 6, wrong: 1 }, { discipline: 'brief', type: 'reading_speed', severity: 'must_fix', n: 11, good: 3, wrong: 0 },
+        { discipline: 'brief', type: 'leftover_code', severity: 'must_fix', n: 5, good: 2, wrong: 0 }, { discipline: 'brief', type: 'price', severity: 'must_fix', n: 4, good: 1, wrong: 0 },
+        { discipline: 'brief', type: 'claim', severity: 'must_fix', n: 9, good: 2, wrong: 2 }, { discipline: 'brief', type: 'fit', severity: 'must_fix', n: 8, good: 0, wrong: 0 },
+        { discipline: 'video', type: 'spelling', severity: 'must_fix', n: 120, good: 40, wrong: 9 }, { discipline: 'video', type: 'brand_name', severity: 'must_fix', n: 44, good: 12, wrong: 3 },
+        { discipline: 'video', type: 'script_mismatch', severity: 'check', n: 60, good: 8, wrong: 11 }, { discipline: 'video', type: 'brief_mismatch', severity: 'check', n: 6, good: 2, wrong: 0 },
+        { discipline: 'design', type: 'spelling', severity: 'must_fix', n: 51, good: 20, wrong: 4 }, { discipline: 'design', type: 'inconsistent', severity: 'must_fix', n: 22, good: 5, wrong: 1 },
+      ] };
+  }
   if (p === '/brain') return method === 'POST' ? { item: body } : { items: brain };
   if (p.startsWith('/brain/')) return { ok: true };
   if (p === '/settings') return { settings: method === 'PUT' ? { ...settings, ...body, posting: { ...settings.posting, ...(body?.posting || {}) } } : settings };

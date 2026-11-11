@@ -4,6 +4,12 @@
  * Public (before verifyJWT):
  *   GET  /thumb/:id?exp&sig            a check's still (HMAC-signed, short-lived URL from the list endpoints)
  *
+ * Brief pre-flight — Medium with the service token (Authorization: Bearer $CAPTAIN_SERVICE_TOKEN), or a signed-in Editor:
+ *   POST /check-brief                  one brief → { verdict, lines_checked, check_id, issues[], notes[], claims[] }
+ *   POST /check-brief/:id/attach       { item_id, board_id?, override?: { by, reason } } → approved text + Monday update
+ *   POST /check-brief/batch            Holiday Builder: { campaign?, offer?, …shared, briefs: [≤200] } → { batch_id }
+ *   GET  /check-brief/batch/:id        status → verdict per brief + campaign summary
+ *
  * Signed-in, Editor and up (everyone can view and give feedback):
  *   GET  /status                       connections, worker heartbeat, posting switch, queue
  *   POST /check                        manual check: { link } — Frame.io / Figma link, or a Monday item URL
@@ -14,6 +20,7 @@
  *   GET  /events                       raw event log
  *   GET  /brain                        Brain items
  *   GET  /import                       history import progress + report (counts, AI estimate)
+ *   GET  /insights?days=90             caught before production (brief) vs after (video + design)
  * Admin:
  *   GET  /frameio/connect · DELETE /frameio    the Captain's own Frame.io sign-in
  *   GET|PUT /settings
@@ -55,6 +62,59 @@ router.get('/thumb/:id', async (req, res) => {
   const { rows } = await db.query('SELECT thumb FROM captain_checks WHERE id = $1', [id]).catch(() => ({ rows: [] }));
   if (!rows[0]?.thumb) return res.status(404).end();
   res.set({ 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, max-age=21600' }).send(rows[0].thumb);
+});
+
+// ── Brief pre-flight (Medium) ────────────────────────────────────────────────
+// Medium calls these from inside CP with the service token, not a user session. A signed-in Editor can use them too
+// (HQ → Check a link → "Check brief text").
+const brief = () => require('../lib/captain/brief');
+function serviceToken(req) {
+  const h = String(req.get('authorization') || '');
+  const m = h.match(/^Bearer\s+(.+)$/i);
+  return req.get('x-captain-service-token') || (m ? m[1].trim() : null);
+}
+function isService(req) {
+  const want = process.env.CAPTAIN_SERVICE_TOKEN || '';
+  const got = serviceToken(req);
+  if (want.length < 32 || !got) return false;
+  const a = Buffer.from(String(got)), b = Buffer.from(want);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+function serviceOrEditor(req, res, next) {
+  if (isService(req)) { req.service = 'medium'; return next(); }
+  return verifyJWT(req, res, () => ((RANK[req.user?.role] ?? -1) >= RANK.Editor || req.user?.super_admin ? next() : res.status(403).json({ error: 'Editor access required' })));
+}
+const callerOf = (req) => (req.service ? `Medium${req.body?.author ? ` · ${String(req.body.author).slice(0, 80)}` : ''}` : actorOf(req));
+
+router.post('/check-brief', serviceOrEditor, async (req, res) => {
+  try {
+    res.json(await brief().runBriefCheck(req.body, { trigger: req.service ? 'medium' : 'manual', actor: callerOf(req), force: !!req.body?.force }));
+  } catch (err) {
+    if (err.check_id) return res.status(err.status || 502).json({ error: err.message, check_id: err.check_id, verdict: 'error' });
+    errorJson(res, err);
+  }
+});
+
+router.post('/check-brief/batch', serviceOrEditor, async (req, res) => {
+  try { res.status(202).json(await brief().startBatch(req.body, { actor: callerOf(req) })); } catch (err) { errorJson(res, err); }
+});
+
+router.get('/check-brief/batch/:id', serviceOrEditor, async (req, res) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.status(404).json({ error: 'Not found' });
+    const b = await brief().batchStatus(req.params.id);
+    if (!b) return res.status(404).json({ error: 'Not found' });
+    res.json(b);
+  } catch (err) { errorJson(res, err); }
+});
+
+router.post('/check-brief/:id/attach', serviceOrEditor, async (req, res) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.status(404).json({ error: 'Not found' });
+    const isAdmin = (RANK[req.user?.role] ?? -1) >= RANK.Admin || req.user?.super_admin;
+    const override = req.body?.override && (req.service || isAdmin) ? req.body.override : null;   // Medium logs which admin overrode
+    res.json(await brief().attachApproved(req.params.id, { item_id: req.body?.item_id, board_id: req.body?.board_id, actor: callerOf(req), override }));
+  } catch (err) { errorJson(res, err); }
 });
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -187,6 +247,11 @@ router.post('/checks/:id/rerun', async (req, res) => {
     const c = (await db.query('SELECT discipline, item_id, asset FROM captain_checks WHERE id = $1', [req.params.id])).rows[0];
     if (!c) return res.status(404).json({ error: 'Not found' });
     const actor = actorOf(req);
+    if (c.discipline === 'brief') {
+      const jobId = await enqueue('brief_check', { check_id: req.params.id, actor }, { dedupeKey: `rerun:${req.params.id}`, maxAttempts: 1 });
+      await logEvent({ kind: 'check', discipline: 'brief', check_id: req.params.id, message: `Re-run requested by ${actor}`, actor });
+      return res.json({ queued: !!jobId, job_id: jobId });
+    }
     const link = c.discipline === 'design' ? c.asset?.link : (c.asset?.view_url || c.asset?.link);
     if (!link && !c.item_id) return res.status(400).json({ error: 'Nothing to re-run — this check has no link' });
     const payload = c.discipline === 'design'
@@ -199,6 +264,12 @@ router.post('/checks/:id/rerun', async (req, res) => {
 });
 
 // ── feedback → teach the Captain ─────────────────────────────────────────────
+// Findings from the brief pre-flight's code checks (measurements, offer facts) aren't words to whitelist — the feedback is
+// recorded but nothing goes to the Brain. Claims marked "not an issue" are suggested for the claims sheet instead.
+const CLAIM_TYPES = new Set(['claim', 'claim_unverified', 'claim_article']);
+const RULE_TYPES = new Set(['reading_speed', 'vo_speed', 'timing', 'fit', 'missing_cta', 'missing_disclaimer', 'missing_code', 'missing_end_date', 'offer_code', 'offer_date',
+  'offer_tier', 'price', 'leftover_code', 'leftover_date', 'campaign_code', 'campaign_date', 'campaign_price', 'inconsistent_code', 'inconsistent_date', 'inconsistent_guarantee',
+  'translation_currency', 'brief_mismatch', 'brief_missing']);
 router.post('/issues/:id/feedback', async (req, res) => {
   try {
     const fb = String(req.body?.feedback || '');
@@ -210,11 +281,20 @@ router.post('/issues/:id/feedback', async (req, res) => {
     const issue = rows[0];
     if (!issue) return res.status(404).json({ error: 'Not found' });
     let learned = null;
-    if (fb === 'not_a_typo' && issue.found) {
+    if (fb === 'not_a_typo' && issue.found && CLAIM_TYPES.has(issue.type)) {
+      // "Not an issue" on a claim = it's an approved claim → suggest it for the claims sheet (review queue)
+      const r = await db.query(
+        `INSERT INTO captain_brain (type, title, content, discipline, scope, status, source, evidence, added_by)
+         SELECT 'claim', $1, $2, 'both', CASE WHEN c.product IS NOT NULL THEN jsonb_build_object('product', c.product) ELSE '{}'::jsonb END, 'pending', 'feedback', $3, $4
+           FROM captain_checks c WHERE c.id = $5
+         ON CONFLICT DO NOTHING RETURNING id`,
+        [String(issue.found).slice(0, 300), 'Marked "not an issue" on a brief claim', JSON.stringify({ issue_id: issue.id, check_id: issue.check_id }), actor, issue.check_id]);
+      learned = r.rows[0]?.id || null;
+    } else if (fb === 'not_a_typo' && issue.found && !RULE_TYPES.has(issue.type)) {
       // Goes to the review queue — nothing reaches the Captain's instructions until an admin approves it
       const r = await db.query(
         `INSERT INTO captain_brain (type, title, content, discipline, status, source, evidence, added_by)
-         SELECT 'do_not_flag', $1, $2, c.discipline, 'pending', 'feedback', $3, $4 FROM captain_checks c WHERE c.id = $5
+         SELECT 'do_not_flag', $1, $2, CASE WHEN c.discipline IN ('video', 'design') THEN c.discipline ELSE 'both' END, 'pending', 'feedback', $3, $4 FROM captain_checks c WHERE c.id = $5
          ON CONFLICT DO NOTHING RETURNING id`,
         [String(issue.found).slice(0, 200), `Marked "not a typo" (Captain suggested "${issue.fix || ''}")`, JSON.stringify({ issue_id: issue.id, check_id: issue.check_id }), actor, issue.check_id]);
       learned = r.rows[0]?.id || null;
@@ -232,8 +312,22 @@ router.get('/events', async (req, res) => {
   } catch (err) { errorJson(res, err); }
 });
 
+// Caught before production (brief pre-flight) vs after (video + design)
+router.get('/insights', async (req, res) => {
+  try { res.json(await brief().insights(req.query.days)); } catch (err) { errorJson(res, err); }
+});
+
 // ── the Brain ────────────────────────────────────────────────────────────────
-const BRAIN_TYPES = ['term', 'do_not_flag', 'rule', 'reference_image', 'document', 'learned', 'insight'];
+const BRAIN_TYPES = ['term', 'do_not_flag', 'rule', 'reference_image', 'document', 'learned', 'insight', 'layout_limit', 'offer', 'price', 'claim'];
+const LANES = ['Particle', 'SFY', 'GT', 'WAC'];
+/** scope as sent by HQ → only known keys; lane must be one of the four. */
+function cleanScope(scope = {}) {
+  const out = {};
+  for (const k of ['brand', 'product', 'campaign', 'department']) if (scope?.[k] && (!Array.isArray(scope[k]) || scope[k].length)) out[k] = scope[k];
+  const lane = [].concat(scope?.lane || []).filter(l => LANES.includes(l));
+  if (lane.length) out.lane = lane.length === 1 ? lane[0] : lane;
+  return out;
+}
 
 router.get('/brain', async (req, res) => {
   try {
@@ -252,10 +346,11 @@ router.post('/brain', requireAdmin, async (req, res) => {
     if (!BRAIN_TYPES.includes(b.type)) return res.status(400).json({ error: 'Unknown Brain type' });
     if (!String(b.title || '').trim()) return res.status(400).json({ error: 'A title is required' });
     const actor = actorOf(req);
+    const fact = require('../lib/captain/briefRules').factData(b.type, b.data, b.content || null);
     const { rows } = await db.query(
-      `INSERT INTO captain_brain (type, title, content, discipline, scope, active, status, source, added_by)
-       VALUES ($1,$2,$3,$4,$5,true,'approved','manual',$6) RETURNING *`,
-      [b.type, String(b.title).trim().slice(0, 300), b.content || null, ['video', 'design', 'both'].includes(b.discipline) ? b.discipline : 'both', JSON.stringify(b.scope || {}), actor]);
+      `INSERT INTO captain_brain (type, title, content, discipline, scope, active, status, source, added_by, data)
+       VALUES ($1,$2,$3,$4,$5,true,'approved','manual',$6,$7) RETURNING *`,
+      [b.type, String(b.title).trim().slice(0, 300), fact.content || null, ['video', 'design', 'both'].includes(b.discipline) ? b.discipline : 'both', JSON.stringify(cleanScope(b.scope)), actor, fact.data ? JSON.stringify(fact.data) : null]);
     await brainHistory(rows[0].id, 'create', null, rows[0], actor);
     await logEvent({ kind: 'brain', message: `${actor} added ${b.type} "${rows[0].title}"`, data: { id: rows[0].id }, actor });
     res.json({ item: rows[0] });
@@ -271,9 +366,10 @@ router.put('/brain/:id', requireAdmin, async (req, res) => {
     if (!before) return res.status(404).json({ error: 'Not found' });
     const b = { ...before, ...req.body };
     const actor = actorOf(req);
+    const fact = require('../lib/captain/briefRules').factData(before.type, req.body?.data !== undefined ? req.body.data : before.data, b.content || null);
     const { rows } = await db.query(
-      `UPDATE captain_brain SET title = $2, content = $3, discipline = $4, scope = $5, active = $6, status = $7, updated_at = NOW() WHERE id = $1 RETURNING *`,
-      [before.id, String(b.title).trim().slice(0, 300), b.content || null, ['video', 'design', 'both'].includes(b.discipline) ? b.discipline : 'both', JSON.stringify(b.scope || {}), !!b.active, ['approved', 'pending', 'rejected'].includes(b.status) ? b.status : before.status]);
+      `UPDATE captain_brain SET title = $2, content = $3, discipline = $4, scope = $5, active = $6, status = $7, data = $8, updated_at = NOW() WHERE id = $1 RETURNING *`,
+      [before.id, String(b.title).trim().slice(0, 300), fact.content || null, ['video', 'design', 'both'].includes(b.discipline) ? b.discipline : 'both', JSON.stringify(req.body?.scope !== undefined ? cleanScope(b.scope) : (before.scope || {})), !!b.active, ['approved', 'pending', 'rejected'].includes(b.status) ? b.status : before.status, fact.data ? JSON.stringify(fact.data) : null]);
     await brainHistory(before.id, 'update', before, rows[0], actor);
     await logEvent({ kind: 'brain', message: `${actor} updated ${rows[0].type} "${rows[0].title}"${before.status !== rows[0].status ? ` (${before.status} → ${rows[0].status})` : ''}`, data: { id: before.id }, actor });
     res.json({ item: rows[0] });

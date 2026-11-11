@@ -25,14 +25,22 @@ async function lastCheckOf(dedupeKey) {
 
 async function insertIssue(checkId, i) {
   await db.query(
-    `INSERT INTO captain_issues (check_id, idx, start_s, end_s, frame, duration_frames, node_id, frame_node_id, found, fix, type, severity, note)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-    [checkId, i.idx, i.start_s ?? null, i.end_s ?? null, i.frame ?? null, i.duration_frames ?? null, i.node_id ?? null, i.frame_node_id ?? null, i.found, i.fix, i.type, i.severity, i.note],
+    `INSERT INTO captain_issues (check_id, idx, start_s, end_s, frame, duration_frames, node_id, frame_node_id, found, fix, type, severity, note, line_id, rule, data)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+    [checkId, i.idx, i.start_s ?? null, i.end_s ?? null, i.frame ?? null, i.duration_frames ?? null, i.node_id ?? null, i.frame_node_id ?? null, i.found, i.fix, i.type, i.severity, i.note,
+      i.line_id ?? null, i.rule ?? null, i.data ? JSON.stringify(i.data) : null],
   );
+}
+
+/** The approved on-screen text locked to a Monday item by the brief pre-flight (null if its brief never went through it). */
+async function approvedTextFor(itemId) {
+  if (!itemId) return null;
+  const { rows } = await db.query('SELECT * FROM captain_approved_text WHERE item_id = $1', [String(itemId)]).catch(() => ({ rows: [] }));
+  return rows[0] || null;
 }
 
 async function setIssueComment(checkId, idx, commentId) {
   await db.query('UPDATE captain_issues SET comment_id = $3 WHERE check_id = $1 AND idx = $2', [checkId, idx, String(commentId)]);
 }
 
-module.exports = { insertCheck, updateCheck, lastCheckOf, insertIssue, setIssueComment };
+module.exports = { insertCheck, updateCheck, lastCheckOf, insertIssue, setIssueComment, approvedTextFor };

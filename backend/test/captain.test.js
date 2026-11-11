@@ -128,3 +128,165 @@ test('re-runs never post the same Captain comment twice', () => {
   assert.equal(f('🧑‍✈️ Captain Caption: "GAURANTEE" → "GUARANTEE"', ['1:12', '1:10']), null);  // different layer
   assert.equal(f('🧑‍✈️ Captain Caption: "GAURANTEE" → "GUARANTEE"', ['1:11', '1:10'])?.id, 'x');
 });
+
+// ── Brief pre-flight ─────────────────────────────────────────────────────────
+const R = require('../src/lib/captain/briefRules');
+const facts = {
+  offers: [
+    { id: 1, title: 'Christmas 2026', data: { code: 'XMAS30', tiers: [30], starts: '2026-12-10', ends: '2026-12-21' } },
+    { id: 2, title: 'Black Friday 2026', data: { code: 'BLACK30', tiers: [25, 30], ends: '2026-12-01' } },
+  ],
+  prices: [{ id: 3, title: 'Neck Cream', data: { list_price: 59 } }],
+  layoutLimits: [{ id: 4, title: '5 Bucks. 5 Problems.', data: { limits: R.parseLimits('headline 9x16: 32\nheadline 4x5: 40\nsubtitle * 60') } }],
+  claims: [],
+};
+const brief = (lines, extra = {}) => R.normalizeRequest({ brief_id: 'mb_1', product: 'Neck Cream', lines, ...extra }).req;
+const types = (issues) => issues.map(i => i.type).sort();
+
+test('brief: request is cleaned (versions, sizes, tiers, dates)', () => {
+  const { errors, req } = R.normalizeRequest({ lines: [{ text: 'Hi', version: 'v2', size: '9:16' }, { id: 'x', text: 'B', size: '1080x1350', kind: 'Voiceover' }], offer: { tier: 0.3, code: 'xmas30', ends: '2026-12-21T00:00:00Z' } });
+  assert.deepEqual(errors, []);
+  assert.equal(req.lines[0].id, 'l1');
+  assert.equal(req.lines[0].version, 'V2');
+  assert.equal(req.lines[0].size, '9x16');
+  assert.equal(req.lines[1].size, '4x5');
+  assert.equal(req.lines[1].kind, 'vo');
+  assert.deepEqual(req.offer, { tier: 30, code: 'XMAS30', ends: '2026-12-21' });
+  assert.match(R.normalizeRequest({}).errors[0], /lines/);
+});
+
+test('brief: reading speed — supers must fix (with a split), VO only a warning', () => {
+  const words = Array.from({ length: 24 }, (_, i) => `w${i}`).join(' ');
+  const [i] = R.readingSpeed(brief([{ id: 'l1', kind: 'super', text: words, start: 0, end: 3 }]).lines, { max_words_per_second: 3 });
+  assert.equal(i.type, 'reading_speed');
+  assert.equal(i.severity, 'must_fix');
+  assert.equal(i.suggestion.split.length, 3);                       // 9 words per 3 s window
+  assert.deepEqual(i.suggestion.split.map(p => [p.start, p.end]), [[0, 3], [3, 6], [6, 9]]);
+  assert.equal(R.readingSpeed(brief([{ kind: 'super', text: 'Your neck ages first', start: 0, end: 2 }]).lines).length, 0);
+  const vo = R.readingSpeed(brief([{ kind: 'vo', text: words, start: 0, end: 6 }]).lines, { vo_max_words_per_second: 3.5 });
+  assert.equal(vo[0].type, 'vo_speed');
+  assert.equal(vo[0].severity, 'should_fix');
+});
+
+test('brief: fit against the layout limits stored in the Brain', () => {
+  assert.deepEqual(R.parseLimits('headline 9x16: 32\n4x5 40\nsubtitle, *, 60 chars'), [
+    { kind: 'headline', size: '9x16', max: 32 }, { kind: 'headline', size: '4x5', max: 40 }, { kind: 'subtitle', size: '*', max: 60 }]);
+  const req = brief([
+    { id: 'h1', kind: 'headline', size: '9x16', text: 'Your neck ages faster than your face — fix it' },   // 45 chars
+    { id: 'h2', kind: 'headline', size: '4x5', text: 'Your neck ages faster than your face' },            // 36 chars, fits 40
+    { id: 'h3', kind: 'headline', text: 'Your neck ages faster than your face' },                     // every size → tightest (32)
+  ], { layout_ref: '5 Bucks 5 Problems' });
+  const r = R.fit(req.lines, req, facts);
+  assert.deepEqual(r.issues.map(i => i.line_id), ['h1', 'h3']);
+  assert.match(r.issues[0].found, /45 characters/);
+  assert.match(R.fit(req.lines, { ...req, layout_ref: 'Receipt Vertical' }, facts).notes[0], /No layout limits/);
+});
+
+test('brief: offer facts — code, end date, tier, leftovers and price math', () => {
+  const req = brief([
+    { id: 'l1', kind: 'super', text: 'Christmas Sale — 25% OFF' },
+    { id: 'l2', kind: 'code', text: 'USE CODE: BLACK30' },
+    { id: 'l3', kind: 'super', text: 'Ends Dec 1' },
+    { id: 'l4', kind: 'price', text: '$59 → $41.30' },
+    { id: 'l5', kind: 'price', text: 'Now only $42' },
+    { id: 'l6', kind: 'super', text: 'Free shipping on orders over $50' },
+  ], { campaign: 'Christmas 2026', offer: { tier: 30, code: 'XMAS30', ends: '2026-12-21' } });
+  const r = R.offerFacts(req.lines, req, facts, { today: '2026-11-11' });
+  const by = Object.fromEntries(r.issues.map(i => [i.line_id, i]));
+  assert.equal(by.l1.type, 'offer_tier');
+  assert.equal(by.l1.fix, '30% OFF');
+  assert.equal(by.l2.type, 'leftover_code');
+  assert.equal(by.l2.fix, 'XMAS30');
+  assert.equal(by.l3.type, 'leftover_date');                        // Dec 1 is Black Friday's end date
+  assert.equal(by.l3.fix, 'Dec 21');
+  assert.equal(by.l4, undefined);                                  // $59 list, $41.30 = 59 × 0.7
+  assert.equal(by.l5.type, 'price');
+  assert.equal(by.l5.fix, '$41.30');
+  assert.equal(by.l6, undefined);                                  // a shipping threshold isn't a price
+  // the brief's own offer vs the calendar
+  const wrong = brief([{ text: 'x' }], { campaign: 'Christmas 2026', offer: { tier: 25, code: 'BLACK30', ends: '2026-12-01' } });
+  assert.deepEqual(types(R.offerFacts(wrong.lines, wrong, facts, { today: '2026-11-11' }).issues), ['offer_code', 'offer_date', 'offer_tier']);
+  const val = R.offerFacts(wrong.lines, { ...wrong, campaign: 'Valentines 2027' }, facts, { today: '2026-11-11' });
+  assert.match(val.notes[0], /No offer-calendar entry/);
+  assert.equal(val.issues.find(i => i.line_id === null).type, 'leftover_code');   // BLACK30 belongs to Black Friday
+});
+
+test('brief: dates in copy', () => {
+  assert.deepEqual(R.datesIn('Sale ends December 21st', 2026).map(d => d.iso), ['2026-12-21']);
+  assert.deepEqual(R.datesIn('Ends 12/21 · 21 December', 2026).map(d => d.iso), ['2026-12-21', '2026-12-21']);
+  assert.deepEqual(R.datesIn('97% of users saw results in 4 weeks', 2026), []);
+  assert.equal(R.fmtDateLike('2026-12-21', 'long'), 'December 21');
+});
+
+test('brief: translations, placeholders, cross-version and required elements', () => {
+  const req = brief([
+    { id: 'v1', version: 'V1', kind: 'headline', text: 'Before & After: 30-Day Money-Back Guarantee' },
+    { id: 'v2', version: 'V2', kind: 'headline', text: 'Backed by a 60-day money-back guarantee' },
+    { id: 'c', kind: 'code', version: 'V1', text: 'USE CODE: XMAS30 · Ends Dec 21' },
+    { id: 'it', kind: 'translation', lang: 'it', text: 'Risparmia $18 oggi' },
+    { id: 'p', kind: 'price', text: 'Only [PRICE]' },
+  ], { offer: { code: 'XMAS30', ends: '2026-12-21' } });
+  const all = R.ruleChecks(req, facts, { today: '2026-11-11' }).issues;
+  const t = types(all);
+  assert.ok(t.includes('translation_currency'));
+  assert.ok(t.includes('placeholder'));
+  assert.ok(t.includes('inconsistent_guarantee'));
+  assert.ok(t.includes('missing_cta'));
+  assert.ok(t.includes('missing_disclaimer'));
+  const missing = all.filter(i => i.type === 'missing_code' || i.type === 'missing_end_date');
+  assert.equal(missing.length, 2);
+  assert.match(missing[0].found, /V2/);                             // V1 has the code, V2 doesn't
+  // a clean brief passes the code checks
+  const ok = brief([{ kind: 'headline', text: 'Your neck ages first' }, { kind: 'cta', text: 'Shop Now' }]);
+  assert.deepEqual(R.ruleChecks(ok, facts, { today: '2026-11-11' }).issues, []);
+  // magazine videos end on the article: a missing CTA is only a warning there
+  const sfy = brief([{ kind: 'super', text: 'The skin on your neck thins first' }], { board: 'video' });
+  assert.equal(R.requiredElements(sfy.lines, sfy, 'SFY')[0].severity, 'should_fix');
+});
+
+test('brief: Holiday Builder cross-brief checks', () => {
+  const mk = (id, code, price) => ({ brief_id: id, req: brief([{ id: 'c', kind: 'code', text: `USE CODE: ${code}` }, { id: 'p', kind: 'price', text: `$59 → ${price}` }], { campaign: 'Christmas 2026', offer: { tier: 30 } }), issues: [] });
+  const out = R.crossBrief([mk('a', 'XMAS30', '$41.30'), mk('b', 'XMAS30', '$41.30'), mk('c', 'XMAS25', '$42.00')], { offers: [] }, { campaign: 'Christmas 2026' });
+  assert.deepEqual(out.map(x => [x.brief_id, x.issue.type, x.issue.fix]), [['c', 'campaign_code', 'XMAS30'], ['c', 'campaign_price', '$41.30']]);
+});
+
+test('brief: Brain facts are validated', () => {
+  assert.deepEqual(R.factData('offer', { code: 'xmas 30', tiers: '25, 30', ends: '2026-12-21' }).data, { code: 'XMAS30', tiers: [25, 30], starts: null, ends: '2026-12-21', aliases: [] });
+  assert.equal(R.factData('price', { list_price: '$59' }).content, 'List price $59.00');
+  assert.throws(() => R.factData('layout_limit', {}, 'nothing'), /at least one limit/);
+  assert.equal(R.factData('rule', null, 'Keep it').content, 'Keep it');
+});
+
+test('lanes: name tokens, domains, and lane-scoped Brain items', () => {
+  const { laneOf } = require('../src/lib/captain/brand');
+  const { matchesScope } = require('../src/lib/captain/brain');
+  assert.equal(laneOf({ names: ['Face Cream | Science For You | Meta | Understand the Why'] }).name, 'SFY');
+  assert.equal(laneOf({ names: ['Gravité | META | GT | Top 5'] }).name, 'GT');
+  assert.equal(laneOf({ names: ['Gravité | Meta | Winter'], text: 'Page: https://wearecolognes.com/cold' }).name, 'WAC');
+  assert.equal(laneOf({ names: ['Face Cream | Meta | Hero 30'] }).name, 'Particle');
+  assert.equal(laneOf({ lane: 'sfy' }).name, 'SFY');
+  assert.equal(matchesScope({ lane: 'Particle' }, { lane: 'SFY' }), false);
+  assert.equal(matchesScope({ lane: 'SFY' }, { lane: 'SFY' }), true);
+  assert.equal(matchesScope({ lane: 'SFY' }, { brand: 'Ashford' }), false);   // no lane known → lane items stay out
+  assert.equal(matchesScope({ brand: 'Particle' }, { brand: 'Particle', lane: 'GT' }), true);
+});
+
+test('brief-match on delivery: video and design', () => {
+  const { matchVideo, matchDesign } = require('../src/lib/captain/briefMatch');
+  const approved = [
+    { id: 'l1', kind: 'super', version: 'V1', text: 'Your neck ages first', start: 0, end: 2 },
+    { id: 'l2', kind: 'super', version: 'V2', text: 'Nobody treats their neck', start: 0, end: 2 },
+    { id: 'l3', kind: 'super', text: 'Firms, lifts and moisturizes', start: 4, end: 6 },
+    { id: 'l4', kind: 'cta', text: 'Shop Now', start: 8, end: 10 },
+  ];
+  const v = matchVideo(approved, { onScreen: [{ start: 0.5, text: 'YOUR NECK AGES FIRST!' }, { start: 4, text: 'Firms, lifts and hydrates' }] }, { variant: 1, size: '9x16' });
+  assert.deepEqual(v.map(i => i.type), ['brief_mismatch', 'brief_missing']);   // l3 reworded, l4 missing; l2 is V2's line
+  assert.equal(v[0].fix, 'Firms, lifts and moisturizes');
+  assert.equal(v[0].start, 4);
+  const frames = [
+    { id: 'f1', size: '1x1', texts: [{ id: 't1', text: 'Your neck' }, { id: 't2', text: 'ages first' }, { id: 't3', text: 'Firms, lifts and moisturizes' }, { id: 't4', text: 'Shop Now' }] },
+    { id: 'f2', size: '9x16', texts: [{ id: 't5', text: 'Your neck ages first' }, { id: 't6', text: 'Shop Now' }] },
+  ];
+  const d = matchDesign(approved.filter(l => l.id !== 'l2'), frames);
+  assert.deepEqual(d.map(i => [i.type, i.frame_node_id]), [['brief_missing', 'f2']]);   // l3 missing in the 9x16 frame
+});

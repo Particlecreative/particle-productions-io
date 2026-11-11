@@ -1,9 +1,108 @@
 import { useCallback, useEffect, useState } from 'react';
 import { X, ExternalLink, RotateCcw, Loader2, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { captainApi } from '../../lib/captainService';
-import { dateTime, mmss, statusMeta, TRIGGERS, ISSUE_TYPES, money } from './util';
+import { dateTime, mmss, statusMeta, TRIGGERS, ISSUE_TYPES, SEVERITY, DISCIPLINES, money } from './util';
 
-/** One check: what the Captain found (with frames), what he read and heard, and the team's feedback buttons. */
+// Issue types where "found → fix" is not a text swap but a measurement and an instruction ("17 words in 3s — split…")
+const NOTE_TYPES = new Set(['reading_speed', 'vo_speed', 'timing', 'fit', 'missing_cta', 'missing_disclaimer', 'missing_code', 'missing_end_date', 'claim', 'claim_unverified', 'claim_article', 'translation_currency', 'brief_missing']);
+
+/** One finding with the team's feedback buttons (✅ good catch / ❌ not a typo → teaches the Brain). */
+function IssueRow({ i, where, busy, onFeedback }) {
+  const [sevLabel, sevTone] = SEVERITY[i.severity] || SEVERITY.must_fix;
+  return (
+    <div className={`cc-issue${where === null ? ' cc-issue-inline' : ''}`}>
+      {where !== null && <div>{where}</div>}
+      <div className="min-w-0">
+        <div className="text-[15px] break-words">
+          {NOTE_TYPES.has(i.type)
+            ? <>{i.found && <b>{i.found}</b>}{i.found && i.fix ? ' — ' : ''}{i.fix && <span className="trk-muted">{i.fix}</span>}</>
+            : <>{i.found && <span className="cc-strike">{i.found}</span>}{i.fix && <> → <span className="cc-fix">{i.fix}</span></>}</>}
+        </div>
+        <div className="mt-1 flex flex-wrap gap-1.5 items-center">
+          <span className={`trk-chip ${sevTone}`}>{sevLabel}</span>
+          <span className="trk-chip gray">{ISSUE_TYPES[i.type] || i.type}</span>
+          {i.comment_id && <span className="trk-chip green">commented</span>}
+          {i.rule && <span className="text-[12px] trk-muted">{i.rule}</span>}
+          {i.note && <span className="text-[12px] trk-muted">{i.note}</span>}
+        </div>
+      </div>
+      <div className="flex gap-1.5">
+        <button type="button" className="trk-btn !px-2.5 !py-1.5" title="Good catch" aria-label="Good catch" aria-pressed={i.feedback === 'good_catch'} disabled={busy === `fb${i.id}`}
+          style={i.feedback === 'good_catch' ? { background: 'var(--trk-green)', color: '#03231a', borderColor: 'transparent' } : undefined} onClick={() => onFeedback(i, 'good_catch')}><ThumbsUp size={13} /></button>
+        <button type="button" className="trk-btn !px-2.5 !py-1.5" title="Not a typo — teach the Captain" aria-label="Not a typo" aria-pressed={i.feedback === 'not_a_typo'} disabled={busy === `fb${i.id}`}
+          style={i.feedback === 'not_a_typo' ? { background: 'var(--trk-red)', color: '#fff', borderColor: 'transparent' } : undefined} onClick={() => onFeedback(i, 'not_a_typo')}><ThumbsDown size={13} /></button>
+      </div>
+    </div>
+  );
+}
+
+/** A brief check: every line in a table, with what the Captain found on it right underneath. */
+function BriefLines({ c, issues, busy, onFeedback }) {
+  const req = c.raw?.request || {};
+  const lines = req.lines || [];
+  const whole = issues.filter(i => !i.line_id || !lines.some(l => l.id === i.line_id));
+  const offer = req.offer || c.asset?.offer;
+  return (
+    <>
+      {(c.raw?.notes || []).length > 0 && (
+        <div className="trk-section">
+          <div className="trk-label mb-2">Not checked</div>
+          <ul className="text-[13px] trk-muted list-disc pl-5 space-y-1">{c.raw.notes.map((n, k) => <li key={k}>{n}</li>)}</ul>
+        </div>
+      )}
+      {whole.length > 0 && (
+        <div className="trk-section">
+          <div className="trk-label mb-1">Whole brief</div>
+          {whole.map(i => <IssueRow key={i.id} i={i} busy={busy} onFeedback={onFeedback} where={<div className="text-[11px] trk-dim">brief</div>} />)}
+        </div>
+      )}
+      {lines.length > 0 && (
+        <div className="trk-section">
+          <div className="trk-label mb-2">Lines ({lines.length}){offer ? <span className="trk-dim font-normal normal-case"> · offer {[offer.code, offer.tier ? `${offer.tier}%` : null, offer.ends ? `ends ${offer.ends}` : null].filter(Boolean).join(' · ')}</span> : null}</div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-[13.5px] cc-lines">
+              <thead><tr className="text-left trk-dim text-[11px] uppercase tracking-wide"><th className="py-1.5 pr-3">Line</th><th className="py-1.5 pr-3">Element</th><th className="py-1.5 pr-3">Version · size</th><th className="py-1.5 pr-3">Time</th><th className="py-1.5">Text</th></tr></thead>
+              <tbody>
+                {lines.map(l => {
+                  const mine = issues.filter(i => i.line_id === l.id);
+                  const worst = mine.some(i => i.severity === 'must_fix') ? 'red' : mine.length ? 'amber' : null;
+                  return (
+                    <tr key={l.id} className="align-top" style={{ borderTop: '1px solid var(--trk-line)' }}>
+                      <td className="py-2 pr-3 whitespace-nowrap"><span className="cc-dot mr-1.5" style={{ background: worst === 'red' ? 'var(--trk-red)' : worst === 'amber' ? 'var(--trk-amber)' : 'var(--trk-green)' }} aria-hidden />{l.id}</td>
+                      <td className="py-2 pr-3 whitespace-nowrap">{l.kind === 'vo' ? 'Voiceover' : l.kind}{l.lang && l.lang !== 'en' ? ` · ${l.lang}` : ''}</td>
+                      <td className="py-2 pr-3 whitespace-nowrap trk-muted">{[l.version || 'all', l.size || 'all sizes'].join(' · ')}</td>
+                      <td className="py-2 pr-3 whitespace-nowrap trk-muted">{l.start != null && l.end != null ? `${l.start}–${l.end}s` : '—'}</td>
+                      <td className="py-2 min-w-[260px]">
+                        <div className="break-words">{l.text}</div>
+                        {mine.map(i => <IssueRow key={i.id} i={i} busy={busy} onFeedback={onFeedback} where={null} />)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+      {(c.raw?.claims || []).length > 0 && (
+        <div className="trk-section">
+          <div className="trk-label mb-2">Claims in this brief</div>
+          <div className="space-y-1.5 text-[13px]">
+            {c.raw.claims.map((x, k) => (
+              <div key={k} className="flex flex-wrap items-baseline gap-2">
+                <span className={`trk-chip ${x.in_sheet === 'yes' ? 'green' : x.in_sheet === 'no' ? 'red' : 'amber'}`}>{x.in_sheet === 'yes' ? 'In the claims sheet' : x.in_sheet === 'no' ? 'Not in the sheet' : 'No sheet yet'}</span>
+                {x.in_article !== 'n/a' && <span className={`trk-chip ${x.in_article === 'yes' ? 'green' : 'red'}`}>{x.in_article === 'yes' ? 'In the article' : 'Not in the article'}</span>}
+                <span className="trk-dim">{x.line_id}</span><span>“{x.claim}”</span>{x.note && <span className="trk-muted">— {x.note}</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+/** One check: what the Captain found (with frames, layers or brief lines), what he read and heard, and the feedback buttons. */
 export default function CheckDrawer({ id, onClose, notify, onChanged }) {
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState(null);
@@ -35,17 +134,19 @@ export default function CheckDrawer({ id, onClose, notify, onChanged }) {
   const c = data?.check;
   const s = c ? statusMeta(c) : null;
   const raw = c?.raw || {};
+  const isBrief = c?.discipline === 'brief';
+  const [icon, discLabel] = DISCIPLINES[c?.discipline] || DISCIPLINES.video;
   const frameioUrl = c?.asset?.view_url || null;
   const figmaUrl = c?.discipline === 'design' && c?.asset?.file_key ? `https://www.figma.com/design/${c.asset.file_key}/?node-id=${String(c.asset.node_id || '').replace(':', '-')}` : null;
   return (
     <div className="fixed inset-0 z-[70] flex justify-end" onClick={onClose} style={{ background: 'rgba(3,11,46,.55)' }}>
-      <aside className="trk cc trk-drawer h-full w-full max-w-[760px] overflow-y-auto trk-scroll" onClick={e => e.stopPropagation()} role="dialog" aria-label="Check details">
+      <aside className="trk cc trk-drawer h-full w-full max-w-[860px] overflow-y-auto trk-scroll" onClick={e => e.stopPropagation()} role="dialog" aria-label="Check details">
         <div className="p-6 md:p-8">
           <div className="flex items-start gap-3">
             <div className="min-w-0 flex-1">
-              <div className="trk-eyebrow">{c?.discipline === 'design' ? '🎨 Design' : '🎬 Video'} check</div>
+              <div className="trk-eyebrow">{icon} {discLabel} check</div>
               <h2 className="trk-title text-[40px] mt-2 break-words">{c ? (c.item_name || c.asset?.name || 'Untitled') : 'Loading…'}</h2>
-              {c && <div className="mt-2 text-sm trk-muted">{[c.deliverable, c.round ? `round ${c.round}` : null, c.person, c.product].filter(Boolean).join(' · ')}</div>}
+              {c && <div className="mt-2 text-sm trk-muted">{(isBrief ? [c.asset?.lane, c.deliverable, c.product, c.campaign, c.person] : [c.deliverable, c.round ? `round ${c.round}` : null, c.person, c.product]).filter(Boolean).join(' · ')}</div>}
             </div>
             <button type="button" className="trk-btn !p-2" onClick={onClose} aria-label="Close"><X size={16} /></button>
           </div>
@@ -56,51 +157,36 @@ export default function CheckDrawer({ id, onClose, notify, onChanged }) {
               <div className="mt-5 flex flex-wrap items-center gap-2">
                 <span className={`trk-chip ${s.tone}`}>{s.icon} {s.label}</span>
                 {c.trigger && <span className="trk-chip gray">{TRIGGERS[c.trigger] || c.trigger}</span>}
-                {c.scope_reason && <span className="trk-chip gray" title="Why this was in scope">{c.scope_reason}</span>}
+                {c.scope_reason && <span className="trk-chip gray" title="Why this was checked">{c.scope_reason}</span>}
+                {isBrief && c.asset?.brief_id && <span className="trk-chip gray" title="Medium's brief id">{c.asset.brief_id}</span>}
                 {c.model && <span className="trk-chip gray">{c.model}</span>}
                 {c.duration_ms ? <span className="trk-chip gray">{Math.round(c.duration_ms / 1000)}s</span> : null}
                 {c.cost_usd != null && <span className="trk-chip gray" title="Estimated AI cost">{money(Number(c.cost_usd))}</span>}
-                {c.posting && <span className={`trk-chip ${c.posted_at ? 'green' : 'gray'}`}>{c.posted_at ? 'Comments posted' : `Not posted (${c.posting === 'test' ? 'not a test file' : c.posting})`}</span>}
+                {!isBrief && c.posting && <span className={`trk-chip ${c.posted_at ? 'green' : 'gray'}`}>{c.posted_at ? 'Comments posted' : `Not posted (${c.posting === 'test' ? 'not a test file' : c.posting})`}</span>}
+                {isBrief && c.item_id && <span className="trk-chip green" title="These lines are the approved on-screen text for this Monday item">Approved text locked</span>}
+                {raw.brief_match && <span className="trk-chip gray" title="Compared with the approved brief text">Checked against the approved brief ({raw.brief_match.lines} lines)</span>}
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
                 {frameioUrl && <a className="trk-btn" href={frameioUrl} target="_blank" rel="noopener noreferrer"><ExternalLink size={13} /> Open in Frame.io</a>}
                 {figmaUrl && <a className="trk-btn" href={figmaUrl} target="_blank" rel="noopener noreferrer"><ExternalLink size={13} /> Open in Figma</a>}
                 {c.monday_url && <a className="trk-btn" href={c.monday_url} target="_blank" rel="noopener noreferrer"><ExternalLink size={13} /> Monday item</a>}
-                {<button type="button" className="trk-btn" onClick={rerun} disabled={busy === 'rerun'}>{busy === 'rerun' ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />} Re-run</button>}
+                <button type="button" className="trk-btn" onClick={rerun} disabled={busy === 'rerun'}>{busy === 'rerun' ? <Loader2 size={13} className="animate-spin" /> : <RotateCcw size={13} />} Re-run</button>
               </div>
 
               {c.thumb_url && <img src={c.thumb_url} alt="" className="mt-5 w-full max-h-[300px] object-contain rounded-2xl" style={{ background: 'rgba(0,0,0,.25)' }} />}
               {c.status === 'skipped' && <p className="mt-5 text-sm">Skipped: <b>{c.skip_reason}</b></p>}
               {c.status === 'error' && <p className="mt-5 text-sm" style={{ color: 'var(--trk-red)' }}>{c.error}</p>}
 
-              {data.issues.length > 0 && (
+              {isBrief && <BriefLines c={c} issues={data.issues} busy={busy} onFeedback={feedback} />}
+
+              {!isBrief && data.issues.length > 0 && (
                 <div className="trk-section">
                   <div className="trk-label mb-1">What the Captain found</div>
                   {data.issues.map(i => (
-                    <div key={i.id} className="cc-issue">
-                      <div>
-                        {c.discipline === 'video'
-                          ? <><div className="cc-time">{mmss(i.start_s)}</div><div className="text-[11px] trk-dim">frame {i.frame}</div></>
-                          : <div className="text-[11px] trk-dim">layer {i.node_id}</div>}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-[15px] break-words">
-                          {i.found && <span className="cc-strike">{i.found}</span>}{i.fix && <> → <span className="cc-fix">{i.fix}</span></>}
-                        </div>
-                        <div className="mt-1 flex flex-wrap gap-1.5 items-center">
-                          <span className={`trk-chip ${i.severity === 'check' ? 'amber' : 'red'}`}>{i.severity === 'check' ? 'Please check' : 'Must fix'}</span>
-                          <span className="trk-chip gray">{ISSUE_TYPES[i.type] || i.type}</span>
-                          {i.comment_id && <span className="trk-chip green">commented</span>}
-                          {i.note && <span className="text-[12px] trk-muted">{i.note}</span>}
-                        </div>
-                      </div>
-                      <div className="flex gap-1.5">
-                        <button type="button" className="trk-btn !px-2.5 !py-1.5" title="Good catch" aria-pressed={i.feedback === 'good_catch'} disabled={busy === `fb${i.id}`}
-                          style={i.feedback === 'good_catch' ? { background: 'var(--trk-green)', color: '#03231a', borderColor: 'transparent' } : undefined} onClick={() => feedback(i, 'good_catch')}><ThumbsUp size={13} /></button>
-                        <button type="button" className="trk-btn !px-2.5 !py-1.5" title="Not a typo — teach the Captain" aria-pressed={i.feedback === 'not_a_typo'} disabled={busy === `fb${i.id}`}
-                          style={i.feedback === 'not_a_typo' ? { background: 'var(--trk-red)', color: '#fff', borderColor: 'transparent' } : undefined} onClick={() => feedback(i, 'not_a_typo')}><ThumbsDown size={13} /></button>
-                      </div>
-                    </div>
+                    <IssueRow key={i.id} i={i} busy={busy} onFeedback={feedback}
+                      where={c.discipline === 'video'
+                        ? <><div className="cc-time">{mmss(i.start_s)}</div><div className="text-[11px] trk-dim">frame {i.frame}</div></>
+                        : <div className="text-[11px] trk-dim">layer {i.node_id}</div>} />
                   ))}
                 </div>
               )}
@@ -125,7 +211,7 @@ export default function CheckDrawer({ id, onClose, notify, onChanged }) {
               <div className="trk-section">
                 <details>
                   <summary className="trk-label">Raw AI response</summary>
-                  <pre className="cc-pre mt-2">{JSON.stringify({ issues: raw.issues, usage: c.usage, asset: c.asset }, null, 2)}</pre>
+                  <pre className="cc-pre mt-2">{JSON.stringify(isBrief ? { issues: raw.ai_issues, claims: raw.claims, expected: raw.expected, usage: c.usage } : { issues: raw.issues, usage: c.usage, asset: c.asset }, null, 2)}</pre>
                 </details>
               </div>
 

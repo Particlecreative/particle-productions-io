@@ -3,7 +3,7 @@ import { Check, X, Pencil, ChevronDown, ChevronRight, Loader2 } from 'lucide-rea
 import { captainApi } from '../../lib/captainService';
 import { relTime } from './util';
 
-const TYPE_LABEL = { term: 'Term', rule: 'Rule', learned: 'Learned', do_not_flag: 'Do not flag', insight: 'Insight' };
+const TYPE_LABEL = { term: 'Term', rule: 'Rule', learned: 'Learned', do_not_flag: 'Do not flag', insight: 'Insight', claim: 'Claim', offer: 'Offer', price: 'Price', layout_limit: 'Layout limits' };
 const OUTCOME = { fixed: ['✅', 'fixed in the next version'], partly: ['◐', 'partly fixed'], not_fixed: ['✗', 'not fixed'], cant_tell: ['–', "couldn't tell"] };
 const PAGE = 40;
 
@@ -71,7 +71,7 @@ export default function ReviewQueue({ items, isAdmin, notify, reload }) {
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        {['all', 'rule', 'term', 'learned', 'do_not_flag', 'insight'].filter(k => k === 'all' || counts[k]).map(k => (
+        {['all', 'rule', 'term', 'learned', 'do_not_flag', 'insight', 'claim'].filter(k => k === 'all' || counts[k]).map(k => (
           <button key={k} type="button" className={`trk-btn !py-1 !px-3 !text-[12px] ${type === k ? 'primary' : ''}`} onClick={() => { setType(k); setShown(PAGE); }}>
             {k === 'all' ? 'All' : TYPE_LABEL[k]} <span className="opacity-60">{counts[k] || 0}</span>
           </button>

@@ -75,11 +75,15 @@ In **Activity → Errors**, any failed check is listed with the reason. The Capt
    - As the Captain, go to **avatar → Developers → My access tokens**.
    - Save the token to `captain-monday-token.txt` on your Desktop and ask Claude to install it (it goes in `CAPTAIN_MONDAY_TOKEN`).
 3. **Frame.io:** HQ → Settings → **Reconnect**. There's no token to copy.
+4. **Medium's service token** (`CAPTAIN_SERVICE_TOKEN`, used by Medium to call the brief pre-flight):
+   - It is a random secret made on the server, never typed by a person. Ask Claude to "rotate the Captain service token".
+   - Claude generates a new one in the server `.env` (`openssl rand -hex 32`), never printing it, and restarts the api.
+   - Medium reads the same variable, so nothing else needs changing while Medium lives inside CP.
 
 ## Deploying
 Captain Caption deploys with CP Panel:
 1. Build the frontend and copy `dist/` to the server.
 2. Copy the backend to the server and rebuild the containers: `docker compose -f docker-compose.prod.yml up -d --build api captain-worker`.
-3. Run new database migrations (`db/migrations/032_captain_caption.sql` and later).
+3. Run new database migrations (`db/migrations/032_captain_caption.sql` and later — `034_captain_brief.sql` adds the brief pre-flight).
 
 Run `cd backend && node --test test/captain.test.js` and `npm run build` first. Deploy only when Tomer says **deploy**.

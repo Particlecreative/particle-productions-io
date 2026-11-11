@@ -39,23 +39,16 @@ const ISSUE_SCHEMA = {
 const configured = () => !!process.env.ANTHROPIC_API_KEY;
 
 /**
- * images: [{ label, mime, data (base64) }] — one per frame, in the same order as the layer list.
- * Returns { issues, model, usage, ms, cost_usd }.
+ * One structured Claude call: content blocks in, JSON matching `schema` out (output_config json_schema).
+ * Returns { json, model, usage, ms, cost_usd }.
  */
-async function checkDesign({ images, prompt, model = 'claude-sonnet-5-5', prices = {} }) {
+async function ask({ content, schema, model = 'claude-sonnet-5-5', effort = 'medium', maxTokens = 16000, prices = {}, what = 'check' }) {
   const client = getAnthropic();
   const t0 = Date.now();
-  const content = [];
-  for (const img of images) {
-    content.push({ type: 'text', text: img.label });
-    content.push({ type: 'image', source: { type: 'base64', media_type: img.mime || 'image/jpeg', data: img.data } });
-  }
-  content.push({ type: 'text', text: prompt });
-
   const req = {
     model,
-    max_tokens: 16000,
-    output_config: { effort: 'medium', format: { type: 'json_schema', schema: ISSUE_SCHEMA } },
+    max_tokens: maxTokens,
+    output_config: { effort, format: { type: 'json_schema', schema } },
     messages: [{ role: 'user', content }],
   };
   let msg;
@@ -65,8 +58,8 @@ async function checkDesign({ images, prompt, model = 'claude-sonnet-5-5', prices
     if (e?.status !== 400) throw e;
     msg = await client.beta.messages.stream(req).finalMessage();   // model without fallback support
   }
-  if (msg.stop_reason === 'refusal') throw new Error('Claude declined to check this design');
-  if (msg.stop_reason === 'max_tokens') throw new Error('The design check was cut off — try again');
+  if (msg.stop_reason === 'refusal') throw new Error(`Claude declined the ${what}`);
+  if (msg.stop_reason === 'max_tokens') throw new Error(`The ${what} was cut off — try again`);
   const text = (msg.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
   let json;
   try { json = JSON.parse(text); } catch { throw new Error('Claude returned an unreadable answer'); }
@@ -74,7 +67,67 @@ async function checkDesign({ images, prompt, model = 'claude-sonnet-5-5', prices
   const p = prices[model] || DEFAULT_PRICES[model] || DEFAULT_PRICES['claude-sonnet-5-5'];
   const inTok = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
   const cost = (inTok * p.in + (u.output_tokens || 0) * p.out) / 1e6;
-  return { issues: Array.isArray(json.issues) ? json.issues : [], model: msg.model || model, usage: u, ms: Date.now() - t0, cost_usd: Number(cost.toFixed(5)) };
+  return { json, model: msg.model || model, usage: u, ms: Date.now() - t0, cost_usd: Number(cost.toFixed(5)) };
 }
 
-module.exports = { configured, checkDesign, DEFAULT_PRICES, ISSUE_SCHEMA };
+/**
+ * images: [{ label, mime, data (base64) }] — one per frame, in the same order as the layer list.
+ * Returns { issues, model, usage, ms, cost_usd }.
+ */
+async function checkDesign({ images, prompt, model = 'claude-sonnet-5-5', prices = {} }) {
+  const content = [];
+  for (const img of images) {
+    content.push({ type: 'text', text: img.label });
+    content.push({ type: 'image', source: { type: 'base64', media_type: img.mime || 'image/jpeg', data: img.data } });
+  }
+  content.push({ type: 'text', text: prompt });
+  const { json, ...r } = await ask({ content, schema: ISSUE_SCHEMA, model, prices, what: 'design check' });
+  return { issues: Array.isArray(json.issues) ? json.issues : [], ...r };
+}
+
+// Brief pre-flight: text only — issues on lines, plus every claim the brief makes (checked against the claims sheet)
+const BRIEF_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['issues', 'claims'],
+  properties: {
+    issues: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['line_id', 'found', 'fix', 'type', 'severity', 'rule'],
+        properties: {
+          line_id: { type: 'string' },
+          found: { type: 'string' },
+          fix: { type: 'string' },
+          type: { type: 'string', enum: ['spelling', 'wrong_word', 'grammar', 'inconsistent', 'brand_name', 'rule', 'placeholder', 'translation', 'lane'] },
+          severity: { type: 'string', enum: ['must_fix', 'should_fix', 'info'] },
+          rule: { type: 'string' },
+        },
+      },
+    },
+    claims: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['line_id', 'claim', 'in_sheet', 'in_article', 'note'],
+        properties: {
+          line_id: { type: 'string' },
+          claim: { type: 'string' },
+          in_sheet: { type: 'string', enum: ['yes', 'no', 'no_sheet'] },
+          in_article: { type: 'string', enum: ['yes', 'no', 'n/a'] },
+          note: { type: 'string' },
+        },
+      },
+    },
+  },
+};
+
+async function checkBrief({ prompt, model = 'claude-sonnet-5-5', prices = {} }) {
+  const { json, ...r } = await ask({ content: [{ type: 'text', text: prompt }], schema: BRIEF_SCHEMA, model, effort: 'medium', maxTokens: 12000, prices, what: 'brief check' });
+  return { issues: Array.isArray(json.issues) ? json.issues : [], claims: Array.isArray(json.claims) ? json.claims : [], ...r };
+}
+
+module.exports = { configured, ask, checkDesign, checkBrief, DEFAULT_PRICES, ISSUE_SCHEMA, BRIEF_SCHEMA };

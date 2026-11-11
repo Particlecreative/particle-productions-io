@@ -60,6 +60,7 @@ services:
       # Captain Caption — the Captain's own Figma and Monday users (Frame.io sign-in lives in the database)
       CAPTAIN_FIGMA_TOKEN: ${CAPTAIN_FIGMA_TOKEN:-}
       CAPTAIN_MONDAY_TOKEN: ${CAPTAIN_MONDAY_TOKEN:-}
+      CAPTAIN_SERVICE_TOKEN: ${CAPTAIN_SERVICE_TOKEN:-}   # Medium → /api/captain/check-brief (brief pre-flight)
       PORT: 3001
       NODE_ENV: production
     depends_on:
