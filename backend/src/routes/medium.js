@@ -238,7 +238,7 @@ router.post('/briefs/:id/approve', async (req, res) => {
     const needsReason = [];
     if (b.preflight?.verdict === 'error' || b.preflight?.verdict == null) needsReason.push("Captain Caption couldn't check it");
     if (mustFix) needsReason.push(`${mustFix} must-fix from Captain Caption`);
-    if (b.score?.band === 'blocked') needsReason.push(`guardrails: ${(b.score.guardrails?.violations || []).join('; ')}`);
+    if (b.score?.band === 'blocked') needsReason.push(`guardrails: ${(b.score.guardrails?.blocks || (b.score.guardrails?.violations || []).map(v => (typeof v === 'string' ? v : v.text))).join('; ')}`);
     else if (b.score?.band === 'below_bar') needsReason.push(`score ${b.score.total} is below the bar (65)`);
     if (needsReason.length && (!reason || !isAdmin(req))) throw bad(`Approval locked — ${needsReason.join(' · ')}. ${isAdmin(req) ? 'Approve with an override reason (logged).' : 'An admin can approve with an override reason.'}`, 409);
     const cfg = await getConfig();

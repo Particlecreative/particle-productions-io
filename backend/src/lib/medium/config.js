@@ -57,7 +57,7 @@ const LANE_RULES = {
   GT: { job: 'Curiosity about the ranking; the article reveals Particle.', required: ['the GT article URL', 'an end card showing the article on a phone', 'a CTA like "See which cologne she picked."'],
     never: ['revealing the #1 product in the ad'], first_line: { video: 'Ad leads to:', design: 'Page:' } },
   WAC: { job: 'Occasion- and identity-driven cologne listicles that lead to Gravité.', required: ['the WAC article URL as the first line ("Page:")', 'the WAC look and feel', 'headline V1–V3'],
-    never: ['B&W couples for attraction angles'], first_line: { video: 'Ad leads to:', design: 'Page:' } },
+    never: ['revealing the #1 product (keep the lead bottle concealed)', 'B&W couples for attraction angles'], first_line: { video: 'Ad leads to:', design: 'Page:' } },
 };
 
 const MOVES = {

@@ -36,7 +36,8 @@ const SUB = { type: 'object', additionalProperties: false, required: ['score', '
 const SCORER_SCHEMA = {
   type: 'object', additionalProperties: false, required: ['guardrails', 'subs', 'critics', 'fixes'],
   properties: {
-    guardrails: { type: 'object', additionalProperties: false, required: ['passed', 'violations'], properties: { passed: { type: 'boolean' }, violations: { type: 'array', items: S } } },
+    guardrails: { type: 'object', additionalProperties: false, required: ['passed', 'violations'], properties: { passed: { type: 'boolean' },
+      violations: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['text', 'severity'], properties: { text: S, severity: { type: 'string', enum: ['block', 'warn'] } } } } } },
     subs: { type: 'object', additionalProperties: false, required: ['hook_strength', 'proof', 'message_match', 'maker_ready', 'test_design', 'pattern_fit'],
       properties: { hook_strength: SUB, proof: SUB, message_match: SUB, maker_ready: SUB, test_design: SUB, pattern_fit: SUB } },
     critics: { type: 'object', additionalProperties: false, required: ['buyer', 'media_buyer', 'maker'], properties: { buyer: S, media_buyer: S, maker: S } },
@@ -180,6 +181,12 @@ async function freshness(out, format, selfId = null) {
   return { score, why: best.name && best.sim > 0.2 ? `Close to “${best.name}” (${Math.round(best.sim * 100)}% overlap)` : 'Nothing too similar in the last 60 days', nearest: best };
 }
 
+/** The gate blocks only on "block" violations (the model's own "passed" flag is not trusted); "warn" items are shown, never block. */
+function gate(g = {}) {
+  const violations = (g.violations || []).map(v => (typeof v === 'string' ? { text: v, severity: 'block' } : { text: String(v.text || ''), severity: v.severity === 'warn' ? 'warn' : 'block' })).filter(v => v.text);
+  return { passed: !violations.some(v => v.severity === 'block'), violations, blocks: violations.filter(v => v.severity === 'block').map(v => v.text), warnings: violations.filter(v => v.severity === 'warn').map(v => v.text) };
+}
+
 /** Guardrails gate + sub-scores + critics + fixes. Total is the weighted mean of the sub-scores that can be measured. */
 async function score(out, ctx, cfg, { selfId = null } = {}) {
   const prompt = fill(SCORER, {
@@ -197,11 +204,12 @@ async function score(out, ctx, cfg, { selfId = null } = {}) {
   if (ctx.winners.available) subs.evidence = { score: (out.evidence || []).some(e => /afterlife/i.test(e.source)) ? 70 : 30, why: 'Cites AfterLife winners' };
   let sum = 0, w = 0;
   for (const [k, v] of Object.entries(subs)) if (v && typeof v.score === 'number') { sum += WEIGHTS[k] * Math.max(0, Math.min(100, v.score)); w += WEIGHTS[k]; }
-  const total = j.guardrails.passed && w ? Math.round(sum / w) : null;
+  const guardrails = gate(j.guardrails);
+  const total = guardrails.passed && w ? Math.round(sum / w) : null;
   return {
     cost: r.cost_usd,
     score: { total, band: total == null ? 'blocked' : total >= 80 ? 'ready' : total >= 65 ? 'one_more_pass' : 'below_bar', calibrated: false, measured_weight: w,
-      guardrails: j.guardrails, subs, critics: j.critics, fixes: (j.fixes || []).slice(0, 3) },
+      guardrails, subs, critics: j.critics, fixes: (j.fixes || []).slice(0, 3) },
   };
 }
 
@@ -353,4 +361,4 @@ async function runFreeform({ brief_id }) {
   }
 }
 
-module.exports = { runGenerate, runFreeform, relines, preflight, score, buildContext, writerPrompt, normalizeOut, kindFor, laneFirstFor, setRow, toParam, composeBrief, WEIGHTS };
+module.exports = { runGenerate, runFreeform, relines, preflight, score, gate, buildContext, writerPrompt, normalizeOut, kindFor, laneFirstFor, setRow, toParam, composeBrief, WEIGHTS };

@@ -196,7 +196,13 @@ function ScorePanel({ s }) {
         <Chip tone={tone}>{label}</Chip>
         <span className="text-[12px] trk-dim">Uncalibrated — weights get fitted on past briefs vs AfterLife results once that feed is live.</span>
       </div>
-      {!s.guardrails?.passed && <div className="mt-2 text-[13px]" style={{ color: 'var(--trk-red)' }}>Guardrails: {(s.guardrails?.violations || []).join(' · ')}</div>}
+      {(s.guardrails?.violations || []).length > 0 && (
+        <ul className="mt-2 text-[13px] space-y-0.5">
+          {s.guardrails.violations.map((v, i) => { const o = typeof v === 'string' ? { text: v, severity: 'block' } : v; return (
+            <li key={i} style={{ color: o.severity === 'warn' ? 'var(--trk-amber)' : 'var(--trk-red)' }}>{o.severity === 'warn' ? '⚠️ Check' : '⛔ Blocks approval'}: {o.text}</li>
+          ); })}
+        </ul>
+      )}
       <div className="mt-3 grid sm:grid-cols-2 gap-x-6 gap-y-2">
         {Object.entries(SUB_LABEL).map(([k, l]) => {
           const v = s.subs?.[k];

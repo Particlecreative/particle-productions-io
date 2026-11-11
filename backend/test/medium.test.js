@@ -129,6 +129,30 @@ test('writer: database parameters — Postgres arrays stay arrays, JSONB becomes
   assert.equal(toParam('status', 'PENDING_REVIEW'), 'PENDING_REVIEW');
 });
 
+test('score gate: only "block" violations block; warnings never do', () => {
+  const { gate } = require('../src/lib/medium/writer');
+  assert.equal(gate({ passed: false, violations: [{ text: 'Claim not in a claims sheet yet', severity: 'warn' }] }).passed, true);
+  const g = gate({ passed: true, violations: [{ text: 'Reveals the #1 product', severity: 'block' }, { text: 'Article URL missing', severity: 'warn' }] });
+  assert.equal(g.passed, false);
+  assert.deepEqual(g.blocks, ['Reveals the #1 product']);
+  assert.deepEqual(g.warnings, ['Article URL missing']);
+  assert.equal(gate({ violations: ['old-style string'] }).passed, false);
+  assert.equal(gate({}).passed, true);
+});
+
+test('Captain brief check: AI findings that change nothing are dropped; an empty fix means remove', () => {
+  const { cleanAiIssues } = require('../src/lib/captain/brief');
+  const ids = new Set(['l1']);
+  const out = cleanAiIssues([
+    { line_id: 'l1', found: '"My wife said I look younger." It\'s', fix: 'My wife said I look younger. It\'s', type: 'rule', severity: 'must_fix', rule: 'x' },
+    { line_id: 'l1', found: 'Free Shipping', fix: 'null', type: 'rule', severity: 'should_fix', rule: 'y' },
+    { line_id: 'zz', found: 'recieve', fix: 'receive', type: 'spelling', severity: 'must_fix', rule: 'Spelling' },
+  ], ids);
+  assert.equal(out.length, 2);
+  assert.equal(out[0].fix, 'Remove it');
+  assert.equal(out[1].line_id, null);
+});
+
 test('corpus: a Monday item becomes an exemplar row', () => {
   const { toRow } = require('../src/lib/medium/corpus');
   const { DEFAULTS } = require('../src/lib/medium/config');

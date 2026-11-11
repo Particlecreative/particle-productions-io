@@ -63,6 +63,20 @@ function buildPrompt({ req, brand, lane, brain, facts, hasArticle }) {
     .replace('{{LINES}}', () => linesBlock(req.lines.filter(l => l.text.trim())));
 }
 
+/**
+ * The AI's findings, cleaned: a "fix" that only changes quotes, spacing or punctuation is no finding at all, and an
+ * empty / "null" fix means "remove it".
+ */
+const bare = (s) => String(s ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+function cleanAiIssues(issues, ids) {
+  return (issues || [])
+    .map(i => {
+      const fix = i.fix && !/^(null|none|n\/a)$/i.test(String(i.fix).trim()) ? i.fix : (i.found ? 'Remove it' : null);
+      return { line_id: ids.has(i.line_id) ? i.line_id : null, found: i.found || null, fix, type: i.type || 'other', severity: SEV_IN[i.severity] ? i.severity : 'must_fix', rule: i.rule || null };
+    })
+    .filter(i => (i.found || i.fix) && (!i.found || bare(i.found) !== bare(i.fix)));
+}
+
 function claimsToIssues(claims, { ids, product, lane, hasArticle }) {
   const out = [];
   for (const c of claims || []) {
@@ -138,9 +152,7 @@ async function runBriefCheck(body, { trigger = 'medium', actor = null, force = f
     const prompt = buildPrompt({ req, brand, lane, brain, facts, hasArticle });
     const r = await claude.checkBrief({ prompt, model: engine.model, prices: cfg.prices || {} });
     const ids = new Set(req.lines.map(l => l.id));
-    const ai = r.issues
-      .map(i => ({ line_id: ids.has(i.line_id) ? i.line_id : null, found: i.found || null, fix: i.fix || null, type: i.type || 'other', severity: SEV_IN[i.severity] ? i.severity : 'must_fix', rule: i.rule || null }))
-      .filter(i => (i.found || i.fix) && i.found !== i.fix);
+    const ai = cleanAiIssues(r.issues, ids);
     const all = R.dedupeIssues([...rules.issues, ...ai, ...claimsToIssues(r.claims, { ids, product: req.product, lane, hasArticle })]);
     const mustFix = all.filter(i => i.severity === 'must_fix').length;
     const byId = Object.fromEntries(req.lines.map(l => [l.id, l]));
@@ -334,4 +346,4 @@ async function insights(days = 90) {
   return { days: d, stages: stages.rows, types: types.rows, approved_items: approved.rows[0].n, overrides: approved.rows[0].overrides };
 }
 
-module.exports = { runBriefCheck, rerunBriefCheck, briefResult, attachApproved, startBatch, runBriefBatch, batchStatus, insights, buildPrompt, linesBlock, claimsToIssues };
+module.exports = { runBriefCheck, rerunBriefCheck, briefResult, attachApproved, startBatch, runBriefBatch, batchStatus, insights, buildPrompt, linesBlock, claimsToIssues, cleanAiIssues };
