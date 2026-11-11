@@ -1,13 +1,13 @@
 /**
  * MEDIUM — the weekly run (spec §12) and the worker's clock.
- *   Autopilot (off until switched on): Sunday 07:00 Asia/Jerusalem — this week's AfterLife winners per lane (lane mix
+ *   Autopilot (off until switched on): Sunday 07:00 Asia/Jerusalem — Upspring's winners per lane (lane mix
  *   §5.7), skipping winners briefed in the last 30 days (cap 3 open briefs per winner) → ITERATE for video winners,
  *   REFRESH for static winners, plus transfers along the affinity map's strongest edges (§6.6). Caps: per_week.
  *   Outcomes (always on, free): once a day, AfterLife results → corpus winners + Medium's tests (outcomes.js).
  */
 const db = require('../../db');
 const { enqueue } = require('../captain/queue');
-const afterlife = require('./afterlife');
+const ranks = require('./ranks');   // Upspring ranks
 const { getConfig } = require('./config');
 
 const MONDAY_URL = (board, item) => `https://particle-for-men.monday.com/boards/${board}/pulses/${item}`;
@@ -20,7 +20,7 @@ function jerusalemNow(d = new Date()) {
 
 /**
  * Which briefs to write this week (pure — tested).
- * winners: AfterLife rows (with lane, format, key, product, winner, percentile); recent: { key → open count };
+ * winners: Upspring-ranked rows (with lane, format, key, product, winner, percentile); recent: { key → open count };
  * mix: { Particle: { video, static }, … }; perWeek: cap. Returns [{ lane, format, move, product, winner }].
  */
 function planWeek(winners, { mix = {}, recent = {}, perWeek = 12, perWinner = 3, edges = [], hooks = 0, hooked = {} } = {}) {
@@ -60,14 +60,15 @@ function planWeek(winners, { mix = {}, recent = {}, perWeek = 12, perWinner = 3,
 async function runAutopilot({ actor = 'Medium autopilot', force = false } = {}) {
   const cfg = await getConfig();
   if (!cfg.autopilot?.enabled && !force) return { skipped: 'Autopilot is off' };
-  const r = await afterlife.winners({ limit: 200, since: new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10) });
-  if (!r.available) return { skipped: `AfterLife unavailable: ${r.reason}` };
+  const r = await ranks.winners({ limit: 500 });
+  if (!r.available) return { skipped: `Upspring winners unavailable: ${r.reason}` };
   const { rows: rec } = await db.query(`SELECT request->>'source_key' AS k, COUNT(*)::int AS n FROM medium_briefs WHERE request->>'source_key' IS NOT NULL AND created_at > NOW() - INTERVAL '30 days' AND status NOT IN ('REJECTED', 'ERROR') GROUP BY 1`);
   const { rows: thisWeek } = await db.query(`SELECT COUNT(*)::int AS n FROM medium_briefs WHERE created_at > NOW() - INTERVAL '7 days' AND source IN ('autopilot', 'generator', 'holiday')`);
   const { rows: edges } = await db.query('SELECT source, target, score FROM medium_affinity');
   const { rows: hk } = await db.query(`SELECT DISTINCT request->>'source_key' AS k FROM medium_briefs WHERE move = 'HEADLINE_HOOK' AND status NOT IN ('REJECTED', 'ERROR') AND created_at > NOW() - INTERVAL '60 days'`);
   const statics = (r.winners || []).filter(w => w.format === 'static' && w.winner && w.product);
-  const withHl = statics.length ? await require('./headlines').attachHeadlines(statics).catch(() => statics) : [];
+  const H = require('./headlines');
+  const withHl = statics.map(w => { const c = H.upspringCandidates(w); return { ...w, headline: c[0]?.text || null, headline_from: c[0]?.from || null }; });
   const hl = new Map(withHl.map(w => [w.key, w]));
   const winners = (r.winners || []).map(w => hl.get(w.key) || w);
   const room = Math.max(0, Math.min(Number(cfg.autopilot?.per_week) || 12, (Number(cfg.caps?.per_week) || 40) - thisWeek[0].n));
@@ -76,7 +77,7 @@ async function runAutopilot({ actor = 'Medium autopilot', force = false } = {}) 
   const ids = [];
   for (const p of plan) {
     const w = p.winner, t = (w.tickets || [])[0];
-    const source = p.move === 'HEADLINE_HOOK' ? require('./headlines').sourceLine(w) : `${w.label} — AfterLife ${w.percentile}th pct in its ${w.peer?.level || 'peer set'}, ROAS ${w.roas != null ? Number(w.roas).toFixed(2) : '?'} on $${Math.round(w.spend || 0).toLocaleString()} spend${t ? ` · Monday: ${MONDAY_URL(t.board_id, t.item_id)}` : ''}`;
+    const source = p.move === 'HEADLINE_HOOK' ? require('./headlines').sourceLine(w) : `${w.label} — Upspring: ROAS ${w.roas != null ? Number(w.roas).toFixed(2) : '?'} on $${Math.round(w.spend || 0).toLocaleString()} spend, ${w.percentile}th pct in its ${w.peer?.level || 'peer set'} (last 90 days)`;
     const request = { lane: p.lane, format: p.format, move: p.move, product: p.product, source, source_key: w.key, source_product: p.source_product || null, note: null, author: actor, batch_id: batch, autopilot: true,
       ...(p.move === 'HEADLINE_HOOK' ? { headline: p.headline, headline_from: p.headline_from, thumb: w.thumb || null } : {}) };
     const { rows } = await db.query(`INSERT INTO medium_briefs (status, source, author, lane, product, format, move, request) VALUES ('QUEUED', 'autopilot', $1, $2, $3, $4, $5, $6) RETURNING id`,
@@ -107,6 +108,11 @@ async function tick() {
   if (require('./upspring').configured() && ((now.weekday === 0 && now.hour >= 6 && String(state.market_at || '').slice(0, 10) !== now.date) || !state.market_at)) {
     await stamp('market_at');
     out.market = await enqueue('medium_market', { reason: 'weekly' }, { dedupeKey: 'medium_market', priority: 5, maxAttempts: 1 }).catch(e => ({ error: e.message }));
+  }
+  // Upspring ranks: refresh twice a day (the cache is good for 12 h)
+  if (now.hour >= 5 && Date.now() - new Date(state.ranks_at || 0).getTime() > 12 * 3600000 && (await require('./upspringAccount').status()).connected) {
+    await stamp('ranks_at');
+    out.ranks = await ranks.refresh().catch(e => ({ error: e.message }));
   }
   // autopilot once a week, on the set weekday/hour
   const ap = cfg.autopilot || {};

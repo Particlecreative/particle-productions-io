@@ -69,7 +69,7 @@ export function fixtureCall(path, { method = 'GET', body } = {}) {
       ],
       tests: [], donors: [{ brand: 'Kizik', takes: 'live demo with timer', usage_count: 14 }, { brand: 'Hello Klean', takes: 'CGI product demo; split-screen testimonial relay', usage_count: 9 }, { brand: 'Saltair', takes: 'search-result format', usage_count: 6 }],
       recent: briefs.map(summary),
-      sources: { afterlife: { connected: false, reason: "AFTERLIFE's winners endpoint isn't live yet" }, upspring: { connected: true, snapshot: true }, corpus: { used: 1298, total: 1357, at: ago(60) }, monday: { submit: false }, worker: { alive: true } },
+      sources: { afterlife: { connected: false, reason: "AFTERLIFE's winners endpoint isn't live yet" }, upspring: { connected: true, snapshot: true }, upspring_account: { connected: false, ranks: null }, corpus: { used: 1298, total: 1357, at: ago(60) }, monday: { submit: false }, worker: { alive: true } },
       articles: [
         { id: 1, lane: 'SFY', url: 'https://scienceforyou.co/neck-skin-thinnest', title: 'Why neck skin ages first', products: ['Neck Cream'], opportunity: false },
         { id: 2, lane: 'GT', url: 'https://gentlemantoday.co/best-anti-aging-creams-men', title: 'The 7 best anti-aging creams for men', products: ['Face Cream'], opportunity: false },
@@ -140,10 +140,10 @@ export function fixtureCall(path, { method = 'GET', body } = {}) {
   }
   if (p === '/holiday/campaigns') return { campaigns: [{ batch_id: 'c0ffee00-0000-4000-8000-000000000001', holiday: 'Christmas 2026', briefs: 3, writing: 0, waiting: 2, approved: 1 }] };
   if (p.startsWith('/holiday/') && method === 'GET') return { briefs: briefs.slice(0, 3).map(b => ({ ...summary(b), source: 'holiday' })) };
-  if (p === '/static-hooks') return { available: true, items: [
-    { key: 'k1', label: 'NC_Static_NeckTruth_4x5_v2', lane: 'Particle', product: 'Neck Cream', percentile: 94, roas: 2.41, spend: 8120, thumb: '/media/thumbs/k1.webp', headline: 'Your Neck Is Telling Everyone Your Age', headline_from: 'brief copy', candidates: [{ text: 'Your Neck Is Telling Everyone Your Age', from: 'brief copy' }, { text: 'Why Is Nobody Talking About Neck Skin?', from: 'brief copy' }], tickets: [{ board_id: '8036329818', item_id: '111' }], briefed: null },
-    { key: 'k2', label: 'FC_Static_Barber_1x1', lane: 'Particle', product: 'Face Cream', percentile: 88, roas: 1.97, spend: 4300, thumb: '/media/thumbs/k2.webp', headline: null, headline_from: null, candidates: [], tickets: [], briefed: null },
-    { key: 'k3', label: 'GT_Listicle_Static_7Best', lane: 'GT', product: 'Face Cream', percentile: 91, roas: 2.2, spend: 5200, thumb: null, headline: 'The 7 Best Anti-Aging Creams For Men', headline_from: 'brief', candidates: [{ text: 'The 7 Best Anti-Aging Creams For Men', from: 'brief' }], tickets: [{ board_id: '8036329818', item_id: '222' }], briefed: { at: ago(60 * 24 * 5), n: 1 } },
+  if (p === '/static-hooks') return { available: true, source: 'Upspring', items: [
+    { key: 'c1', label: 'Starter Bundle 25% Image V4 Dan Bundles Elpage', lane: 'Particle', product: 'Starter Bundle', percentile: 96, roas: 3.09, spend: 1990, peer: { level: 'lane · format' }, image: null, upspring_url: null, headline: '25% OFF THE STARTER BUNDLE — ON US', headline_from: 'on the ad', candidates: [{ text: '25% OFF THE STARTER BUNDLE — ON US', from: 'on the ad' }, { text: 'Men! Save 25% On This Bundle! Offer Ends Soon!', from: 'its Meta headline' }], briefed: null },
+    { key: 'c2', label: 'Neck Cream Mirror Static V2', lane: 'Particle', product: 'Neck Cream', percentile: 91, roas: 2.7, spend: 10071, peer: { level: 'lane · product · format' }, image: null, upspring_url: 'https://app.example/creatives/c2', headline: 'Your Neck Is Telling Everyone Your Age', headline_from: 'on the ad', candidates: [{ text: 'Your Neck Is Telling Everyone Your Age', from: 'on the ad' }], briefed: { at: ago(60 * 24 * 4), n: 1 } },
+    { key: 'c3', label: 'SFY Listicle Static Face Cream', lane: 'SFY', product: 'Face Cream', percentile: 88, roas: 2.2, spend: 5200, peer: { level: 'lane · format' }, image: null, upspring_url: null, headline: null, headline_from: null, candidates: [], briefed: null },
   ] };
   if (p === '/static-hooks/read') return { ok: true, headline: 'Barber Asked If I Got Work Done' };
   if (p === '/static-hooks/generate') return { queued: (body?.items || []).length, ids: [], skipped: [] };
@@ -168,6 +168,14 @@ export function fixtureCall(path, { method = 'GET', body } = {}) {
     norms: { hook_archetype: [{ id: 'demo', label: 'Demo / proof-first', all: 3.5, winners: 5.2, lift: 1.7 }, { id: 'pattern_interrupt', label: 'Pattern interrupt', all: 3.5, winners: 5.2, lift: 1.7 }, { id: 'question', label: 'Question', all: 9.2, winners: 7.5, lift: -1.7 }, { id: 'myth_correction', label: 'Myth correction', all: 11, winners: 8.8, lift: -2.2 }], persona: [] },
   } };
   if (p === '/market/refresh') return { queued: true };
+  if (p === '/upspring') return { account: { connected: false, last_error: null }, ranks: { as_of: null, creatives: 0, winners: 0 } };
+  if (p === '/upspring/connect') return { url: '#upspring-sign-in' };
+  if (p === '/mass/plan') return { summary: 'A Black Friday batch for Neck Cream: 20 statics split between SFY listicles and direct, plus 6 videos testing the mirror hook.', question: '', capped: false, total: 26, est_cost: 2.6, groups: [
+    { lane: 'SFY', product: 'Neck Cream', format: 'design', move: 'NEW_ANGLE', count: 10, angle: 'Listicle-style statics leading to the SFY neck article', note: 'Code BF30, 30% off, ends Nov 30', campaign: 'Black Friday 2026' },
+    { lane: 'Particle', product: 'Neck Cream', format: 'design', move: 'NEW_ANGLE', count: 10, angle: 'Direct statics with the offer up front', note: 'Code BF30, 30% off, ends Nov 30', campaign: 'Black Friday 2026' },
+    { lane: 'Particle', product: 'Neck Cream', format: 'video', move: 'ITERATE', count: 6, angle: 'Test new openings on the mirror hook', note: '', campaign: 'Black Friday 2026' },
+  ] };
+  if (p === '/mass/produce') return { queued: 0, ids: [] };
   if (p === '/market/brands') return { id: 'b9', name: 'New Brand' };
   if (p === '/digest/preview') return { text: '*🔮 Medium — the week* (9 briefs written · 4 approved · 2 on Monday · 1 rejected)\n*Tests decided:* 1 won, 0 failed — winners: Neck Cream carries the thinnest-skin hook\n*Next holiday:* Christmas 2026 — briefs due in 23 days (2026-12-04)\nAI cost this week: $1.12' };
   if (p === '/digest/send') return { sent: true };

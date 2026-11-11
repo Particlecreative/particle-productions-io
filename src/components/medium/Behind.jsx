@@ -19,8 +19,8 @@ export default function Behind({ part, setPart, overview, notify, isAdmin, reloa
         <p className="md-sub max-w-[620px]">How Medium makes its calls: what it believes, what it’s testing, and where it learns from. You don’t need any of this to make a brief — it’s here when you’re curious.</p>
         {overview && (
           <div className="ml-auto flex flex-wrap gap-2">
-            <Status ok={src.afterlife?.connected} label="AfterLife" title={src.afterlife?.reason || 'Winners feed connected'} />
-            <Status ok={false} warn={src.upspring?.snapshot} label="Upspring" title={src.upspring?.snapshot ? 'Account read pasted in (not synced)' : 'Not connected on the server yet'} />
+            <Status ok={src.upspring_account?.connected} label="Upspring account" title={src.upspring_account?.connected ? `Ranks Particle’s own ads${src.upspring_account?.ranks?.as_of ? ` — updated ${new Date(src.upspring_account.ranks.as_of).toLocaleString()}` : ''}` : 'Not connected — Sources & settings → Connect Upspring'} />
+            <Status ok={src.upspring?.connected} label="Upspring market" title={src.upspring?.connected ? 'Competitor ad library connected' : src.upspring?.reason || 'Not connected'} />
             <Status ok={(src.corpus?.used || 0) > 0} label={`${src.corpus?.used || 0} past briefs`} title="Briefs Medium learns the house style from" />
             <Status ok={src.worker?.alive} label="Writer" title={src.worker?.alive ? 'The background writer is running' : 'The background writer is not responding'} />
           </div>

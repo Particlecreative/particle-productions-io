@@ -1,14 +1,17 @@
 /**
  * MEDIUM — a winning static's headline becomes a video hook (move HEADLINE_HOOK).
- * A static that won on AfterLife has a headline that already proved it stops the scroll. Medium opens a new video
- * with it, word for word, and writes two more hook versions so the test can tell the words from the idea.
- * Where the headline comes from, best first:
- *   1. the ad image itself, read by a vision model — what actually ran (needs AfterLife to share its thumbnails with CP);
- *   2. the Monday design brief behind the static (corpus: copy / hook / brief) — "Headline: …", "Title: …", "כותרת: …".
+ * A static that won (Upspring ranks — Particle's own Meta ads by ROAS within their lane) has a headline that already
+ * proved it stops the scroll. Medium opens a new video with it, word for word, and writes two more hook versions so the
+ * test can tell the words from the idea. Where the headline comes from, best first:
+ *   1. the big line printed on the ad, from Upspring's description of the creative (what actually ran);
+ *   2. the ad's Meta headline field;
+ *   3. (older helpers, kept) the Monday design brief text — "Headline: …", "Title: …", "כותרת: …".
  * A person can always type or correct it before anything is written.
  */
 const db = require('../../db');
 const afterlife = require('./afterlife');
+const ranks = require('./ranks');
+const { getConfig } = require('./config');
 
 const LABEL = String.raw`(?:main\s+|primary\s+|big\s+|top\s+)?(?:headline|header|title|h1|כותרת(?:\s+ראשית)?)s?`;
 const INLINE = new RegExp(String.raw`^\s*(?:[-*•▪◦]|\d+[.)])?\s*\**${LABEL}\s*(?:option\s*)?(?:#?\d+|[a-d])?\**\s*[:：–—-]\s*(.+)$`, 'i');
@@ -77,16 +80,35 @@ async function attachHeadlines(statics) {
   });
 }
 
-/** Winning statics with their headlines, strongest first; marks the ones already briefed as a hook in the last 60 days. */
+/** A link to the creative in Upspring, from the configured pattern ("…{id}…"); null until it's set (pure — tested). */
+function upspringLink(id, pattern) {
+  return pattern && /\{id\}/.test(pattern) && id ? pattern.replace('{id}', encodeURIComponent(id)) : null;
+}
+
+/** Headline candidates for an Upspring-ranked static (pure — tested): the on-image line first, then its Meta headlines. */
+function upspringCandidates(w) {
+  const out = [];
+  const add = (t, from) => { const c = cleanHeadline(t); if (c && !out.some(o => o.text.toLowerCase() === c.toLowerCase())) out.push({ text: c, from }); };
+  if (w.on_image) add(w.on_image, 'on the ad');
+  for (const h of w.headlines || []) add(h, 'its Meta headline');
+  return out.slice(0, 6);
+}
+
+/** Winning statics (Upspring ranks) with their headlines, strongest first; marks the ones briefed as a hook in the last 60 days. */
 async function staticWinners({ lane = null, product = null, limit = 30 } = {}) {
-  const r = await afterlife.winners({ format: 'static', lane, product, limit: 200 });
+  const r = await ranks.winners({ format: 'static', lane, product, limit: 400 });
   if (!r.available) return { available: false, reason: r.reason, items: [] };
-  const strong = (r.winners || []).filter(w => w.format === 'static' && w.product && (w.winner || Number(w.percentile) >= 80));
-  const items = await attachHeadlines(strong.slice(0, Math.min(limit, 60)));
+  const cfg = await getConfig().catch(() => ({}));
+  const strong = (r.winners || []).filter(w => w.format === 'static' && (w.winner || Number(w.percentile) >= 80));
+  const items = strong.slice(0, Math.min(limit, 60)).map(w => {
+    const candidates = upspringCandidates(w);
+    const { descriptors, copy, ...rest } = w;
+    return { ...rest, candidates, headline: candidates[0]?.text || null, headline_from: candidates[0]?.from || null, upspring_url: upspringLink(w.key, cfg.upspring_link) };
+  });
   const { rows } = await db.query(`SELECT request->>'source_key' AS k, MAX(created_at) AS at, COUNT(*)::int AS n FROM medium_briefs
      WHERE move = 'HEADLINE_HOOK' AND status NOT IN ('REJECTED', 'ERROR') AND created_at > NOW() - INTERVAL '60 days' GROUP BY 1`);
   const done = new Map(rows.map(x => [x.k, x]));
-  return { available: true, rules: r.rules, items: items.map(w => ({ ...w, briefed: done.get(w.key) || null })) };
+  return { available: true, source: 'Upspring', as_of: r.as_of, rules: r.rules, items: items.map(w => ({ ...w, briefed: done.get(w.key) || null })) };
 }
 
 const READ_SCHEMA = { type: 'object', additionalProperties: false, required: ['headline', 'other_text', 'readable'],
@@ -94,8 +116,14 @@ const READ_SCHEMA = { type: 'object', additionalProperties: false, required: ['h
 
 /** Read the headline off the static itself (what actually ran). Cached per creative; ~0.2¢ a read. */
 async function readFromImage(w) {
-  if (!w?.thumb) return { ok: false, reason: 'AfterLife has no image for this creative' };
-  const m = await afterlife.media(w.thumb);
+  let m = null;
+  if (w?.image && /^https:\/\/storage\.googleapis\.com\//.test(w.image)) {
+    const res = await fetch(w.image, { signal: AbortSignal.timeout(20000) });
+    const type = String(res.headers.get('content-type') || '').split(';')[0].trim();
+    const buf = res.ok ? Buffer.from(await res.arrayBuffer()) : null;
+    m = buf && /^image\/(jpeg|png|webp|gif)$/.test(type) && buf.length <= 4 * 1024 * 1024 ? { ok: true, media_type: type, data: buf.toString('base64') } : { ok: false, reason: `Could not load the ad image (${res.status})` };
+  } else if (w?.thumb) m = await afterlife.media(w.thumb);
+  else return { ok: false, reason: 'No image for this creative' };
   if (!m.ok) return { ok: false, reason: m.reason };
   const claude = require('../captain/engines/claude');
   const r = await claude.ask({
@@ -113,8 +141,7 @@ async function readFromImage(w) {
 
 /** One line for the brief's Source: what the static did, and where its ticket is. */
 function sourceLine(w) {
-  const t = (w.tickets || [])[0];
-  return `Winning static "${w.label}" — AfterLife ${w.percentile ?? '?'}th pct in its ${w.peer?.level || 'peer set'}, ROAS ${w.roas != null ? Number(w.roas).toFixed(2) : '?'} on $${Math.round(w.spend || 0).toLocaleString()} spend${t ? ` · Monday: https://particle-for-men.monday.com/boards/${t.board_id}/pulses/${t.item_id}` : ''}`;
+  return `Winning static "${w.label}" — Upspring: ROAS ${w.roas != null ? Number(w.roas).toFixed(2) : '?'} on $${Math.round(w.spend || 0).toLocaleString()} spend, ${w.percentile ?? '?'}th pct in its ${w.peer?.level || 'peer set'} (last 90 days)${w.campaign ? ` · campaign “${w.campaign}”` : ''}`;
 }
 
-module.exports = { extractHeadlines, cleanHeadline, headlinesForRow, attachHeadlines, staticWinners, readFromImage, sourceLine };
+module.exports = { extractHeadlines, cleanHeadline, headlinesForRow, attachHeadlines, staticWinners, readFromImage, sourceLine, upspringLink, upspringCandidates };

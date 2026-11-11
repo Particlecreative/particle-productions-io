@@ -83,8 +83,9 @@ function evidenceHtml(b, approver) {
   if (b.fields?.why) rows.push(`<p><strong>Why:</strong> ${esc(b.fields.why)}</p>`);
   const items = (ev.items || []).slice(0, 8);
   if (items.length) rows.push(`<p><strong>Evidence</strong></p><ul>${items.map(i => `<li>${esc(i.claim)} <em>(${esc(i.source)})</em></li>`).join('')}</ul>`);
-  const winners = Array.isArray(ev.afterlife) ? ev.afterlife.slice(0, 3) : [];
-  if (winners.length) rows.push(`<p><strong>Source winners (AfterLife)</strong></p><ul>${winners.map(w => `<li>${esc(w.label)} — ${w.percentile != null ? `${w.percentile}th pct` : ''}${w.roas != null ? ` · ROAS ${Number(w.roas).toFixed(2)}` : ''}${w.spend ? ` · $${Math.round(w.spend).toLocaleString()} spend` : ''}</li>`).join('')}</ul>`);
+  const src = Array.isArray(ev.winners) ? ev.winners : Array.isArray(ev.afterlife) ? ev.afterlife : [];
+  const winners = src.slice(0, 3);
+  if (winners.length) rows.push(`<p><strong>Source winners (${Array.isArray(ev.winners) ? 'Upspring' : 'AfterLife'})</strong></p><ul>${winners.map(w => `<li>${esc(w.label)} — ${w.percentile != null ? `${w.percentile}th pct` : ''}${w.roas != null ? ` · ROAS ${Number(w.roas).toFixed(2)}` : ''}${w.spend ? ` · $${Math.round(w.spend).toLocaleString()} spend` : ''}</li>`).join('')}</ul>`);
   if ((ev.examples || []).length) rows.push(`<p><strong>Written in the style of:</strong> ${ev.examples.map(e => esc(e.name)).join(' · ')}</p>`);
   if (ev.transfer) rows.push(`<p><strong>Transfer</strong> — keeps: ${esc((ev.transfer.keep || []).join('; '))}<br/>swaps: ${esc((ev.transfer.swap || []).map(s => `${s.from} → ${s.to}`).join('; '))}</p>`);
   if (b.preflight?.verdict) rows.push(`<p><strong>Captain Caption pre-flight:</strong> ${b.preflight.verdict === 'passed' ? 'passed ✅' : `${b.preflight.must_fix} must-fix (approved with an override)`}</p>`);

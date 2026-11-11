@@ -404,3 +404,58 @@ test('market: winner norms, plain-sentence norms, slim ads and Upspring referenc
   assert.match(ref, /Offer: 20% off · CTA “Shop now”/);
   assert.match(ref, /persona: Men 50\+/);
 });
+
+test('Upspring ranks: lane and product from names, percentile within peers, winners', () => {
+  const R = require('../src/lib/medium/ranks');
+  assert.equal(R.laneOf('NC Static V2', 'US | SFY | Listicle | Conversions'), 'SFY');
+  assert.equal(R.laneOf('Gravité WAC top 7'), 'WAC');
+  assert.equal(R.laneOf('Starter Bundle 25% Image V4 Dan Bundles Elpage', 'US | Limited-Time Bundle Deals | Winback'), 'Particle');
+  assert.equal(R.productOf('Starter Bundle 25% Image V4 Dan Bundles Elpage'), 'Starter Bundle');
+  assert.equal(R.productOf('Particle Instant Eye Firming Cream UGC'), 'Instant Eye Firming Cream');
+  assert.equal(R.productOf('Gravite Deodorant static'), 'Gravité Deodorant');
+  assert.equal(R.productOf('NC_Static_NeckTruth_4x5'), 'Neck Cream');
+  assert.equal(R.productOf('Brand awareness video'), null);
+  const row = R.fromUpspring({ creative_id: 'c1', adName: 'Neck Cream Mirror V1', adType: 'image', campaignName: 'US | Main', spend: 5093.4, roas: 2.62, headlines: ['Men! Save 25%'], copies: ['x'], descriptors: 'd', image_url: 'https://storage.googleapis.com/a.jpg', externalIds: ['9'] }, 'Particle Main');
+  assert.deepEqual([row.key, row.format, row.product, row.lane, row.spend, row.account], ['c1', 'static', 'Neck Cream', 'Particle', 5093, 'Particle Main']);
+  const rows = Array.from({ length: 10 }, (_, i) => ({ key: `k${i}`, lane: 'Particle', product: 'Neck Cream', format: 'static', spend: 400 + i * 200, roas: 1 + i * 0.2 }));
+  rows.push({ key: 'tiny', lane: 'Particle', product: 'Neck Cream', format: 'static', spend: 100, roas: 9 });
+  const ranked = R.rank(rows);
+  assert.equal(ranked[0].key, 'k9');
+  assert.equal(ranked[0].peer.level, 'lane · product · format');
+  assert.equal(ranked[0].winner, true);                      // 95th pct, $2,200
+  assert.equal(ranked.find(r => r.key === 'k8').winner, true);
+  assert.equal(ranked.find(r => r.key === 'k2').winner, false);
+  assert.equal(ranked.find(r => r.key === 'tiny').percentile, null);   // under the $300 floor
+});
+
+test('Upspring account: PKCE and reading MCP answers from JSON or an event stream', () => {
+  const A = require('../src/lib/medium/upspringAccount');
+  const p = A.pkce('dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk');
+  assert.equal(p.challenge, 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM');   // RFC 7636 appendix B
+  assert.equal(A.readRpc('{"jsonrpc":"2.0","id":3,"result":{"ok":1}}', 3).result.ok, 1);
+  const sse = 'event: message\ndata: {"jsonrpc":"2.0","method":"notifications/progress"}\n\nevent: message\ndata: {"jsonrpc":"2.0","id":7,"result":{"content":[{"type":"text","text":"{}"}]}}\n\n';
+  assert.ok(A.readRpc(sse, 7).result.content);
+  assert.equal(A.readRpc(sse, 8), null);
+});
+
+test('Mass production: plans are clamped, products matched, 40 at most', () => {
+  const M = require('../src/lib/medium/mass');
+  const p = M.normalizePlan({ summary: 's', question: '', groups: [
+    { lane: 'SFY', product: 'neck cream', format: 'design', move: 'NEW_ANGLE', count: 30, angle: 'a', note: 'n', campaign: 'Black Friday 2026' },
+    { lane: 'Nope', product: 'Face Cream', format: 'video', move: 'MADE_UP', count: 20, angle: '', note: '', campaign: '' },
+    { lane: 'GT', product: '', format: 'video', move: 'ITERATE', count: 3 },
+  ] });
+  assert.deepEqual(p.groups.map(g => [g.lane, g.product, g.format, g.move, g.count]), [['SFY', 'Neck Cream', 'design', 'NEW_ANGLE', 12], ['Particle', 'Face Cream', 'video', 'NEW_ANGLE', 12]]);
+  assert.equal(p.total, 24); assert.equal(p.est_cost, 2.4); assert.equal(p.capped, true);
+  assert.equal(p.groups[0].campaign, 'Black Friday 2026'); assert.equal(p.groups[1].campaign, null);
+  const big = M.normalizePlan({ groups: Array.from({ length: 6 }, () => ({ lane: 'Particle', product: 'Face Cream', format: 'video', move: 'NEW_ANGLE', count: 10 })) });
+  assert.equal(big.total, 40);
+});
+
+test('Headline → Hook from Upspring: on-image line first, then the Meta headline; link pattern', () => {
+  const H = require('../src/lib/medium/headlines');
+  const c = H.upspringCandidates({ on_image: '25% OFF THE STARTER BUNDLE — ON US', headlines: ['Men! Save 25% On This Bundle! Offer Ends Soon!', '25% off the starter bundle — on us'] });
+  assert.deepEqual(c.map(x => [x.text, x.from]), [['25% OFF THE STARTER BUNDLE — ON US', 'on the ad'], ['Men! Save 25% On This Bundle! Offer Ends Soon!', 'its Meta headline']]);
+  assert.equal(H.upspringLink('6a3c', 'https://app.example.ai/creatives/{id}'), 'https://app.example.ai/creatives/6a3c');
+  assert.equal(H.upspringLink('6a3c', ''), null);
+});

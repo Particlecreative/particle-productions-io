@@ -84,7 +84,7 @@ export default function Generator({ overview, notify, onOpen, onQueued }) {
             </label>
           )}
           {(f.move.startsWith('TRANSFER_') || ['ITERATE', 'REFRESH', 'REVIVE'].includes(f.move)) && (
-            <label className="grid gap-1 mt-4"><span className="md-doc-label">Which winner? (optional — Medium picks from AfterLife if empty)</span>
+            <label className="grid gap-1 mt-4"><span className="md-doc-label">Which winner? (optional — Medium picks from Upspring’s top ads if empty)</span>
               <input className="trk-input" value={f.source} onChange={set('source')} placeholder="e.g. the Neck Cream “Mirror Timer” video, or a Monday link" />
             </label>
           )}

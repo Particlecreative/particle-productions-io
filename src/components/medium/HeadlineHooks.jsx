@@ -4,7 +4,7 @@ import { mediumApi } from '../../lib/mediumService';
 import { LANE_LABEL, relTime } from './util';
 import { BriefRow } from './BriefItems';
 
-const FROM = { 'the ad image': 'read from the ad', 'brief copy': 'from the Monday brief', brief: 'from the Monday brief', 'brief hook': 'from the Monday brief' };
+const FROM = { 'on the ad': 'printed on the ad', 'its Meta headline': 'its Meta headline (the line under the ad)', 'the ad image': 'read from the ad', 'brief copy': 'from the Monday brief', brief: 'from the Monday brief', 'brief hook': 'from the Monday brief' };
 
 /** Winning statics → their headline opens a new video, word for word (move HEADLINE_HOOK). */
 export default function HeadlineHooks({ overview, notify, onOpen, onQueued }) {
@@ -73,7 +73,7 @@ export default function HeadlineHooks({ overview, notify, onOpen, onQueued }) {
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex-1 min-w-[260px]">
             <div className="trk-label flex items-center gap-1.5"><Quote size={13} /> Headline → Hook</div>
-            <p className="mt-1 text-sm trk-muted">A static that won already proved its headline stops the scroll. Pick winners, check the headline, and Medium writes a video that opens with it word for word — plus two more hook versions, so the test shows whether the words or the idea did the work.</p>
+            <p className="mt-1 text-sm trk-muted">A static that won already proved its headline stops the scroll — ranked by Upspring on Particle’s own ROAS. Pick winners, check the headline, and Medium writes a video that opens with it word for word — plus two more hook versions, so the test shows whether the words or the idea did the work.</p>
           </div>
           <label className="grid gap-1"><span className="trk-label">Lane</span>
             <select className="trk-input" value={lane} onChange={(e) => setLane(e.target.value)}><option value="">All lanes</option>{(opts.lanes || []).map(l => <option key={l} value={l}>{LANE_LABEL[l] || l}</option>)}</select>
@@ -85,23 +85,24 @@ export default function HeadlineHooks({ overview, notify, onOpen, onQueued }) {
         </div>
       </div>
 
-      {data && !data.available && <div className="trk-glass p-5 text-sm trk-muted">AfterLife is unavailable right now ({data.reason}). Winning statics come from AfterLife — try again in a minute.</div>}
+      {data && !data.available && <div className="trk-glass md-empty rounded-3xl"><div className="md-emoji" aria-hidden>🔌</div><div className="mt-3 text-[17px] font-semibold">Winning statics come from Upspring</div><div className="mt-1 md-sub">{data.reason}</div><a className="trk-btn mt-4 inline-flex" href="/medium?tab=behind&mode=sources">Go to Sources & settings</a></div>}
       {data?.available && !items.length && <div className="trk-glass p-5 text-sm trk-muted">No winning statics{lane || product ? ' for this filter' : ''} yet (winner = 80th percentile or better in its peer set, with a product).</div>}
 
       {items.length > 0 && (
         <div className="grid md:grid-cols-2 2xl:grid-cols-3 gap-4">
           {items.map(w => {
             const on = pick[w.key] != null;
-            const t = (w.tickets || [])[0];
             const text = on ? pick[w.key] : w.headline;
             return (
-              <div key={w.key} className="trk-glass p-4 flex flex-col gap-2.5" style={on ? { outline: '2px solid var(--trk-ink)', outlineOffset: -2 } : undefined}>
+              <div key={w.key} className="trk-glass !p-0 overflow-hidden flex flex-col" style={on ? { outline: '2px solid var(--trk-ink)', outlineOffset: -2 } : undefined}>
+                {w.image && <button type="button" className="block w-full" onClick={() => toggle(w)} aria-label={`Pick ${w.label}`}><img src={w.image} alt={w.label} loading="lazy" referrerPolicy="no-referrer" className="w-full aspect-square object-cover" /></button>}
+                <div className="p-4 flex flex-col gap-2.5 flex-1">
                 <div className="flex items-start gap-2">
                   <input type="checkbox" className="mt-1" checked={on} onChange={() => toggle(w)} aria-label={`Use ${w.label}`} />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap gap-1.5 items-center">
                       <span className="trk-chip gray">{w.lane}</span><span className="trk-chip gray">{w.product}</span>
-                      <span className="trk-chip green tabular-nums">{w.percentile}th pct</span>
+                      <span className="trk-chip green tabular-nums" title={`${w.percentile}th percentile on ROAS in its ${w.peer?.level || 'peer set'} (Upspring, last 90 days)`}>Top {Math.max(1, 100 - Number(w.percentile || 0))}%</span>
                       {w.briefed && <span className="trk-chip amber">hook briefed {relTime(w.briefed.at)}</span>}
                     </div>
                     <div className="mt-1 text-[12.5px] trk-muted truncate" title={w.label}>{w.label}</div>
@@ -118,8 +119,8 @@ export default function HeadlineHooks({ overview, notify, onOpen, onQueued }) {
                   ))}</div>
                 )}
                 <div className="mt-auto flex flex-wrap gap-2 items-center pt-1">
-                  {w.thumb && w.headline_from !== 'the ad image' && <button type="button" className="trk-btn !py-1 !text-[12px]" disabled={reading === w.key} onClick={() => read(w)}>{reading === w.key ? <Loader2 size={12} className="animate-spin" /> : <ScanText size={12} />} Read it from the ad</button>}
-                  {t && <a className="trk-btn !py-1 !text-[12px]" href={`https://particle-for-men.monday.com/boards/${t.board_id}/pulses/${t.item_id}`} target="_blank" rel="noopener noreferrer"><ExternalLink size={12} /> Monday</a>}
+                  {(w.upspring_url || w.image) && <a className="trk-btn !py-1 !text-[12px]" href={w.upspring_url || w.image} target="_blank" rel="noopener noreferrer"><ExternalLink size={12} /> {w.upspring_url ? 'Open in Upspring' : 'See the ad'}</a>}
+                </div>
                 </div>
               </div>
             );

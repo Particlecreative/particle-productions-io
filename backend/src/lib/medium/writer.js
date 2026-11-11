@@ -1,6 +1,6 @@
 /**
  * MEDIUM — writing a brief:  write (house style, 3 examples) → style check (one rewrite) → guardrails gate + score
- * (uncalibrated until AfterLife outcomes exist) → Captain Caption pre-flight → PENDING_REVIEW for a human.
+ * (uncalibrated until real outcomes exist) → Captain Caption pre-flight → PENDING_REVIEW for a human.
  * Runs on the captain-worker (jobs "medium_generate" / "medium_freeform"); every step is stored on the medium_briefs row.
  */
 const fs = require('fs');
@@ -12,7 +12,7 @@ const { laneOf } = require('../captain/brand');
 const { getConfig, LANE_RULES, MOVES, PERSONAS } = require('./config');
 const { KINDS } = require('./classify');
 const corpus = require('./corpus');
-const afterlife = require('./afterlife');
+const ranks = require('./ranks');   // "what won" = Upspring ranks (not AfterLife)
 const { styleCheck, composeBrief } = require('./style');
 
 const WRITER = fs.readFileSync(path.join(__dirname, 'prompts', 'writer.txt'), 'utf8');
@@ -88,15 +88,15 @@ async function buildContext(req, cfg) {
     corpus.pickExemplars({ format, kind, lane: lane.name, product: req.product, template: req.template, n: 3 }).catch(() => []),
     db.query(`SELECT name, format, description FROM medium_templates WHERE active ORDER BY usage_count DESC, name`).then(r => r.rows).catch(() => []),
     db.query(`SELECT brand, takes FROM medium_donors ORDER BY usage_count DESC LIMIT 14`).then(r => r.rows).catch(() => []),
-    afterlife.winners({ lane: lane.name, product: req.product, format, limit: 5 }),
+    ranks.winners({ lane: lane.name, product: req.product, format, limit: 5 }).catch(e => ({ available: false, reason: e.message })),
   ]);
   const claims = facts.claims.filter(c => !c.scope?.product || [].concat(c.scope.product).some(p => String(p).toLowerCase() === String(req.product || '').toLowerCase()));
   const offer = req.campaign ? facts.offers.find(o => String(o.title).toLowerCase() === String(req.campaign).toLowerCase()) : null;
   const brand = [brainText(brain), claims.length ? `Approved claims for ${req.product}:\n${claims.map(c => `- ${c.title}`).join('\n')}` : `No approved claims are stored for ${req.product || 'this product'} yet — make only claims the brand rules above support, and flag any other as "to verify" in the evidence.`,
     offer ? `Offer calendar — ${offer.title}: ${offer.content}` : null].filter(Boolean).join('\n\n');
   const ev = [];
-  if (winners.available && (winners.winners || []).length) ev.push(`AfterLife winners (ranked within their lane):\n${winners.winners.slice(0, 5).map(w => `- ${w.label} — ${w.product || ''} · ${w.percentile != null ? `${w.percentile}th pct` : ''} · spend $${Math.round(w.spend || 0)} · ROAS ${w.roas ?? '?'} (AfterLife)`).join('\n')}`);
-  else ev.push(`AfterLife: not available (${winners.reason}). Don't invent numbers — write [AfterLife] where a number would go and base the Why on the corpus or the account read.`);
+  if (winners.available && (winners.winners || []).length) ev.push(`Upspring winners — Particle's own ads ranked on ROAS within their lane (last 90 days):\n${winners.winners.slice(0, 5).map(w => `- ${w.label} — ${w.product || ''} · ${w.percentile != null ? `${w.percentile}th pct` : ''} · spend $${Math.round(w.spend || 0).toLocaleString()} · ROAS ${w.roas != null ? Number(w.roas).toFixed(2) : '?'}${w.on_image ? ` · on-image headline “${w.on_image}”` : ''}${w.headlines?.[0] ? ` · Meta headline “${w.headlines[0]}”` : ''} (Upspring)`).join('\n')}`);
+  else ev.push(`Upspring winners: not available (${winners.reason}). Don't invent numbers — write [Upspring] where a number would go and base the Why on the corpus or the account read.`);
   if (cfg.upspring_snapshot) ev.push(`Upspring account read (as of the last sync):\n${String(cfg.upspring_snapshot).slice(0, 5000)}`);
   else ev.push('Upspring account read: not pasted in yet.');
   if (cfg.state?.market_norms) ev.push(String(cfg.state.market_norms).slice(0, 2000));
@@ -219,11 +219,11 @@ async function score(out, ctx, cfg, { selfId = null } = {}) {
   const j = r.json;
   const fresh = await freshness(out, ctx.format, selfId);
   const subs = {
-    evidence: ctx.winners.available ? null : { score: null, why: '[AfterLife] — needs the winners feed' },
+    evidence: ctx.winners.available ? null : { score: null, why: '[Upspring] — needs the Upspring account connected' },
     pattern_fit: j.subs.pattern_fit.score >= 0 && cfg.upspring_snapshot ? j.subs.pattern_fit : { score: null, why: '[Upspring] — needs the account read' },
     hook_strength: j.subs.hook_strength, proof: j.subs.proof, freshness: fresh, message_match: j.subs.message_match, maker_ready: j.subs.maker_ready, test_design: j.subs.test_design,
   };
-  if (ctx.winners.available) subs.evidence = { score: (out.evidence || []).some(e => /afterlife/i.test(e.source)) ? 70 : 30, why: 'Cites AfterLife winners' };
+  if (ctx.winners.available) subs.evidence = { score: (out.evidence || []).some(e => /upspring|afterlife/i.test(e.source)) ? 70 : 30, why: 'Cites Upspring winners' };
   let sum = 0, w = 0;
   for (const [k, v] of Object.entries(subs)) if (v && typeof v.score === 'number') { sum += WEIGHTS[k] * Math.max(0, Math.min(100, v.score)); w += WEIGHTS[k]; }
   const guardrails = gate(j.guardrails);
@@ -314,7 +314,7 @@ async function runGenerate({ brief_id }) {
     const w = await writeWithStyle(writerPrompt(ctx, req, cfg), cfg, meta);
     cost += w.cost;
     const base = { kind: w.out.kind || ctx.kind, ticket_name: w.out.ticket_name, fields: w.out.fields, lines: w.out.lines, style: w.style, exemplar_ids: ctx.examples.map(e => e.id),
-      evidence: { items: w.out.evidence, afterlife: ctx.winners.available ? (ctx.winners.winners || []).slice(0, 5) : { available: false, reason: ctx.winners.reason }, examples: ctx.examples.map(e => ({ id: e.id, item_id: e.item_id, name: e.name })), ...(transfer ? { transfer } : {}), ...(headline ? { headline } : {}) } };
+      evidence: { items: w.out.evidence, winners: ctx.winners.available ? (ctx.winners.winners || []).slice(0, 5).map(({ descriptors, copy, ...x }) => x) : { available: false, reason: ctx.winners.reason, source: 'Upspring' }, examples: ctx.examples.map(e => ({ id: e.id, item_id: e.item_id, name: e.name })), ...(transfer ? { transfer } : {}), ...(headline ? { headline } : {}) } };
     if (!w.style.passed) {
       await setRow(row.id, { ...base, status: 'DROPPED', error: `Failed the house-style check twice: ${w.style.failures.join(' · ')}`, cost_usd: cost });
       return { dropped: true };

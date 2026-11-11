@@ -65,5 +65,5 @@ Return ONLY JSON with these fields:
 - script: the Script field (video), "" for statics; copy: the Copy field (design), "" for video
 - donts: the Don'ts as short strings; sizes: from 4x5 / 1x1 / 9x16 / 16x9; duration: seconds (video), 0 for statics; video_type: Script / UGC / AI Creator / CGI / Creator edit ("" for statics)
 - template, persona, donor: the named template / persona / structure donor you used ("" if none)
-- evidence: what this brief stands on — [{ "claim": "…", "source": "AfterLife | Upspring | corpus | brand doc | Captain Brain | idea" }]
+- evidence: what this brief stands on — [{ "claim": "…", "source": "Upspring | corpus | brand doc | Captain Brain | idea" }]
 - lines: EVERY word that will appear on screen or be spoken, one entry per line, for the proofreader: id ("l1"…), kind (super | vo | headline | subtitle | kicker | eyebrow | badge | pill | offer | cta | code | price | disclaimer | body), text, version ("V1"…, "" = every version), size ("9x16"…, "" = every size), start and end in seconds (-1 when not timed), lang ("en").

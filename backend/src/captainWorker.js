@@ -33,6 +33,7 @@ const medium = { corpus: require('./lib/medium/corpus'), writer: require('./lib/
       medium_freeform: medium.writer.runFreeform,
       medium_improve: medium.writer.runImprove,
       medium_market: () => require('./lib/medium/market').runMarket(),
+      medium_ranks: () => require('./lib/medium/ranks').refresh(),
       import_start: (p) => importer.startImport(p),
       import_frameio_item: importer.importFrameioItem,
       import_figma_file: importer.importFigmaFile,

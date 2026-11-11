@@ -190,7 +190,7 @@ export default function BriefDrawer({ id, onClose, notify, onChanged, isAdmin, m
                   <summary>📚 Evidence & the briefs it learned from</summary>
                   <div className="pb-4 space-y-1.5 text-[13.5px]">
                     {(view.evidence?.items || b.evidence?.items || []).map((e, i) => <div key={i}>• {e.claim} <span className="trk-dim">({e.source})</span></div>)}
-                    {b.evidence?.afterlife && !b.evidence.afterlife.available && b.evidence.afterlife.reason && <div className="trk-dim">AfterLife: {b.evidence.afterlife.reason}</div>}
+                    {(() => { const w = b.evidence?.winners || b.evidence?.afterlife; return w && !Array.isArray(w) && w.reason ? <div className="trk-dim">{b.evidence?.winners ? 'Upspring' : 'AfterLife'} winners: {w.reason}</div> : null; })()}
                     {data.examples?.length > 0 && <div className="pt-2"><span className="trk-dim">Written in the style of:</span> {data.examples.map(e => <a key={e.id} className="underline-offset-2 hover:underline mr-3" href={`https://particle-for-men.monday.com/boards/${e.board_id || ''}/pulses/${e.item_id}`} target="_blank" rel="noopener noreferrer">{e.name} <ExternalLink size={11} className="inline" /></a>)}</div>}
                     {view.kind && <div className="trk-dim pt-1">Kind of job: {KIND_LABEL[view.kind] || view.kind}{b.cost_usd != null ? ` · AI cost ${money(Number(b.cost_usd))}` : ''}{view.style?.passed ? ` · house style ✓${view.style.rewrites ? ' (after one rewrite)' : ''}` : ''}</div>}
                   </div>
@@ -265,7 +265,7 @@ function TransferPanel({ t }) {
 function ScorePanel({ s }) {
   return (
     <div>
-      <p className="text-[12.5px] trk-dim">Eight checks, weighted. Not calibrated yet — the weights get fitted to real AfterLife results as briefs ship.</p>
+      <p className="text-[12.5px] trk-dim">Eight checks, weighted. Not calibrated yet — the weights get fitted to real results as briefs ship.</p>
       {(s.guardrails?.violations || []).length > 0 && (
         <ul className="mt-2 text-[13px] space-y-0.5">
           {s.guardrails.violations.map((v, i) => { const o = typeof v === 'string' ? { text: v, severity: 'block' } : v; return (
@@ -279,7 +279,7 @@ function ScorePanel({ s }) {
           const n = typeof v?.score === 'number' ? Math.max(0, Math.min(100, v.score)) : null;
           return (
             <div key={k} className="text-[13px]" title={v?.why || ''}>
-              <div className="flex justify-between"><span>{l} <span className="trk-dim">· {SUB_WEIGHT[k]}</span></span><span className="tabular-nums">{n == null ? <span className="trk-dim">{k === 'evidence' ? '[AfterLife]' : k === 'pattern_fit' ? '[Upspring]' : '—'}</span> : n}</span></div>
+              <div className="flex justify-between"><span>{l} <span className="trk-dim">· {SUB_WEIGHT[k]}</span></span><span className="tabular-nums">{n == null ? <span className="trk-dim">{k === 'evidence' ? '[Upspring]' : k === 'pattern_fit' ? '[Upspring]' : '—'}</span> : n}</span></div>
               <div className="h-[6px] mt-1 rounded-full" style={{ background: 'var(--trk-glass-hi)' }}>{n != null && <div className="h-full rounded-full" style={{ width: `${n}%`, background: 'var(--trk-violet)' }} />}</div>
               {v?.why && <div className="text-[11.5px] trk-dim mt-0.5">{v.why}</div>}
             </div>

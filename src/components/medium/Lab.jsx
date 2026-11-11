@@ -34,11 +34,11 @@ export default function Lab({ overview, notify }) {
                 {t.result?.percentile != null && <span className="trk-muted tabular-nums">{t.result.percentile}th pct · ${Math.round(t.result.spend || 0).toLocaleString()}</span>}
               </div>
             ); })
-            : <p className="mt-2 text-[13.5px] trk-muted">No tests yet. Every approved brief becomes a test (its Test: line); once it ships, AfterLife decides it — won, failed or inconclusive — and transfer results update the map below.</p>}
+            : <p className="mt-2 text-[13.5px] trk-muted">No tests yet. Every approved brief becomes a test (its Test: line); once it ships, its results decide it — won, failed or inconclusive — and transfer results update the map below.</p>}
         </div>
         <div className="trk-glass p-5 text-[13px]">
           <div className="trk-label mb-1">Decision rule</div>
-          Win: ≥ 60th percentile in its own lane + product peer set after $1,000 spend or 14 days. Fail: below the 40th. Otherwise inconclusive. <span className="trk-dim">[AfterLife]</span>
+          Win: ≥ 60th percentile in its own lane + product peer set after $1,000 spend or 14 days. Fail: below the 40th. Otherwise inconclusive. <span className="trk-dim">[AfterLife links each shipped ad to its brief]</span>
         </div>
       </div>
 
@@ -59,7 +59,7 @@ export default function Lab({ overview, notify }) {
       {sc?.rows?.length > 0 && (
         <div className="trk-glass p-5">
           <div className="trk-label">Scorecard — by lane, source and move</div>
-          <div className="text-[12px] trk-muted mt-0.5">Approval and edit rates now; shipped and winners fill in as briefs reach Monday and AfterLife scores them. Lane mix and transfer scores reweight from this.</div>
+          <div className="text-[12px] trk-muted mt-0.5">Approval and edit rates now; shipped and winners fill in as briefs reach Monday and their ads get results. Lane mix and transfer scores reweight from this.</div>
           <div className="mt-3 overflow-x-auto"><table className="w-full text-[13px]">
             <thead><tr className="text-left trk-dim text-[11px] uppercase"><th className="py-1 pr-3">Lane</th><th className="pr-3">Source</th><th className="pr-3">Move</th><th className="pr-3">Briefs</th><th className="pr-3">Approved</th><th className="pr-3">Edited</th><th className="pr-3">Rejected</th><th className="pr-3">On Monday</th><th className="pr-3">Avg score</th><th className="pr-3">Cost</th></tr></thead>
             <tbody>{sc.rows.map((r, i) => (

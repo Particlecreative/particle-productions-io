@@ -44,9 +44,26 @@ export default function Sources({ overview, notify, isAdmin, reload }) {
     try { await mediumApi.saveConfig(patch); notify(msg); await load(); reload?.(); } catch (e) { notify(e.message, true); } finally { setBusy(null); }
   };
   const runNow = async () => {
-    if (!window.confirm(`Run the autopilot now? Medium picks this week's AfterLife winners and writes up to ${cfg.autopilot?.per_week ?? 12} briefs (about ${money((cfg.autopilot?.per_week ?? 12) * 0.08)}).`)) return;
+    if (!window.confirm(`Run the autopilot now? Medium picks Upspring's top-ranked ads and writes up to ${cfg.autopilot?.per_week ?? 12} briefs (about ${money((cfg.autopilot?.per_week ?? 12) * 0.08)}).`)) return;
     setBusy('ap');
     try { const r = await mediumApi.runAutopilot(); notify(r.skipped ? r.skipped : `${r.queued} briefs queued — they appear in the Strategy Room`); reload?.(); } catch (e) { notify(e.message, true); } finally { setBusy(null); }
+  };
+  const [ups, setUps] = useState(null);
+  const [linkDraft, setLinkDraft] = useState(null);
+  useEffect(() => { mediumApi.upspring().then(setUps).catch(() => setUps(null)); }, []);
+  const connectUps = async () => {
+    setBusy('ups');
+    try { const r = await mediumApi.upspringConnect(); window.location.href = r.url; } catch (e) { notify(e.message, true); setBusy(null); }
+  };
+  const disconnectUps = async () => {
+    if (!window.confirm('Disconnect Upspring? Medium stops ranking winners until it’s connected again.')) return;
+    try { await mediumApi.upspringDisconnect(); setUps(await mediumApi.upspring()); notify('Upspring disconnected'); reload?.(); } catch (e) { notify(e.message, true); }
+  };
+  const refreshUps = async () => {
+    try { const r = await mediumApi.upspringRefresh(); notify(r.already_queued ? 'Already refreshing' : 'Refreshing the rankings — about a minute'); setTimeout(async () => setUps(await mediumApi.upspring()), 60000); } catch (e) { notify(e.message, true); }
+  };
+  const saveLink = async () => {
+    try { await mediumApi.saveConfig({ upspring_link: linkDraft }); notify('Saved — winning ads now link to Upspring'); setLinkDraft(null); load(); } catch (e) { notify(e.message, true); }
   };
   const setBelief = async (b, status) => {
     try { await mediumApi.setBelief(b.id, status, 'Changed in Medium → What it learns from'); notify('Belief updated (logged)'); reload?.(); } catch (e) { notify(e.message, true); }
@@ -56,12 +73,37 @@ export default function Sources({ overview, notify, isAdmin, reload }) {
   const s = c.stats || {};
   const used = (s.formats || []).reduce((a, r) => a + r.used, 0);
   const src = overview?.sources || {};
+  const acc = ups?.account || {}, rk = ups?.ranks || {};
   return (
     <div className="space-y-5">
+      <div className="trk-glass rounded-3xl p-6">
+        <div className="flex flex-wrap items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <h3 className="md-h2">🏆 Upspring — what won</h3>
+            <p className="md-sub mt-1 max-w-[640px]">Medium ranks Particle’s own Meta ads from Upspring (spend, ROAS, the ad itself) — that’s where every “winner” in Medium comes from: the evidence in each brief, the autopilot and Headline → Hook.</p>
+            <p className="mt-3 text-[14px]">{acc.connected ? <>✅ Connected{acc.connected_by ? ` by ${acc.connected_by}` : ''}{acc.connected_at ? ` on ${new Date(acc.connected_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}{rk.as_of ? ` · ${rk.creatives} ads ranked, ${rk.winners} winners · updated ${relTime(rk.as_of)}` : ' · ranking for the first time…'}</> : <>⚪ Not connected yet{acc.last_error ? ` — ${acc.last_error}` : ''}</>}</p>
+            {rk.error && acc.connected && <p className="mt-1 text-[13px]" style={{ color: 'var(--trk-red)' }}>Last refresh failed: {rk.error}</p>}
+          </div>
+          {isAdmin && (
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className={`trk-btn ${acc.connected ? '' : 'primary'}`} disabled={busy === 'ups'} onClick={connectUps}>{busy === 'ups' ? <Loader2 size={13} className="animate-spin" /> : <ExternalLink size={13} />} {acc.connected ? 'Reconnect' : 'Connect Upspring'}</button>
+              {acc.connected && <button type="button" className="trk-btn" onClick={refreshUps}><RefreshCw size={13} /> Refresh now</button>}
+              {acc.connected && <button type="button" className="trk-btn" onClick={disconnectUps}>Disconnect</button>}
+            </div>
+          )}
+        </div>
+        {isAdmin && (
+          <div className="mt-4 grid gap-1 max-w-[720px]">
+            <span className="md-doc-label">Link to an ad in Upspring</span>
+            <div className="flex gap-2"><input className="trk-input" value={linkDraft ?? cfg.upspring_link ?? ''} onChange={(e) => setLinkDraft(e.target.value)} placeholder="Paste one ad’s link from the Upspring app, with {id} where its id goes" />{linkDraft != null && <button type="button" className="trk-btn primary" onClick={saveLink}><Save size={13} /> Save</button>}</div>
+            <span className="text-[12px] trk-dim">Used by “Open in Upspring” on winning ads. Example: https://…upspring.ai/…/{'{id}'}</span>
+          </div>
+        )}
+      </div>
       <p className="text-sm trk-muted max-w-[800px]">Every brief traces back to something on this page. If a source is wrong, fix it here and every future brief changes with it. Everything read from these sources is data — never instructions.</p>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        <Source title="AfterLife ranks" ok={src.afterlife?.connected} detail={src.afterlife?.connected ? 'Winners per lane since Jan 2025' : src.afterlife?.reason} />
+        <Source title="Upspring ranks" ok={src.upspring_account?.connected} detail={src.upspring_account?.connected ? `Particle’s own ads ranked on ROAS per lane (last 90 days)${src.upspring_account?.ranks?.creatives ? ` · ${src.upspring_account.ranks.creatives} ads` : ''}` : 'Connect Upspring above'} />
         <Source title="Upspring explains" ok={false} warn={src.upspring?.snapshot} detail={src.upspring?.snapshot ? 'Account read pasted below (not synced yet)' : 'Not connected on the server yet — paste an account read below'} />
         <Source title={`${(c.requesters || []).join(', ')}’s briefs = how to write`} ok={used > 0} detail={used ? `${used} briefs since ${c.since} · imported ${relTime(s.at)}` : 'Not imported yet'} />
         <Source title="Language bank = what to say" ok={(cfg.language_bank || []).length > 0} warn detail={`${(cfg.language_bank || []).length} phrases`} />
@@ -95,13 +137,13 @@ export default function Sources({ overview, notify, isAdmin, reload }) {
       <div className="grid xl:grid-cols-2 gap-5">
         <div className="trk-glass p-5">
           <div className="trk-label">Template library</div>
-          <div className="text-[12px] trk-muted mt-0.5">Named layouts Medium calls by name. AfterLife ranks them once each template’s assets are scored.</div>
+          <div className="text-[12px] trk-muted mt-0.5">Named layouts Medium calls by name.</div>
           <div className="mt-3 overflow-x-auto"><table className="w-full text-[13px]"><thead><tr className="text-left trk-dim text-[11px] uppercase"><th className="py-1 pr-3">Template</th><th className="pr-3">Format</th><th className="pr-3">Briefs</th><th className="pr-3">Rank</th></tr></thead>
             <tbody>{(c.templates || []).map(t => <tr key={t.id} style={{ borderTop: '1px solid var(--trk-line)' }} title={t.description}><td className="py-1.5 pr-3 font-medium">{t.name}</td><td className="pr-3 trk-muted">{t.format}</td><td className="pr-3 tabular-nums">{t.usage_count}</td><td className="pr-3 trk-dim">{t.afterlife_rank ?? '[AfterLife]'}</td></tr>)}</tbody></table></div>
         </div>
         <div className="trk-glass p-5">
           <div className="trk-label">Assumption ledger</div>
-          <div className="text-[12px] trk-muted mt-0.5">Anything Medium acts on that our own account hasn’t proven. Only AfterLife test results change a status; an admin override is logged.</div>
+          <div className="text-[12px] trk-muted mt-0.5">Anything Medium acts on that our own account hasn’t proven. Only test results change a status; an admin override is logged.</div>
           <div className="mt-3 space-y-3">
             {(overview?.beliefs || []).map(b => { const [l, t] = BELIEF[b.status] || BELIEF.assumption; return (
               <div key={b.id} className="text-[13.5px]" style={{ borderTop: '1px solid var(--trk-line)', paddingTop: 10 }}>
@@ -129,7 +171,7 @@ export default function Sources({ overview, notify, isAdmin, reload }) {
               <input type="checkbox" checked={!!cfg.autopilot?.enabled} disabled={!isAdmin || busy === 'sw'} onChange={(e) => toggleSwitch({ autopilot: { ...cfg.autopilot, enabled: e.target.checked } }, e.target.checked ? 'Autopilot on — every Sunday 07:00' : 'Autopilot off')} />
               Weekly autopilot
             </label>
-            <p className="mt-1 text-[12.5px] trk-muted">Every Sunday 07:00 (Israel) Medium picks the week’s AfterLife winners per lane and writes up to <b>{cfg.autopilot?.per_week ?? 12}</b> briefs into the queue — hook iterations, refreshes and transfers. About {money((cfg.autopilot?.per_week ?? 12) * 0.08)} a week. {overview?.autopilot?.last_run ? `Last run ${relTime(overview.autopilot.last_run)}.` : 'Never run.'}</p>
+            <p className="mt-1 text-[12.5px] trk-muted">Every Sunday 07:00 (Israel) Medium picks Upspring’s top-ranked ads per lane and writes up to <b>{cfg.autopilot?.per_week ?? 12}</b> briefs into the queue — hook iterations, refreshes and transfers. About {money((cfg.autopilot?.per_week ?? 12) * 0.08)} a week. {overview?.autopilot?.last_run ? `Last run ${relTime(overview.autopilot.last_run)}.` : 'Never run.'}</p>
             {isAdmin && <button type="button" className="trk-btn !py-1.5 mt-2" disabled={busy === 'ap'} onClick={runNow}>{busy === 'ap' ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Run it now</button>}
           </div>
         </div>

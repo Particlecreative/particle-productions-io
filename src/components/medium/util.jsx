@@ -36,7 +36,7 @@ export function Chip({ tone = 'gray', children, title }) {
   return <span className={`trk-chip ${tone}`} title={title}>{children}</span>;
 }
 
-/** A score: the number, its band, and "uncalibrated" until AfterLife outcomes exist. */
+/** A score: the number, its band, and "uncalibrated" until real outcomes exist. */
 export function ScoreBadge({ score, band }) {
   if (score == null && !band) return <Chip>No score</Chip>;
   const [label, tone] = BAND[band] || ['', 'gray'];
@@ -76,6 +76,7 @@ export const READY_ORDER = { ready: 0, almost: 1, unchecked: 2, work: 3, fix: 4,
 export function origin(b) {
   if (b.source === 'autopilot') return 'Autopilot';
   if (b.source === 'holiday') return 'Holiday plan';
+  if (b.source === 'mass') return 'Mass production';
   if (b.source === 'freeform') return b.author ? `${String(b.author).split(' ')[0]}’s idea` : 'An idea';
   return b.author ? String(b.author).split(' ')[0] : 'Medium';
 }

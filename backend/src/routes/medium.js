@@ -38,6 +38,20 @@ function errorJson(res, err) {
 }
 const bad = (msg, status = 400) => Object.assign(new Error(msg), { status });
 
+// ── Upspring account sign-in callback (public: Upspring redirects the browser here; the state check protects it) ──
+const appBase = (req) => (process.env.APP_URL || `https://${req.get('host')}`).replace(/\/$/, '');
+router.get('/upspring/callback', async (req, res) => {
+  const back = `${appBase(req)}/medium?tab=behind&mode=sources`;
+  try {
+    if (req.query.error) throw new Error(String(req.query.error_description || req.query.error).slice(0, 200));
+    await require('../lib/medium/upspringAccount').finishConnect({ code: String(req.query.code || ''), state: String(req.query.state || '') });
+    enqueue('medium_ranks', { reason: 'connected' }, { dedupeKey: 'medium_ranks', priority: 4, maxAttempts: 1 }).catch(() => null);
+    res.redirect(`${back}&upspring=connected`);
+  } catch (e) {
+    res.redirect(`${back}&upspring_error=${encodeURIComponent(e.message)}`);
+  }
+});
+
 // ── the medium-brief plugin (Claude desktop / Cowork) calls a few routes with a service token instead of a session ──
 // Header X-Medium-Token: <token> (or Authorization: Bearer <token>) = MEDIUM_SERVICE_TOKEN, else CAPTAIN_SERVICE_TOKEN.
 // A Bearer value that isn't the service token is treated as a normal user JWT. The token is never logged.
@@ -82,12 +96,14 @@ router.get('/overview', async (req, res) => {
     ]);
     const articles = (await db.query(`SELECT id, lane, url, title, products, last_seen, opportunity FROM medium_articles ORDER BY opportunity, last_seen DESC NULLS LAST LIMIT 120`).catch(() => ({ rows: [] }))).rows;
     const ups = await require('../lib/medium/upspring').status();
+    const upsAccount = await require('../lib/medium/upspringAccount').status();
+    const upsRanks = await require('../lib/medium/ranks').status().catch(() => null);
     const market = (await db.query(`SELECT run_at, data->'summary' AS summary, (SELECT COUNT(*)::int FROM jsonb_array_elements(data->'ads') e WHERE (e->>'new')::boolean) AS new_ads,
         jsonb_array_length(COALESCE(data->'brands', '[]'::jsonb)) AS brands FROM medium_market_runs ORDER BY run_at DESC LIMIT 1`).catch(() => ({ rows: [] }))).rows[0] || null;
     res.json({
       counts: counts.rows, beliefs: beliefs.rows, tests: tests.rows, donors: donors.rows, recent: recent.rows,
       sources: {
-        afterlife, upspring: { connected: !!ups.connected, reason: ups.reason || null, snapshot: !!cfg.upspring_snapshot }, corpus: corpusRow.rows[0],
+        afterlife, upspring: { connected: !!ups.connected, reason: ups.reason || null, snapshot: !!cfg.upspring_snapshot }, upspring_account: { ...upsAccount, ranks: upsRanks }, corpus: corpusRow.rows[0],
         monday: { submit: !!cfg.monday_submit }, worker: { alive: !!(worker?.at && Date.now() - new Date(worker.at).getTime() < 120000) },
       },
       language_bank: cfg.language_bank || [], holidays: calendar.upcoming(new Date(), 3),
@@ -218,7 +234,7 @@ router.post('/static-hooks/generate', async (req, res) => {
     const picks = (Array.isArray(req.body?.items) ? req.body.items : []).slice(0, 8);
     if (!picks.length) throw bad('Pick at least one static');
     const all = await H.staticWinners({ limit: 60 });
-    if (!all.available) throw bad(`AfterLife is unavailable: ${all.reason}`);
+    if (!all.available) throw bad(`Upspring winners are unavailable: ${all.reason}`);
     const byKey = new Map(all.items.map(w => [w.key, w]));
     const batch = picks.length > 1 ? require('crypto').randomUUID() : null;
     const ids = [], skipped = [];
@@ -236,6 +252,35 @@ router.post('/static-hooks/generate', async (req, res) => {
     }
     res.json({ queued: ids.length, ids, skipped });
   } catch (err) { errorJson(res, err); }
+});
+
+// ── Upspring account: Particle's own ads → "what won" (Upspring ranks) ─────────
+router.get('/upspring', async (req, res) => {
+  try { res.json({ account: await require('../lib/medium/upspringAccount').status(), ranks: await require('../lib/medium/ranks').status() }); } catch (err) { errorJson(res, err); }
+});
+router.post('/upspring/connect', requireAdmin, async (req, res) => {
+  try { res.json({ url: await require('../lib/medium/upspringAccount').startConnect({ redirectUri: `${appBase(req)}/api/medium/upspring/callback`, actor: actorOf(req) }) }); } catch (err) { errorJson(res, err); }
+});
+router.delete('/upspring', requireAdmin, async (req, res) => {
+  try { res.json(await require('../lib/medium/upspringAccount').disconnect()); } catch (err) { errorJson(res, err); }
+});
+router.post('/upspring/refresh', requireAdmin, async (req, res) => {
+  try {
+    const jobId = await enqueue('medium_ranks', { actor: actorOf(req) }, { dedupeKey: 'medium_ranks', priority: 4, maxAttempts: 1 });
+    res.json({ queued: !!jobId, already_queued: !jobId });
+  } catch (err) { errorJson(res, err); }
+});
+
+// ── Mass production: plain words → a plan → many briefs ──────────────────────
+router.post('/mass/plan', async (req, res) => {
+  try {
+    const text = String(req.body?.request || '').trim();
+    if (text.length < 10) throw bad('Write what you need in a sentence or two');
+    res.json(await require('../lib/medium/mass').planMass(text));
+  } catch (err) { errorJson(res, err); }
+});
+router.post('/mass/produce', async (req, res) => {
+  try { res.json(await require('../lib/medium/mass').produce(req.body?.plan, { actor: actorOf(req), request: req.body?.request })); } catch (err) { errorJson(res, err); }
 });
 
 // ── Market Watch (Upspring Public API) ───────────────────────────────────────

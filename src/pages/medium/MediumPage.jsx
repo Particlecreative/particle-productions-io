@@ -56,6 +56,12 @@ export default function MediumPage() {
   }, [notify]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
+    const ok = params.get('upspring'), err = params.get('upspring_error');
+    if (!ok && !err) return;
+    notify(ok ? 'Upspring connected — ranking Particle’s ads now (about a minute)' : `Upspring didn’t connect: ${err}`, !!err);
+    setParams(prev => { const n = new URLSearchParams(prev); n.delete('upspring'); n.delete('upspring_error'); return n; });
+  }, [params, notify, setParams]);
+  useEffect(() => {
     if (!briefs.some(b => ['QUEUED', 'WRITING'].includes(b.status))) return undefined;
     const t = setInterval(load, 6000); return () => clearInterval(t);
   }, [briefs, load]);

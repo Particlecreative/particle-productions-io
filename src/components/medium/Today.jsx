@@ -8,6 +8,7 @@ export const START = [
   { mode: 'winner', emoji: '🏆', title: 'Build on a winner', line: 'New hooks, a fresh take, or a winning idea moved to another product or lane.' },
   { mode: 'hooks', emoji: '🪝', title: 'Headline → video hook', line: 'A static’s headline that already won opens a new video, word for word.' },
   { mode: 'holiday', emoji: '🎁', title: 'Plan a holiday', line: 'One setup — every product, every format, the sale math and the deadlines.' },
+  { mode: 'mass', emoji: '🏭', title: 'Mass production', line: 'Write what you need in plain words — how many, which products and lanes. Medium plans it, you check it, it writes them all.' },
 ];
 
 const DAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -36,7 +37,7 @@ export default function Today({ overview, briefs, onOpen, go }) {
     <div className="space-y-10">
       <section>
         <h2 className="md-h2">What do you want to make?</h2>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
           {START.map(s => (
             <button key={s.mode} type="button" className="md-action" onClick={() => go('create', s.mode)}>
               <span className="md-emoji" aria-hidden>{s.emoji}</span>
@@ -79,7 +80,7 @@ export default function Today({ overview, briefs, onOpen, go }) {
           <button type="button" className="md-action compact" onClick={() => go('behind', 'sources')}>
             <span className="md-emoji" aria-hidden>🤖</span>
             <span className="min-w-0"><span className="md-action-title block">{ap.enabled ? `Autopilot: ${ap.per_week || 12} briefs ${nextRun(ap.weekday ?? 0, ap.hour ?? 7)}` : 'Autopilot is off'}</span>
-              <span className="md-action-line block">{ap.enabled ? 'From this week’s AfterLife winners — they land here for review.' : 'Turn it on and Medium briefs the week’s winners every Sunday.'}</span></span>
+              <span className="md-action-line block">{ap.enabled ? 'From Upspring’s top-ranked ads — they land here for review.' : 'Turn it on and Medium briefs the week’s winners every Sunday.'}</span></span>
           </button>
           <button type="button" className="md-action compact" onClick={() => go('market')}>
             <span className="md-emoji" aria-hidden>🌍</span>
