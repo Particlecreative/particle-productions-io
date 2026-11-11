@@ -13,6 +13,22 @@ test('corpus: the kind of job comes from the opening line', () => {
   assert.equal(C.kindOf({ name: 'IEFC | Meta | Hooks for Ticker Hook', brief: 'We need 3–4 additional hooks we will add to the existing videos here' }), 'new_hooks');
   assert.equal(C.kindOf({ name: 'Face Cream | Meta | Italian translation', brief: 'Translate the approved static' }), 'translation');
   assert.equal(C.kindOf({ brief: 'A 55–60 man at his bathroom mirror, getting ready. Real, not styled.' }), 'original');
+  // the team's real variants
+  assert.equal(C.kindOf({ brief: 'REFERENCE — REPLICATE: app.upspring.ai/public/intelligence/ad/4036 (DADFUEL). Copy the reference exactly: shot types…' }), 'reference_adaptation');
+  assert.equal(C.kindOf({ brief: 'Copy the attached reference beat for beat (Smileactives, https://app.upspring.ai/…): unboxing top-down…' }), 'reference_adaptation');
+  assert.equal(C.kindOf({ brief: 'Same concept as reference just for neck cream' }), 'reference_adaptation');
+  assert.equal(C.kindOf({ brief: 'Black Friday extra static for Shampoo, 30% offer, built on the phone-notification layout (reference: https://…)' }), 'reference_adaptation');
+  assert.equal(C.kindOf({ brief: 'Same layout and fall background as the set. Product: Gravité.' }), 'template_swap');
+  assert.equal(C.kindOf({ brief: 'Take the existing July 4th lineup design (attached reference) and rework for Labor Day: swap headline block and code pill.' }), 'template_swap');
+  assert.equal(C.kindOf({ brief: 'Please turn assets into motion 7-10 seconds, no CTA needed' }), 'static_gif');
+});
+
+test('corpus: donor brands as written, not the ingredient', () => {
+  const { donorPattern } = require('../src/lib/medium/corpus');
+  assert.equal(donorPattern('Seed').test('Strikethrough price like the Seed ad'), true);
+  assert.equal(donorPattern('Seed').test('Hyaluronic Acid, Coffee Seed Extract, caffeine'), false);
+  assert.equal(donorPattern('Seed').test('seedless'), false);
+  assert.equal(donorPattern('Mars Men').test('Mars Men multi-product layout'), true);
 });
 
 test('corpus: test brands are excluded — the campaign token beats a Particle product label', () => {

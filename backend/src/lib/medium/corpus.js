@@ -41,6 +41,12 @@ async function* boardItems(format, ids, since) {
   }
 }
 
+/** A donor brand as the team writes it ("Seed", not "coffee seed extract"). */
+function donorPattern(brand) {
+  const esc = String(brand).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|[^A-Za-z])${esc}(?![A-Za-z])(?!\\s+([Ee]xtract|[Oo]ils?|[Bb]utter)\\b)`);
+}
+
 /** One Monday item → a medium_exemplars row (classified). */
 function toRow(format, it, cfg) {
   const cols = BOARDS[format].columns;
@@ -88,7 +94,13 @@ async function ingestCorpus({ actor = null } = {}) {
   await db.query(`UPDATE medium_templates t SET usage_count = x.n, last_used = x.last FROM (
       SELECT template, COUNT(*)::int AS n, MAX(monday_created) AS last FROM medium_exemplars WHERE NOT excluded AND template IS NOT NULL GROUP BY template) x
     WHERE x.template = t.name`);
-  await db.query(`UPDATE medium_donors d SET usage_count = (SELECT COUNT(*) FROM medium_exemplars e WHERE NOT e.excluded AND e.search @@ phraseto_tsquery('simple', d.brand))`);
+  // donors: the brand name as written (case-sensitive), so the ingredient "Coffee Seed Extract" is not the brand Seed
+  const { rows: donors } = await db.query('SELECT id, brand FROM medium_donors');
+  const { rows: texts } = await db.query(`SELECT coalesce(name, '') || ' ' || coalesce(brief, '') || ' ' || coalesce(first_update, '') || ' ' || coalesce(script, '') AS t FROM medium_exemplars WHERE NOT excluded`);
+  for (const d of donors) {
+    const re = donorPattern(d.brand);
+    await db.query('UPDATE medium_donors SET usage_count = $2 WHERE id = $1', [d.id, texts.filter(x => re.test(x.t)).length]);
+  }
   return { ...counts, by: actor };
 }
 
@@ -136,4 +148,4 @@ async function similar(text, { limit = 5, format = null } = {}) {
 }
 const STOP = new Set(['this', 'that', 'with', 'from', 'your', 'have', 'will', 'they', 'them', 'what', 'when', 'into', 'just', 'like', 'make', 'more', 'about', 'their', 'there', 'video', 'static', 'please', 'particle']);
 
-module.exports = { ingestCorpus, corpusStats, pickExemplars, similar, toRow };
+module.exports = { ingestCorpus, corpusStats, pickExemplars, similar, toRow, donorPattern };

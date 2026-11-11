@@ -17,11 +17,15 @@ const norm = (s) => String(s || '').toLowerCase();
 function kindOf({ name = '', brief = '', script = '', copy = '', update = '' } = {}) {
   const n = norm(name), b = `${brief}\n${update}`, all = `${b}\n${script}\n${copy}`;
   if (/^\s*footage\s*:/im.test(b) || /\bcreator edit\b/i.test(name)) return 'creator_edit';
-  if (/\bgif\b/i.test(name) || /turn the approved .{0,60}into an? (gif|motion)|animate the elements in/i.test(b)) return 'static_gif';
+  // static → motion: "Turn the approved X static into a GIF", "Please turn assets into motion / stop motion"
+  if (/\bgif\b/i.test(name) || /turn (the |this |these )?(approved )?.{0,60}into (an? )?(gif|motion|stop motion)|animate the elements in|turn (static|assets?) into/i.test(b)) return 'static_gif';
   if (/\b(additional|new|more) hooks\b|\bhooks for\b/i.test(`${name}\n${b}`)) return 'new_hooks';
   if (/\btranslat(e|ion|ed)\b/i.test(`${name}\n${b}`) || /\b(italian|arabic|hebrew|french|spanish|german) (version|copy|translation)\b/i.test(all)) return 'translation';
-  if (/copy the layout exactly|swap the product|same layout,? (different|swap|new) product/i.test(b)) return 'template_swap';
-  if (/please (look|see|check) at (the )?attached reference|copy (its|the) (style|structure)|copy style,? apply to/i.test(b)) return 'reference_adaptation';
+  // same layout, different product / season: "Copy the layout exactly…", "Same layout and fall background as the set…"
+  if (/copy the layout exactly|swap the product|same layout,? (different|swap|new) product|same layout and .{0,40}as the set|^\s*swap\b|rework for .{0,40}swap/im.test(b)) return 'template_swap';
+  // copy an outside or internal reference: "Please look at attached reference…", "REFERENCE — REPLICATE", "Copy the attached reference beat for beat",
+  // "Same concept as reference…", "built on the … layout (reference: …)", "Reference: X. Match layout exactly."
+  if (/please (look|see|check) at (the )?(attached )?reference|copy (its|the) (style|structure)|copy style,? apply to|^\s*reference\s*[—:-]+\s*(replicate|\S)|copy the (attached )?reference|same (concept|design|style) as (the )?reference|built on the .{0,60}layout \(reference|match (the )?layout exactly|adapt (the )?visual references?|similar .{0,40}to (the )?reference/im.test(b)) return 'reference_adaptation';
   if (n.includes('reference') && /copy/i.test(b)) return 'reference_adaptation';
   return 'original';
 }
