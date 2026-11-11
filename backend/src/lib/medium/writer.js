@@ -9,7 +9,7 @@ const db = require('../../db');
 const claude = require('../captain/engines/claude');
 const { loadBrain, loadFacts, brainText } = require('../captain/brain');
 const { laneOf } = require('../captain/brand');
-const { getConfig, LANE_RULES, MOVES, PERSONAS } = require('./config');
+const { getConfig, LANE_RULES, MOVES, PERSONAS, productNotes } = require('./config');
 const { KINDS } = require('./classify');
 const corpus = require('./corpus');
 const ranks = require('./ranks');   // "what won" = Upspring ranks (not AfterLife)
@@ -92,7 +92,9 @@ async function buildContext(req, cfg) {
   ]);
   const claims = facts.claims.filter(c => !c.scope?.product || [].concat(c.scope.product).some(p => String(p).toLowerCase() === String(req.product || '').toLowerCase()));
   const offer = req.campaign ? facts.offers.find(o => String(o.title).toLowerCase() === String(req.campaign).toLowerCase()) : null;
-  const brand = [brainText(brain), claims.length ? `Approved claims for ${req.product}:\n${claims.map(c => `- ${c.title}`).join('\n')}` : `No approved claims are stored for ${req.product || 'this product'} yet — make only claims the brand rules above support, and flag any other as "to verify" in the evidence.`,
+  const notes = productNotes(cfg, req.product);
+  const mustKnow = notes.length ? `PRODUCT MUST-KNOW${notes.length > 1 ? 'S' : ''} — from the team, apply with judgement but take it seriously:\n${notes.map(n => `- ${n.product}: ${n.note}`).join('\n')}` : null;
+  const brand = [mustKnow, brainText(brain), claims.length ? `Approved claims for ${req.product}:\n${claims.map(c => `- ${c.title}`).join('\n')}` : `No approved claims are stored for ${req.product || 'this product'} yet — make only claims the brand rules above support, and flag any other as "to verify" in the evidence.`,
     offer ? `Offer calendar — ${offer.title}: ${offer.content}` : null].filter(Boolean).join('\n\n');
   const ev = [];
   if (winners.available && (winners.winners || []).length) ev.push(`Upspring winners — Particle's own ads ranked on ROAS within their lane (last 90 days):\n${winners.winners.slice(0, 5).map(w => `- ${w.label} — ${w.product || ''} · ${w.percentile != null ? `${w.percentile}th pct` : ''} · spend $${Math.round(w.spend || 0).toLocaleString()} · ROAS ${w.roas != null ? Number(w.roas).toFixed(2) : '?'}${w.on_image ? ` · on-image headline “${w.on_image}”` : ''}${w.headlines?.[0] ? ` · Meta headline “${w.headlines[0]}”` : ''} (Upspring)`).join('\n')}`);

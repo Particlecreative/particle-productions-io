@@ -559,3 +559,16 @@ test('request link: files uploaded through a link only work through that same li
   assert.equal(L.readFile(id, 'linkA_aaaaaaaaaaaaaaaa'), null);              // a bare internal file id is refused
   assert.equal(L.readFile(`${id}.${'x'.repeat(22)}`, 'linkA_aaaaaaaaaaaaaaaa'), null);
 });
+
+test('product must-knows: Face Cream carries eye bags, dark spots and wrinkles into every Face Cream brief', () => {
+  const { productNotes, DEFAULTS } = require('../src/lib/medium/config');
+  const cfg = { product_notes: DEFAULTS.product_notes };
+  const fc = productNotes(cfg, 'Face Cream');
+  assert.equal(fc.length, 1);
+  assert.match(fc[0].note, /eye bags, dark spots and wrinkles/);
+  assert.equal(productNotes(cfg, 'face cream')[0].product, 'Face Cream');
+  assert.equal(productNotes(cfg, 'Particle Face Cream').length, 1);       // a name that contains it
+  assert.equal(productNotes(cfg, 'Starter Bundle').length, 0);
+  assert.equal(productNotes(cfg, 'Neck Cream').length, 0);
+  assert.equal(productNotes(cfg, null).length, 1);                        // Freeform: all of them
+});

@@ -36,6 +36,10 @@ const DEFAULTS = {
   market_watch: { countries: 'US', brands: [], max_brands: 10 },
   // A link to one creative in the Upspring app, with {id} where the creative id goes (set from one real link)
   upspring_link: '',
+  // What every brief for a product must remember (Tomer, 11 Nov 2026) — a strong default, not a rule for every single brief
+  product_notes: [
+    { product: 'Face Cream', note: 'The pain points men buy it for are eye bags, dark spots and wrinkles. Name them and show them — close-ups, the before/after moment, supers, the hook — in most Face Cream briefs. Not necessarily all three every time, and not in literally every brief, but it is crucial: a Face Cream brief that touches none of them needs a clear reason.' },
+  ],
   // Weekly Growth digest to the creative Slack channel (spec §9.3). Off until switched on.
   digest: { enabled: false, weekday: 1, hour: 9 },
   corpus: { requesters: ['Lilian Krumholz'], since: '2026-03-15', thin_chars: 60 },
@@ -148,7 +152,7 @@ async function getConfig(brandId = 'particle') {
   return merge(DEFAULTS, typeof saved === 'string' ? JSON.parse(saved) : saved);
 }
 
-const EDITABLE = ['upspring_link', 'market_watch', 'monday_submit', 'monday_groups', 'autopilot', 'digest', 'corpus', 'test_brands', 'lane_mix', 'caps', 'models', 'style_guide', 'upspring_snapshot', 'language_bank'];
+const EDITABLE = ['product_notes', 'upspring_link', 'market_watch', 'monday_submit', 'monday_groups', 'autopilot', 'digest', 'corpus', 'test_brands', 'lane_mix', 'caps', 'models', 'style_guide', 'upspring_snapshot', 'language_bank'];
 async function saveConfig(patch, brandId = 'particle') {
   const clean = Object.fromEntries(Object.entries(patch || {}).filter(([k]) => EDITABLE.includes(k)));
   if ('style_guide' in clean && String(clean.style_guide).length > 60000) throw Object.assign(new Error('The style guide is too long (60,000 characters at most)'), { status: 400 });
@@ -174,4 +178,13 @@ async function seed() {
   if (!rows[0].n) for (const [claim, because, change] of BELIEFS) await db.query('INSERT INTO medium_beliefs (claim, because, change_condition) VALUES ($1,$2,$3)', [claim, because, change]);
 }
 
-module.exports = { BOARDS, DEFAULTS, LANES, LANE_RULES, MOVES, PRODUCTS, TEMPLATES, DONORS, PERSONAS, AFFINITY, BELIEFS, getConfig, saveConfig, seed };
+/** The must-know for one product (exact name first, then a name that contains it); all of them when no product is known (pure). */
+function productNotes(cfg, product = null) {
+  const list = (cfg?.product_notes || []).filter(x => x?.product && x?.note);
+  if (!product) return list;
+  const f = (x) => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  const exact = list.filter(x => f(x.product) === f(product));
+  return exact.length ? exact : list.filter(x => f(product).includes(f(x.product)) && !/bundle|kit|set/i.test(product));
+}
+
+module.exports = { productNotes, BOARDS, DEFAULTS, LANES, LANE_RULES, MOVES, PRODUCTS, TEMPLATES, DONORS, PERSONAS, AFFINITY, BELIEFS, getConfig, saveConfig, seed };

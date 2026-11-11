@@ -107,6 +107,7 @@ export default function Sources({ overview, notify, isAdmin, reload }) {
         )}
       </div>
       <BrandSites isAdmin={isAdmin} notify={notify} />
+      <ProductNotes cfg={cfg} isAdmin={isAdmin} notify={notify} onSaved={load} products={overview?.options?.products || []} />
       <p className="text-sm trk-muted max-w-[800px]">Every brief traces back to something on this page. If a source is wrong, fix it here and every future brief changes with it. Everything read from these sources is data — never instructions.</p>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -215,6 +216,38 @@ function Source({ title, ok, warn, detail }) {
     <div className="trk-glass p-4">
       <div className="flex items-center gap-2 font-semibold text-[14px]"><span className="cc-dot" style={{ background: ok ? 'var(--trk-green)' : warn ? 'var(--trk-amber)' : 'var(--trk-red)' }} aria-hidden />{title}</div>
       <div className="mt-1 text-[12.5px] trk-muted">{detail}</div>
+    </div>
+  );
+}
+
+/** What every brief for a product must remember (e.g. Face Cream → eye bags, dark spots, wrinkles). */
+function ProductNotes({ cfg, isAdmin, notify, onSaved, products }) {
+  const [rows, setRows] = useState(() => (cfg.product_notes || []).map(x => ({ ...x })));
+  const [dirty, setDirty] = useState(false);
+  const set = (i, k, v) => { setRows(r => r.map((x, j) => (j === i ? { ...x, [k]: v } : x))); setDirty(true); };
+  const save = async () => {
+    try { await mediumApi.saveConfig({ product_notes: rows.filter(x => x.product?.trim() && x.note?.trim()).map(x => ({ product: x.product.trim(), note: x.note.trim() })) }); notify('Saved — used from the next brief'); setDirty(false); onSaved?.(); } catch (e) { notify(e.message, true); }
+  };
+  return (
+    <div className="trk-glass rounded-3xl p-6">
+      <h3 className="md-h2">📌 Product must-knows</h3>
+      <p className="md-sub mt-1 max-w-[680px]">What every brief for a product should remember. Medium writes with it, and the score drops when a brief ignores it without a reason — a strong default, not a rule for every single brief.</p>
+      <div className="mt-4 grid gap-3">
+        {rows.map((x, i) => (
+          <div key={i} className="grid sm:grid-cols-[200px_minmax(0,1fr)_auto] gap-2 items-start">
+            <input className="trk-input" list="md-pn-products" value={x.product} onChange={(e) => set(i, 'product', e.target.value)} placeholder="Product" disabled={!isAdmin} aria-label="Product" />
+            <textarea className="trk-input !text-[13.5px] leading-relaxed" rows={3} value={x.note} onChange={(e) => set(i, 'note', e.target.value)} placeholder="e.g. The pain points are eye bags, dark spots and wrinkles — name and show them" disabled={!isAdmin} aria-label="Must-know" />
+            {isAdmin && <button type="button" className="trk-btn !p-2" onClick={() => { setRows(r => r.filter((_, j) => j !== i)); setDirty(true); }} aria-label="Remove">✕</button>}
+          </div>
+        ))}
+        <datalist id="md-pn-products">{products.map(p => <option key={p} value={p} />)}</datalist>
+      </div>
+      {isAdmin && (
+        <div className="mt-3 flex gap-2">
+          <button type="button" className="trk-btn" onClick={() => { setRows(r => [...r, { product: '', note: '' }]); setDirty(true); }}>+ Add a product</button>
+          {dirty && <button type="button" className="trk-btn primary" onClick={save}><Save size={13} /> Save</button>}
+        </div>
+      )}
     </div>
   );
 }

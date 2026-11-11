@@ -9,7 +9,7 @@ Style, wording, capitalisation, numerals, an empty Hook field on a static, a mis
 STEP 2 — SUB-SCORES, 0–100 each, one short reason each:
 - hook_strength: the hook's archetype against what wins in this account and category; fact + consequence beats fact alone; would it stop a man 55–65 scrolling?
 - proof: is there a visible proof device this lane's winners use (B&A, live demo, expert, testimonial in the "Andy N. | 51" format)?
-- message_match: does the ad's promise match where it lands (product page, or the magazine article)? 50 if the destination is unknown.
+- message_match: does the ad's promise match where it lands (product page, or the magazine article)? 50 if the destination is unknown. If the brand block gives a PRODUCT MUST-KNOW for this product and the brief ignores it without a stated reason, score message_match and hook_strength lower and add a fix that brings it in (a "warn", never a "block").
 - maker_ready: could an editor or designer start today without asking a question — opening, timings, labelled copy, sizes, references, don'ts?
 - test_design: one variable, a decision rule, a sensible number of cells.
 - pattern_fit: does the angle sit on a winning or underused line of the account read below? -1 when there is no account read.
