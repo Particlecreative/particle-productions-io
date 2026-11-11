@@ -54,6 +54,7 @@ router.get('/overview', async (req, res) => {
       db.query("SELECT captain_worker FROM settings WHERE brand_id = 'particle'").then(r => r.rows[0]?.captain_worker || null).catch(() => null),
       db.query(`SELECT id, status, source, lane, product, format, move, ticket_name, score->>'total' AS score, preflight->>'verdict' AS preflight, created_at FROM medium_briefs ORDER BY created_at DESC LIMIT 8`),
     ]);
+    const articles = (await db.query(`SELECT id, lane, url, title, products, last_seen, opportunity FROM medium_articles ORDER BY opportunity, last_seen DESC NULLS LAST LIMIT 120`).catch(() => ({ rows: [] }))).rows;
     res.json({
       counts: counts.rows, beliefs: beliefs.rows, tests: tests.rows, donors: donors.rows, recent: recent.rows,
       sources: {
@@ -62,6 +63,7 @@ router.get('/overview', async (req, res) => {
       },
       language_bank: cfg.language_bank || [], holidays: calendar.upcoming(new Date(), 3),
       autopilot: { ...(cfg.autopilot || {}), last_run: cfg.state?.autopilot_at || null }, outcomes_at: cfg.state?.outcomes_at || null, monday_submit: !!cfg.monday_submit,
+      digest: { ...(cfg.digest || {}), last_run: cfg.state?.digest_at || null, webhook: !!process.env.SLACK_CREATIVE_WEBHOOK_URL }, articles,
       options: { lanes: LANE_NAMES, moves: MOVES, products: PRODUCTS, kinds: KINDS.map(k => ({ id: k, label: KIND_LABEL[k] })), lane_rules: LANE_RULES },
     });
   } catch (err) { errorJson(res, err); }
@@ -448,6 +450,29 @@ router.post('/holiday/:batch/derivatives', async (req, res) => {
 router.post('/autopilot/run', requireAdmin, async (req, res) => {
   try { res.json(await require('../lib/medium/autopilot').runAutopilot({ actor: `Medium autopilot (run by ${actorOf(req)})`, force: true })); } catch (err) { errorJson(res, err); }
 });
+router.get('/digest/preview', async (req, res) => {
+  try { const D = require('../lib/medium/digest'); res.json({ text: D.digestText(await D.weekNumbers()), webhook: !!process.env.SLACK_CREATIVE_WEBHOOK_URL }); } catch (err) { errorJson(res, err); }
+});
+router.post('/digest/send', requireAdmin, async (req, res) => {
+  try { res.json(await require('../lib/medium/digest').sendDigest()); } catch (err) { errorJson(res, err); }
+});
+
+// "Make a static version too" (spec §21.3): a FORMAT transfer of this brief, one axis only
+router.post('/briefs/:id/static-version', async (req, res) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) return res.status(404).json({ error: 'Not found' });
+    const b = (await db.query('SELECT * FROM medium_briefs WHERE id = $1', [req.params.id])).rows[0];
+    if (!b) return res.status(404).json({ error: 'Not found' });
+    if (b.format !== 'video') throw bad('This is already a static');
+    const request = { lane: b.lane, format: 'design', move: 'TRANSFER_FORMAT', product: b.product, source_format: 'video', author: actorOf(req),
+      source: `${b.ticket_name} — hook “${b.fields?.hook || ''}”. Why: ${b.fields?.why || ''}`.slice(0, 1000), article_url: b.request?.article_url || null, campaign: b.request?.campaign || null, offer: b.request?.offer || null, from_brief: b.id };
+    const { rows } = await db.query(`INSERT INTO medium_briefs (status, source, author, lane, product, format, move, request) VALUES ('QUEUED', 'generator', $1, $2, $3, 'design', 'TRANSFER_FORMAT', $4) RETURNING id`,
+      [actorOf(req), b.lane, b.product, JSON.stringify(request)]);
+    await enqueue('medium_generate', { brief_id: rows[0].id }, { dedupeKey: `medium_generate:${rows[0].id}`, priority: 8, maxAttempts: 1 });
+    res.json({ queued: 1, id: rows[0].id });
+  } catch (err) { errorJson(res, err); }
+});
+
 router.get('/scorecard', async (req, res) => {
   try {
     const { rows } = await db.query(

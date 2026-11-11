@@ -95,6 +95,12 @@ async function tick() {
     await stamp('autopilot_at');
     out.autopilot = await runAutopilot().catch(e => ({ error: e.message }));
   }
+  // the weekly Growth digest to Slack, when switched on
+  const dg = cfg.digest || {};
+  if (dg.enabled && now.weekday === Number(dg.weekday ?? 1) && now.hour >= Number(dg.hour ?? 9) && String(state.digest_at || '').slice(0, 10) !== now.date) {
+    await stamp('digest_at');
+    out.digest = await require('./digest').sendDigest().catch(e => ({ error: e.message }));
+  }
   return out;
 }
 

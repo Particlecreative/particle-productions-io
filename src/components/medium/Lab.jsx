@@ -42,6 +42,20 @@ export default function Lab({ overview, notify }) {
         </div>
       </div>
 
+      <div className="trk-glass p-5">
+        <div className="trk-label">Articles — where lane ads land</div>
+        <div className="text-[12px] trk-muted mt-0.5">Found in past SFY / GT / WAC tickets. A lane brief must point at one that exists; when the best idea needs one that doesn’t, Medium logs an Article Opportunity for the editorial owner.</div>
+        <div className="mt-3 grid md:grid-cols-2 gap-x-6 gap-y-1 text-[13px]">
+          {(overview?.articles || []).filter(a => !a.opportunity).slice(0, 24).map(a => (
+            <a key={a.url} href={a.url} target="_blank" rel="noopener noreferrer" className="flex gap-2 hover:underline underline-offset-2 min-w-0"><span className="trk-chip gray">{a.lane}</span><span className="truncate">{a.title || a.url}</span>{a.products?.length ? <span className="trk-dim truncate">· {a.products.slice(0, 2).join(', ')}</span> : null}</a>
+          ))}
+          {!(overview?.articles || []).some(a => !a.opportunity) && <div className="trk-dim">None found yet — they appear after the next corpus import.</div>}
+        </div>
+        {(overview?.articles || []).some(a => a.opportunity) && (
+          <div className="mt-3 text-[13px]"><div className="trk-label mb-1">Article opportunities</div>{overview.articles.filter(a => a.opportunity).map(a => <div key={a.url}><span className="trk-chip amber">{a.lane}</span> {a.title}</div>)}</div>
+        )}
+      </div>
+
       {sc?.rows?.length > 0 && (
         <div className="trk-glass p-5">
           <div className="trk-label">Scorecard — by lane, source and move</div>

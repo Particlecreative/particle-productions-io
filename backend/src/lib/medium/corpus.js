@@ -94,6 +94,14 @@ async function ingestCorpus({ actor = null } = {}) {
   await db.query(`UPDATE medium_templates t SET usage_count = x.n, last_used = x.last FROM (
       SELECT template, COUNT(*)::int AS n, MAX(monday_created) AS last FROM medium_exemplars WHERE NOT excluded AND template IS NOT NULL GROUP BY template) x
     WHERE x.template = t.name`);
+  // magazine articles the team already sends ads to (seed for medium_articles — a lane brief must point at one, §5.5)
+  const { rows: lanesRows } = await db.query(`SELECT lane, product, monday_created, coalesce(brief, '') || ' ' || coalesce(first_update, '') AS t FROM medium_exemplars WHERE NOT excluded AND lane <> 'Particle'`);
+  for (const a of articlesFrom(lanesRows)) {
+    await db.query(
+      `INSERT INTO medium_articles (lane, url, title, products, last_seen) VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (url) DO UPDATE SET products = (SELECT ARRAY(SELECT DISTINCT unnest(medium_articles.products || EXCLUDED.products))), last_seen = GREATEST(medium_articles.last_seen, EXCLUDED.last_seen)`,
+      [a.lane, a.url, a.title, a.products, a.last_seen]);
+  }
   // donors: the brand name as written (case-sensitive), so the ingredient "Coffee Seed Extract" is not the brand Seed
   const { rows: donors } = await db.query('SELECT id, brand FROM medium_donors');
   const { rows: texts } = await db.query(`SELECT coalesce(name, '') || ' ' || coalesce(brief, '') || ' ' || coalesce(first_update, '') || ' ' || coalesce(script, '') AS t FROM medium_exemplars WHERE NOT excluded`);
@@ -148,4 +156,26 @@ async function similar(text, { limit = 5, format = null } = {}) {
 }
 const STOP = new Set(['this', 'that', 'with', 'from', 'your', 'have', 'will', 'they', 'them', 'what', 'when', 'into', 'just', 'like', 'make', 'more', 'about', 'their', 'there', 'video', 'static', 'please', 'particle']);
 
-module.exports = { ingestCorpus, corpusStats, pickExemplars, similar, toRow, donorPattern };
+/**
+ * Article URLs in lane tickets ("Page: https://wearecolognes.com/…", "Ad leads to: …") → one row per article, with the
+ * products it was used for and when it was last briefed. Pure — tested.
+ */
+const ARTICLE_DOMAINS = { 'scienceforyou.co': 'SFY', 'gentlemantoday.co': 'GT', 'wearecolognes.com': 'WAC' };
+function articlesFrom(rows) {
+  const out = new Map();
+  for (const r of rows || []) {
+    for (const m of String(r.t || '').matchAll(/https?:\/\/(?:www\.)?((?:scienceforyou\.co|gentlemantoday\.co|wearecolognes\.com)[^\s)"'<>]*)/gi)) {
+      const url = `https://${m[1].replace(/[.,;:!?]+$/, '').replace(/\/$/, '')}`;
+      const domain = Object.keys(ARTICLE_DOMAINS).find(d => url.includes(d));
+      const slug = url.split('/').filter(Boolean).pop() || '';
+      const title = slug && !slug.includes('.') ? slug.split('?')[0].replace(/[-_]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : null;
+      const a = out.get(url) || { lane: ARTICLE_DOMAINS[domain], url, title, products: [], last_seen: null };
+      if (r.product && !a.products.includes(r.product)) a.products.push(r.product);
+      if (r.monday_created && (!a.last_seen || new Date(r.monday_created) > new Date(a.last_seen))) a.last_seen = r.monday_created;
+      out.set(url, a);
+    }
+  }
+  return [...out.values()];
+}
+
+module.exports = { ingestCorpus, corpusStats, pickExemplars, similar, toRow, donorPattern, articlesFrom };

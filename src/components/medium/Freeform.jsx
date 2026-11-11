@@ -59,7 +59,7 @@ export default function Freeform({ overview, notify, onOpen, onQueued }) {
             </div>
           ))}
           {refs.length < 8 && <button type="button" className="trk-btn !py-1.5 justify-self-start" onClick={() => setRefs([...refs, ''])}><Plus size={13} /> Add a reference</button>}
-          <p className="text-[12px] trk-dim">Monday tickets and web pages are read. Upspring links are kept as references until Upspring is connected on the server. Images come later.</p>
+          <p className="text-[12px] trk-dim">Monday tickets, web pages and image links (mood boards, screenshots) are read. Upspring links are kept as references until Upspring is connected on the server.</p>
         </div>
         <div className="grid sm:grid-cols-3 gap-3">
           <label className="grid gap-1"><span className="trk-label">Lane</span>

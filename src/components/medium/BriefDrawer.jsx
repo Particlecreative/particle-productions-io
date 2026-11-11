@@ -41,6 +41,7 @@ export default function BriefDrawer({ id, onClose, notify, onChanged, isAdmin })
   const useVersion = (v) => act('version', () => mediumApi.edit(b.id, { version: v }), v === 'mine' ? 'Your version is now the brief' : v === 'improved' ? 'The improved version is now the brief' : 'Medium’s version is now the brief').then(() => setTab('medium'));
   const improve = () => act('improve', () => mediumApi.improve(b.id), 'Improving — applying the fixes, then scoring and checking again (about a minute)').then(r => { if (r) setImproving(Number(b.versions?.improved?.round || 0) + 1); });
   const submit = () => act('submit', () => mediumApi.submit(b.id), (r) => r.monday);
+  const staticVersion = () => act('static', () => mediumApi.staticVersion(b.id), 'A static version is being written (a format transfer) — it appears in the queue');
 
   const VERSION_LABEL = { medium: b?.source === 'freeform' ? 'Medium’s version' : 'Current', mine: 'Your idea, as written', improved: `Improved${b?.versions?.improved?.round > 1 ? ` (round ${b.versions.improved.round})` : ''}` };
   const view = b?.versions && tab !== 'medium' && b.versions[tab] ? { ...b, ...b.versions[tab], score: b.versions[tab].score, preflight: b.versions[tab].preflight } : b;
@@ -93,6 +94,7 @@ export default function BriefDrawer({ id, onClose, notify, onChanged, isAdmin })
               {view.score && <ScorePanel s={view.score} onImprove={tab === 'medium' && b.status === 'PENDING_REVIEW' && !improving && (b.versions?.improved ? b.versions.improved.round < 3 && b.versions.improved.gain >= 3 : true) ? improve : null} busy={busy === 'improve'} />}
               {b.evidence?.transfer && <TransferPanel t={b.evidence.transfer} />}
               {b.status === 'APPROVED' && <div className="trk-section flex flex-wrap items-center gap-2"><button type="button" className="trk-btn primary" disabled={!!busy} onClick={submit}>{busy === 'submit' ? <Loader2 size={13} className="animate-spin" /> : <ExternalLink size={13} />} Create on Monday</button><span className="text-[12px] trk-dim">Creates the ticket in “Form Requests” with CP’s token (only when Monday submission is switched on).</span></div>}
+              {b.format === 'video' && ['PENDING_REVIEW', 'APPROVED', 'SUBMITTED'].includes(b.status) && !edit && <div className="trk-section flex flex-wrap items-center gap-2"><button type="button" className="trk-btn" disabled={!!busy} onClick={staticVersion}>{busy === 'static' ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />} Make a static version too</button><span className="text-[12px] trk-dim">A format transfer of this concept — same idea, built as a static set (about 10¢).</span></div>}
               {b.status === 'SUBMITTED' && b.monday_item_id && <div className="trk-section"><a className="trk-btn" href={`https://particle-for-men.monday.com/boards/${b.format === 'design' ? '8036329818' : '5433027071'}/pulses/${b.monday_item_id}`} target="_blank" rel="noopener noreferrer"><ExternalLink size={13} /> Open the Monday ticket</a></div>}
               {view.preflight && <PreflightPanel p={view.preflight} />}
 

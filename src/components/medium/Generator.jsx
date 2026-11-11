@@ -91,7 +91,9 @@ export default function Generator({ overview, notify, onOpen, onQueued }) {
         )}
         {magazine && (
           <label className="grid gap-1"><span className="trk-label">Destination article</span>
-            <input className="trk-input" value={f.article_url} onChange={set('article_url')} placeholder="https://… (the ad must point at an article that exists)" />
+            <input className="trk-input" list="md-articles" value={f.article_url} onChange={set('article_url')} placeholder="https://… (the ad must point at an article that exists)" />
+            <datalist id="md-articles">{(overview?.articles || []).filter(a => a.lane === f.lane && !a.opportunity).map(a => <option key={a.url} value={a.url}>{a.title || a.url}</option>)}</datalist>
+            <span className="text-[12px] trk-dim">{(overview?.articles || []).filter(a => a.lane === f.lane && !a.opportunity).length} {f.lane} articles known from past tickets. No article yet? Medium logs an Article Opportunity for the editor.</span>
           </label>
         )}
         <label className="grid gap-1"><span className="trk-label">Note to Medium (optional)</span>

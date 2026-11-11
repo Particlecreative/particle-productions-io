@@ -70,6 +70,13 @@ export function fixtureCall(path, { method = 'GET', body } = {}) {
       tests: [], donors: [{ brand: 'Kizik', takes: 'live demo with timer', usage_count: 14 }, { brand: 'Hello Klean', takes: 'CGI product demo; split-screen testimonial relay', usage_count: 9 }, { brand: 'Saltair', takes: 'search-result format', usage_count: 6 }],
       recent: briefs.map(summary),
       sources: { afterlife: { connected: false, reason: "AFTERLIFE's winners endpoint isn't live yet" }, upspring: { connected: false, snapshot: false }, corpus: { used: 1298, total: 1357, at: ago(60) }, monday: { submit: false }, worker: { alive: true } },
+      articles: [
+        { id: 1, lane: 'SFY', url: 'https://scienceforyou.co/neck-skin-thinnest', title: 'Why neck skin ages first', products: ['Neck Cream'], opportunity: false },
+        { id: 2, lane: 'GT', url: 'https://gentlemantoday.co/best-anti-aging-creams-men', title: 'The 7 best anti-aging creams for men', products: ['Face Cream'], opportunity: false },
+        { id: 3, lane: 'WAC', url: 'https://wearecolognes.com/top-colognes-2026', title: 'Top colognes of 2026', products: [], opportunity: false },
+        { id: 4, lane: 'SFY', url: 'opportunity:sfy-hand-skin', title: 'Why hands give your age away', products: ['Hand Cream'], opportunity: true },
+      ],
+      digest: { enabled: false, weekday: 1, hour: 9, webhook: true },
       language_bank: ['Barber asked if I dyed my hair.', 'My wife said I look younger.', 'No mess on the pillowcase.'],
       holidays: [{ name: 'Black Friday 2026', date: '2026-11-27', brief_by: '2026-11-06', days_to_brief_by: -5 }, { name: 'Christmas 2026', date: '2026-12-25', brief_by: '2026-12-04', days_to_brief_by: 23 }, { name: "Valentine's Day 2027", date: '2027-02-14', brief_by: '2027-01-24', days_to_brief_by: 74 }],
       options: { lanes: ['Particle', 'SFY', 'GT', 'WAC'], moves: MOVES, products: ['Face Cream', 'Neck Cream', 'Hand Cream', 'Instant Eye Firming Cream', 'Gravité', 'Shaving Gel', 'NeoRoot'], kinds: KINDS.map(([id, label]) => ({ id, label })) },
@@ -130,6 +137,9 @@ export function fixtureCall(path, { method = 'GET', body } = {}) {
   }
   if (p === '/holiday/campaigns') return { campaigns: [{ batch_id: 'c0ffee00-0000-4000-8000-000000000001', holiday: 'Christmas 2026', briefs: 3, writing: 0, waiting: 2, approved: 1 }] };
   if (p.startsWith('/holiday/') && method === 'GET') return { briefs: briefs.slice(0, 3).map(b => ({ ...summary(b), source: 'holiday' })) };
+  if (p === '/digest/preview') return { text: '*🔮 Medium — the week* (9 briefs written · 4 approved · 2 on Monday · 1 rejected)\n*Tests decided:* 1 won, 0 failed — winners: Neck Cream carries the thinnest-skin hook\n*Next holiday:* Christmas 2026 — briefs due in 23 days (2026-12-04)\nAI cost this week: $1.12' };
+  if (p === '/digest/send') return { sent: true };
+  if (/^\/briefs\/\d+\/static-version$/.test(p)) return { id: 999, queued: true };
   if (p === '/scorecard') return { rows: [{ lane: 'Particle', source: 'generator', move: 'TRANSFER_PRODUCT', briefs: 3, approved: 1, rejected: 0, shipped: 0, edited: 1, avg_score: 78, cost: 0.31 }], tests: [] };
   return {};
 }

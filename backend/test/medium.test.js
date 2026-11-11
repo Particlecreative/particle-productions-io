@@ -260,3 +260,39 @@ test('improve loop: up to 3 rounds, stops when a round gains under 3 points', ()
   assert.equal(canImprove({ ...b, versions: { improved: { round: 3, gain: 9 } } }), false);
   assert.equal(canImprove({ ...b, score: { fixes: [] } }), false);
 });
+
+test('articles: magazine links in lane tickets become the article list', () => {
+  const { articlesFrom } = require('../src/lib/medium/corpus');
+  const out = articlesFrom([
+    { lane: 'WAC', product: 'Gravité', monday_created: '2026-10-01', t: 'Page: https://wearecolognes.com/most-colognes-die-in-the-cold.\nHeadline V1…' },
+    { lane: 'WAC', product: 'Varros', monday_created: '2026-11-01', t: 'Page: https://www.wearecolognes.com/most-colognes-die-in-the-cold/' },
+    { lane: 'SFY', product: 'Face Cream', monday_created: '2026-09-01', t: 'Ad leads to: https://scienceforyou.co/understand-the-why (see ref)' },
+    { lane: 'SFY', product: 'Face Cream', t: 'no link here' },
+  ]);
+  assert.equal(out.length, 2);
+  const wac = out.find(a => a.lane === 'WAC');
+  assert.equal(wac.url, 'https://wearecolognes.com/most-colognes-die-in-the-cold');
+  assert.equal(wac.title, 'Most Colognes Die In The Cold');
+  assert.deepEqual(wac.products, ['Gravité', 'Varros']);
+  assert.equal(wac.last_seen, '2026-11-01');
+});
+
+test('digestText: headline counts, decided tests, next holiday and cost', () => {
+  const { digestText } = require('../src/lib/medium/digest');
+  const t = digestText({
+    briefs: { written: 9, approved: 4, submitted: 2, rejected: 1 },
+    tests: [{ status: 'won', hypothesis: 'Neck carries thinnest-skin' }, { status: 'failed', hypothesis: 'x' }],
+    edges: [{ source: 'Face Cream', target: 'Neck Cream', score: 0.71, won: 2, tested: 3 }],
+    opportunities: [{ lane: 'SFY', title: 'Why hands give your age away' }],
+    holiday: { name: 'Christmas 2026', brief_by: '2026-12-04', days_to_brief_by: 23 },
+    cost: 1.123, link: 'https://example.test/medium',
+  });
+  assert.match(t, /9 briefs written · 4 approved · 2 on Monday · 1 rejected/);
+  assert.match(t, /1 won, 1 failed — winners: Neck carries thinnest-skin/);
+  assert.match(t, /Face Cream → Neck Cream 0\.71 \(2\/3\)/);
+  assert.match(t, /SFY: Why hands give your age away/);
+  assert.match(t, /Christmas 2026 — briefs due in 23 days/);
+  assert.match(t, /\$1\.12 · <https:\/\/example\.test\/medium\|Open Medium>/);
+  const empty = digestText({});
+  assert.equal(empty.split('\n').length, 2);
+});
