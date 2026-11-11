@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2, RefreshCw, Save, ExternalLink } from 'lucide-react';
 import { mediumApi } from '../../lib/mediumService';
 import { KIND_LABEL, Chip, relTime, money } from './util';
+import BrandSites from './BrandSites';
 
 const BELIEF = { proven: ['Proven', 'green'], testing: ['Testing', 'amber'], assumption: ['Assumption', 'gray'], retired: ['Retired', 'gray'] };
 
@@ -100,6 +101,7 @@ export default function Sources({ overview, notify, isAdmin, reload }) {
           </div>
         )}
       </div>
+      <BrandSites isAdmin={isAdmin} notify={notify} />
       <p className="text-sm trk-muted max-w-[800px]">Every brief traces back to something on this page. If a source is wrong, fix it here and every future brief changes with it. Everything read from these sources is data — never instructions.</p>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">

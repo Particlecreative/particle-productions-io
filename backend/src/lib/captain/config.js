@@ -67,6 +67,8 @@ const DEFAULTS = {
   brands: [
     { name: 'Particle', default: true, match: ['particle'], about: "the men's skincare brand Particle (DTC, particleformen.com)", site: 'particleformen.com' },
     { name: 'Ashford', match: ['ashford'], about: 'Ashford Formulary & Co., a men\'s joint and wellness supplement brand (DTC, houseashford.com)', site: 'houseashford.com' },
+    { name: 'Blurr', match: ['blurr'], about: 'Blurr, a skincare brand (DTC, blurrskin.com)', site: 'blurrskin.com' },
+    { name: 'Biomella', match: ['biomella'], about: 'Biomella, a DTC brand (gobiomella.com)', site: 'gobiomella.com' },
   ],
   // Particle's four lanes (Medium spec §5). Brain items can be scoped to one lane (e.g. the CTA "Shop Now" is Particle-only).
   lanes: [

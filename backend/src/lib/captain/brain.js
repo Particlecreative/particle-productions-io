@@ -38,8 +38,11 @@ async function loadBrain({ discipline, product = null, campaign = null, departme
   );
   const items = rows.filter(r => matchesScope(r.scope, { product, campaign, department, brand, lane }));
   const of = (t) => items.filter(i => i.type === t);
+  // the brand's website (products, prices, promises, ingredients, reviews) — an add-on, empty until the site is read
+  const site = brand ? await require('./site').brainBlock({ brand, product }).catch(() => '') : '';
   return {
     items,
+    site,
     terms: of('term'),
     doNotFlag: of('do_not_flag'),
     rules: [...of('rule'), ...of('learned')],
@@ -65,7 +68,7 @@ async function loadFacts({ brand = null, lane = null } = {}) {
 /** Changes whenever the Brain changes — part of the brief cache key, so an edited rule is used straight away. */
 async function brainStamp() {
   const { rows } = await db.query(`SELECT COUNT(*)::int AS n, COALESCE(MAX(updated_at), 'epoch') AS at FROM captain_brain`);
-  return `${rows[0].n}:${new Date(rows[0].at).toISOString()}`;
+  return `${rows[0].n}:${new Date(rows[0].at).toISOString()}:${await require('./site').stamp()}`;
 }
 
 function brainText(brain) {
@@ -79,6 +82,7 @@ function brainText(brain) {
     lines.push('Never report these (intentional):');
     for (const d of brain.doNotFlag) lines.push(`- ${d.title}${d.content ? ` — ${d.content}` : ''}`);
   }
+  if (brain.site) lines.push(brain.site);
   return lines.join('\n') || '(no Brain items yet)';
 }
 

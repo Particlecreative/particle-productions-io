@@ -271,6 +271,21 @@ router.post('/upspring/refresh', requireAdmin, async (req, res) => {
   } catch (err) { errorJson(res, err); }
 });
 
+// ── Brand websites → the Brain (shared with Captain Caption) ─────────────────
+router.get('/brand-sites', async (req, res) => {
+  try { res.json({ sites: await require('../lib/captain/site').status() }); } catch (err) { errorJson(res, err); }
+});
+router.post('/brand-sites/:brand/read', requireAdmin, async (req, res) => {
+  try {
+    const brand = String(req.params.brand).slice(0, 60);
+    const jobId = await enqueue('brand_site_read', { brand }, { dedupeKey: `brand_site_read:${brand}`, priority: 4, maxAttempts: 1 });
+    res.json({ queued: !!jobId, already_queued: !jobId });
+  } catch (err) { errorJson(res, err); }
+});
+router.put('/brand-sites/:brand', requireAdmin, async (req, res) => {
+  try { res.json(await require('../lib/captain/site').setUrl(String(req.params.brand).slice(0, 60), String(req.body?.url || ''))); } catch (err) { errorJson(res, bad('Type the website, e.g. www.brand.com')); }
+});
+
 // ── Mass production: plain words → a plan → many briefs ──────────────────────
 router.post('/mass/plan', async (req, res) => {
   try {

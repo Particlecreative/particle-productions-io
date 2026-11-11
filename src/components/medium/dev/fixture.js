@@ -168,6 +168,13 @@ export function fixtureCall(path, { method = 'GET', body } = {}) {
     norms: { hook_archetype: [{ id: 'demo', label: 'Demo / proof-first', all: 3.5, winners: 5.2, lift: 1.7 }, { id: 'pattern_interrupt', label: 'Pattern interrupt', all: 3.5, winners: 5.2, lift: 1.7 }, { id: 'question', label: 'Question', all: 9.2, winners: 7.5, lift: -1.7 }, { id: 'myth_correction', label: 'Myth correction', all: 11, winners: 8.8, lift: -2.2 }], persona: [] },
   } };
   if (p === '/market/refresh') return { queued: true };
+  if (p === '/brand-sites') return { sites: [
+    { brand: 'Ashford', url: 'https://www.houseashford.com', status: 'partial', products: 2, read_at: ago(60 * 5), error: 'The site limited reading after 2 of 4 product pages — the rest next time' },
+    { brand: 'Biomella', url: 'https://www.gobiomella.com', status: null, products: null, read_at: null },
+    { brand: 'Blurr', url: 'https://www.blurrskin.com', status: 'reading', products: null, read_at: null },
+    { brand: 'Particle', url: 'https://www.particleformen.com', status: 'ok', products: 68, read_at: ago(60 * 3) },
+  ] };
+  if (/^\/brand-sites\//.test(p)) return { queued: true };
   if (p === '/upspring') return { account: { connected: false, last_error: null }, ranks: { as_of: null, creatives: 0, winners: 0 } };
   if (p === '/upspring/connect') return { url: '#upspring-sign-in' };
   if (p === '/mass/plan') return { summary: 'A Black Friday batch for Neck Cream: 20 statics split between SFY listicles and direct, plus 6 videos testing the mirror hook.', question: '', capped: false, total: 26, est_cost: 3.9, groups: [

@@ -482,3 +482,33 @@ test('auto-improve: when it runs, when a round is kept, and Captain notes are we
   assert.doesNotMatch(block, /\bnote \(n\)/);
   assert.match(block, /Keep the concept, the structure, the length/);
 });
+
+test('brand websites: sitemaps, product pages, schema.org data, page text and the Brain block', () => {
+  const W = require('../src/lib/captain/site');
+  assert.deepEqual(W.locs('<urlset><url><loc>https://a.com/product/x/</loc></url><url><loc> https://a.com/products/y?from=1&amp;to=2 </loc></url></urlset>'), ['https://a.com/product/x/', 'https://a.com/products/y?from=1&to=2']);
+  assert.deepEqual(W.productUrls(['https://www.a.com/product/face-cream/', 'https://a.com/product/face-cream', 'https://a.com/product/face-cream-subscription/', 'https://a.com/blog/x', 'https://b.com/products/z', 'https://a.com/products/gift-card'], 'a.com'),
+    ['https://www.a.com/product/face-cream/']);
+  const html = `<html><head><script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebPage"},{"@type":"Product","name":"Particle Neck Cream","description":"Firms &amp; lifts","offers":{"@type":"Offer","price":"59","priceCurrency":"USD"},"aggregateRating":{"@type":"AggregateRating","ratingValue":4.81,"reviewCount":1041}}]}</script></head>
+    <body><nav>Menu Face Hair</nav><header>Cart</header><h1>Particle Neck Cream</h1><p>Visibly tightens neck skin</p><script>var x=1</script><footer>© 2026</footer></body></html>`;
+  assert.deepEqual(W.productFromJsonLd(html), { name: 'Particle Neck Cream', price: 59, price_high: null, currency: 'USD', rating: 4.81, reviews: 1041, description: 'Firms & lifts' });
+  const t = W.mainText(html);
+  assert.match(t, /^Particle Neck Cream\nVisibly tightens neck skin/);
+  assert.doesNotMatch(t, /Menu|Cart|var x|2026/);
+  assert.equal(W.productFromJsonLd('<html></html>'), null);
+  const brandRow = { brand: 'Particle', read_at: '2026-11-11T10:00:00Z', data: { tagline: 'Aesthetic science for men', promises: ['30-day money-back guarantee'], guarantee: '30 days', shipping: 'Free US shipping', social_proof: ['Used by over 1 million men'] } };
+  const products = [
+    { data: { name: 'Particle Face Cream', price: 69, currency: 'USD', rating: 4.81, reviews: 9027, promise: 'Fixes eye bags, dark spots and wrinkles', claims: ['6-in-1'], ingredients: ['Retinol — smooths lines'] } },
+    { data: { name: 'Particle Neck Cream', price: 59, currency: 'USD', rating: 4.81, reviews: 1041, promise: 'Firms and lifts the neck', claims: ['Visibly tightens neck skin'], ingredients: ['Collagen', 'Hyaluronic acid'], how_to_use: 'Twice a day', offers: '4 units $45 each' } },
+  ];
+  const all = W.siteBlock(brandRow, products);
+  assert.match(all, /FROM THE PARTICLE WEBSITE \(public, read 2026-11-11\)/);
+  assert.match(all, /approved claims and price list win over it/);
+  assert.match(all, /• Particle Face Cream \$69 · 4\.81★ \(9,027\) — Fixes eye bags/);
+  assert.doesNotMatch(all, /Key ingredients/);
+  const one = W.siteBlock(brandRow, products, { product: 'Neck Cream' });
+  assert.match(one, /This product:\n• Particle Neck Cream — \$59 · 4\.81★ from 1,041 reviews/);
+  assert.match(one, /Key ingredients: Collagen, Hyaluronic acid/);
+  assert.match(one, /Offers on the page: 4 units \$45 each/);
+  assert.match(one, /Other products:\n• Particle Face Cream/);
+  assert.equal(W.siteBlock(null, []), '');
+});
