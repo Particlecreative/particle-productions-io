@@ -43,7 +43,7 @@ export default function BriefDrawer({ id, onClose, notify, onChanged, isAdmin, m
   const submit = () => act('submit', () => mediumApi.submit(b.id), (r) => r.monday);
   const staticVersion = () => act('static', () => mediumApi.staticVersion(b.id), 'A static version is being written — it will show up in your briefs');
 
-  const VERSION_LABEL = { medium: b?.source === 'freeform' ? 'Medium’s version' : 'Current', mine: 'Your idea, as you wrote it', improved: `Improved${b?.versions?.improved?.round > 1 ? ` (round ${b.versions.improved.round})` : ''}` };
+  const VERSION_LABEL = { medium: b?.source === 'freeform' ? 'Medium’s version' : 'Current', first: 'First draft', mine: 'Your idea, as you wrote it', improved: `Improved${b?.versions?.improved?.round > 1 ? ` (round ${b.versions.improved.round})` : ''}` };
   const view = b?.versions && tab !== 'medium' && b.versions[tab] ? { ...b, ...b.versions[tab], score: b.versions[tab].score, preflight: b.versions[tab].preflight } : b;
   const f = view?.fields || {};
   const locked = b && (Number(b.preflight?.must_fix) > 0 || ['blocked', 'below_bar'].includes(b.score?.band) || !b.preflight || b.preflight?.verdict === 'error');
@@ -85,6 +85,8 @@ export default function BriefDrawer({ id, onClose, notify, onChanged, isAdmin, m
                 </div>
               )}
               {['QUEUED', 'WRITING'].includes(b.status) && <div className="md-verdict amber mt-5"><span className="md-emoji" aria-hidden>✍️</span><div><div className="font-semibold">Writing…</div><div className="text-[13.5px] trk-muted mt-0.5">Medium is writing it, checking the house style, scoring it and sending it past Captain Caption — about a minute.</div></div></div>}
+              {(() => { const ar = b.evidence?.auto_improve || []; const kept = ar.filter(x => x.kept); if (!ar.length) return null; const from = ar[0].from, to = kept.length ? kept[kept.length - 1].to : null;
+                return <p className="mt-3 text-[13.5px] trk-muted">✨ {kept.length ? <>Medium improved this itself before you saw it{from != null && to != null ? <>: <b style={{ color: 'var(--trk-text)' }}>{from} → {to}</b></> : ''}{kept.length > 1 ? ` in ${kept.length} rounds` : ''}{ar.some(x => x.must_fix_from > x.must_fix_to && x.kept) ? ', fixing Captain’s notes' : ''}. The first draft is in its own tab.</> : 'Medium tried to improve it, but the first draft stayed stronger.'}</p>; })()}
               {b.review_reason && <p className="mt-3 text-[13.5px] trk-muted">{b.status === 'REJECTED' ? 'Rejected' : 'Note'} by {b.reviewer}: {b.review_reason}</p>}
 
               {b.versions && (

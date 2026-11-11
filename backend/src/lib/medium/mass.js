@@ -9,7 +9,7 @@ const { enqueue } = require('../captain/queue');
 const { LANES, MOVES, PRODUCTS } = require('./config');
 const { KINDS } = require('./classify');
 
-const MAX_TOTAL = 40, MAX_GROUP = 12, COST_EACH = 0.1;
+const MAX_TOTAL = 40, MAX_GROUP = 12, COST_EACH = 0.15;   // ~10¢ to write + ~5¢ average for automatic improvement
 const LANE_NAMES = LANES.map(l => l.name);
 const PLAN_MOVES = Object.keys(MOVES).filter(m => m !== 'HEADLINE_HOOK');
 const S = { type: 'string' };

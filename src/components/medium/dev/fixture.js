@@ -170,7 +170,7 @@ export function fixtureCall(path, { method = 'GET', body } = {}) {
   if (p === '/market/refresh') return { queued: true };
   if (p === '/upspring') return { account: { connected: false, last_error: null }, ranks: { as_of: null, creatives: 0, winners: 0 } };
   if (p === '/upspring/connect') return { url: '#upspring-sign-in' };
-  if (p === '/mass/plan') return { summary: 'A Black Friday batch for Neck Cream: 20 statics split between SFY listicles and direct, plus 6 videos testing the mirror hook.', question: '', capped: false, total: 26, est_cost: 2.6, groups: [
+  if (p === '/mass/plan') return { summary: 'A Black Friday batch for Neck Cream: 20 statics split between SFY listicles and direct, plus 6 videos testing the mirror hook.', question: '', capped: false, total: 26, est_cost: 3.9, groups: [
     { lane: 'SFY', product: 'Neck Cream', format: 'design', move: 'NEW_ANGLE', count: 10, angle: 'Listicle-style statics leading to the SFY neck article', note: 'Code BF30, 30% off, ends Nov 30', campaign: 'Black Friday 2026' },
     { lane: 'Particle', product: 'Neck Cream', format: 'design', move: 'NEW_ANGLE', count: 10, angle: 'Direct statics with the offer up front', note: 'Code BF30, 30% off, ends Nov 30', campaign: 'Black Friday 2026' },
     { lane: 'Particle', product: 'Neck Cream', format: 'video', move: 'ITERATE', count: 6, angle: 'Test new openings on the mirror hook', note: '', campaign: 'Black Friday 2026' },

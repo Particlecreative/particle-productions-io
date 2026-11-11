@@ -114,7 +114,7 @@ export default function Generator({ overview, notify, onOpen, onQueued }) {
             </label>
           )}
           <label className="grid gap-1 mt-4"><span className="md-doc-label">Anything Medium should know? (optional)</span>
-            <textarea className="trk-input" rows={2} value={f.note} onChange={set('note')} placeholder="e.g. Lean on wedding season; keep it under 30 seconds" />
+            <textarea className="trk-input" rows={2} value={f.note} onChange={set('note')} placeholder="e.g. Lean on wedding season; a 60-second testimonial cut" />
           </label>
           <button type="button" className="mt-3 text-[13px] trk-muted flex items-center gap-1 hover:underline" onClick={() => setMore(!more)} aria-expanded={more}><ChevronDown size={14} style={{ transform: more ? 'rotate(180deg)' : 'none' }} /> Template, campaign, sale code</button>
           {more && (
@@ -135,7 +135,7 @@ export default function Generator({ overview, notify, onOpen, onQueued }) {
 
         <div className="flex flex-wrap items-center gap-3">
           <button type="submit" className="trk-btn primary !px-5 !py-2.5 !text-[14px]" disabled={busy || !f.product.trim()}>{busy ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />} Write {f.count} brief{f.count === 1 ? '' : 's'}</button>
-          <span className="md-sub">About a minute and 5–10¢ each. Each one is written in the team’s style, checked by Captain Caption, and waits for you.</span>
+          <span className="md-sub">About a minute and 5–25¢ each. Each one is written in the team’s style and checked by Captain Caption — if it scores under 75, Medium improves it before it reaches you.</span>
         </div>
       </form>
 

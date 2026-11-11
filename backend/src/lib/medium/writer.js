@@ -323,12 +323,80 @@ async function runGenerate({ brief_id }) {
     cost += s.cost;
     const pf = await preflight(row, w.out);
     cost += pf.cost;
-    await setRow(row.id, { ...base, score: s.score, preflight: pf, status: 'PENDING_REVIEW', error: null, cost_usd: cost });
-    return { ok: true, score: s.score.total, preflight: pf.verdict };
+    // under the bar or Captain must-fix → Medium improves it first (the row stays "Writing…" meanwhile)
+    const first = { out: w.out, style: w.style, score: s.score, pf };
+    const a = await autoImprove(ctx, req, cfg, first, meta, row);
+    cost += a.cost;
+    const c = a.cur;
+    const final = a.improved
+      ? { kind: c.out.kind || base.kind, ticket_name: c.out.ticket_name, fields: c.out.fields, lines: c.out.lines, style: c.style, versions: { first: snapshot(first) } }
+      : {};
+    await setRow(row.id, { ...base, ...final, evidence: { ...base.evidence, ...(a.improved ? { items: c.out.evidence } : {}), ...(a.rounds.length ? { auto_improve: a.rounds } : {}) },
+      score: c.score, preflight: c.pf, status: 'PENDING_REVIEW', error: null, cost_usd: cost });
+    return { ok: true, score: c.score.total, preflight: c.pf.verdict, auto_rounds: a.rounds.length };
   } catch (e) {
     await setRow(row.id, { status: 'ERROR', error: String(e.message).slice(0, 1000), cost_usd: cost });
     return { error: e.message };
   }
+}
+
+// ── Automatic improvement (Tomer, 11 Nov 2026): under 75, a brand-rule block, or Captain must-fix items → Medium
+//    improves it itself, up to 2 rounds, before anyone reviews it. Captain's notes are weighed, not applied 1:1. ──
+const AUTO_BAR = 75, AUTO_ROUNDS = 2;
+const mustFixOf = (pf) => Number(pf?.must_fix || 0);
+
+/** Should Medium improve it before anyone sees it? (pure — tested) */
+function needsAutoFix(sc, pf) {
+  return sc?.band === 'blocked' || (sc?.total != null && sc.total < AUTO_BAR) || mustFixOf(pf) > 0;
+}
+
+/** Is the new version really better? (pure — tested) A clearly higher score, out of a block, or fewer must-fix items without losing ground. */
+function isBetter(next, cur) {
+  if (!next?.style?.passed) return false;
+  const was = cur.score?.band === 'blocked', now = next.score?.band === 'blocked';
+  if (was !== now) return was;
+  const a = cur.score?.total ?? -1, b = next.score?.total ?? -1;
+  return b >= a + 2 || (mustFixOf(next.pf) < mustFixOf(cur.pf) && b >= a - 3);
+}
+
+/** What to improve: the brand-rule problems, the panel's ideas, Captain's notes weighed with judgement — the concept kept. */
+function improveBlock(current, sc, pf) {
+  const blocks = (sc?.guardrails?.violations || []).map(v => (typeof v === 'string' ? { text: v, severity: 'block' } : v)).filter(v => v.severity !== 'warn').map(v => `- ${v.text}`);
+  const fixes = (sc?.fixes || []).map(f => `- ${f.fix} (+${Math.round(Number(f.gain) || 0)} · ${f.evidence})`);
+  const notes = (pf?.issues || []).filter(i => i.severity !== 'info').slice(0, 12).map(i => `- [${i.severity === 'must_fix' ? 'important' : 'consider'}] ${i.found}${i.fix ? ` → ${i.fix}` : ''} (${i.rule})`);
+  return [
+    `\n\nIMPROVE THIS BRIEF. Current version:\n${JSON.stringify(current).slice(0, 30000)}`,
+    blocks.length ? `\n\nBrand-rule problems — these have to go:\n${blocks.join('\n')}` : '',
+    fixes.length ? `\n\nThe review panel's ideas to make it stronger (ranked by expected gain) — apply the ones that genuinely improve it:\n${fixes.join('\n')}` : '',
+    notes.length ? `\n\nCaptain Caption's proofreading notes. Take them seriously, but use judgement — they are not a checklist to apply word for word. Fix real errors (claims the brand can't make, wrong offer facts, misspellings, on-screen text too fast to read, a missing required element). Where a note would hurt the idea or the voice, keep the idea and solve the underlying concern another way. Skip pure nitpicks.\n${notes.join('\n')}` : '',
+    '\n\nKeep the concept, the structure, the length and everything that already works. Change only what makes it better.',
+  ].join('');
+}
+
+const snapshot = (v) => ({ ticket_name: v.out.ticket_name, kind: v.out.kind, fields: v.out.fields, lines: v.out.lines, score: v.score, preflight: v.pf, style: v.style, evidence: v.out.evidence || [] });
+
+async function improveOnce(ctx, req, cfg, cur, meta, row) {
+  const current = { ticket_name: cur.out.ticket_name, kind: cur.out.kind, ...cur.out.fields, lines: cur.out.lines, evidence: cur.out.evidence || [] };
+  const w = await writeWithStyle(writerPrompt(ctx, req, cfg) + improveBlock(current, cur.score, cur.pf), cfg, meta);
+  const s = await score(w.out, ctx, cfg, { selfId: row.id });
+  const pf = await preflight(row, w.out);
+  return { out: w.out, style: w.style, score: s.score, pf, cost: w.cost + s.cost + pf.cost };
+}
+
+/** Up to 2 rounds while it needs it; a round is kept only when it's really better. */
+async function autoImprove(ctx, req, cfg, first, meta, row) {
+  let cur = first, cost = 0;
+  const rounds = [];
+  for (let round = 1; round <= AUTO_ROUNDS && needsAutoFix(cur.score, cur.pf); round++) {
+    let next;
+    try { next = await improveOnce(ctx, req, cfg, cur, meta, row); } catch (e) { rounds.push({ round, error: String(e.message).slice(0, 200) }); break; }
+    cost += next.cost;
+    const kept = isBetter(next, cur);
+    rounds.push({ round, from: cur.score?.total ?? null, to: next.score?.total ?? null, must_fix_from: mustFixOf(cur.pf), must_fix_to: mustFixOf(next.pf), kept });
+    if (!kept) break;
+    cur = next;
+  }
+  return { cur, cost, rounds, improved: rounds.some(r => r.kept) };
 }
 
 // ── Improve: apply the scorer's fixes as a new version, re-score, keep both (spec §18.3) ──
@@ -349,7 +417,7 @@ async function runImprove({ brief_id }) {
     const req = { ...(b.request || {}), lane: b.lane, format: b.format, product: b.product, move: b.move === 'FREEFORM' ? 'NEW_ANGLE' : b.move, kind: b.kind };
     const ctx = await buildContext(req, cfg);
     const current = { ticket_name: b.ticket_name, kind: b.kind, ...b.fields, lines: b.lines, evidence: b.evidence?.items || [] };
-    const prompt = `${writerPrompt(ctx, req, cfg)}\n\nIMPROVE THIS BRIEF. Current version:\n${JSON.stringify(current).slice(0, 30000)}\n\nApply these fixes from the review panel, each one, and change nothing else:\n${b.score.fixes.map(f => `- ${f.fix} (${f.evidence})`).join('\n')}${(b.preflight?.issues || []).filter(i => i.severity === 'must_fix').length ? `\nAlso fix Captain Caption's must-fix items:\n${b.preflight.issues.filter(i => i.severity === 'must_fix').map(i => `- ${i.found} → ${i.fix} (${i.rule})`).join('\n')}` : ''}`;
+    const prompt = writerPrompt(ctx, req, cfg) + improveBlock(current, b.score, b.preflight);
     const meta = { format: ctx.format, kind: b.kind, move: req.move, lane: ctx.lane.name };
     const w = await writeWithStyle(prompt, cfg, meta);
     cost += w.cost;
@@ -446,11 +514,21 @@ async function runFreeform({ brief_id }) {
       cost += pf.cost;
       versions[key] = { ...out, style, score: s.score, preflight: pf };
     }
+    // Medium's version gets the same automatic improvement; "mine" stays the person's idea
+    let auto = [];
+    if (needsAutoFix(versions.medium.score, versions.medium.preflight)) {
+      const v = versions.medium;
+      const a = await autoImprove(ctx2, { lane, format, product, move: 'NEW_ANGLE', note: `Keep to the person's idea: ${String(req.idea).slice(0, 1500)}` }, cfg,
+        { out: v, style: v.style, score: v.score, pf: v.preflight }, { format, kind: v.kind, move: 'NEW_ANGLE', lane }, { ...row, lane, product, format });
+      cost += a.cost;
+      auto = a.rounds;
+      if (a.improved) { versions.first = { ...v }; versions.medium = { ...a.cur.out, style: a.cur.style, score: a.cur.score, preflight: a.cur.pf }; }
+    }
     const m = versions.medium;
     await setRow(row.id, {
       status: 'PENDING_REVIEW', lane, product, format, kind: m.kind, move: 'FREEFORM', ticket_name: m.ticket_name, fields: m.fields, lines: m.lines, style: m.style, score: m.score, preflight: m.preflight,
       versions, exemplar_ids: ctx2.examples.map(e => e.id), cost_usd: cost, error: null,
-      evidence: { items: m.evidence, chips: j.chips, findings: j.findings, changed: j.changed, question: j.question, references: refs.map(({ kind, url }) => ({ kind, url })), siblings },
+      evidence: { items: m.evidence, chips: j.chips, findings: j.findings, changed: j.changed, question: j.question, references: refs.map(({ kind, url }) => ({ kind, url })), siblings, ...(auto.length ? { auto_improve: auto } : {}) },
     });
     return { ok: true };
   } catch (e) {
@@ -459,4 +537,4 @@ async function runFreeform({ brief_id }) {
   }
 }
 
-module.exports = { runGenerate, runFreeform, runImprove, canImprove, relines, preflight, score, gate, freshnessScore, tokenSet, buildContext, writerPrompt, normalizeOut, kindFor, laneFirstFor, setRow, toParam, composeBrief, WEIGHTS };
+module.exports = { needsAutoFix, isBetter, improveBlock, runGenerate, runFreeform, runImprove, canImprove, relines, preflight, score, gate, freshnessScore, tokenSet, buildContext, writerPrompt, normalizeOut, kindFor, laneFirstFor, setRow, toParam, composeBrief, WEIGHTS };

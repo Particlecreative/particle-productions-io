@@ -446,7 +446,7 @@ test('Mass production: plans are clamped, products matched, 40 at most', () => {
     { lane: 'GT', product: '', format: 'video', move: 'ITERATE', count: 3 },
   ] });
   assert.deepEqual(p.groups.map(g => [g.lane, g.product, g.format, g.move, g.count]), [['SFY', 'Neck Cream', 'design', 'NEW_ANGLE', 12], ['Particle', 'Face Cream', 'video', 'NEW_ANGLE', 12]]);
-  assert.equal(p.total, 24); assert.equal(p.est_cost, 2.4); assert.equal(p.capped, true);
+  assert.equal(p.total, 24); assert.equal(p.est_cost, 3.6); assert.equal(p.capped, true);
   assert.equal(p.groups[0].campaign, 'Black Friday 2026'); assert.equal(p.groups[1].campaign, null);
   const big = M.normalizePlan({ groups: Array.from({ length: 6 }, () => ({ lane: 'Particle', product: 'Face Cream', format: 'video', move: 'NEW_ANGLE', count: 10 })) });
   assert.equal(big.total, 40);
@@ -458,4 +458,27 @@ test('Headline → Hook from Upspring: on-image line first, then the Meta headli
   assert.deepEqual(c.map(x => [x.text, x.from]), [['25% OFF THE STARTER BUNDLE — ON US', 'on the ad'], ['Men! Save 25% On This Bundle! Offer Ends Soon!', 'its Meta headline']]);
   assert.equal(H.upspringLink('6a3c', 'https://app.example.ai/creatives/{id}'), 'https://app.example.ai/creatives/6a3c');
   assert.equal(H.upspringLink('6a3c', ''), null);
+});
+
+test('auto-improve: when it runs, when a round is kept, and Captain notes are weighed not obeyed', () => {
+  const W = require('../src/lib/medium/writer');
+  assert.equal(W.needsAutoFix({ total: 74, band: 'below_bar' }, { must_fix: 0 }), true);
+  assert.equal(W.needsAutoFix({ total: 75, band: 'one_more_pass' }, { must_fix: 0 }), false);
+  assert.equal(W.needsAutoFix({ total: 88, band: 'ready' }, { must_fix: 1 }), true);
+  assert.equal(W.needsAutoFix({ total: null, band: 'blocked' }, { must_fix: 0 }), true);
+  const v = (total, mf, band = 'below_bar', passed = true) => ({ score: { total, band }, pf: { must_fix: mf }, style: { passed } });
+  assert.equal(W.isBetter(v(70, 0), v(62, 0)), true);           // clearly higher
+  assert.equal(W.isBetter(v(63, 0), v(62, 0)), false);          // noise
+  assert.equal(W.isBetter(v(60, 0), v(62, 2)), true);           // fixed Captain's notes, lost little
+  assert.equal(W.isBetter(v(55, 0), v(62, 2)), false);          // fixed notes but lost too much
+  assert.equal(W.isBetter(v(80, 0, 'ready', false), v(62, 0)), false);   // failed the house style
+  assert.equal(W.isBetter(v(58, 0), v(null, 0, 'blocked')), true);       // out of a block
+  const block = W.improveBlock({ hook: 'x' }, { fixes: [{ fix: 'Sharpen the hook', gain: 6.4, evidence: 'panel' }], guardrails: { violations: [{ text: 'Reveals the #1', severity: 'block' }, { text: 'Long VO', severity: 'warn' }] } },
+    { issues: [{ severity: 'must_fix', found: 'Firms in 7 days', fix: 'Firmer-looking skin', rule: 'claims' }, { severity: 'info', found: 'note', rule: 'n' }] });
+  assert.match(block, /Reveals the #1/); assert.doesNotMatch(block, /Long VO/);
+  assert.match(block, /\+6 · panel/);
+  assert.match(block, /not a checklist to apply word for word/);
+  assert.match(block, /\[important\] Firms in 7 days → Firmer-looking skin/);
+  assert.doesNotMatch(block, /\bnote \(n\)/);
+  assert.match(block, /Keep the concept, the structure, the length/);
 });

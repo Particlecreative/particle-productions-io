@@ -43,7 +43,7 @@ export default function MassProduction({ notify, onOpen, onQueued }) {
   const setCount = (i, d) => setPlan(p => ({ ...p, groups: p.groups.map((g, k) => (k === i ? { ...g, count: Math.min(12, Math.max(1, g.count + d)) } : g)) }));
   const drop = (i) => setPlan(p => ({ ...p, groups: p.groups.filter((_, k) => k !== i) }));
   const produce = async () => {
-    if (total > 15 && !window.confirm(`Write ${total} briefs now? About ${money(total * 0.1)} — they’ll arrive over the next ${Math.ceil(total * 1.2)} minutes.`)) return;
+    if (total > 15 && !window.confirm(`Write ${total} briefs now? About ${money(total * 0.15)} — they’ll arrive over the next ${Math.ceil(total * 1.2)} minutes.`)) return;
     setBusy('produce');
     try {
       const r = await mediumApi.massProduce({ ...plan, groups }, text);
@@ -98,7 +98,7 @@ export default function MassProduction({ notify, onOpen, onQueued }) {
           </div>
           <div className="mt-5 flex flex-wrap items-center gap-3">
             <button type="button" className="trk-btn primary !px-5 !py-2.5" disabled={busy === 'produce' || !total || total > 40} onClick={produce}>{busy === 'produce' ? <Loader2 size={15} className="animate-spin" /> : <Factory size={15} />} Produce {total} brief{total === 1 ? '' : 's'}</button>
-            <span className="md-sub">About {money(total * 0.1)} · each one is written in the team’s style, checked by Captain Caption, and waits for your review.</span>
+            <span className="md-sub">About {money(total * 0.15)} · each one is written in the team’s style and checked by Captain Caption; anything under 75 gets improved before it reaches you.</span>
             <button type="button" className="trk-btn ml-auto" onClick={makePlan} disabled={busy === 'plan'}>Plan again</button>
           </div>
         </div>
