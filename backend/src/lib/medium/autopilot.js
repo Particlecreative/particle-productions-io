@@ -1,6 +1,7 @@
 /**
  * MEDIUM — the weekly run (spec §12) and the worker's clock.
- *   Autopilot (off until switched on): Sunday 07:00 Asia/Jerusalem — Upspring's winners per lane (lane mix
+ *   Autopilot (off until switched on): Sunday 07:00 Asia/Jerusalem — 20 videos + 20 statics for Particle direct across the
+ *   top products by last-30-day spend (productPlan.js); the older mode plans Upspring's winners per lane (lane mix
  *   §5.7), skipping winners briefed in the last 30 days (cap 3 open briefs per winner) → ITERATE for video winners,
  *   REFRESH for static winners, plus transfers along the affinity map's strongest edges (§6.6). Caps: per_week.
  *   Outcomes (always on, free): once a day, AfterLife results → corpus winners + Medium's tests (outcomes.js).
@@ -66,20 +67,33 @@ async function runAutopilot({ actor = 'Medium autopilot', force = false } = {}) 
   const { rows: thisWeek } = await db.query(`SELECT COUNT(*)::int AS n FROM medium_briefs WHERE created_at > NOW() - INTERVAL '7 days' AND source IN ('autopilot', 'generator', 'holiday')`);
   const { rows: edges } = await db.query('SELECT source, target, score FROM medium_affinity');
   const { rows: hk } = await db.query(`SELECT DISTINCT request->>'source_key' AS k FROM medium_briefs WHERE move = 'HEADLINE_HOOK' AND status NOT IN ('REJECTED', 'ERROR') AND created_at > NOW() - INTERVAL '60 days'`);
-  const statics = (r.winners || []).filter(w => w.format === 'static' && w.winner && w.product);
+  const statics = (r.winners || []).filter(w => w.format === 'static' && w.product);
   const H = require('./headlines');
   const withHl = statics.map(w => { const c = H.upspringCandidates(w); return { ...w, headline: c[0]?.text || null, headline_from: c[0]?.from || null }; });
   const hl = new Map(withHl.map(w => [w.key, w]));
   const winners = (r.winners || []).map(w => hl.get(w.key) || w);
-  const room = Math.max(0, Math.min(Number(cfg.autopilot?.per_week) || 12, (Number(cfg.caps?.per_week) || 40) - thisWeek[0].n));
-  const plan = planWeek(winners, { mix: cfg.lane_mix, recent: Object.fromEntries(rec.map(x => [x.k, x.n])), perWeek: room, perWinner: Number(cfg.caps?.per_winner) || 3, edges, hooks: Number(cfg.autopilot?.headline_hooks ?? 3), hooked: Object.fromEntries(hk.map(x => [x.k, 1])) });
+  const ap = cfg.autopilot || {};
+  let plan, room;
+  if ((ap.mode || 'products') === 'products') {
+    const products = await ranks.monthProducts();
+    if (!products.length) return { skipped: 'No product spend from Upspring for the last 30 days yet' };
+    const v = Math.min(Math.max(Number(ap.video ?? 20), 0), 40), d = Math.min(Math.max(Number(ap.design ?? 20), 0), 40);
+    room = v + d;
+    plan = require('./productPlan').planProducts({ products, winners, recent: Object.fromEntries(rec.map(x => [x.k, x.n])), video: v, design: d, cap: Number(ap.max_per_product) || 4, lanes: ap.lanes?.length ? ap.lanes : ['Particle'], perWinner: Number(cfg.caps?.per_winner) || 3 });
+    plan.forEach(p => { p.rank = products.findIndex(x => x.product === p.product) + 1; });
+  } else {
+  room = Math.max(0, Math.min(Number(cfg.autopilot?.per_week) || 12, (Number(cfg.caps?.per_week) || 40) - thisWeek[0].n));
+  plan = planWeek(winners, { mix: cfg.lane_mix, recent: Object.fromEntries(rec.map(x => [x.k, x.n])), perWeek: room, perWinner: Number(cfg.caps?.per_winner) || 3, edges, hooks: Number(cfg.autopilot?.headline_hooks ?? 3), hooked: Object.fromEntries(hk.map(x => [x.k, 1])) });
+  }
   const batch = require('crypto').randomUUID();
   const ids = [];
   for (const p of plan) {
-    const w = p.winner, t = (w.tickets || [])[0];
-    const source = p.move === 'HEADLINE_HOOK' ? require('./headlines').sourceLine(w) : `${w.label} — Upspring: ROAS ${w.roas != null ? Number(w.roas).toFixed(2) : '?'} on $${Math.round(w.spend || 0).toLocaleString()} spend, ${w.percentile}th pct in its ${w.peer?.level || 'peer set'} (last 90 days)`;
-    const request = { lane: p.lane, format: p.format, move: p.move, product: p.product, source, source_key: w.key, source_product: p.source_product || null, note: null, author: actor, batch_id: batch, autopilot: true,
-      ...(p.move === 'HEADLINE_HOOK' ? { headline: p.headline, headline_from: p.headline_from, thumb: w.thumb || null } : {}) };
+    const w = p.winner;
+    const why = p.spend30 != null ? `Autopilot — ${p.product} is #${p.rank} by spend over the last 30 days ($${Math.round(p.spend30).toLocaleString()}, Upspring)` : null;
+    const built = !w ? null : p.move === 'HEADLINE_HOOK' ? require('./headlines').sourceLine(w) : `${w.label} — Upspring: ROAS ${w.roas != null ? Number(w.roas).toFixed(2) : '?'} on $${Math.round(w.spend || 0).toLocaleString()} spend, ${w.percentile ?? '?'}th pct in its ${w.peer?.level || 'peer set'} (last 90 days)`;
+    const source = [why, built ? `Built on: ${built}` : (why ? 'No strong ad for this product yet — a new angle' : null)].filter(Boolean).join(' · ');
+    const request = { lane: p.lane, format: p.format, move: p.move, product: p.product, source, source_key: w?.key || null, source_format: p.source_format || null, source_product: p.source_product || null, note: null, author: actor, batch_id: batch, autopilot: true,
+      ...(p.move === 'HEADLINE_HOOK' ? { headline: p.headline, headline_from: p.headline_from, thumb: null } : {}) };
     const { rows } = await db.query(`INSERT INTO medium_briefs (status, source, author, lane, product, format, move, request) VALUES ('QUEUED', 'autopilot', $1, $2, $3, $4, $5, $6) RETURNING id`,
       [actor, p.lane, p.product, p.format, p.move, JSON.stringify(request)]);
     ids.push(rows[0].id);
@@ -134,8 +148,8 @@ async function tick() {
   const ap = cfg.autopilot || {};
   if (ap.enabled && now.weekday === Number(ap.weekday ?? 0) && now.hour >= Number(ap.hour ?? 7) && String(state.autopilot_at || '').slice(0, 10) !== now.date) {
     await stamp('autopilot_at');
-    // the lane mix learns from decided tests first, so this week's plan already uses it
-    out.mix = await require('./mix').runReweight().catch(e => ({ error: e.message }));
+    // the lane mix learns from decided tests first (only in the older lane-mix mode; the product plan is Particle-only)
+    if ((ap.mode || 'products') !== 'products') out.mix = await require('./mix').runReweight().catch(e => ({ error: e.message }));
     out.autopilot = await runAutopilot().catch(e => ({ error: e.message }));
   }
   // the weekly Growth digest to Slack, when switched on

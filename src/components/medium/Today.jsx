@@ -79,8 +79,8 @@ export default function Today({ overview, briefs, onOpen, go }) {
           </button>
           <button type="button" className="md-action compact" onClick={() => go('behind', 'sources')}>
             <span className="md-emoji" aria-hidden>🤖</span>
-            <span className="min-w-0"><span className="md-action-title block">{ap.enabled ? `Autopilot: ${ap.per_week || 12} briefs ${nextRun(ap.weekday ?? 0, ap.hour ?? 7)}` : 'Autopilot is off'}</span>
-              <span className="md-action-line block">{ap.enabled ? 'From Upspring’s top-ranked ads — they land here for review.' : 'Turn it on and Medium briefs the week’s winners every Sunday.'}</span></span>
+            <span className="min-w-0"><span className="md-action-title block">{ap.enabled ? `Autopilot: ${ap.mode === 'lanes' ? ap.per_week || 12 : `${ap.video ?? 20} videos + ${ap.design ?? 20} statics`} ${nextRun(ap.weekday ?? 0, ap.hour ?? 7)}` : 'Autopilot is off'}</span>
+              <span className="md-action-line block">{ap.enabled ? 'Particle direct, across the top products by spend — they land here for review.' : 'Turn it on and Medium briefs the week’s winners every Sunday.'}</span></span>
           </button>
           <button type="button" className="md-action compact" onClick={() => go('market')}>
             <span className="md-emoji" aria-hidden>🌍</span>

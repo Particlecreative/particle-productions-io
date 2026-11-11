@@ -29,7 +29,9 @@ const DEFAULTS = {
   // Where Medium's tickets land (CP's token; lane in the name — Tomer's choices, 11 Nov 2026). "Form Requests" on both boards.
   monday_groups: { video: 'new_group__1', design: 'new_group__1' },
   // Weekly autopilot (spec §12): Sunday 07:00 Asia/Jerusalem Medium picks winners and queues briefs. Off until switched on.
-  autopilot: { enabled: false, weekday: 0, hour: 7, per_week: 12, headline_hooks: 3 },
+  // Weekly autopilot (Tomer, 11 Nov 2026): 20 videos + 20 statics, Particle direct only, across the top products by
+  // last-30-day spend (Upspring), at most 4 per product per format. mode 'lanes' = the older lane-mix plan.
+  autopilot: { enabled: false, weekday: 0, hour: 7, mode: 'products', video: 20, design: 20, lanes: ['Particle'], max_per_product: 4, per_week: 12, headline_hooks: 3 },
   // Market Watch (Upspring Public API): brands to watch (empty → Upspring's peers of Particle on the first run), Sundays 06:00
   market_watch: { countries: 'US', brands: [], max_brands: 10 },
   // A link to one creative in the Upspring app, with {id} where the creative id goes (set from one real link)

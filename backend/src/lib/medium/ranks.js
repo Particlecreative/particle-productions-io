@@ -108,11 +108,18 @@ async function refresh() {
       const j = await acct.callTool('get_my_top_ads', { start_date: ymd(start), end_date: ymd(end), sort_metric: 'spend', limit: 100, ad_account: a.id }).catch(e => ({ error: e.message }));
       for (const x of j.data || []) rows.push(fromUpspring(x, a.name, a.id));
     }
+    // the last 30 days, for the autopilot's "top products by spend"
+    const mStart = new Date(Date.now() - 30 * 86400000), monthRows = [];
+    for (const a of accounts) {
+      const j = await acct.callTool('get_my_top_ads', { start_date: ymd(mStart), end_date: ymd(end), sort_metric: 'spend', limit: 100, ad_account: a.id }).catch(() => ({}));
+      for (const x of j.data || []) monthRows.push(fromUpspring(x, a.name, a.id));
+    }
+    const month = { start: ymd(mStart), end: ymd(end), products: require('./productPlan').productSpend(monthRows, ['Particle']) };
     const seen = new Set();
     const uniq = rows.filter(r => (seen.has(r.key) ? false : seen.add(r.key)));
     const prev = (await cached())?.data || {};
     const { map, cost } = await readOnImage(uniq, prev.on_image || {}).catch(() => ({ map: prev.on_image || {}, cost: 0 }));
-    const data = { rows: rank(uniq).map(r => ({ ...r, on_image: map[r.key] || null })), on_image: map, accounts: accounts.map(a => a.name), window: { start: ymd(start), end: ymd(end) }, rules: RULES, cost };
+    const data = { rows: rank(uniq).map(r => ({ ...r, on_image: map[r.key] || null })), on_image: map, month, accounts: accounts.map(a => a.name), window: { start: ymd(start), end: ymd(end) }, rules: RULES, cost };
     await db.query('UPDATE medium_upspring_ranks SET data = $1, at = NOW(), error = NULL WHERE id = 1', [JSON.stringify(data)]);
     return { creatives: uniq.length, winners: data.rows.filter(r => r.winner).length, accounts: accounts.length, cost };
   } catch (e) {
@@ -136,7 +143,11 @@ async function winners({ lane = null, product = null, format = null, limit = 20 
 
 async function status() {
   const c = await cached().catch(() => null);
-  return { as_of: c?.at || null, error: c?.error || null, creatives: c?.data?.rows?.length || 0, winners: (c?.data?.rows || []).filter(r => r.winner).length };
+  return { as_of: c?.at || null, error: c?.error || null, creatives: c?.data?.rows?.length || 0, winners: (c?.data?.rows || []).filter(r => r.winner).length,
+    top_products: (c?.data?.month?.products || []).slice(0, 12) };
 }
 
-module.exports = { refresh, winners, status, rank, laneOf, productOf, fromUpspring, RULES };
+/** Last-30-day product spend (Particle direct), for the autopilot. */
+async function monthProducts() { const c = await cached().catch(() => null); return c?.data?.month?.products || []; }
+
+module.exports = { refresh, winners, status, monthProducts, rank, laneOf, productOf, fromUpspring, RULES };

@@ -520,3 +520,31 @@ test('language bank: comments are scrubbed of names, handles, links and emails',
   assert.equal(scrub('@mike_88 does it work for 60+?'), 'does it work for 60+?');
   assert.equal(scrub('x'.repeat(500)).length, 400);
 });
+
+test('autopilot by product: 20 + 20, Particle only, spread across top spenders, built on each product\'s best ads', () => {
+  const P = require('../src/lib/medium/productPlan');
+  assert.deepEqual(P.allocate(['A', 'B', 'C'], 7, 4).map(x => x.product), ['A', 'B', 'C', 'A', 'B', 'C', 'A']);
+  assert.equal(P.allocate(['A', 'B'], 20, 4).length, 8);                    // capped at 4 each
+  const spend = P.productSpend([
+    { product: 'Neck Cream', lane: 'Particle', format: 'video', spend: 9000 }, { product: 'Neck Cream', lane: 'Particle', format: 'static', spend: 3000 },
+    { product: 'Face Cream', lane: 'Particle', format: 'video', spend: 20000 }, { product: 'Face Cream', lane: 'SFY', format: 'static', spend: 50000 },
+    { product: null, lane: 'Particle', format: 'video', spend: 99999 }]);
+  assert.deepEqual(spend.map(x => [x.product, x.spend, x.video, x.static]), [['Face Cream', 20000, 20000, 0], ['Neck Cream', 12000, 9000, 3000]]);
+  const products = ['Face Cream', 'Neck Cream', 'Hand Cream', 'Instant Eye Firming Cream', 'Face Wash', 'Anti-Gray Serum'].map((p, i) => ({ product: p, spend: 60000 - i * 8000 }));
+  const W = (key, product, format, pct, extra = {}) => ({ key, product, format, lane: 'Particle', percentile: pct, winner: pct >= 80, spend: 2000, ...extra });
+  const winners = [W('fv1', 'Face Cream', 'video', 95), W('fv2', 'Face Cream', 'video', 70), W('fs1', 'Face Cream', 'static', 88),
+    W('ns1', 'Neck Cream', 'static', 90, { headline: 'Your Neck Is Telling Everyone Your Age', headline_from: 'on the ad' }),
+    W('hv1', 'Hand Cream', 'video', 40), W('sfy', 'Hand Cream', 'video', 99, { lane: 'SFY' })];
+  const plan = P.planProducts({ products, winners, video: 20, design: 20, cap: 4 });
+  assert.equal(plan.length, 40);
+  assert.ok(plan.every(p => p.lane === 'Particle'));
+  const vids = plan.filter(p => p.format === 'video'), stat = plan.filter(p => p.format === 'design');
+  assert.equal(vids.length, 20); assert.equal(stat.length, 20);
+  assert.equal(new Set(vids.map(p => p.product)).size, 6);                    // every top product gets videos
+  assert.deepEqual([vids[0].product, vids[0].move, vids[0].winner.key], ['Face Cream', 'ITERATE', 'fv1']);
+  assert.deepEqual([vids[1].product, vids[1].move, vids[1].headline], ['Neck Cream', 'HEADLINE_HOOK', 'Your Neck Is Telling Everyone Your Age']);
+  assert.deepEqual([vids[2].product, vids[2].move, vids[2].winner], ['Hand Cream', 'NEW_ANGLE', null]);   // 40th pct isn't strong; the SFY ad doesn't count
+  assert.deepEqual([stat[0].move, stat[0].winner.key], ['ITERATE', 'fs1']);
+  assert.deepEqual([stat[1].product, stat[1].move], ['Neck Cream', 'ITERATE']);
+  assert.ok(plan.filter(p => p.winner?.key === 'fv1').length <= 3);           // one ad isn't briefed more than 3 times
+});

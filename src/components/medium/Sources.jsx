@@ -45,7 +45,8 @@ export default function Sources({ overview, notify, isAdmin, reload }) {
     try { await mediumApi.saveConfig(patch); notify(msg); await load(); reload?.(); } catch (e) { notify(e.message, true); } finally { setBusy(null); }
   };
   const runNow = async () => {
-    if (!window.confirm(`Run the autopilot now? Medium picks Upspring's top-ranked ads and writes up to ${cfg.autopilot?.per_week ?? 12} briefs (about ${money((cfg.autopilot?.per_week ?? 12) * 0.08)}).`)) return;
+    const n = cfg.autopilot?.mode === 'lanes' ? (cfg.autopilot?.per_week ?? 12) : (Number(cfg.autopilot?.video ?? 20) + Number(cfg.autopilot?.design ?? 20));
+    if (!window.confirm(`Run the autopilot now? Medium writes ${n} briefs for Particle’s top products by spend (about ${money(n * 0.15)}). They arrive over the next hour or two.`)) return;
     setBusy('ap');
     try { const r = await mediumApi.runAutopilot(); notify(r.skipped ? r.skipped : `${r.queued} briefs queued — they appear in the Strategy Room`); reload?.(); } catch (e) { notify(e.message, true); } finally { setBusy(null); }
   };
@@ -180,7 +181,13 @@ export default function Sources({ overview, notify, isAdmin, reload }) {
               <input type="checkbox" checked={!!cfg.autopilot?.enabled} disabled={!isAdmin || busy === 'sw'} onChange={(e) => toggleSwitch({ autopilot: { ...cfg.autopilot, enabled: e.target.checked } }, e.target.checked ? 'Autopilot on — every Sunday 07:00' : 'Autopilot off')} />
               Weekly autopilot
             </label>
-            <p className="mt-1 text-[12.5px] trk-muted">Every Sunday 07:00 (Israel) Medium picks Upspring’s top-ranked ads per lane and writes up to <b>{cfg.autopilot?.per_week ?? 12}</b> briefs into the queue — hook iterations, refreshes and transfers. About {money((cfg.autopilot?.per_week ?? 12) * 0.08)} a week. {overview?.autopilot?.last_run ? `Last run ${relTime(overview.autopilot.last_run)}.` : 'Never run.'}</p>
+            <p className="mt-1 text-[12.5px] trk-muted">Every Sunday 07:00 (Israel): <b>{cfg.autopilot?.video ?? 20} videos + {cfg.autopilot?.design ?? 20} statics</b> for Particle direct only (no SFY, GT or WAC), spread across the top products by spend over the last 30 days (Upspring) — up to {cfg.autopilot?.max_per_product ?? 4} per product, each built on that product’s best ads. About {money((Number(cfg.autopilot?.video ?? 20) + Number(cfg.autopilot?.design ?? 20)) * 0.15)} a week.</p>
+            {isAdmin && (
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-[12.5px]">
+                <label className="flex items-center gap-1.5">Videos <input type="number" min="0" max="40" className="trk-input !py-1 !w-[70px]" defaultValue={cfg.autopilot?.video ?? 20} onBlur={(e) => Number(e.target.value) !== Number(cfg.autopilot?.video ?? 20) && toggleSwitch({ autopilot: { ...cfg.autopilot, video: Math.min(40, Math.max(0, Number(e.target.value) || 0)) } }, 'Saved — from next Sunday')} /></label>
+                <label className="flex items-center gap-1.5">Statics <input type="number" min="0" max="40" className="trk-input !py-1 !w-[70px]" defaultValue={cfg.autopilot?.design ?? 20} onBlur={(e) => Number(e.target.value) !== Number(cfg.autopilot?.design ?? 20) && toggleSwitch({ autopilot: { ...cfg.autopilot, design: Math.min(40, Math.max(0, Number(e.target.value) || 0)) } }, 'Saved — from next Sunday')} /></label>
+              </div>
+            )}
             {isAdmin && <button type="button" className="trk-btn !py-1.5 mt-2" disabled={busy === 'ap'} onClick={runNow}>{busy === 'ap' ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Run it now</button>}
           </div>
         </div>
