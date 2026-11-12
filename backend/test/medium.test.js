@@ -174,10 +174,22 @@ test('CTA: magazine-lane calls to action count', () => {
 test('Captain brief check: the same claim in VO and subtitle is listed once', () => {
   const { claimsToIssues } = require('../src/lib/captain/brief');
   const out = claimsToIssues([
-    { line_id: 'l1', claim: 'Neck skin is thinner and moves all day', in_sheet: 'no_sheet', in_article: 'n/a' },
-    { line_id: 'l2', claim: 'Neck skin is thinner, and moves all day.', in_sheet: 'no_sheet', in_article: 'n/a' },
+    { line_id: 'l1', claim: 'Neck skin is thinner and moves all day', in_sheet: 'no_sheet', on_site: 'no', in_article: 'n/a' },
+    { line_id: 'l2', claim: 'Neck skin is thinner, and moves all day.', in_sheet: 'no_sheet', on_site: 'no', in_article: 'n/a' },
   ], { ids: new Set(['l1', 'l2']), product: 'Neck Cream', lane: { name: 'Particle' }, hasArticle: false });
   assert.equal(out.length, 1);
+  assert.match(out[0].fix, /Not on the Neck Cream page/);
+});
+
+test('Captain claims: no claims sheet → the brand website is the reference; the generic note is gone', () => {
+  const { claimsToIssues, cleanPreflight } = require('../src/lib/captain/brief');
+  const ctx = { ids: new Set(['l1']), product: 'Face Cream', lane: { name: 'Particle' }, hasArticle: false };
+  assert.equal(claimsToIssues([{ line_id: 'l1', claim: 'Fixes eye bags, dark spots and wrinkles', in_sheet: 'no_sheet', on_site: 'yes', in_article: 'n/a' }], ctx).length, 0);
+  assert.equal(claimsToIssues([{ line_id: 'l1', claim: 'Rated 4.81 from 9,027 reviews', in_sheet: 'no_sheet', on_site: 'no_site', in_article: 'n/a' }], ctx).length, 0);
+  assert.equal(claimsToIssues([{ line_id: 'l1', claim: 'Erases wrinkles in 3 days', in_sheet: 'no_sheet', on_site: 'no', in_article: 'n/a' }], ctx)[0].severity, 'should_fix');
+  assert.equal(claimsToIssues([{ line_id: 'l1', claim: 'Cures aging', in_sheet: 'no', on_site: 'no', in_article: 'n/a' }], ctx)[0].severity, 'must_fix');
+  const old = cleanPreflight({ verdict: 'passed', must_fix: 0, issues: [{ severity: 'should_fix', found: '6-in-1', fix: 'No approved claims stored for Face Cream — check it is substantiated' }] });
+  assert.equal(old.issues.length, 0);
 });
 
 test('corpus: a Monday item becomes an exemplar row', () => {

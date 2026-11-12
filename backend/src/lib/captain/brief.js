@@ -68,7 +68,7 @@ function buildPrompt({ req, brand, lane, brain, facts, hasArticle }) {
  * empty / "null" fix means "remove it".
  */
 const bare = (s) => String(s ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
-const NOT_REPORTED = /reading[_ ]speed|words? ?(?:per|\/) ?s(?:ec(?:ond)?)?\b|\d+ words in \d|too fast to read|real review|review text|attribution|first name ?\+ ?last initial|last initial|age, city/i;
+const NOT_REPORTED = /reading[_ ]speed|words? ?(?:per|\/) ?s(?:ec(?:ond)?)?\b|\d+ words in \d|too fast to read|real review|review text|attribution|first name ?\+ ?last initial|last initial|age, city|no approved claims stored/i;
 
 /** Never these, whoever found them (code rules, the AI read or the claims check) — Tomer, 11 Nov 2026. */
 const notReported = (i) => !NOT_REPORTED.test(`${i.found || ''} ${i.fix || ''} ${i.rule || ''} ${i.type || ''}`);
@@ -103,7 +103,9 @@ function claimsToIssues(claims, { ids, product, lane, hasArticle }) {
     seen.add(key);
     const line_id = ids.has(c.line_id) ? c.line_id : null;
     if (c.in_sheet === 'no') out.push({ line_id, found: c.claim, fix: 'Use an approved claim, or add this one to the claims sheet', type: 'claim', severity: 'must_fix', rule: `Claims sheet${c.note ? ` — ${c.note}` : ''}` });
-    else if (c.in_sheet === 'no_sheet') out.push({ line_id, found: c.claim, fix: `No approved claims stored for ${product || 'this product'} — check it is substantiated`, type: 'claim_unverified', severity: 'should_fix', rule: 'Claims sheet' });
+    // no claims sheet for this product: the brand's own website is the reference (Tomer, 12 Nov 2026 — the old
+    // "no approved claims stored" note came back on every claim). Only a claim the website doesn't make is noted.
+    else if (c.in_sheet === 'no_sheet' && c.on_site === 'no') out.push({ line_id, found: c.claim, fix: `Not on the ${product || 'product'} page — say it the way the website does, or make sure it’s substantiated`, type: 'claim_unverified', severity: 'should_fix', rule: 'Brand website' });
     if (hasArticle && c.in_article === 'no') out.push({ line_id, found: c.claim, fix: `Not stated in the ${lane.name} article — cut it or match the article`, type: 'claim_article', severity: 'must_fix', rule: 'Claims must appear in the destination article' });
   }
   return out;

@@ -17,6 +17,7 @@ Check every line for:
 
 Claims: list EVERY line that makes a product claim — what the product does or achieves, a number or statistic, a ranking or award, "clinically", "doctor", "dermatologist", "expert", "#1", "proven", an ingredient benefit.
 For each claim, "in_sheet": does an approved claim below support it? A paraphrase with the same meaning and strength is "yes"; a stronger, broader or new claim is "no"; "no_sheet" when there are no approved claims for this product.
+And "on_site": does the brand's own website block (in the Brain, "FROM THE … WEBSITE") already make this claim for this product — the same meaning and strength, including its promise, page claims, key ingredients, rating and review count? "yes" / "no"; "no_site" when there's no website block for this product.
 {{ARTICLE_RULE}}
 Put claims ONLY in "claims", never in "issues".
 

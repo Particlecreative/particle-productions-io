@@ -112,11 +112,12 @@ const BRIEF_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['line_id', 'claim', 'in_sheet', 'in_article', 'note'],
+        required: ['line_id', 'claim', 'in_sheet', 'on_site', 'in_article', 'note'],
         properties: {
           line_id: { type: 'string' },
           claim: { type: 'string' },
           in_sheet: { type: 'string', enum: ['yes', 'no', 'no_sheet'] },
+          on_site: { type: 'string', enum: ['yes', 'no', 'no_site'] },
           in_article: { type: 'string', enum: ['yes', 'no', 'n/a'] },
           note: { type: 'string' },
         },
