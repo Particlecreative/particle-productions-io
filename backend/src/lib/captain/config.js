@@ -71,7 +71,7 @@ const DEFAULTS = {
   brands: [
     { name: 'Particle', default: true, match: ['particle'], about: "the men's skincare brand Particle (DTC, particleformen.com)", site: 'particleformen.com' },
     { name: 'Ashford', match: ['ashford'], products: ['Bone & Joint', 'Bone and Joint', 'Testosterone and Hormone', 'Joint Mobility'], about: 'Ashford Formulary & Co., a men\'s joint and wellness supplement brand (DTC, houseashford.com)', site: 'houseashford.com' },
-    { name: 'Clearstep', match: ['clearstep', 'clear step'], products: ['Antifungal Foot Treatment', 'Antifungal Nail Repair'], about: 'Clearstep, a foot and nail care brand (DTC, goclearstep.com)', site: 'goclearstep.com' },
+    { name: 'Clearstep', match: ['clearstep', 'clear step'], products: ['Antifungal Foot Treatment', 'Antifungal Nail Repair'], about: "Clearstep (written as one word with only the C capitalised — never 'ClearStep'), a foot and nail care brand (DTC, goclearstep.com)", site: 'goclearstep.com' },
     { name: 'Blurr', match: ['blurr'], about: 'Blurr, a skincare brand (DTC, blurrskin.com)', site: 'blurrskin.com' },
     { name: 'Biomella', match: ['biomella'], about: 'Biomella, a DTC brand (gobiomella.com)', site: 'gobiomella.com' },
   ],

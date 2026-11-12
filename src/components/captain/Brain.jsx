@@ -125,7 +125,7 @@ export default function Brain({ notify, isAdmin }) {
               <select className="trk-input" value={discipline} onChange={(e) => setDiscipline(e.target.value)}><option value="both">Video + design</option><option value="video">🎬 Video</option><option value="design">🎨 Design</option></select>
             </label>
             <label className="grid gap-1"><span className="trk-label">Brand</span>
-              <select className="trk-input" value={brand} onChange={(e) => setBrand(e.target.value)}><option value="">All brands</option><option value="Particle">Particle</option><option value="Ashford">Ashford</option></select>
+              <select className="trk-input" value={brand} onChange={(e) => setBrand(e.target.value)}><option value="">All brands</option>{['Particle', 'Ashford', 'Clearstep', 'Blurr', 'Biomella'].map(b => <option key={b} value={b}>{b}</option>)}</select>
             </label>
             <label className="grid gap-1"><span className="trk-label">Lane</span>
               <select className="trk-input" value={lane} onChange={(e) => setLane(e.target.value)} title="Particle direct, Science For You, Gentleman Today, We Are Colognes"><option value="">All lanes</option>{LANES.map(l => <option key={l} value={l}>{l}</option>)}</select>
