@@ -101,6 +101,37 @@ export function ProductTag({ product }) {
   );
 }
 
+export function BrandTag({ brand }) {
+  if (!brand?.label) return null;
+  return (
+    <span className="inline-flex items-center gap-1.5 text-[11px] text-gray-600 whitespace-nowrap" title={brand.source && brand.source !== 'column' ? 'Brand worked out from the task (the Brands column is empty)' : undefined}>
+      <span className="w-2 h-2 rounded-sm flex-none" style={{ background: brand.color || '#c4c4c4' }} />
+      {brand.label}
+    </span>
+  );
+}
+
+/** Brands on a list of tasks, most used first: [{ label, color, count }] */
+export function brandsOf(items) {
+  const m = new Map();
+  for (const it of items || []) {
+    const b = it.brand;
+    if (!b?.label) continue;
+    const e = m.get(b.label) || { label: b.label, color: b.color, count: 0 };
+    e.count++;
+    m.set(b.label, e);
+  }
+  return [...m.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+}
+
+/** Readable text on a coloured bar: navy on light colours (Blurr's sail blue), white otherwise. */
+export function textOn(bg) {
+  const h = String(bg || '').replace('#', '');
+  if (h.length !== 6) return '#fff';
+  const [r, g, b] = [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16) / 255).map(c => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.6 ? '#030b2e' : '#fff';   // Monday keeps white on its orange; only pale colours flip
+}
+
 export function Card({ title, subtitle, right, children, className = '', pad = true }) {
   return (
     <section className={`bg-white rounded-2xl border border-gray-200 shadow-[0_1px_2px_rgba(3,11,46,.04)] ${className}`}>

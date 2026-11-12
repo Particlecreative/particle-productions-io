@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, Search, RefreshCw, Loader2, AlertTriangle, ExternalLink, X } from 'lucide-react';
 import { studioApi } from '../../lib/studioService';
 import { useStudio } from './writes';
-import { Avatar, StatusPill, ProductTag, Seg, StackBar, TimelinePill, Empty, DIVISION, CATEGORY, CATEGORY_ORDER, NAVY, useWidth } from './Bits';
+import { Avatar, StatusPill, ProductTag, BrandTag, brandsOf, Seg, StackBar, TimelinePill, Empty, DIVISION, CATEGORY, CATEGORY_ORDER, NAVY, useWidth } from './Bits';
+import { BrandPicker } from './Filters';
 
 // Campaign Tracker — every Video + Design ticket that has a Campaign, grouped by campaign (Lilian's Monday dashboard).
 const PREF_KEY = 'cp_studio_campaigns_v1';
@@ -31,8 +32,8 @@ const ago = (iso) => {
   return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : `${Math.round(m / 60)}h ago`;
 };
 
-/** One group per campaign with what the header needs: counts by status, products, people, dates. */
-function groupCampaigns(items, today) {
+/** One group per campaign with what the header needs: counts by status, products, brands, people, dates. byBrand: the stripe is the campaign's main brand. */
+function groupCampaigns(items, today, byBrand = false) {
   const map = new Map();
   for (const it of items) {
     for (const label of it.campaigns || []) {
@@ -61,9 +62,11 @@ function groupCampaigns(items, today) {
     const dates = g.items.flatMap(i => [i.timeline?.from, i.timeline?.to, i.deadline]).filter(Boolean).sort();
     const dues = open.map(dueOf).filter(Boolean).sort();
     const activity = g.items.map(i => i.timeline?.to || i.deadline || i.created_at?.slice(0, 10)).filter(Boolean).sort();
+    const brands = brandsOf(g.items);
     return {
       ...g,
-      color: colorOf(g.label),
+      color: byBrand && brands[0]?.color ? brands[0].color : colorOf(g.label),
+      brands,
       cats,
       open: open.length,
       done: cats.delivered || 0,
@@ -87,7 +90,7 @@ const SORTS = {
   name: (a, b) => a.label.localeCompare(b.label),
 };
 
-export default function Campaigns() {
+export default function Campaigns({ f = {}, setF }) {
   const { writes, openTask } = useStudio();
   const [raw, setRaw] = useState(() => cache?.data || null);
   const [loading, setLoading] = useState(false);
@@ -122,26 +125,28 @@ export default function Campaigns() {
   const productOptions = useMemo(() => [...new Set((data?.items || []).map(i => i.product?.label).filter(l => l && l !== '-'))].sort(), [data]);
   const requesterOptions = useMemo(() => Object.values(data?.requesters || {}).sort((a, b) => a.name.localeCompare(b.name)), [data]);
 
+  const byBrand = f.colorBy === 'brand';
   const groups = useMemo(() => {
     if (!data) return [];
     const items = data.items.filter(it =>
       (prefs.board === 'all' || it.board === prefs.board) &&
       (!prefs.product || it.product?.label === prefs.product) &&
-      (!prefs.requester || it.requested_by.includes(prefs.requester)));
-    let gs = groupCampaigns(items, today);
+      (!prefs.requester || it.requested_by.includes(prefs.requester)) &&
+      (!f.brands?.length || f.brands.includes(it.brand?.label)));
+    let gs = groupCampaigns(items, today, byBrand);
     const needle = q.trim().toLowerCase();
     if (needle) {
       // A matching campaign keeps all its tickets; otherwise only the tickets whose name matches
       gs = gs.flatMap((g) => {
         if (g.label.toLowerCase().includes(needle)) return [g];
         const hits = g.items.filter(it => it.name.toLowerCase().includes(needle));
-        return hits.length ? groupCampaigns(hits.map(it => ({ ...it, campaigns: [g.label] })), today) : [];
+        return hits.length ? groupCampaigns(hits.map(it => ({ ...it, campaigns: [g.label] })), today, byBrand) : [];
       });
     }
     if (prefs.show === 'active') gs = gs.filter(g => g.open > 0);
     if (prefs.show === 'done') gs = gs.filter(g => g.open === 0);
     return gs.sort(SORTS[prefs.sort] || SORTS.recent);
-  }, [data, prefs, q, today]);
+  }, [data, prefs, q, today, f.brands, byBrand]);
 
   const totals = useMemo(() => {
     const open = groups.flatMap(g => g.items.filter(i => i.open));
@@ -165,7 +170,7 @@ export default function Campaigns() {
     if (isOpen(g, i)) next.delete(g.key); else next.add(g.key);
     return next;
   });
-  const anyFilter = prefs.board !== 'all' || prefs.product || prefs.requester || q.trim();
+  const anyFilter = prefs.board !== 'all' || prefs.product || prefs.requester || f.brands?.length || q.trim();
 
   return (
     <div ref={wref} className="flex flex-col gap-4">
@@ -184,6 +189,7 @@ export default function Campaigns() {
           <option value="">All products</option>
           {productOptions.map(p => <option key={p} value={p}>{p}</option>)}
         </select>
+        {setF && <BrandPicker items={data?.items || []} f={f} setF={setF} />}
         <select id="campaign-requester" value={prefs.requester} onChange={(e) => setPrefs({ requester: e.target.value })}
           className="text-xs font-semibold px-3 py-2 rounded-xl bg-gray-100 text-gray-700 border-0 outline-none max-w-[170px]">
           <option value="">Anyone requested</option>
@@ -247,7 +253,7 @@ export default function Campaigns() {
           )}
 
           {groups.map((g, i) => (
-            <CampaignGroup key={g.key} g={g} today={today} data={data} width={width} open={isOpen(g, i)} onToggle={() => toggle(g, i)}
+            <CampaignGroup key={g.key} g={g} today={today} data={data} width={width} open={isOpen(g, i)} onToggle={() => toggle(g, i)} byBrand={byBrand}
               showDone={showDone.has(g.key) || g.open === 0}
               onShowDone={() => setShowDone(s => new Set(s).add(g.key))}
               onTask={(it) => openTask(it, data)} />
@@ -267,7 +273,7 @@ function Stat({ label, value, color }) {
   );
 }
 
-function CampaignGroup({ g, today, data, width, open, onToggle, showDone, onShowDone, onTask }) {
+function CampaignGroup({ g, today, data, width, open, onToggle, showDone, onShowDone, onTask, byBrand }) {
   const wide = width >= WIDE;
   const parts = CATEGORY_ORDER.map(k => ({ key: k, value: g.cats[k] || 0, color: CATEGORY[k].color, label: CATEGORY[k].label }));
   const rows = [...g.items].sort((a, b) => (ROW_ORDER.indexOf(a.status.category) - ROW_ORDER.indexOf(b.status.category))
@@ -295,8 +301,9 @@ function CampaignGroup({ g, today, data, width, open, onToggle, showDone, onShow
         </span>
         {width >= 1150 && (
         <span className="flex items-center gap-3 flex-none max-w-[300px] overflow-hidden">
-          {g.products.slice(0, 3).map(p => <ProductTag key={p.label} product={p} />)}
-          {g.products.length > 3 && <span className="text-[11px] text-gray-400">+{g.products.length - 3}</span>}
+          {byBrand && g.brands.slice(0, 2).map(b => <BrandTag key={b.label} brand={b} />)}
+          {g.products.slice(0, byBrand ? 2 : 3).map(p => <ProductTag key={p.label} product={p} />)}
+          {g.products.length > (byBrand ? 2 : 3) && <span className="text-[11px] text-gray-400">+{g.products.length - (byBrand ? 2 : 3)}</span>}
         </span>
         )}
         {wide && (
@@ -323,7 +330,7 @@ function CampaignGroup({ g, today, data, width, open, onToggle, showDone, onShow
               <span className="pl-3.5">Ticket</span><span>Board</span><span>Status</span><span>People</span><span>Requested by</span><span>Timeline</span><span />
             </div>
           )}
-          {visible.map(it => <TicketRow key={it.id} it={it} data={data} today={today} color={g.color} wide={wide} onClick={() => onTask(it)} />)}
+          {visible.map(it => <TicketRow key={it.id} it={it} data={data} today={today} color={byBrand ? it.brand?.color || g.color : g.color} wide={wide} onClick={() => onTask(it)} />)}
           {hiddenDone > 0 && (
             <button type="button" onClick={onShowDone} className="w-full text-left px-4 py-2.5 text-xs font-semibold text-gray-500 hover:bg-gray-50 border-t border-gray-100">
               Show {hiddenDone} done {hiddenDone === 1 ? 'ticket' : 'tickets'}

@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, Loader2, Plane, Mail, X, AlertTriangle, Inbox, Search, Check, PanelRightOpen, PanelRightClose, RefreshCw, Flag } from 'lucide-react';
-import { Avatar, Seg, StatusPill, ProductTag } from './Bits';
+import { Avatar, Seg, StatusPill, ProductTag, BrandTag, brandsOf, textOn } from './Bits';
 import { applyFilters, addDays, sundayOf, ymd } from './Filters';
 import { studioApi } from '../../lib/studioService';
 import { useStudio, lastWriteAt, outOn, checkSchedule, workdays } from './writes';
@@ -250,6 +250,8 @@ export default function Workload({ f }) {
 
   if (error && !data) return <div className="my-4 px-4 py-3 rounded-2xl bg-red-50 text-red-700 text-sm flex items-center gap-2"><AlertTriangle size={16} /> {error}</div>;
 
+  const byBrand = f.colorBy === 'brand';
+  const legend = byBrand && data ? brandsOf(rows.flatMap(r => r.bars.map(b => b.it))) : [];
   let lastRole = null;
   return (
     <div className="flex flex-col gap-3 select-none">
@@ -279,6 +281,13 @@ export default function Workload({ f }) {
       <div className="text-[11px] text-gray-400 -mt-1">
         Drag a bar to move it · drag its edges to change dates · drop it on someone else to reassign · click for details · ← → weeks, T today · every change goes straight to Monday, with Undo
       </div>
+      {legend.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 -mt-1 text-[11px] text-gray-600" aria-label="Brand colours">
+          <span className="font-semibold text-gray-400">Coloured by brand</span>
+          {legend.map(b => <span key={b.label} className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: b.color || '#c4c4c4' }} />{b.label} <span className="text-gray-400 tabular-nums">{b.count}</span></span>)}
+          <span className="text-gray-400">· the thin edge shows the status</span>
+        </div>
+      )}
 
       {!data ? (
         <div className="py-24 text-center text-gray-400"><Loader2 className="animate-spin inline" /></div>
@@ -370,11 +379,12 @@ export default function Workload({ f }) {
                           const late = it.open && it.deadline && it.deadline < today;
                           const dl = it.deadline && it.deadline >= from && it.deadline <= to && it.deadline !== to ? it.deadline : null;
                           const w = spanW(from, to) - 4;
+                          const bg = byBrand ? it.brand?.color || '#888' : it.status.color || '#888';
                           return (
                             <div key={`${it.board}:${it.id}`} onPointerDown={(e) => onPointerDown(e, it, 'move', p.id)} onPointerEnter={(e) => hoverOn(e, it)} onPointerLeave={hoverOff}
-                              className={`absolute rounded-lg text-[11px] font-semibold text-white flex items-center cursor-grab group overflow-hidden ${moving ? 'opacity-30' : 'hover:brightness-110 hover:shadow-md'} ${!it.open ? 'opacity-55' : 'shadow-sm'} ${it.board === 'retention' ? 'ring-2 ring-[#00a9a5]/60' : ''}`}
-                              style={{ left: xOf(from) + 2, width: w, top: TOP + lane * LANE_H, height: LANE_H - 6, background: it.status.color || '#888' }}>
-                              <span className="absolute left-0 top-0 bottom-0 w-1" style={{ background: it.product?.color || 'transparent' }} />
+                              className={`absolute rounded-lg text-[11px] font-semibold flex items-center cursor-grab group overflow-hidden ${moving ? 'opacity-30' : 'hover:brightness-110 hover:shadow-md'} ${!it.open ? 'opacity-55' : 'shadow-sm'} ${it.board === 'retention' ? 'ring-2 ring-[#00a9a5]/60' : ''}`}
+                              style={{ left: xOf(from) + 2, width: w, top: TOP + lane * LANE_H, height: LANE_H - 6, background: bg, color: byBrand ? textOn(bg) : '#fff' }}>
+                              <span className="absolute left-0 top-0 bottom-0 w-1" style={{ background: (byBrand ? it.status.color : it.product?.color) || 'transparent' }} title={byBrand ? it.status.label : undefined} />
                               <span onPointerDown={(e) => onPointerDown(e, it, 'left', p.id)} className="absolute left-0 top-0 bottom-0 w-2.5 cursor-ew-resize opacity-0 group-hover:opacity-100 bg-black/25 z-[1]" />
                               <span className="pl-2.5 pr-2 truncate flex items-center gap-1">
                                 {!it.open && <Check size={11} className="flex-none" />}
@@ -382,6 +392,7 @@ export default function Workload({ f }) {
                                 {it.division === 'tv' && <span className="flex-none opacity-80">TV ·</span>}
                                 <span className="truncate">{it.title || it.name}</span>
                                 {w > 220 && it.product?.label && it.product.label !== '-' && <span className="font-normal opacity-75 truncate">· {it.product.label}</span>}
+                                {byBrand && w > 300 && it.brand?.label && <span className="font-normal opacity-75 truncate">· {it.brand.label}</span>}
                               </span>
                               {dl && <span className="absolute top-0 bottom-0 w-0.5 bg-white/90" style={{ left: xOf(dl) - xOf(from) + cols.w[cols.idx.get(dl)] - 2 }} title={`Deadline ${fmt(dl)}`} />}
                               {late ? (
@@ -411,7 +422,7 @@ export default function Workload({ f }) {
 
           {panel && (
             <SchedulePanel rows={rows} unassigned={unassigned} data={data} q={panelQ} setQ={setPanelQ} who={panelWho} setWho={setPanelWho}
-              onClose={() => setPanel(false)} onGrab={onPointerDown} today={today} />
+              onClose={() => setPanel(false)} onGrab={onPointerDown} today={today} byBrand={byBrand} />
           )}
         </div>
       )}
@@ -428,7 +439,7 @@ export default function Workload({ f }) {
 }
 
 /** Everything not on the timeline yet — drag a card onto a person and a day. */
-function SchedulePanel({ rows, unassigned, data, q, setQ, who, setWho, onClose, onGrab, today }) {
+function SchedulePanel({ rows, unassigned, data, q, setQ, who, setWho, onClose, onGrab, today, byBrand }) {
   const match = (it) => !q.trim() || it.name.toLowerCase().includes(q.trim().toLowerCase());
   const groups = [
     ...(!who ? [{ key: 'none', title: 'Waiting for someone', icon: <Inbox size={12} />, items: unassigned.filter(match) }] : []),
@@ -463,7 +474,8 @@ function SchedulePanel({ rows, unassigned, data, q, setQ, who, setWho, onClose, 
                 const late = it.deadline && it.deadline < today;
                 return (
                   <div key={`${it.board}:${it.id}`} onPointerDown={(e) => onGrab(e, it, 'tray', g.person?.id || null)}
-                    className="rounded-lg bg-white border border-gray-200 px-2.5 py-2 cursor-grab hover:border-[#0808f8]/50 hover:shadow-sm active:cursor-grabbing">
+                    className="rounded-lg bg-white border border-gray-200 px-2.5 py-2 cursor-grab hover:border-[#0808f8]/50 hover:shadow-sm active:cursor-grabbing"
+                    style={byBrand && it.brand?.color ? { boxShadow: `inset 3px 0 0 ${it.brand.color}` } : undefined}>
                     <div className="flex items-center gap-1.5 text-[10px] text-gray-500">
                       <span className="w-2 h-2 rounded-full flex-none" style={{ background: it.status.color || '#c4c4c4' }} />
                       <span className="truncate">{it.status.label}</span>
@@ -472,6 +484,7 @@ function SchedulePanel({ rows, unassigned, data, q, setQ, who, setWho, onClose, 
                     </div>
                     <div className="text-xs font-semibold text-gray-900 leading-snug mt-0.5" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{it.title || it.name}</div>
                     <div className="flex items-center gap-2 mt-1 min-w-0">
+                      {byBrand && <BrandTag brand={it.brand} />}
                       <ProductTag product={it.product} />
                       {it.requested_by?.length > 0 && <span className="text-[10px] text-gray-400 truncate">for {it.requested_by.map(r => first(data.requesters[r]?.name)).filter(Boolean).join(', ')}</span>}
                     </div>
@@ -496,7 +509,7 @@ function HoverCard({ it, x, y, data, today }) {
     <div className="fixed z-[85] pointer-events-none bg-white rounded-xl shadow-2xl border border-gray-200 p-3 flex flex-col gap-1.5" style={{ left, top, width: w }}>
       <div className="text-[10px] font-bold uppercase tracking-wider text-[#0808f8]">{it.board === 'retention' ? 'Email task' : it.board === 'video' ? 'Video' : 'Design'}{it.division === 'tv' ? ' · TV' : ''}</div>
       <div className="text-sm font-semibold text-[#030b2e] leading-snug">{it.name}</div>
-      <div className="flex flex-wrap items-center gap-2"><StatusPill status={it.status} small /><ProductTag product={it.product} /></div>
+      <div className="flex flex-wrap items-center gap-2"><StatusPill status={it.status} small /><BrandTag brand={it.brand} /><ProductTag product={it.product} /></div>
       <div className="text-xs text-gray-600">
         {it.timeline?.from ? `${fmt(it.timeline.from)}${it.timeline.to !== it.timeline.from ? ` – ${fmt(it.timeline.to)}` : ''}` : 'Not scheduled'}
         {it.deadline && <span className={late ? 'text-red-600 font-semibold' : ''}> · due {fmt(it.deadline)}</span>}

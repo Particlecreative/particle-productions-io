@@ -436,18 +436,19 @@ function TaskLifeDetail({ it, life, data, who, bamboo }) {
   );
 }
 
-// ── Smart stats (by requester / product / type / person) ───────────────────
-const GROUPS = [['requester', 'Requester'], ['product', 'Product'], ['type', 'Type'], ['person', 'Designer / editor']];
+// ── Smart stats (by requester / brand / product / type / person) ───────────
+const GROUPS = [['requester', 'Requester'], ['brand', 'Brand'], ['product', 'Product'], ['type', 'Type'], ['person', 'Designer / editor']];
 
 function groupKeys(it, by) {
   if (by === 'requester') return it.requested_by?.length ? it.requested_by : ['none'];
   if (by === 'product') return [it.product?.label && it.product.label !== '-' ? it.product.label : 'none'];
+  if (by === 'brand') return [it.brand?.label || 'none'];
   if (by === 'type') return [it.type?.label || 'none'];
   return it.people.length ? it.people : ['none'];
 }
 
 function GroupStats({ items, data, who, f, setF }) {
-  const [by, setBy] = useState('requester');
+  const [by, setBy] = useState(f?.colorBy === 'brand' ? 'brand' : 'requester');
   const [sort, setSort] = useState(['hours', -1]);
   const nowMs = Date.parse(data.generated_at) || Date.now();
   const { groups, totalHours, insights, lifeMix } = useMemo(() => {
@@ -485,7 +486,7 @@ function GroupStats({ items, data, who, f, setF }) {
       ...g,
       label: label(g.key),
       person: by === 'requester' ? data.requesters[g.key] : by === 'person' ? data.people[g.key] : null,
-      color: by === 'product' ? g.items[0]?.product?.color : null,
+      color: by === 'product' ? g.items[0]?.product?.color : by === 'brand' ? g.items[0]?.brand?.color : null,
       share: total ? g.hours / total : 0,
       avgWorked: avg(g.worked), avgLife: avg(g.life), avgWait: avg(g.wait), avgFix: avg(g.fixes),
     }));
@@ -528,9 +529,10 @@ function GroupStats({ items, data, who, f, setF }) {
     if (g.key === 'none' || by === 'type') return null;
     if (by === 'requester') return { ...f, requesters: f.requesters.length === 1 && f.requesters[0] === g.key ? [] : [g.key] };
     if (by === 'product') return { ...f, product: f.product === g.key ? '' : g.key };
+    if (by === 'brand') return { ...f, brands: f.brands?.length === 1 && f.brands[0] === g.key ? [] : [g.key] };
     return { ...f, people: f.people.length === 1 && f.people[0] === g.key ? [] : [g.key] };
   };
-  const active = (g) => (by === 'requester' ? f.requesters.includes(g.key) : by === 'product' ? f.product === g.key : by === 'person' ? f.people.includes(g.key) : false);
+  const active = (g) => (by === 'requester' ? f.requesters.includes(g.key) : by === 'product' ? f.product === g.key : by === 'brand' ? !!f.brands?.includes(g.key) : by === 'person' ? f.people.includes(g.key) : false);
   const Head = ({ id, children, right }) => (
     <button type="button" onClick={() => setSort([id, k === id ? -dir : (id === 'name' ? 1 : -1)])} className={`inline-flex items-center gap-1 hover:text-gray-700 ${right ? 'justify-end w-full' : ''}`}>
       {children}{k === id && <ArrowUpDown size={10} />}

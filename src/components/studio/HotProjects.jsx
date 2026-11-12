@@ -9,7 +9,8 @@ import {
 } from 'lucide-react';
 import { studioApi } from '../../lib/studioService';
 import { useStudio } from './writes';
-import { Avatar, StatusPill, ProductTag, TimelinePill, Empty, DIVISION, CATEGORY, CATEGORY_ORDER, NAVY, ELECTRIC, hrs } from './Bits';
+import { Avatar, StatusPill, ProductTag, BrandTag, TimelinePill, Empty, DIVISION, CATEGORY, CATEGORY_ORDER, NAVY, ELECTRIC, hrs } from './Bits';
+import { BrandPicker } from './Filters';
 
 // Hot Projects — the big projects the studio is running right now, pinned by the team, with all their Monday data.
 const STALE_MS = 2 * 60 * 1000;
@@ -59,7 +60,7 @@ function useClickAway(ref, onAway, active = true) {
   }, [ref, onAway, active]);
 }
 
-export default function HotProjects({ studioData }) {
+export default function HotProjects({ studioData, f = {}, setF }) {
   const { writes, openTask } = useStudio();
   const [raw, setRaw] = useState(() => cache?.data || null);
   const [loading, setLoading] = useState(false);
@@ -113,10 +114,20 @@ export default function HotProjects({ studioData }) {
   };
 
   const viewing = projects.find(p => p.id === viewId);
+  // Brands (shared with the Studio's filter bar): filter the projects, colour the cards
+  const byBrand = f.colorBy === 'brand';
+  const shown = useMemo(() => (f.brands?.length ? projects.filter(p => p.main && f.brands.includes(p.main.brand?.label)) : projects), [projects, f.brands]);
+  // Reordering a filtered list keeps the hidden projects where they were
+  const reorderShown = (ids) => {
+    if (shown.length === projects.length) return reorder(ids);
+    const vis = new Set(ids);
+    let k = 0;
+    return reorder(projects.map(p => (vis.has(p.id) ? ids[k++] : p.id)));
+  };
 
   return (
     <div className="flex flex-col gap-5">
-      <Hero projects={projects} data={data} today={today} loading={loading} onAdd={() => setAdding(true)} onRefresh={() => load(true)} />
+      <Hero projects={shown} data={data} today={today} loading={loading} onAdd={() => setAdding(true)} onRefresh={() => load(true)} />
 
       {error && (
         <div className="px-4 py-3 rounded-2xl bg-red-50 text-red-700 text-sm flex items-center gap-2">
@@ -125,6 +136,12 @@ export default function HotProjects({ studioData }) {
         </div>
       )}
       {data?.warnings?.length > 0 && <div className="text-xs text-amber-700">{data.warnings.join(' · ')}</div>}
+      {data && projects.length > 0 && setF && (
+        <div className="flex items-center gap-2 -mt-2">
+          <BrandPicker items={projects.map(p => p.main).filter(Boolean)} f={f} setF={setF} />
+          {f.brands?.length > 0 && <span className="text-xs text-gray-500">{shown.length} of {projects.length} projects</span>}
+        </div>
+      )}
 
       {!data ? (
         !error && (
@@ -136,12 +153,14 @@ export default function HotProjects({ studioData }) {
       ) : !projects.length ? (
         <FirstRun onAdded={() => load(true)} onBrowse={() => setAdding(true)} />
       ) : (
-        <ProjectGrid projects={projects} data={data} today={today} onOpen={(p) => setViewId(p.id)} onReorder={reorder} />
+        shown.length
+          ? <ProjectGrid projects={shown} data={data} today={today} onOpen={(p) => setViewId(p.id)} onReorder={reorderShown} byBrand={byBrand} />
+          : <div className="py-16 text-center text-sm text-gray-400">No hot projects for {f.brands.join(', ')}.</div>
       )}
 
       {adding && <AddProjects onClose={() => setAdding(false)} onAdded={() => load(true)} />}
       {viewing && (
-        <ProjectView p={viewing} data={data} today={today} onClose={() => setViewId(null)}
+        <ProjectView p={viewing} data={data} today={today} byBrand={byBrand} onClose={() => setViewId(null)}
           onEditTask={editTask} onRemove={() => remove(viewing)} onUpdate={(patch) => update(viewing, patch)} />
       )}
     </div>
@@ -203,7 +222,7 @@ function HeroStat({ value, label, dot, dim, wide }) {
 }
 
 // ── Cards ───────────────────────────────────────────────────────────────────
-function ProjectGrid({ projects, data, today, onOpen, onReorder }) {
+function ProjectGrid({ projects, data, today, onOpen, onReorder, byBrand }) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   const ids = projects.map(p => p.id);
   return (
@@ -211,19 +230,19 @@ function ProjectGrid({ projects, data, today, onOpen, onReorder }) {
       onDragEnd={({ active, over }) => { if (over && active.id !== over.id) onReorder(arrayMove(ids, ids.indexOf(active.id), ids.indexOf(over.id))); }}>
       <SortableContext items={ids} strategy={rectSortingStrategy}>
         <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 380px), 1fr))' }}>
-          {projects.map(p => <SortableCard key={p.id} p={p} data={data} today={today} onOpen={() => onOpen(p)} />)}
+          {projects.map(p => <SortableCard key={p.id} p={p} data={data} today={today} onOpen={() => onOpen(p)} byBrand={byBrand} />)}
         </div>
       </SortableContext>
     </DndContext>
   );
 }
 
-function SortableCard({ p, data, today, onOpen }) {
+function SortableCard({ p, data, today, onOpen, byBrand }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: p.id });
   return (
     <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 30 : undefined, opacity: isDragging ? 0.85 : 1 }}>
       {p.main
-        ? <ProjectCard p={p} data={data} today={today} onOpen={onOpen} handle={{ ...attributes, ...listeners }} />
+        ? <ProjectCard p={p} data={data} today={today} onOpen={onOpen} handle={{ ...attributes, ...listeners }} byBrand={byBrand} />
         : <MissingCard p={p} handle={{ ...attributes, ...listeners }} />}
     </div>
   );
@@ -328,7 +347,7 @@ function Links({ it, size = 15 }) {
   );
 }
 
-function ProjectCard({ p, data, today, onOpen, handle }) {
+function ProjectCard({ p, data, today, onOpen, handle, byBrand }) {
   const it = p.main;
   const all = [it, ...p.relatedItems];
   const div = DIVISION[it.division] || DIVISION[it.board];
@@ -340,7 +359,8 @@ function ProjectCard({ p, data, today, onOpen, handle }) {
   const askers = [...new Set(it.requested_by)].map(uid => data.people[uid]).filter(Boolean);
   const latest = all.flatMap(x => x.updates?.recent || []).sort((a, b) => Date.parse(b.at) - Date.parse(a.at))[0];
   const daysIn = it.life?.submitted ? Math.max(1, Math.round((Date.now() - Date.parse(it.life.submitted)) / 86400000)) : null;
-  const glow = it.product?.color && it.product.label !== '-' ? it.product.color : '#4a55ff';
+  const productColor = it.product?.color && it.product.label !== '-' ? it.product.color : '#4a55ff';
+  const glow = byBrand && it.brand?.color ? it.brand.color : productColor;
   return (
     <article role="button" tabIndex={0} onClick={onOpen} onKeyDown={(e) => { if (e.key === 'Enter') onOpen(); }}
       className="group h-full flex flex-col rounded-3xl overflow-hidden bg-white border border-gray-200 shadow-[0_1px_2px_rgba(3,11,46,.05)] hover:shadow-[0_14px_40px_-12px_rgba(3,11,46,.35)] hover:-translate-y-0.5 transition-all duration-300 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#4a55ff]">
@@ -355,7 +375,8 @@ function ProjectCard({ p, data, today, onOpen, handle }) {
           {p.title || it.title || it.name}
         </h3>
         <div className="mt-1.5 flex items-center gap-2 text-xs text-white/65 min-w-0">
-          {it.product?.label && it.product.label !== '-' && <span className="flex items-center gap-1.5 whitespace-nowrap"><span className="w-2 h-2 rounded-full" style={{ background: glow }} />{it.product.label}</span>}
+          {byBrand && it.brand?.label && <span className="flex items-center gap-1.5 whitespace-nowrap font-semibold text-white/85"><span className="w-2 h-2 rounded-sm" style={{ background: it.brand.color || '#c4c4c4' }} />{it.brand.label}</span>}
+          {it.product?.label && it.product.label !== '-' && <span className="flex items-center gap-1.5 whitespace-nowrap"><span className="w-2 h-2 rounded-full" style={{ background: productColor }} />{it.product.label}</span>}
           <span className="truncate">{[it.platform, it.type?.label, it.campaign].filter(Boolean).join(' · ')}</span>
         </div>
         <div className="mt-3.5"><Stepper it={it} onDark /></div>
@@ -574,7 +595,7 @@ function Fact({ label, children }) {
   );
 }
 
-function ProjectView({ p, data, today, onClose, onEditTask, onRemove, onUpdate }) {
+function ProjectView({ p, data, today, byBrand, onClose, onEditTask, onRemove, onUpdate }) {
   const it = p.main;
   const all = [it, ...p.relatedItems];
   const [title, setTitle] = useState(p.title || '');
@@ -588,7 +609,7 @@ function ProjectView({ p, data, today, onClose, onEditTask, onRemove, onUpdate }
   }, [onClose, renaming]);
   if (!it) return null;
   const div = DIVISION[it.division] || DIVISION[it.board];
-  const glow = it.product?.color && it.product.label !== '-' ? it.product.color : '#4a55ff';
+  const glow = byBrand && it.brand?.color ? it.brand.color : it.product?.color && it.product.label !== '-' ? it.product.color : '#4a55ff';
   const effort = all.reduce((a, x) => a + (x.effort_total_s || 0), 0);
   const changes = all.flatMap(x => [
     ...(x.deadline_moves || []).map(m => ({ ...m, kind: 'deadline', item: x })),
@@ -706,6 +727,7 @@ function ProjectView({ p, data, today, onClose, onEditTask, onRemove, onUpdate }
               <Fact label="Assigned to">
                 {it.people.length ? <span className="flex flex-wrap items-center gap-1.5">{it.people.map(uid => <span key={uid} className="flex items-center gap-1"><Avatar person={data.people[uid] || { name: '?' }} size={18} />{nameOf(data, uid)}</span>)}</span> : <span className="text-red-500 font-semibold">Nobody</span>}
               </Fact>
+              <Fact label="Brand">{it.brand?.label ? <BrandTag brand={it.brand} /> : '—'}</Fact>
               <Fact label="Product">{it.product?.label && it.product.label !== '-' ? <ProductTag product={it.product} /> : '—'}</Fact>
               <Fact label="Type · platform">{[it.type?.label, it.platform].filter(Boolean).join(' · ') || '—'}</Fact>
               {it.campaign && <Fact label="Campaign">{it.campaign}</Fact>}

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Calendar, ChevronDown, Search, X, RefreshCw, Users, UserRound, Tv } from 'lucide-react';
-import { Avatar, Seg } from './Bits';
+import { Calendar, ChevronDown, Search, X, RefreshCw, Users, UserRound, Tv, Tag, Palette } from 'lucide-react';
+import { Avatar, Seg, brandsOf } from './Bits';
 
 const DAY = 86400000;
 export function ymd(d) { return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' }); }
@@ -82,6 +82,61 @@ function PeoplePicker({ label, icon: Icon, people, value, onChange }) {
   );
 }
 
+/**
+ * Brands: filter to one or more brands, and colour tasks by brand (bars, cards, groups) instead of status / product.
+ * Shared by the filter bar and by the tabs with their own toolbar (Campaigns, Hot Projects). f.brands = labels,
+ * f.colorBy = 'brand' | ''.
+ */
+export function BrandPicker({ items, f, setF }) {
+  const ref = useRef(null);
+  const [open, setOpen] = useState(false);
+  const brands = brandsOf(items);
+  const value = f.brands || [];
+  const colour = f.colorBy === 'brand';
+  const chosen = brands.filter(b => value.includes(b.label));
+  const dots = chosen.length ? chosen : colour ? brands : [];
+  const toggle = (label) => setF({ ...f, brands: value.includes(label) ? value.filter(x => x !== label) : [...value, label] });
+  return (
+    <>
+      <button ref={ref} type="button" onClick={() => setOpen(v => !v)} aria-label="Brands: filter and colour"
+        className={`flex items-center gap-2 text-xs font-semibold px-3 py-2 rounded-xl border ${value.length ? 'border-[#0808f8] bg-[#0808f8]/5 text-[#0808f8]' : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'}`}>
+        {dots.length ? (
+          <span className="flex items-center -space-x-1">{dots.slice(0, 5).map(b => <span key={b.label} className="w-3 h-3 rounded-sm ring-2 ring-white" style={{ background: b.color || '#c4c4c4' }} />)}</span>
+        ) : <Tag size={14} />}
+        {chosen.length === 1 ? chosen[0].label : chosen.length ? `Brands · ${chosen.length}` : 'Brands'}
+        {colour && <Palette size={12} className="opacity-60" title="Coloured by brand" />}
+        {value.length > 0
+          ? <X size={13} onClick={(e) => { e.stopPropagation(); setF({ ...f, brands: [] }); }} className="opacity-60 hover:opacity-100" />
+          : <ChevronDown size={13} className="opacity-50" />}
+      </button>
+      <Popover anchor={ref} open={open} onClose={() => setOpen(false)} width={260}>
+        {brands.map(b => {
+          const on = value.includes(b.label);
+          return (
+            <button key={b.label} type="button" onClick={() => toggle(b.label)}
+              className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-left text-sm ${on ? 'bg-[#0808f8]/8 text-[#030b2e] font-semibold' : 'hover:bg-gray-50 text-gray-700'}`}>
+              <span className="w-3.5 h-3.5 rounded flex-none" style={{ background: b.color || '#c4c4c4' }} />
+              <span className="flex-1 truncate">{b.label}</span>
+              <span className="text-[11px] text-gray-400 tabular-nums">{b.count}</span>
+              <span className={`w-4 h-4 rounded border flex items-center justify-center ${on ? 'bg-[#0808f8] border-[#0808f8]' : 'border-gray-300'}`}>{on && <span className="w-1.5 h-1.5 bg-white rounded-sm" />}</span>
+            </button>
+          );
+        })}
+        {!brands.length && <div className="text-xs text-gray-400 px-2 py-3">No tasks to show brands for</div>}
+        <label className="flex items-center gap-2.5 px-2 pt-2.5 pb-1.5 mt-1 border-t border-gray-100 text-sm text-gray-800 cursor-pointer">
+          <Palette size={14} className="text-[#0808f8]" />
+          <span className="flex-1">Colour tasks by brand</span>
+          <input type="checkbox" className="sr-only peer" checked={colour} onChange={(e) => setF({ ...f, colorBy: e.target.checked ? 'brand' : '' })} />
+          <span className={`w-8 h-[18px] rounded-full relative transition-colors ${colour ? 'bg-[#0808f8]' : 'bg-gray-300'}`}>
+            <span className={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-all ${colour ? 'left-4' : 'left-0.5'}`} />
+          </span>
+        </label>
+        <div className="px-2 pb-1 text-[10px] leading-snug text-gray-400">From Monday’s Brands column; when it’s empty, from the task name, campaign or product (else Particle).</div>
+      </Popover>
+    </>
+  );
+}
+
 /** Sticky filter bar shared by every Studio tab. */
 export default function Filters({ f, setF, range, data, loading, onRefresh, showDivision = true, showPeriod = true }) {
   const dateRef = useRef(null);
@@ -135,13 +190,14 @@ export default function Filters({ f, setF, range, data, loading, onRefresh, show
         <option value="">All products</option>
         {products.map(p => <option key={p.label} value={p.label}>{p.label}</option>)}
       </select>
+      <BrandPicker items={data?.items || []} f={f} setF={setF} />
       <div className="relative">
         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
         <input value={f.q} onChange={e => setF({ ...f, q: e.target.value })} placeholder="Search tasks"
           className="w-44 text-xs pl-8 pr-3 py-2 rounded-xl border border-gray-200 bg-white outline-none focus:border-[#4a55ff]" />
       </div>
-      {(f.people.length || f.requesters.length || f.product || f.q || f.division !== 'all' || f.status) ? (
-        <button type="button" onClick={() => setF({ ...f, division: 'all', people: [], requesters: [], product: '', q: '', status: null })}
+      {(f.people.length || f.requesters.length || f.product || f.brands?.length || f.q || f.division !== 'all' || f.status) ? (
+        <button type="button" onClick={() => setF({ ...f, division: 'all', people: [], requesters: [], product: '', brands: [], q: '', status: null })}
           className="text-xs font-semibold text-gray-500 hover:text-gray-800 px-2">Clear filters</button>
       ) : null}
       <button type="button" onClick={onRefresh} disabled={loading} title="Pull fresh data from Monday"
@@ -186,6 +242,7 @@ export function applyFilters(items, f) {
     if (f.people.length && !it.people.some(p => f.people.includes(p))) return false;
     if (f.requesters.length && !it.requested_by.some(p => f.requesters.includes(p))) return false;
     if (f.product && it.product?.label !== f.product) return false;
+    if (f.brands?.length && !f.brands.includes(it.brand?.label)) return false;
     if (f.status && !(it.board === f.status.board && it.status.label === f.status.label)) return false;
     if (q && !`${it.name} ${it.campaign || ''}`.toLowerCase().includes(q)) return false;
     return true;

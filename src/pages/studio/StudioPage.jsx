@@ -36,10 +36,10 @@ export default function StudioPage() {
   const { brandId, switchBrand } = useBrand();
   const [params, setParams] = useSearchParams();
   const tab = TABS.some(([k]) => k === params.get('tab')) ? params.get('tab') : 'overview';
-  const [f, setFState] = useState(() => ({ preset: 'this_week', division: 'all', people: [], requesters: [], product: '', q: '', status: null, ...loadPrefs() }));
+  const [f, setFState] = useState(() => ({ preset: 'this_week', division: 'all', people: [], requesters: [], product: '', brands: [], colorBy: '', q: '', status: null, ...loadPrefs() }));
   const setF = useCallback((next) => {
     setFState(next);
-    try { localStorage.setItem(PREF_KEY, JSON.stringify({ preset: next.preset, from: next.from, to: next.to, division: next.division })); } catch { /* ignore */ }
+    try { localStorage.setItem(PREF_KEY, JSON.stringify({ preset: next.preset, from: next.from, to: next.to, division: next.division, colorBy: next.colorBy || '' })); } catch { /* ignore */ }
   }, []);
   const range = useMemo(() => (f.preset === 'custom' && f.from && f.to ? { from: f.from, to: f.to } : presetRange(f.preset)), [f.preset, f.from, f.to]);
   const [raw, setData] = useState(null);
@@ -145,9 +145,9 @@ export default function StudioPage() {
       ) : tab === 'workload' ? (
         <Workload f={f} />
       ) : tab === 'campaigns' ? (
-        <Campaigns />
+        <Campaigns f={f} setF={setF} />
       ) : tab === 'hot' ? (
-        <HotProjects studioData={data} />
+        <HotProjects studioData={data} f={f} setF={setF} />
       ) : !data ? (
         <div className="py-24 text-center text-gray-400 flex flex-col items-center gap-3">
           <Loader2 className="animate-spin" />

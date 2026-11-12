@@ -21,6 +21,7 @@ const DIVISIONS = [
 const { classifyDeliveries, sundayReview } = require('./classify');
 const { importCpWeekly, cpWeekFor } = require('./cpWeekly');
 const { productOf } = require('../studio/product');
+const { brandOf } = require('../studio/brand');
 
 const SCHEMA_VERSION = 1;
 const DAY_MS = 86400000;
@@ -114,6 +115,20 @@ function labelColor(meta, colId, cv) {
 function productLabelColor(cv, columns, meta, overrides) {
   const label = productOf(cv, columns);
   return { label, color: overrides?.[label] || labelColor(meta, columns?.product, label ? { label } : null) };
+}
+
+/**
+ * The brand of a task (pure — tested): Brands column, older Brand text, name / campaign, single-brand product, Particle
+ * (studio/brand.js). Colour: brand_colors override, else the live Brands column's colour, else Monday's default.
+ */
+function brandLabelColor(cv, columns, meta, overrides, { name, campaign, product } = {}) {
+  const c = columns || {};
+  const statusCv = c.brand_status ? cv[c.brand_status] : null;
+  const b = brandOf({
+    column: statusCv?.label ?? statusCv?.text ?? '', text: c.brand ? cv[c.brand]?.text : '', name, campaign, product,
+  });
+  const color = overrides?.[b.label] || labelColor(meta, c.brand_status, { label: b.label }) || b.color;
+  return { label: b.label, color: color || null, source: b.source };
 }
 
 /** Normalized product labels a board knows — Product (old) and the Product dropdown — for name parsing (pure — tested). */
@@ -246,6 +261,7 @@ function normalizeItem(raw, ctx) {
     assets,
     media_refs: [],
   };
+  item.brand = brandLabelColor(cv, c, meta, config.brand_colors, { name: raw.name, campaign: item.campaign, product: productLabel });
   item.division = divisionOf(item, config);
   return item;
 }
@@ -846,4 +862,4 @@ function hashSnapshot(snapshot) {
   return crypto.createHash('sha256').update(JSON.stringify(rest)).digest('hex');
 }
 
-module.exports = { buildSnapshot, hashSnapshot, parseItemName, canonicalUrl, linkKind, trackedInWindow, unionIntervals, normalizeItem, productLabelColor, knownProductsOf, SCHEMA_VERSION };
+module.exports = { buildSnapshot, hashSnapshot, parseItemName, canonicalUrl, linkKind, trackedInWindow, unionIntervals, normalizeItem, productLabelColor, brandLabelColor, knownProductsOf, SCHEMA_VERSION };

@@ -82,6 +82,7 @@ const DEFAULTS = {
         campaign: 'dropdown_mm3n9vjc', platform: 'single_selectu06tevn', concept: 'long_text_mkn8c1ax',
         hook: 'short_text_mkn8n4bx', finished_files: 'numeric_mm321027', files: 'files', requested_by: 'person',
         priority: 'priority_mkm11w0a',
+        brand_status: 'color_mm8q1bam',   // "Brands" (12 Nov 2026) — see studio/brand.js
       },
       // Monday's automation timers (Hot Projects shows them as Monday reports them)
       timers: { review: 'duration_mkynnrsn', lifecycle: 'duration_mkynptaf', stuck: 'duration_mkynmfnr', upload: 'duration_mkynnxec' },
@@ -105,6 +106,7 @@ const DEFAULTS = {
         deadline: 'date_Mjj20aki', versions: 'numberpuotbeaf', working_time: 'time_tracking__1',
         campaign: 'dropdown_mm3n7bw1', platform: 'single_selectrz7230p', concept: 'long_textpvqldjpg',
         brand: 'text_mkz3xf50', requested_by: 'people_Mjj2RrZM', priority: 'priority__1',
+        brand_status: 'color_mm8q3pn9',   // "Brands" status (12 Nov 2026); `brand` is the older free-text column
       },
       timers: { review: 'duration_mkyn55k', lifecycle: 'duration_mkynqdzn', stuck: 'duration_mkynew3p', upload: 'duration_mkynzqv9' },
       statuses: {
@@ -156,6 +158,7 @@ const DEFAULTS = {
   // { mondayUserId: { role, display_name, hidden, order } } — Omer Ben Simon's Monday profile has no name yet
   team: { 119970319: { display_name: 'Omer Ben Simon', role: 'video' } },
   product_colors: {},  // { 'Face Cream': '#579bfc' } overrides
+  brand_colors: {},    // { 'Particle': '#579bfc' } overrides (default: Monday's Brands-column colours)
   auto_generate: { enabled: false, target: 'previous_week' },
   default_template: DEFAULT_TEMPLATE,
   team_template: DEFAULT_TEAM_TEMPLATE,

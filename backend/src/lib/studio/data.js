@@ -15,6 +15,7 @@ const { normalizeItem, trackedInWindow, knownProductsOf } = require('../creative
 const { statusSpans, activeSpans, splitEffort, workSlices, taskLife, statusSince } = require('./effort');
 const bamboo = require('./bamboohr');
 const { linkTvItems } = require('./tvLinks');
+const { brandOf } = require('./brand');
 
 const norm = monday.normLabel;
 const CATEGORY_ORDER = ['delivered', 'review', 'fixes', 'in_progress', 'queued', 'paused', 'stuck', 'other'];
@@ -95,6 +96,8 @@ async function loadEmails(config, P, now, deadline) {
       launch: W.dateOnly(cv[c.launch]?.date || cv[c.launch]?.text),
       timeline: tl && (tl.from || tl.to) ? { from: W.dateOnly(tl.from), to: W.dateOnly(tl.to) } : null,
       product: { label: cv[c.product]?.label ?? cv[c.product]?.text ?? '', color: color(c.product, cv[c.product]) },
+      // the Retention board has no Brands column: the name, else Particle
+      brand: (({ label, color: bc, source }) => ({ label, color: config.brand_colors?.[label] || bc, source }))(brandOf({ name: raw.name })),
       priority: cv[c.priority]?.label ?? cv[c.priority]?.text ?? '',
       amount: Number.isFinite(cv[c.amount]?.number) ? cv[c.amount].number : null,
       completed,

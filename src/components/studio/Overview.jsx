@@ -3,7 +3,7 @@ import { DndContext, PointerSensor, KeyboardSensor, closestCenter, useSensor, us
 import { SortableContext, useSortable, rectSortingStrategy, arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { ExternalLink, Tv, Inbox, ArrowUpDown, Plane, Mail, GripVertical, EyeOff, Eye, LayoutGrid, Check, RotateCcw, Loader2, AlertTriangle, Hourglass, CalendarX2, UserX, CalendarOff, Flame, Activity, CheckCircle2, Timer } from 'lucide-react';
-import { Avatar, Card, StatusPill, ProductTag, StackBar, Empty, hrs, DIVISION, TimelinePill, BalancedGrid, useWidth } from './Bits';
+import { Avatar, Card, StatusPill, ProductTag, StackBar, Empty, hrs, DIVISION, TimelinePill, BalancedGrid, useWidth, Seg, brandsOf } from './Bits';
 import { nextWindow } from './Filters';
 import Inspiration from './Inspiration';
 import TaskListModal from './TaskListModal';
@@ -25,7 +25,7 @@ const WIDGETS = [
   { id: 'people', label: 'Team (video editors + designers)', size: 'full' },
   { id: 'completed', label: 'Completed', size: 'third' },
   { id: 'requesters', label: 'By requester', size: 'third' },
-  { id: 'products', label: 'By product', size: 'third' },
+  { id: 'products', label: 'By product / brand', size: 'third' },
   { id: 'emails', label: 'Email tasks', size: 'full' },
   { id: 'new_requests', label: 'New requests', size: 'full' },
   { id: 'tasks', label: 'All tasks', size: 'full' },
@@ -466,6 +466,7 @@ export default function Overview({ data, items, allItems, periodAll = [], range,
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [list, setList] = useState(null);
+  const [mixBy, setMixBy] = useState(null);   // 'product' | 'brand' — null follows "Colour by brand"
   useEffect(() => { studioApi.getLayout().then(l => l && setLayout(mergeLayout(l))).catch(() => {}); }, []);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
 
@@ -501,6 +502,9 @@ export default function Overview({ data, items, allItems, periodAll = [], range,
     e.value++; e.items.push(i);
     return m.set(i.product.label, e);
   }, new Map()).values()].sort((a, b) => b.value - a.value).slice(0, 10);
+  // By brand (Tomer, 12 Nov 2026): the same card, switched — follows "Colour by brand" until someone picks
+  const mix = mixBy || (f.colorBy === 'brand' ? 'brand' : 'product');
+  const brandRows = brandsOf(items).map(b => ({ key: b.label, label: b.label, color: b.color, value: b.count, items: items.filter(i => i.brand?.label === b.label) }));
   const newRequests = allItems.filter(i => i.open && isNew(i)).sort((a, b) => (a.deadline || '9999').localeCompare(b.deadline || '9999'));
   const attention = useMemo(() => needsAttention({ data, items, allItems, range, today }), [data, items, allItems, range, today]);
   const doneBy = ['video', 'design'].map(b => ({ b, list: delivered.filter(i => i.board === b) }));
@@ -535,7 +539,7 @@ export default function Overview({ data, items, allItems, periodAll = [], range,
       case 'people': {
         const groups = [['video', 'Video editors'], ['design', 'Designers']].map(([role, title]) => ({ key: role, title, people: byRole(role) })).filter(g => g.people.length);
         if (!groups.length) return null;
-        const showAll = () => setF({ ...f, division: 'all', requesters: [], product: '', q: '', status: null });
+        const showAll = () => setF({ ...f, division: 'all', requesters: [], product: '', brands: [], q: '', status: null });
         return <Team groups={groups} render={p => {
           const mine = items.filter(i => i.people.includes(p.id));
           const hidden = periodAll.filter(i => i.people.includes(p.id)).length - mine.length;
@@ -562,8 +566,11 @@ export default function Overview({ data, items, allItems, periodAll = [], range,
         </Card>
       );
       case 'products': return (
-        <Card title="By product" className="h-full">
-          <BarList rows={productRows} onPick={(r) => setList({ title: r.label, color: r.color, items: r.items, filter: { product: r.label } })} />
+        <Card title={mix === 'brand' ? 'By brand' : 'By product'} className="h-full"
+          right={<Seg value={mix} onChange={setMixBy} options={[['product', 'Product'], ['brand', 'Brand']]} />}>
+          {mix === 'brand'
+            ? <BarList rows={brandRows} onPick={(r) => setList({ title: r.label, color: r.color, items: r.items, filter: { brands: [r.label] } })} />
+            : <BarList rows={productRows} onPick={(r) => setList({ title: r.label, color: r.color, items: r.items, filter: { product: r.label } })} />}
         </Card>
       );
       case 'attention': return <Attention signals={attention} onOpen={setList} setF={setF} f={f} goTab={goTab} />;

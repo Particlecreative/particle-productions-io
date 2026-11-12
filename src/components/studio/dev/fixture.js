@@ -3,6 +3,8 @@
 const VIDEO_ST = [['Completed', '#037f4c', 'delivered'], ['Approved', '#00c875', 'delivered'], ['Review', '#9cd326', 'review'], ['For Approval', '#cab641', 'review'], ['Fixes Round', '#fdab3d', 'fixes'], ['Working', '#579bfc', 'in_progress'], ['Pending', '#e2445c', 'queued'], ['Ready for Assignment', '#c4c4c4', 'queued'], ['Paused', '#9d99b9', 'paused'], ['Stuck', '#333333', 'stuck']];
 const DESIGN_ST = [['Completed', '#00c875', 'delivered'], ['Approved', '#784bd1', 'delivered'], ['Quality Check', '#579bfc', 'review'], ['For Approval', '#ff158a', 'review'], ['Fixes Round', '#cab641', 'fixes'], ['Working', '#fdab3d', 'in_progress'], ['Pending', '#7eb6d4', 'queued'], ['Ready for Assignment', '#c4c4c4', 'queued'], ['Paused', '#9d99b9', 'paused'], ['Stuck', '#e2445c', 'stuck']];
 const PRODUCTS = [['Face Cream', '#579bfc'], ['Gravité', '#037f4c'], ['NeoRoot', '#5559df'], ['Anti Gray Serum', '#9d50dd'], ['Hand Cream', '#175a63'], ['Shampoo', '#a1e3f6']];
+// Monday's Brands-column colours; most work is Particle's
+const BRANDS = [['Particle', '#579bfc'], ['Particle', '#579bfc'], ['Particle', '#579bfc'], ['Ashford', '#fdab3d'], ['Clearstep', '#00c875'], ['Biomella', '#037f4c'], ['Levitas', '#9d50dd'], ['Blurr', '#a1e3f6']];
 const PEOPLE = [['101', 'Noa Peretz', 'video'], ['102', 'Itai Cohen', 'video'], ['103', 'Dana Mizrahi', 'video'], ['201', 'Tal Ben-Ami', 'design'], ['202', 'Lior Katz', 'design'], ['203', 'Shira Golan', 'design']];
 const REQ = [['301', 'Avi Levi'], ['302', 'Maya Ron'], ['303', 'Gil Adar'], ['304', 'Rina Sol']];
 const CAMPAIGNS = ['The Line Up', 'Heart Rate Test', 'The Hunt', 'Black Friday 2026', 'Creators Oct', 'Amazon UK'];
@@ -34,12 +36,13 @@ export function studioFixture({ from, to }) {
       const s = sts[Math.floor(r() * sts.length)];
       const [prod, color] = PRODUCTS[Math.floor(r() * PRODUCTS.length)];
       const camp = CAMPAIGNS[Math.floor(r() * CAMPAIGNS.length)];
+      const [brand, brandColor] = BRANDS[Math.floor(r() * BRANDS.length)];
       const tv = board === 'video' && r() > 0.7;
       const effort = s.category === 'queued' ? 0 : Math.round(r() * 9 * 3600);
       const id = String(13000000000 + (++n));
       const it = {
         id, board, division: tv ? 'tv' : board, name: `${prod} | ${camp} | ${tv ? 'TV' : 'Meta'} | Concept ${n}`, title: `Concept ${n}`, subtitle: camp,
-        product: { label: prod, color }, type: null, department: { label: tv ? 'TV' : 'Marketing/Media', color: null }, platform: 'Meta', campaign: camp,
+        product: { label: prod, color }, brand: { label: brand, color: brandColor, source: r() > 0.5 ? 'column' : 'name' }, type: null, department: { label: tv ? 'TV' : 'Marketing/Media', color: null }, platform: 'Meta', campaign: camp,
         status: { label: s.label, color: s.color, category: s.category }, group: s.category === 'queued' && r() > 0.5 ? 'Form Requests' : s.label,
         people: s.category === 'queued' && r() > 0.6 ? [] : [pid], requested_by: [REQ[Math.floor(r() * REQ.length)][0]],
         timeline: (() => { const a = Math.floor(r() * days.length); return { from: days[a], to: days[Math.min(days.length - 1, a + Math.floor(r() * 4))] }; })(),
@@ -83,7 +86,7 @@ export function studioFixture({ from, to }) {
     id: String(14000000000 + i * 10 + k), board: 'retention', division: 'email', name: `Email | ${CAMPAIGNS[(i + k) % CAMPAIGNS.length]} | Klaviyo flow ${i + k + 1}`, title: `Klaviyo flow ${i + k + 1}`,
     group: 'October Campaigns (2026)', status: k ? { label: 'Design Stage', color: '#fdab3d', category: 'in_progress' } : { label: 'Copy Review', color: '#a25ddc', category: 'review' },
     people: [pid], requested_by: [], deadline: add(from, 3 + i), launch: add(from, 6 + i), timeline: k ? { from: add(from, 1 + i), to: add(from, 2 + i) } : null,
-    product: { label: PRODUCTS[i][0], color: PRODUCTS[i][1] }, open: true, monday_url: 'https://monday.com',
+    product: { label: PRODUCTS[i][0], color: PRODUCTS[i][1] }, brand: { label: 'Particle', color: '#579bfc', source: 'default' }, open: true, monday_url: 'https://monday.com',
   })));
   boards.retention = { key: 'retention', label: 'Email', board_id: '3', statuses: [] };
   return {
