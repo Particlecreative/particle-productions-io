@@ -163,7 +163,7 @@ async function checkDeliverable({ d, round, ctx, cfg, posting, master }) {
     const r = await gemini.checkVideo({ path: tmp, name: `${base.item_name} · ${d.label} · r${round.round}`, prompt, model: engine.model, prices: cfg.prices || {} });
     // Brief-match: the item's brief passed pre-flight → compare with the approved on-screen text and voiceover
     const matched = ctx.approved ? matchVideo(ctx.approved.lines, { onScreen: r.on_screen_text || [], voiceover: r.voiceover || [] }, { variant: d.variant, size: d.size }) : [];
-    const issues = normIssues([...(r.issues || []), ...matched], fps);
+    const issues = normIssues(require('./briefed').tidy([...(r.issues || []), ...matched], item), fps);
 
     for (const i of issues) await insertIssue(checkId, i);
     await updateCheck(checkId, {

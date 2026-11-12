@@ -43,6 +43,7 @@ function briefBlock(item) {
   if (b.supporting_text) parts.push(`Supporting text / copy: ${String(b.supporting_text).slice(0, 2000)}`);
   if (b.sizes) parts.push(`Sizes asked for: ${b.sizes}`);
   parts.push('If the copy in the design clearly contradicts the brief (wrong offer, price, claim or product), report it as type "script_mismatch", severity "check".');
+  parts.push('Text the brief asks for word for word (a quote, a name, a headline) is the requester\'s wording: if it has an error, report it with severity "check" and say "as briefed" — never "must_fix" on the designer.');
   return parts.join('\n');
 }
 
@@ -187,7 +188,8 @@ async function runDesignJob(payload) {
     // Brief-match: the item's brief passed pre-flight → compare the layers with the approved copy
     const approved = item ? await approvedTextFor(item.id) : null;
     const matched = approved ? matchDesign(approved.lines, frames) : [];
-    const issues = [...r.issues, ...matched.map(m => ({ ...m, frame_id: m.frame_node_id }))].map((i, idx) => {
+    // no-op notes dropped; text that's word for word in the brief → "as briefed" (a please-check for the requester)
+    const issues = require('./briefed').tidy([...r.issues, ...matched.map(m => ({ ...m, frame_id: m.frame_node_id }))], item).map((i, idx) => {
       const frame = frames.find(f => f.id === i.frame_id) || frames.find(f => f.texts.some(t => t.id === i.node_id)) || frames[0];
       return {
         idx, node_id: known.has(i.node_id) ? i.node_id : frame.id, frame_node_id: frame.id,

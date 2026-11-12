@@ -12,6 +12,8 @@ Flag only real errors:
 - Copy that differs between SIZES of the same variant (e.g. the square and the tall version of the same ad say different things). Different line breaks or one text split over two layers don't matter; a changed, missing or added word does. Different copy across different variants is intentional — don't flag it.
 
 Do NOT flag stylistic choices (ALL CAPS headlines, sentence case, emojis) unless a house rule below says otherwise.
+Do NOT flag text printed on the product itself in a photo (bottle labels, packaging, "1.7 fl.oz | 50 ml") — that's the real product and the designer can't change it; house rules about how copy is written don't apply to it.
+Never return an issue whose "fix" is the same text as "found" — if there's nothing to change, there's no issue.
 
 Brand knowledge from the Brain:
 {{BRAIN}}
