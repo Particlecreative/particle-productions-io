@@ -201,7 +201,7 @@ export default function TicketCreator({ api = studioApi, share = null }) {
         <CheckCircle2 size={44} className="mx-auto text-emerald-500" />
         <div className="text-xl font-bold text-[#030b2e] mt-3">{share ? `Thanks, ${firstName} — the studio has it` : `Ticket created on ${board === 'video' ? 'Video Projects' : 'Design Projects 2.0'}`}</div>
         <div className="text-sm text-gray-600 mt-1">{created.name}</div>
-        <div className="text-xs text-gray-400 mt-1">{share ? <>On {board === 'video' ? 'Video Projects' : 'Design Projects 2.0'} · requested by <b className="text-gray-600">{created.requester || share.requester?.name}</b>{created.tagged ? ' (tagged on Monday)' : ''}</> : 'In “Form Requests” · the brief is posted as an update'}{created.attached ? ` · ${created.attached} file${created.attached === 1 ? '' : 's'} attached` : ''}</div>
+        <div className="text-xs text-gray-400 mt-1">{share ? <>On {board === 'video' ? 'Video Projects' : 'Design Projects 2.0'} · requested by <b className="text-gray-600">{created.requester || share.requester?.name}</b>{created.tagged ? ' (tagged on Monday)' : ''}</> : 'In “Form Requests” · the brief is posted as an update'}{created.attached ? ` · ${created.attached} file${created.attached === 1 ? '' : 's'} in Relevant Files` : ''}</div>
         {created.failed?.length > 0 && <div className="text-xs text-amber-700 mt-2">Couldn’t attach: {created.failed.join(', ')}</div>}
         <div className="flex justify-center gap-2 mt-6">
           {created.url && <a href={created.url} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold px-5 py-2.5 rounded-xl text-white flex items-center gap-1.5" style={{ background: '#0808f8' }}>Open in Monday <ExternalLink size={14} /></a>}

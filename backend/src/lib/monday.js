@@ -363,6 +363,12 @@ function addFileToColumn(itemId, columnId, file) {
   return uploadFile(`mutation ($file: File!) { add_file_to_column(item_id: ${itemId}, column_id: "${columnId}", file: $file) { id } }`, file);
 }
 
+/** The ids of every file on an item (its file columns and its updates) — to confirm an upload really landed. */
+async function itemAssetIds(itemId) {
+  const d = await mondayQuery('query ($ids: [ID!]) { items(ids: $ids) { assets { id } } }', { ids: [String(itemId)] });
+  return new Set((d?.items?.[0]?.assets || []).map(a => String(a.id)));
+}
+
 /** Monday users by id (cached 1h per id set). */
 async function usersByIds(ids) {
   const unique = [...new Set((ids || []).map(String))].filter(Boolean).sort();
@@ -408,4 +414,5 @@ module.exports = {
   normLabel,
   addFileToUpdate,
   addFileToColumn,
+  itemAssetIds,
 };

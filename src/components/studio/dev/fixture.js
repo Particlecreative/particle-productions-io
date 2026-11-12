@@ -146,7 +146,7 @@ export const fixtureInspiration = { date: '2026-10-21', line: 'Just keep swimmin
 export const fixtureConnections = { monday: { connected: true }, bamboohr: { connected: false }, tmdb: { connected: false } };
 
 const OPTS = {
-  department: ['Marketing/Media', 'TV', 'Amazon', 'CRM', 'Website'], product: PRODUCTS.map(p => p[0]).concat('Not a Product Task'),
+  department: ['Marketing/Media', 'TV', 'Amazon', 'CRM', 'Website'], brand: ['Particle', 'Ashford', 'Levitas', 'Clearstep', 'Blurr', 'Biomella'], product: PRODUCTS.map(p => p[0]).concat('Not a Product Task'),
   type: ['Iterations/Cuts/Edits', 'UGC/Creator', 'TV', 'AI Project', 'Motion Design'], priority: ['Critical', 'High', 'Medium', 'Low'],
   sizes: ['9x16', '4x5', '1x1', '16x9'], ai_assist: ['None', 'Claude', 'ChatGPT'], platform: ['Meta', 'Google', 'AppLovin', 'TikTok'], campaign: CAMPAIGNS,
 };
@@ -154,29 +154,30 @@ const fld = (key, label, type, required, options) => ({ key, label, type, requir
 export const fixtureTicketForm = {
   boards: {
     video: { key: 'video', label: 'Video Projects', fields: [
-      fld('department', 'Department', 'status', 1, OPTS.department), fld('product', 'Product', 'status', 1, OPTS.product), fld('type', 'Type', 'status', 1, OPTS.type),
+      fld('department', 'Department', 'status', 1, OPTS.department), fld('brand', 'Brand', 'status', 1, OPTS.brand), fld('product', 'Product', 'status', 1, OPTS.product), fld('type', 'Type', 'status', 1, OPTS.type),
       fld('task_name', 'Task name', 'name', 1), fld('concept', 'Video concept', 'long_text', 1), fld('script', 'Script / message', 'long_text'),
       fld('requested_by', 'Requested by', 'people', 0, REQ.map(r => r[1])), fld('assignee', 'Editor', 'people', 0, PEOPLE.filter(p => p[2] === 'video').map(p => p[1])),
       fld('versions', 'Versions needed', 'number'), fld('priority', 'Priority', 'status', 0, OPTS.priority), fld('sizes', 'Sizes needed', 'dropdown', 0, OPTS.sizes),
       fld('deadline', 'Deadline', 'date'), fld('ai_assist', 'AI assist', 'status', 0, OPTS.ai_assist), fld('platform', 'Platform', 'status', 0, OPTS.platform)] },
     design: { key: 'design', label: 'Design Projects 2.0', fields: [
-      fld('department', 'Department', 'status', 1, OPTS.department), fld('product', 'Product', 'status', 1, OPTS.product), fld('task_name', 'Task name', 'name', 1),
+      fld('department', 'Department', 'status', 1, OPTS.department), fld('brand', 'Brand', 'status', 1, OPTS.brand), fld('product', 'Product', 'status', 1, OPTS.product), fld('task_name', 'Task name', 'name', 1),
       fld('concept', 'Concept', 'long_text', 1), fld('requested_by', 'Requested by', 'people', 0, REQ.map(r => r[1])),
       fld('assignee', 'Designer', 'people', 0, PEOPLE.filter(p => p[2] === 'design').map(p => p[1])), fld('sizes', 'Sizes', 'dropdown', 0, OPTS.sizes),
       fld('deadline', 'Deadline', 'date'), fld('priority', 'Priority', 'status', 0, OPTS.priority)] },
   },
   people: {}, recent: [],
-  empty: Object.fromEntries(['department', 'product', 'type', 'task_name', 'concept', 'script', 'hook', 'requested_by', 'assignee', 'versions', 'priority', 'sizes', 'deadline', 'ai_assist', 'platform', 'campaign', 'duration', 'supporting_text', 'other_sizes', 'website_task']
+  empty: Object.fromEntries(['department', 'brand', 'product', 'type', 'task_name', 'concept', 'script', 'hook', 'requested_by', 'assignee', 'versions', 'priority', 'sizes', 'deadline', 'ai_assist', 'platform', 'campaign', 'duration', 'supporting_text', 'other_sizes', 'website_task']
     .map(k => [k, ['sizes', 'campaign', 'requested_by', 'assignee'].includes(k) ? [] : ''])),
 };
 export function fixtureDraft({ messages, draft, files }) {
   const last = messages[messages.length - 1]?.content || '';
   const design = /static|banner|website|design/i.test(last);
   const product = PRODUCTS.map(p => p[0]).find(p => last.toLowerCase().includes(p.toLowerCase().split(' ')[0])) || draft.product || '';
-  const fields = { ...draft, department: draft.department || 'Marketing/Media', product, type: design ? '' : (draft.type || 'Iterations/Cuts/Edits'),
+  const brand = draft.brand || OPTS.brand.find(b => new RegExp(`\\b${b}\\b`, 'i').test(last)) || '';
+  const fields = { ...draft, department: draft.department || 'Marketing/Media', brand, product, type: design ? '' : (draft.type || 'Iterations/Cuts/Edits'),
     task_name: draft.task_name || last.slice(0, 60), concept: draft.concept || last, versions: draft.versions || '1', priority: draft.priority || 'Medium',
     sizes: draft.sizes?.length ? draft.sizes : ['9x16'].filter(s => last.includes(s)) };
-  const missing = (design ? ['department', 'product', 'task_name', 'concept'] : ['department', 'product', 'type', 'task_name', 'concept']).filter(k => !fields[k]);
+  const missing = (design ? ['department', 'brand', 'product', 'task_name', 'concept'] : ['department', 'brand', 'product', 'type', 'task_name', 'concept']).filter(k => !fields[k]);
   const links = (last.match(/https?:\/\/[^\s<>"']+/g) || []).map(url => ({ type: 'link', url, title: null, ok: !/fail/.test(url), note: /fail/.test(url) ? 'The page answered 403' : null }));
   const sources = [...(files || []).map(id => ({ type: 'file', id, name: 'attached file', ok: true })), ...links];
   return { reply: missing.length ? `Got it. Which ${missing[0]}?` : 'Ready — review the form and submit.', board: design ? 'design' : 'video', fields, missing, ready: !missing.length, sources };

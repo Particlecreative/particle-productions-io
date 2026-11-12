@@ -17,7 +17,10 @@ const FORM_GROUP = 'new_group__1'; // "Form Requests" on both boards
 const FIELDS = {
   video: [
     { key: 'department', col: 'label', type: 'status', label: 'Department', required: true },
-    { key: 'product', col: 'label9', type: 'status', label: 'Product', required: true },
+    // Brand: required — the assistant fills it only when the request makes it clear (Face Cream exists for Particle and Biomella)
+    { key: 'brand', col: 'color_mm8q1bam', type: 'status', label: 'Brand', required: true, brands: true },
+    // Product goes in the new Product dropdown and in "Product (old)" (Captain, Medium and the trackers still read it)
+    { key: 'product', col: 'label9', also: 'dropdown_mm8qh5b', type: 'status', label: 'Product', required: true },
     { key: 'type', col: 'label4', type: 'status', label: 'Type', required: true },
     { key: 'task_name', type: 'name', label: 'Task name', required: true },
     { key: 'concept', col: 'long_text_mkn8c1ax', type: 'long_text', label: 'Video concept', required: true },
@@ -38,7 +41,8 @@ const FIELDS = {
   ],
   design: [
     { key: 'department', col: 'status_1__1', type: 'status', label: 'Department', required: true },
-    { key: 'product', col: 'label9', type: 'status', label: 'Product', required: true },
+    { key: 'brand', col: 'color_mm8q3pn9', type: 'status', label: 'Brand', required: true, brands: true },
+    { key: 'product', col: 'label9', also: 'dropdown_mm8q7ysv', type: 'status', label: 'Product', required: true },
     { key: 'task_name', type: 'name', label: 'Task name', required: true },
     { key: 'concept', col: 'long_textpvqldjpg', type: 'long_text', label: 'Concept', required: true },
     { key: 'supporting_text', col: 'long_text_mkngjytf', type: 'long_text', label: 'Supporting text / copy' },
@@ -56,6 +60,22 @@ const FIELDS = {
   ],
 };
 const ALL_KEYS = [...new Set([...FIELDS.video, ...FIELDS.design].map(f => f.key))];
+// The brands the studio makes work for — always offered, even before Monday's Brands column has the label (it's created with the first ticket)
+const STUDIO_BRANDS = ['Particle', 'Ashford', 'Blurr', 'Biomella'];
+
+/** Options of a status / dropdown column on a board (from the cached board meta). */
+function columnOptions(meta, col, type) {
+  if (!col || !meta.columns[col]) return [];
+  if (type === 'dropdown' || meta.columns[col]?.type === 'dropdown') return meta.dropdowns?.[col] || [];
+  return Object.values(meta.statusMaps[col]?.byIndex || {}).filter(v => v.label && !v.deactivated).map(v => v.label);
+}
+
+/** The brand named in what the requester wrote — only when exactly one brand is named (pure — tested). */
+function brandNamed(messages, options) {
+  const text = (messages || []).filter(m => m.role === 'user').map(m => String(m.content || '')).join('\n');
+  const hits = (options || []).filter(b => new RegExp(`(^|[^\\p{L}])${b.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^\\p{L}]|$)`, 'iu').test(text));
+  return hits.length === 1 ? hits[0] : null;
+}
 
 /** Form definition + allowed options for both boards. people: { requesters, video, design } = [{ id, name }] */
 async function ticketForm(config, people) {
@@ -65,9 +85,9 @@ async function ticketForm(config, people) {
     out.boards[bk] = {
       key: bk,
       label: bk === 'video' ? 'Video Projects' : 'Design Projects 2.0',
-      fields: FIELDS[bk].filter(f => !f.col || meta.columns[f.col]).map(f => {
+      fields: FIELDS[bk].filter(f => !f.col || meta.columns[f.col] || (f.also && meta.columns[f.also])).map(f => {
         let options = null;
-        if (f.type === 'status') options = Object.values(meta.statusMaps[f.col]?.byIndex || {}).filter(v => v.label && !v.deactivated).map(v => v.label);
+        if (f.type === 'status') options = [...columnOptions(meta, f.col, 'status'), ...columnOptions(meta, f.also, 'dropdown'), ...(f.brands ? STUDIO_BRANDS : [])];
         if (f.type === 'dropdown') options = meta.dropdowns?.[f.col] || [];
         if (f.type === 'people') options = (people[f.pool] || []).map(p => p.name);
         return { key: f.key, label: f.label, type: f.type, required: !!f.required, free: !!f.free, options: options ? [...new Set(options)] : null };
@@ -97,7 +117,7 @@ const DRAFT_SCHEMA = {
   },
 };
 
-const SYSTEM = `You are the ticket assistant for Particle's creative studio (Particle is a men's skincare and grooming brand; its customers are mostly men 45–65).
+const SYSTEM = `You are the ticket assistant for Particle's creative studio. The studio makes work for Particle (men's skincare and grooming; customers mostly men 45–65) and for other brands: Ashford, Blurr, Biomella, Levitas, Clearstep.
 You help Tomer (head of creative) and Omer write Monday tickets for two boards:
 - "video": Video Projects (video editors: edits, UGC, TV, motion, AI video)
 - "design": Design Projects 2.0 (designers: statics, website, email, Amazon, decks)
@@ -105,6 +125,7 @@ You help Tomer (head of creative) and Omer write Monday tickets for two boards:
 Every turn you receive today's date, the current draft and every field's allowed options. Update the draft from the conversation and return it whole.
 Rules:
 - Pick the board from the request (video vs design); keep the current board unless the user clearly changes it.
+- brand: the brand the work is for — ONLY when the request makes it clear: the brand is named, or a product, campaign or website that belongs to one brand only (Gravité, NeoRoot, Science For You → Particle; Bone & Joint, Testosterone and Hormone → Ashford). Products like Face Cream, Hand Cream or Neck Cream exist for more than one brand (Particle and Biomella) — never guess from them: leave brand "" and ask which brand.
 - For status / dropdown / people fields use ONLY exact option texts from the lists. Never invent people, products or labels. Use "" (or []) when unknown.
   Exception — campaign: only when the user names one (never guess it); use the existing option when one matches, otherwise the name as the user wrote it (it goes in the ticket name and the brief).
 - Resolve relative dates ("Thursday", "next week", "end of month") to YYYY-MM-DD in Israel time from today. Studio work days are Sunday–Thursday.
@@ -239,6 +260,10 @@ async function draftTicket({ form, messages, draft, board, userName, config, fil
   let out;
   try { out = JSON.parse(text); } catch { throw new Error('Claude returned an unreadable draft — try again'); }
   out.fields = sanitize(form, out.board, out.fields);
+  if (!out.fields.brand) {   // the requester named the brand but the assistant left it empty
+    const opts = form.boards[out.board]?.fields.find(f => f.key === 'brand')?.options;
+    out.fields.brand = brandNamed(messages, opts) || '';
+  }
   out.missing = missingRequired(form, out.board, out.fields);
   out.ready = !out.missing.length;
   out.sources = src.summary;
@@ -282,11 +307,11 @@ const lines = (v) => String(v || '').split('\n').map(l => l.replace(/^\s*(\d+[.)
 function briefText(board, f) {
   const list = (v) => (Array.isArray(v) ? v.join(', ') : v);
   const header = (board === 'video' ? [
-    ['Department', f.department], ['Product', f.product], ['Platform', f.platform], ['Type', f.type], ['Campaign', list(f.campaign)],
+    ['Department', f.department], ['Brand', f.brand], ['Product', f.product], ['Platform', f.platform], ['Type', f.type], ['Campaign', list(f.campaign)],
     ['Requestor', list(f.requested_by)], ['Editor / Designer', list(f.assignee)], ['Versions Needed', f.versions], ['Priority', f.priority],
     ['Sizes Needed', list(f.sizes)], ['Deadline', f.deadline], ['Est. Duration', f.duration && `${f.duration} sec`],
   ] : [
-    ['Department', f.department], ['Product / Bundle', f.product], ['Platform', f.platform], ['Campaign', list(f.campaign)],
+    ['Department', f.department], ['Brand', f.brand], ['Product / Bundle', f.product], ['Platform', f.platform], ['Campaign', list(f.campaign)],
     ['Requestor', list(f.requested_by)], ['Editor / Designer', list(f.assignee)], ['Priority', f.priority], ['Amount of Versions', f.versions],
     ['Sizes', [list(f.sizes), f.other_sizes].filter(Boolean).join(', ')], ['Website task', f.website_task], ['Deadline', f.deadline],
   ]).filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`).join(' | ');
@@ -309,10 +334,20 @@ async function submitTicket({ config, form, board, fields, people, user, convers
   const missing = missingRequired(form, board, clean);
   if (missing.length) throw Object.assign(new Error(`Missing: ${missing.join(', ')}`), { status: 400 });
   const byName = (pool, name) => (people[pool] || []).find(p => p.name === name)?.id;
+  const meta = await monday.boardMeta(config.boards[board].board_id).catch(() => null);
+  const has = (col, type, v) => !meta || columnOptions(meta, col, type).some(o => canon(o) === canon(v));
   const values = {};
+  let newLabel = false;
   for (const f of FIELDS[board]) {
     const v = clean[f.key];
     if (!f.col || v === '' || (Array.isArray(v) && !v.length)) continue;
+    if (f.also) {   // product: each column only gets a label it already has
+      if (meta?.columns[f.col] && has(f.col, 'status', v)) values[f.col] = { label: v };
+      if (meta?.columns[f.also] && has(f.also, 'dropdown', v)) values[f.also] = { labels: [v] };
+      if (!meta) values[f.col] = { label: v };
+      continue;
+    }
+    if (f.brands && !has(f.col, 'status', v)) newLabel = true;   // Blurr / Biomella: Monday adds the label with the first ticket
     if (f.type === 'status') values[f.col] = { label: v };
     else if (f.type === 'dropdown') {
       // Only labels Monday already has (a new campaign lives in the name and brief until it's added there)
@@ -329,32 +364,68 @@ async function submitTicket({ config, form, board, fields, people, user, convers
     else values[f.col] = v;
   }
   const name = itemName(clean);
-  const item = await createItem({ boardId: config.boards[board].board_id, groupId: FORM_GROUP, name, columnValues: values });
+  const item = await createItem({ boardId: config.boards[board].board_id, groupId: FORM_GROUP, name, columnValues: values, createLabels: newLabel });
   if (!item?.id) throw new Error('Monday did not return the new item');
-  // Same shape as the team's briefs (starts with "Department:"); who wrote it goes at the end
-  const attach = await sources.filesForMonday(files).catch(() => []);
-  const html = briefText(board, clean).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\n/g, '<br>')
-    + (attach.length ? '<br><br>📎 Reference files are attached — check the Files tab on this task.' : '');
-  let updateId = null;
-  try {
-    const u = await addUpdate(item.id, `${html}<br><br><em>— brief from CP Studio, by ${(user?.name || 'the studio').replace(/</g, '&lt;')}</em>`);
-    updateId = u?.create_update?.id || null;
-  } catch { /* the item exists; the update is a nicety */ }
-  // Files go on the brief update (they show in it and in the Files tab); without an update, on the files column
-  const failed = [];
-  for (const f of attach) {
-    try {
-      if (updateId) await monday.addFileToUpdate(updateId, f);
-      else await monday.addFileToColumn(item.id, config.boards[board].columns.files, f);
-    } catch (e) { failed.push(`${f.name} (${e.message})`); }
-  }
+  const { attached, failed, inColumn } = await attachFiles({ itemId: item.id, column: config.boards[board].columns?.files, fileIds: files, clean, board, user });
+
   try {
     await db.query(
       `INSERT INTO studio_tickets (board, item_id, item_url, name, fields, conversation, created_by_name) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [board, String(item.id), item.url || null, name, JSON.stringify(clean), JSON.stringify((conversation || []).slice(-30)), user?.name || user?.email || null]
     );
   } catch { /* history is best-effort */ }
-  return { id: String(item.id), url: item.url || null, name, attached: attach.length - failed.length, failed };
+  return { id: String(item.id), url: item.url || null, name, attached, in_column: inColumn, failed };
+}
+
+/**
+ * The brief update + the files (Tomer, 12 Nov 2026: "make sure files are actually added to Monday as files").
+ * Every file goes in the item's "Relevant Files" column — where the team looks; one that won't go there is attached to
+ * the brief update instead. Then the item is read back, and only files Monday really has count as attached.
+ */
+async function attachFiles({ itemId, column, fileIds, clean, board, user }) {
+  const wanted = [...new Set((fileIds || []).map(String))];
+  const failed = [];
+  let attach = [];
+  try { attach = await sources.filesForMonday(wanted); } catch (e) { failed.push(`the files couldn't be read (${e.message})`); }
+  const lost = wanted.length - attach.length - (failed.length ? wanted.length : 0);
+  if (lost > 0) failed.push(`${lost} file${lost === 1 ? ' was' : 's were'} no longer on the server (uploads are kept 14 days) — add ${lost === 1 ? 'it' : 'them'} to the task on Monday`);
+  const uploaded = [], toUpdate = [];
+  for (const f of attach) {
+    try {
+      if (!column) throw new Error('no Relevant Files column');
+      const r = await monday.addFileToColumn(itemId, column, f);
+      if (!r?.add_file_to_column?.id) throw new Error('Monday returned no file');
+      uploaded.push({ id: String(r.add_file_to_column.id), name: f.name, where: 'column' });
+    } catch (e) { toUpdate.push({ f, why: e.message }); }
+  }
+  // Same shape as the team's briefs (starts with "Department:"); who wrote it goes at the end
+  const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  const names = uploaded.map(u => esc(u.name)).join(', ');
+  const html = esc(briefText(board, clean)).replace(/\n/g, '<br>') + (uploaded.length ? `<br><br>📎 Files in “Relevant Files”: ${names}` : '');
+  let updateId = null;
+  try {
+    const u = await addUpdate(itemId, `${html}<br><br><em>— brief from CP Studio, by ${esc(user?.name || 'the studio')}</em>`);
+    updateId = u?.create_update?.id || null;
+  } catch { /* the item exists; the update is a nicety */ }
+  for (const { f, why } of toUpdate) {
+    try {
+      if (!updateId) throw new Error(why);
+      const r = await monday.addFileToUpdate(updateId, f);
+      if (!r?.add_file_to_update?.id) throw new Error('Monday returned no file');
+      uploaded.push({ id: String(r.add_file_to_update.id), name: f.name, where: 'update' });
+    } catch (e) { failed.push(`${f.name} (${e.message})`); }
+  }
+  // read the item back: a file counts only when Monday has it
+  let attached = uploaded.length;
+  if (uploaded.length) {
+    const have = await monday.itemAssetIds(itemId).catch(() => null);
+    if (have) {
+      const missing = uploaded.filter(u => !have.has(u.id));
+      for (const m of missing) failed.push(`${m.name} (uploaded, but Monday doesn't show it on the task)`);
+      attached = uploaded.length - missing.length;
+    }
+  }
+  return { attached, inColumn: uploaded.filter(u => u.where === 'column').length, failed };
 }
 
 async function recentTickets(limit = 20) {
@@ -364,4 +435,4 @@ async function recentTickets(limit = 20) {
   } catch { return []; }
 }
 
-module.exports = { ticketForm, draftTicket, submitTicket, recentTickets, itemName, sanitize, briefText, styleExamples, cleanExample, FIELDS, emptyFields };
+module.exports = { ticketForm, draftTicket, submitTicket, recentTickets, itemName, sanitize, briefText, styleExamples, cleanExample, FIELDS, emptyFields, brandNamed, columnOptions, attachFiles, STUDIO_BRANDS };
