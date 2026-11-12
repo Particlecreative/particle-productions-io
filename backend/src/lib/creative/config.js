@@ -75,7 +75,8 @@ const DEFAULTS = {
       board_id: '5433027071',
       label: 'Video',
       columns: {
-        person: 'people', status: 'status', type: 'label4', department: 'label', product: 'label9',
+        // product = label9 "Product (old)" (its colours); product_dropdown = the new Product dropdown, read first (12 Nov 2026)
+        person: 'people', status: 'status', type: 'label4', department: 'label', product: 'label9', product_dropdown: 'dropdown_mm8qh5b',
         frame: 'link', dropbox: 'link4__1', project_link: 'link1__1', timeline: 'timeline3__1',
         deadline: 'date_Mjj2cG7T', versions: 'numbers', working_time: 'duration_mkynps36',
         campaign: 'dropdown_mm3n9vjc', platform: 'single_selectu06tevn', concept: 'long_text_mkn8c1ax',
@@ -98,7 +99,7 @@ const DEFAULTS = {
       board_id: '8036329818',
       label: 'Design',
       columns: {
-        person: 'people', status: 'status', product: 'label9', department: 'status_1__1',
+        person: 'people', status: 'status', product: 'label9', product_dropdown: 'dropdown_mm8q7ysv', department: 'status_1__1',
         dropbox: 'link0__1', figma: 'link', files: 'upload_file3__1', timeline: 'timeline_1_Mjj5Yton',
         // Designers' timers live in "Time tracking" — the "Working Time" column (duration_mkynccfs) is unused
         deadline: 'date_Mjj20aki', versions: 'numberpuotbeaf', working_time: 'time_tracking__1',

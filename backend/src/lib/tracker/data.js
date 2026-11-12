@@ -9,7 +9,7 @@ const db = require('../../db');
 const monday = require('../monday');
 const W = require('../creative/week');
 const { getCreativeConfig } = require('../creative/config');
-const { normalizeItem } = require('../creative/snapshot');
+const { normalizeItem, knownProductsOf } = require('../creative/snapshot');
 const crypto = require('crypto');
 const { linkTvItems, tokens } = require('../studio/tvLinks');
 
@@ -67,7 +67,7 @@ async function studioTickets(brandId, { force = false, words = [], decidedIds = 
       };
       const catOf = {};
       for (const [cat, labels] of Object.entries(board.statuses)) for (const l of labels) catOf[norm(l)] = cat;
-      const knownProducts = new Set(Object.values(meta.statusMaps[c.product]?.byIndex || {}).map(v => norm(v.label)).filter(Boolean));
+      const knownProducts = knownProductsOf(meta, c);
       const ctx = {
         boardKey: bk, board, meta, config, now, knownProducts,
         bounds: { fromMs: now - 7 * DAY, toMs: now, partial: false },

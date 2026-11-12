@@ -8,7 +8,7 @@ const db = require('../../db');
 const monday = require('../monday');
 const W = require('../creative/week');
 const { getCreativeConfig } = require('../creative/config');
-const { normalizeItem } = require('../creative/snapshot');
+const { normalizeItem, knownProductsOf } = require('../creative/snapshot');
 const { boardStatuses, getStudio } = require('./data');
 const { statusSpans, taskLife, statusSince } = require('./effort');
 const { boardOf } = require('./write');
@@ -267,7 +267,7 @@ async function buildHotProjects({ brandId = 'particle', now = Date.now() } = {})
     const c = board.columns;
     const { statusCategory, legend } = boardStatuses(bk, board, meta);
     out.boards[bk] = legend;
-    const knownProducts = new Set(Object.values(meta.statusMaps[c.product]?.byIndex || {}).map(v => norm(v.label)).filter(Boolean));
+    const knownProducts = knownProductsOf(meta, c);
     const cols = [...new Set([...Object.values(c), ...Object.values(board.timers || {})].filter(Boolean))].filter(id => meta.columns[id]);
     const ids = [...want[bk]];
     const [raws, updates] = await Promise.all([

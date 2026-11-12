@@ -670,3 +670,42 @@ test('Captain tidy: the B&A "differs from brief" that IS the brief, self-dismiss
   assert.deepEqual([sfy[2].severity, sfy[2].from_brief], ['must_fix', undefined]);   // wrong variant isn't "the brief's mistake"
   assert.doesNotMatch(sfy[2].note, /The brief has this mistake too/);
 });
+
+// ── Product: Medium writes both Product columns and reads the new dropdown first (12 Nov 2026) ──
+test('Monday: Medium writes the product to the Product dropdown and Product (old), each only with its own labels', () => {
+  const M = require('../src/lib/medium/monday');
+  const labels = {
+    label9: ['Neck Cream', 'Face Cream'], dropdown_mm8qh5b: ['Neck Cream', 'Face Cream', 'Bone & Joint', 'Testosterone and Hormone'],
+    dropdown_mm8q7ysv: ['Face Cream', 'Antifungal Foot Treatment'], label: ['Marketing/Media'], status_1__1: ['Marketing'], single_selectu06tevn: ['Meta'], single_selectrz7230p: ['Meta'],
+  };
+  const b = { format: 'video', lane: 'Particle', product: 'Neck Cream', ticket_name: 'Neck Cream | Meta | Medium | Mirror', fields: { brief: 'A man…' } };
+  const both = M.columnValues(b, { labels });
+  assert.deepEqual(both.values.label9, { label: 'Neck Cream' });
+  assert.deepEqual(both.values.dropdown_mm8qh5b, { labels: ['Neck Cream'] });
+  assert.deepEqual(both.skipped, []);
+  // Ashford's Bone & Joint exists only in the new dropdown — no unknown label sent to label9, nothing skipped
+  const ashford = M.columnValues({ ...b, product: 'Bone & Joint' }, { labels });
+  assert.equal(ashford.values.label9, undefined);
+  assert.deepEqual(ashford.values.dropdown_mm8qh5b, { labels: ['Bone & Joint'] });
+  assert.deepEqual(ashford.skipped, []);
+  // Design board: its own dropdown id
+  const design = M.columnValues({ ...b, format: 'design', product: 'Antifungal Foot Treatment' }, { labels });
+  assert.deepEqual(design.values.dropdown_mm8q7ysv, { labels: ['Antifungal Foot Treatment'] });
+  assert.equal(design.values.label9, undefined);
+  assert.equal(design.values.dropdown_mm8qh5b, undefined);
+  // on neither column → nothing written, reported once
+  const none = M.columnValues({ ...b, product: 'Mystery Serum' }, { labels });
+  assert.equal(none.values.label9, undefined);
+  assert.equal(none.values.dropdown_mm8qh5b, undefined);
+  assert.equal(none.skipped.filter(s => /Mystery Serum/.test(s)).length, 1);
+});
+
+test('corpus: the exemplar product comes from the Product dropdown, then Product (old)', () => {
+  const { toRow } = require('../src/lib/medium/corpus');
+  const { DEFAULTS } = require('../src/lib/medium/config');
+  const item = (cvs) => ({ id: 2, name: 'Gravité | Ulta Launch | Meta | Static 4', created_at: '2026-11-10T10:00:00Z', updates: [],
+    column_values: [{ id: 'people_Mjj2RrZM', text: 'Lilian Krumholz' }, { id: 'long_textpvqldjpg', text: 'Copy the layout exactly, swap the product.' }, ...cvs] });
+  assert.equal(toRow('design', item([{ id: 'label9', text: 'Hair Gummies' }, { id: 'dropdown_mm8q7ysv', text: 'Gravité' }]), DEFAULTS).product, 'Gravité');
+  assert.equal(toRow('design', item([{ id: 'label9', text: 'Neck Cream' }, { id: 'dropdown_mm8q7ysv', text: null }]), DEFAULTS).product, 'Neck Cream');
+  assert.equal(toRow('design', item([{ id: 'label9', text: null }]), DEFAULTS).product, null);
+});

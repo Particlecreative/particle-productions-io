@@ -11,7 +11,7 @@ const monday = require('../monday');
 const W = require('../creative/week');
 const { getCreativeConfig } = require('../creative/config');
 const { classifyDeliveries, sundayReview } = require('../creative/classify');
-const { normalizeItem, trackedInWindow } = require('../creative/snapshot');
+const { normalizeItem, trackedInWindow, knownProductsOf } = require('../creative/snapshot');
 const { statusSpans, activeSpans, splitEffort, workSlices, taskLife, statusSince } = require('./effort');
 const bamboo = require('./bamboohr');
 const { linkTvItems } = require('./tvLinks');
@@ -130,10 +130,7 @@ async function buildStudio({ brandId = 'particle', from, to, now = Date.now(), f
   await Promise.all(boardKeys.map(async bk => { metas[bk] = await monday.boardMeta(config.boards[bk].board_id, { force }); }));
 
   const knownProducts = new Set();
-  for (const bk of boardKeys) {
-    const pm = metas[bk].statusMaps[config.boards[bk].columns.product];
-    for (const v of Object.values(pm?.byIndex || {})) if (v.label) knownProducts.add(norm(v.label));
-  }
+  for (const bk of boardKeys) knownProductsOf(metas[bk], config.boards[bk].columns, knownProducts);
 
   const items = {};
   const boards = {};

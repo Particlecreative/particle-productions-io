@@ -4,6 +4,7 @@
  */
 const { mondayQuery } = require('../monday');
 const { BOARDS, disciplineOfBoard } = require('./config');
+const { productOf } = require('../studio/product');
 
 const PREFIX = '🧑‍✈️ Captain Caption:';
 
@@ -60,7 +61,7 @@ async function readItem(itemId) {
   const briefUpdate = updates.find(u => /Hook Variations|Script \/ Message|Video Concept|Design Concept|Copy/i.test(u.text_body || '')) || null;
   return {
     id: it.id, name: it.name, state: it.state, board_id: it.board?.id, board_name: it.board?.name, group: it.group?.title, discipline,
-    status: get('status'), department: get('department'), type: get('type'), product: get('product'), person: get('person'),
+    status: get('status'), department: get('department'), type: get('type'), product: productOf(byId, cols) || null, person: get('person'),
     campaign: get('campaign'), platform: get('platform'),
     // the link column first; else the newest link a designer / editor posted in the updates
     ...(() => { const col = get('link'); if (col) return { link: col, link_from: 'column' }; const u = linkFromUpdates(it.updates, discipline); return u ? { link: u.url, link_from: 'update', link_by: u.by, link_at: u.at } : { link: null, link_from: null }; })(),

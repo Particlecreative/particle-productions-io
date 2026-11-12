@@ -290,3 +290,28 @@ test('brief-match on delivery: video and design', () => {
   const d = matchDesign(approved.filter(l => l.id !== 'l2'), frames);
   assert.deepEqual(d.map(i => [i.type, i.frame_node_id]), [['brief_missing', 'f2']]);   // l3 missing in the 9x16 frame
 });
+
+// ── Product: the new Product dropdown first, "Product (old)" (label9) as the fallback (12 Nov 2026) ──
+test('readItem: the product comes from the Product dropdown, then Product (old)', async () => {
+  const mondayLib = require('../src/lib/monday');
+  const real = mondayLib.mondayQuery;
+  let item;
+  mondayLib.mondayQuery = async () => ({ items: [item] });
+  delete require.cache[require.resolve('../src/lib/captain/monday')];
+  const { readItem } = require('../src/lib/captain/monday');   // a fresh copy that holds the stub
+  mondayLib.mondayQuery = real;
+  const base = (cvs, board = '8036329818') => ({ id: '1', name: 'Gravité | Ulta Launch | Meta | Static 1', state: 'active', board: { id: board, name: 'b' }, group: { id: 'g', title: 'g' }, updates: [], column_values: cvs });
+
+  // live case: the dropdown says Gravité, the old column still says Hair Gummies
+  item = base([{ id: 'label9', type: 'status', text: 'Hair Gummies' }, { id: 'dropdown_mm8q7ysv', type: 'dropdown', text: 'Gravité' }]);
+  assert.equal((await readItem('1')).product, 'Gravité');
+  // a product only the new dropdown has (Video board)
+  item = base([{ id: 'label9', type: 'status', text: '-' }, { id: 'dropdown_mm8qh5b', type: 'dropdown', text: 'Bone & Joint' }], '5433027071');
+  assert.equal((await readItem('1')).product, 'Bone & Joint');
+  // an older task tagged only in Product (old)
+  item = base([{ id: 'label9', type: 'status', text: 'Face Cream' }, { id: 'dropdown_mm8q7ysv', type: 'dropdown', text: '' }]);
+  assert.equal((await readItem('1')).product, 'Face Cream');
+  // neither set → null, as before
+  item = base([{ id: 'label9', type: 'status', text: '' }, { id: 'dropdown_mm8q7ysv', type: 'dropdown', text: null }]);
+  assert.equal((await readItem('1')).product, null);
+});

@@ -7,6 +7,7 @@ const db = require('../../db');
 const { mondayQuery } = require('../monday');
 const { BOARDS, getConfig, seed } = require('./config');
 const { classifyTicket } = require('./classify');
+const { productOf } = require('../studio/product');
 
 const PAGE = 100;
 const colText = (cv) => (cv?.text ?? '').trim() || null;
@@ -54,7 +55,7 @@ function toRow(format, it, cfg) {
   const get = (k) => (cols[k] ? colText(by[cols[k]]) : null);
   const first = [...(it.updates || [])].sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))[0];
   const t = {
-    name: it.name, brief: get('brief'), script: get('script'), hook: get('hook'), copy: get('copy'), campaign: get('campaign'), product: get('product'),
+    name: it.name, brief: get('brief'), script: get('script'), hook: get('hook'), copy: get('copy'), campaign: get('campaign'), product: productOf(by, cols) || null,
     brandColumn: get('brand'), update: first?.text_body ? String(first.text_body).slice(0, 6000) : null,
   };
   const c = classifyTicket(t, cfg);

@@ -12,6 +12,7 @@
 const db = require('../../db');
 const { fetchAllItems } = require('../monday');
 const { BOARDS, getConfig } = require('./config');
+const { productOf } = require('../studio/product');
 const { inScope } = require('./scope');
 const frameio = require('./frameio');
 const figma = require('./figma');
@@ -30,14 +31,14 @@ const linkOf = (cv) => {
 
 async function boardItems(discipline, since) {
   const b = BOARDS[discipline];
-  const cols = [b.columns.link, b.columns.department, b.columns.type, b.columns.product].filter(Boolean);
+  const cols = [b.columns.link, b.columns.department, b.columns.type, b.columns.product, b.columns.product_dropdown].filter(Boolean);
   const { items } = await fetchAllItems(b.board_id, { cols, limit: 500, maxPages: 40 });
   return items.filter(it => String(it.created_at).slice(0, 10) >= since).map(it => {
     const cv = Object.fromEntries((it.column_values || []).map(c => [c.id, c]));
     return {
       id: it.id, name: it.name, created_at: it.created_at, board_id: b.board_id,
       url: linkOf(cv[b.columns.link]), department: cv[b.columns.department]?.text || null,
-      type: b.columns.type ? cv[b.columns.type]?.text || null : null, product: cv[b.columns.product]?.text || null,
+      type: b.columns.type ? cv[b.columns.type]?.text || null : null, product: productOf(cv, b.columns) || null,
     };
   });
 }

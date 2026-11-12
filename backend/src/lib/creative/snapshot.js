@@ -20,6 +20,7 @@ const DIVISIONS = [
 ];
 const { classifyDeliveries, sundayReview } = require('./classify');
 const { importCpWeekly, cpWeekFor } = require('./cpWeekly');
+const { productOf } = require('../studio/product');
 
 const SCHEMA_VERSION = 1;
 const DAY_MS = 86400000;
@@ -105,6 +106,23 @@ function labelColor(meta, colId, cv) {
   return idx != null ? sm.byIndex[idx]?.color || null : null;
 }
 
+/**
+ * The product label + colour of a task (pure — tested): the Product dropdown first, then "Product (old)". The dropdown
+ * has no colours, so the colour is the old column's colour for that NAME (never its index — the two columns can
+ * disagree); a product only the dropdown has gets product_colors' override or none.
+ */
+function productLabelColor(cv, columns, meta, overrides) {
+  const label = productOf(cv, columns);
+  return { label, color: overrides?.[label] || labelColor(meta, columns?.product, label ? { label } : null) };
+}
+
+/** Normalized product labels a board knows — Product (old) and the Product dropdown — for name parsing (pure — tested). */
+function knownProductsOf(meta, columns, into = new Set()) {
+  for (const v of Object.values(meta?.statusMaps?.[columns?.product]?.byIndex || {})) if (v.label) into.add(norm(v.label));
+  for (const l of meta?.dropdowns?.[columns?.product_dropdown] || []) if (l) into.add(norm(l));
+  return into;
+}
+
 // Timers are automation-driven and sometimes left running for days, so time is clipped to
 // Israel work hours (09:00–19:00, Sun–Thu). A forgotten timer adds at most one workday.
 const WORK_START_H = 9;
@@ -166,9 +184,7 @@ function normalizeItem(raw, ctx) {
 
   const statusCv = get('status');
   const statusLabel = statusCv?.label ?? statusCv?.text ?? '';
-  const productCv = get('product');
-  const productLabel = productCv?.label ?? productCv?.text ?? '';
-  const productColor = config.product_colors?.[productLabel] || labelColor(meta, c.product, productCv);
+  const { label: productLabel, color: productColor } = productLabelColor(cv, c, meta, config.product_colors);
 
   const typeCv = get('type');
   const priCv = get('priority');
@@ -310,17 +326,16 @@ async function computeTrend({ brandId, config, bounds, currentCounts, metas, dea
     let details = {};
     if (allIds.size) {
       try {
-        const cols = [board.columns.person, board.columns.product, board.columns.department, board.columns.type].filter(Boolean);
+        const cols = [board.columns.person, board.columns.product, board.columns.product_dropdown, board.columns.department, board.columns.type].filter(Boolean);
         const raws = await monday.itemsByIds([...allIds], { cols, deadline });
         for (const r of raws) {
           const m = cvMap(r);
           const pc = m[board.columns.person];
-          const pr = m[board.columns.product];
           const dc = board.columns.department ? m[board.columns.department] : null;
           const tc = board.columns.type ? m[board.columns.type] : null;
           details[String(r.id)] = {
             people: (pc?.persons_and_teams || []).filter(p => p.kind !== 'team').map(p => String(p.id)),
-            product: pr?.label ?? pr?.text ?? '',
+            product: productOf(m, board.columns),
             division: divisionOf({ board: bk, department: { label: dc?.label ?? dc?.text ?? '' }, type: { label: tc?.label ?? tc?.text ?? '' } }, config),
           };
         }
@@ -402,10 +417,7 @@ async function buildSnapshot({ brandId = 'particle', weekStart, force = false, n
 
   // Known product labels across boards (for name parsing)
   const knownProducts = new Set();
-  for (const bk of boardKeys) {
-    const pm = metas[bk].statusMaps[config.boards[bk].columns.product];
-    for (const v of Object.values(pm?.byIndex || {})) if (v.label) knownProducts.add(norm(v.label));
-  }
+  for (const bk of boardKeys) knownProductsOf(metas[bk], config.boards[bk].columns, knownProducts);
 
   const items = {};
   const mediaRefs = {};
@@ -834,4 +846,4 @@ function hashSnapshot(snapshot) {
   return crypto.createHash('sha256').update(JSON.stringify(rest)).digest('hex');
 }
 
-module.exports = { buildSnapshot, hashSnapshot, parseItemName, canonicalUrl, linkKind, trackedInWindow, unionIntervals, normalizeItem, SCHEMA_VERSION };
+module.exports = { buildSnapshot, hashSnapshot, parseItemName, canonicalUrl, linkKind, trackedInWindow, unionIntervals, normalizeItem, productLabelColor, knownProductsOf, SCHEMA_VERSION };

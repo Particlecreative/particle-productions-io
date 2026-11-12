@@ -4,10 +4,9 @@
  */
 const monday = require('../monday');
 const { getCreativeConfig } = require('../creative/config');
-const { normalizeItem } = require('../creative/snapshot');
+const { normalizeItem, knownProductsOf } = require('../creative/snapshot');
 const { boardStatuses } = require('./data');
 
-const norm = monday.normLabel;
 // Timers, files and brief text aren't shown here — leaving them out keeps ~800 items quick
 const SKIP = new Set(['working_time', 'files', 'concept', 'hook', 'finished_files']);
 const ACTIVE = new Set(['in_progress', 'fixes']);
@@ -23,10 +22,7 @@ async function buildCampaigns({ brandId = 'particle', now = Date.now(), force = 
   const metas = {};
   await Promise.all(keys.map(async bk => { metas[bk] = await monday.boardMeta(config.boards[bk].board_id, { force }); }));
   const knownProducts = new Set();
-  for (const bk of keys) {
-    const pm = metas[bk].statusMaps[config.boards[bk].columns.product];
-    for (const v of Object.values(pm?.byIndex || {})) if (v.label) knownProducts.add(norm(v.label));
-  }
+  for (const bk of keys) knownProductsOf(metas[bk], config.boards[bk].columns, knownProducts);
 
   const boards = {};
   const items = [];

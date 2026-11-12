@@ -9,7 +9,8 @@ const BOARDS = {
   video: {
     board_id: '5433027071',
     columns: {
-      requester: 'person', product: 'label9', type: 'label4', department: 'label', platform: 'single_selectu06tevn', ratio: 'multi_select_Mjj2VFZH',
+      // product = "Product (old)" (label9); product_dropdown = the new Product dropdown (12 Nov 2026) — Medium writes both, reads the dropdown first
+      requester: 'person', product: 'label9', product_dropdown: 'dropdown_mm8qh5b', type: 'label4', department: 'label', platform: 'single_selectu06tevn', ratio: 'multi_select_Mjj2VFZH',
       duration: 'numeric_mm209bwg', hook: 'short_text_mkn8n4bx', brief: 'long_text_mkn8c1ax', script: 'long_text_Mjj2uK4g', priority: 'priority_mkm11w0a',
       campaign: 'dropdown_mm3n9vjc', editor: 'people',
     },
@@ -17,7 +18,7 @@ const BOARDS = {
   design: {
     board_id: '8036329818',
     columns: {
-      requester: 'people_Mjj2RrZM', product: 'label9', brand: 'color_mm8q3pn9', department: 'status_1__1', product_line: 'dropdown_mm8q7ysv',
+      requester: 'people_Mjj2RrZM', product: 'label9', product_dropdown: 'dropdown_mm8q7ysv', brand: 'color_mm8q3pn9', department: 'status_1__1',
       campaign: 'dropdown_mm3n7bw1', platform: 'single_selectrz7230p', ratio: 'multi_select_Mjj2tEdu', copy: 'long_text_mkngjytf', brief: 'long_textpvqldjpg', designer: 'people',
     },
   },

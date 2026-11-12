@@ -1,7 +1,8 @@
 /**
  * MEDIUM → Monday: an approved brief becomes a ticket (spec §10), created with CP's token (Tomer's choice), in the
  * board's "Form Requests" group by default. The lane lives in the ticket name (no Lane column — Tomer's choice);
- * Product goes in label9. The update IS the brief, in the team's format (Tomer, 11 Nov 2026: "it's not the brief") —
+ * Product goes in the Product dropdown and in label9 "Product (old)", each only when it has the label (12 Nov 2026).
+ * The update IS the brief, in the team's format (Tomer, 11 Nov 2026: "it's not the brief") —
  * header line, concept, don'ts, hook, script by beat, test — with one 'Why' line at the end; then Captain Caption
  * locks the approved on-screen text to the item.
  * Only runs when medium_config.monday_submit is on, and only after a person clicked Approve.
@@ -9,6 +10,7 @@
 const { mondayQuery } = require('../monday');
 const { BOARDS } = require('./config');
 const { composeBrief } = require('./style');
+const { productValues } = require('../studio/product');
 
 const VIDEO_TYPE = [[/creator edit|footage|iteration|cut/i, 'Iterations/Cuts/Edits'], [/ai creator/i, 'AI Creator'], [/cgi|motion/i, 'Motion Design'], [/ugc|creator/i, 'UGC/Creator'], [/script/i, 'Script (<1 min)']];
 const LANE_NAME = { SFY: 'Science For You', GT: 'GT', WAC: 'WAC' };
@@ -56,7 +58,10 @@ function columnValues(b, { labels = {}, requesterId = null } = {}) {
     if (labels[col] && !labels[col].includes(label)) { skipped.push(`${col}: "${label}" isn't a label on the board`); return; }
     values[col] = { label };
   };
-  status(cols.product, b.product);
+  // Product: both columns, each only with a label it already has (Bone & Joint is only in the new dropdown)
+  const product = productValues(b.product, cols, (col, v) => (labels[col] ? labels[col].includes(v) : null));
+  Object.assign(values, product.values);
+  if (b.product && !product.written.length) skipped.push(`Product: "${b.product}" isn't a label on the board`);
   status(cols.department, DEPARTMENT[format]);
   status(cols.platform, 'Meta');
   const sizes = (f.sizes || []).filter(s => !labels[cols.ratio] || labels[cols.ratio].includes(s));

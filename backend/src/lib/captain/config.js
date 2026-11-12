@@ -5,6 +5,7 @@
  *   - Video "Review" / Design "Quality Check" = first check; "For Approval" = second check (there is no "In Review").
  *   - The `link` column is Frame.io on the Video board and Figma on the Design board (same id, different service).
  *   - Design board departments are named differently (Marketing, Email…) and it has no Type column.
+ *   - Product (12 Nov 2026): the new "Product" dropdown (product_dropdown) first, then label9 "Product (old)" — see studio/product.js.
  */
 const db = require('../../db');
 
@@ -13,7 +14,7 @@ const BOARDS = {
     board_id: '5433027071',
     service: 'frameio',
     columns: {
-      status: 'status', department: 'label', type: 'label4', link: 'link', dropbox: 'link4__1', product: 'label9',
+      status: 'status', department: 'label', type: 'label4', link: 'link', dropbox: 'link4__1', product: 'label9', product_dropdown: 'dropdown_mm8qh5b',
       person: 'people', campaign: 'dropdown_mm3n9vjc', platform: 'single_selectu06tevn',
       hook: 'short_text_mkn8n4bx', concept: 'long_text_mkn8c1ax', script: 'long_text_Mjj2uK4g',
       versions: 'numbers', sizes: 'multi_select_Mjj2VFZH',
@@ -23,7 +24,7 @@ const BOARDS = {
     board_id: '8036329818',
     service: 'figma',
     columns: {
-      status: 'status', department: 'status_1__1', type: null, link: 'link', dropbox: 'link0__1', product: 'label9',
+      status: 'status', department: 'status_1__1', type: null, link: 'link', dropbox: 'link0__1', product: 'label9', product_dropdown: 'dropdown_mm8q7ysv',
       person: 'people', campaign: 'dropdown_mm3n7bw1', platform: 'single_selectrz7230p',
       concept: 'long_textpvqldjpg', supporting_text: 'long_text_mkngjytf', versions: 'numberpuotbeaf',
       sizes: 'multi_select_Mjj2tEdu', other_sizes: 'short_text_Mjj2RnHq',
