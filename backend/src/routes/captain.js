@@ -26,6 +26,7 @@
  *   GET|PUT /settings
  *   POST /brain · PUT /brain/:id · DELETE /brain/:id · POST /brain/bulk (approve / reject many)
  *   POST /import/start                 start the read-only history import (Brain bootstrap)
+ *   GET  /export/email?brand=          Captain as an email proofreader for the Retention team → { filename, md, counts }
  */
 const express = require('express');
 const crypto = require('crypto');
@@ -408,6 +409,15 @@ router.delete('/brain/:id', requireAdmin, async (req, res) => {
 });
 
 // ── Brain bootstrap: the read-only history import ────────────────────────────
+// ── export: Captain as an email proofreader (a .md the Retention team loads into Claude) ──
+router.get('/export/email', requireAdmin, async (req, res) => {
+  try {
+    const out = await require('../lib/captain/emailExport').build({ brand: String(req.query.brand || 'Particle').slice(0, 40) });
+    await logEvent({ kind: 'brain_exported', message: `Brain exported as the ${out.brand} email proofreader (.md)`, data: { brand: out.brand, counts: out.counts }, actor: actorOf(req) });
+    res.set('Cache-Control', 'no-store').json(out);
+  } catch (err) { errorJson(res, err); }
+});
+
 router.get('/import', async (req, res) => {
   try { res.json(await require('../lib/captain/importer').importStatus()); } catch (err) { errorJson(res, err); }
 });

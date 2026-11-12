@@ -3,6 +3,7 @@ import { Plus, Loader2, Trash2, Search, X } from 'lucide-react';
 import { captainApi } from '../../lib/captainService';
 import HistoryImport from './HistoryImport';
 import ReviewQueue from './ReviewQueue';
+import EmailExport from './EmailExport';
 
 const TYPES = [
   ['term', 'Approved terms', 'Exact spelling — product names, ingredients, hashtags'],
@@ -92,6 +93,8 @@ export default function Brain({ notify, isAdmin }) {
       <p className="text-sm trk-muted max-w-[760px]">The Captain “learns” by remembering what the team teaches him and what reviewers have said before. Everything here is added to his instructions on every check — the AI model itself is never retrained.</p>
 
       <HistoryImport notify={notify} isAdmin={isAdmin} />
+
+      {isAdmin && <EmailExport notify={notify} />}
 
       <div className="trk-glass p-3 flex items-center gap-2">
         <Search size={16} className="trk-dim ml-1" />

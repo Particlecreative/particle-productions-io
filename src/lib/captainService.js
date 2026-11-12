@@ -57,6 +57,7 @@ export const captainApi = {
   feedback: (issueId, feedback) => call(`/issues/${issueId}/feedback`, { method: 'POST', body: { feedback } }),
   events: (limit = 100) => call(`/events?limit=${limit}`),
   brain: () => call('/brain'),
+  exportEmail: (brand) => call(`/export/email${qs({ brand })}`),
   addBrain: (item) => call('/brain', { method: 'POST', body: item }),
   updateBrain: (id, patch) => call(`/brain/${id}`, { method: 'PUT', body: patch }),
   deleteBrain: (id) => call(`/brain/${id}`, { method: 'DELETE' }),

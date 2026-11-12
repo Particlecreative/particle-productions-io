@@ -77,6 +77,12 @@ const settings = {
 export function fixtureCall(path, { method = 'GET', body } = {}) {
   const p = path.split('?')[0];
   if (p === '/status') return { frameio: { configured: true, connected: false }, figma: { configured: true, connected: true, user_name: 'Captain Caption' }, monday: { configured: false, connected: false }, gemini: { configured: true }, anthropic: { configured: true }, worker: { alive: true, at: new Date().toISOString() }, posting: settings.posting, engines: settings.engines, queue: { done: 4 } };
+  if (p === '/export/email') {
+    const brand = new URLSearchParams(path.split('?')[1] || '').get('brand') || 'Particle';
+    return { filename: `captain-caption-email-proofreader-${brand.toLowerCase()}.md`, brand, exported_at: new Date().toISOString().slice(0, 10),
+      md: `---\nname: captain-caption-email-proofreader\n---\n\n# Captain Caption — email proofreader (${brand})\n\n(dev sample — the real file is built from the Brain on the server)\n`,
+      counts: { terms: 42, rules: 18, learned: 31, do_not_flag: 6, mistakes: 24, offers: 2, ended: 5, prices: 14, claims: 9, website: true, left_out: 7, video_checks: 310, design_checks: 220 } };
+  }
   if (p === '/jobs') return { jobs: [{ id: 9, kind: 'video_check', status: 'running' }] };
   if (p === '/checks') {
     const q = new URLSearchParams(path.split('?')[1] || '');
