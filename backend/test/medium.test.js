@@ -633,7 +633,7 @@ test('Captain: the Figma / Frame.io link a designer posted in the updates or rep
   assert.equal(linkFromUpdates([{ created_at: '2026-11-11', body: 'no links here', replies: [] }], 'design'), null);
 });
 
-test('Captain asset checks: text the brief asked for is "as briefed" (not a must-fix on the designer); no-op notes dropped', () => {
+test('Captain asset checks: an error copied from the brief stays an error, and says it came from the brief; no-op notes dropped', () => {
   const { tidy } = require('../src/lib/captain/briefed');
   // Hand Cream | Meta | Hand Cream Women LP Quote — the Supporting Text column, as written by the requester
   const item = { brief: { supporting_text: '★★★★★\n"After years of different women\'s hand creams, it was a man\'s hand cream that made the difference I\'d been looking for!"\n"Linda. E · Verified Buyer"' } };
@@ -643,8 +643,8 @@ test('Captain asset checks: text the brief asked for is "as briefed" (not a must
     { found: 'Dark Spot Hand Creme', fix: 'Dark Spot Hand Cream', type: 'brand_name', severity: 'must_fix' },
   ], item);
   assert.equal(out.length, 2);                                   // the second note changed nothing → gone
-  assert.equal(out[0].severity, 'check');
-  assert.match(out[0].note, /^As briefed — the brief asked for this exact text/);
+  assert.equal(out[0].severity, 'must_fix');                       // "Linda. E" → "Linda E." is still wrong in the ad
+  assert.match(out[0].note, /^The brief has this mistake too \(the requester wrote it\)/);
   assert.equal(out[0].from_brief, true);
   assert.deepEqual([out[1].severity, out[1].from_brief], ['must_fix', undefined]);   // a real designer typo stays a must-fix
   assert.equal(tidy([{ found: 'Linda', fix: 'Lynda', severity: 'must_fix' }], { brief: {} })[0].severity, 'must_fix');

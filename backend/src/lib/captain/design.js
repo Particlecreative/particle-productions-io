@@ -43,7 +43,7 @@ function briefBlock(item) {
   if (b.supporting_text) parts.push(`Supporting text / copy: ${String(b.supporting_text).slice(0, 2000)}`);
   if (b.sizes) parts.push(`Sizes asked for: ${b.sizes}`);
   parts.push('If the copy in the design clearly contradicts the brief (wrong offer, price, claim or product), report it as type "script_mismatch", severity "check".');
-  parts.push('Text the brief asks for word for word (a quote, a name, a headline) is the requester\'s wording: if it has an error, report it with severity "check" and say "as briefed" — never "must_fix" on the designer.');
+  parts.push('Text the brief asks for word for word (a quote, a name, a headline) can still have an error — report it as usual, and say in the note that the brief has it too.');
   return parts.join('\n');
 }
 

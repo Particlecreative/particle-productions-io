@@ -1,7 +1,8 @@
 /**
  * "As briefed" (Tomer, 12 Nov 2026): when the text Captain flags is exactly what the Monday brief asked for, the
- * designer / editor did their job — the wording is the requester's. It's still worth a look, but as a "please check"
- * for the requester, never a must-fix on the asset. (Hand Cream Women LP Quote: the brief said "Linda. E".)
+ * designer / editor copied it faithfully — the mistake is the requester's. A real error is still an error in the ad
+ * ("Linda. E" → "Linda E."), so the severity stays; the note says where it came from and who to tell.
+ * (Hand Cream Women LP Quote: the brief said "Linda. E · Verified Buyer".)
  */
 const norm = (s) => String(s || '').normalize('NFKD').replace(/[‘’‚′]/g, "'").replace(/[“”„″]/g, '"')
   .replace(/[^\p{L}\p{N}]+/gu, ' ').trim().toLowerCase();
@@ -17,8 +18,8 @@ function asBriefed(issue, briefNorm) {
   if (!briefNorm || !issue?.found) return issue;
   const f = norm(issue.found);
   if (f.length < 4 || !(` ${briefNorm} `).includes(` ${f} `)) return issue;
-  const note = 'As briefed — the brief asked for this exact text, so it’s the requester’s call, not the designer’s';
-  return { ...issue, severity: 'check', note: issue.note ? `${note}. ${issue.note}` : note, from_brief: true };
+  const note = 'The brief has this mistake too (the requester wrote it) — fix it in the design and let the requester know';
+  return { ...issue, note: issue.note ? `${note}. ${issue.note}` : note, from_brief: true };
 }
 
 /** A note whose fix is the same text as what it found changes nothing — dropped (pure — tested). */
