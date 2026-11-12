@@ -9,6 +9,7 @@ import { DarkModeProvider, useDarkMode } from './context/DarkModeContext';
 import { initializeData } from './lib/dataService';
 import ErrorBoundary from './components/ui/ErrorBoundary';
 import GlobalSearch from './components/ui/GlobalSearch';
+import UpdateBanner from './components/ui/UpdateBanner';
 
 import Login from './pages/Login';
 import AppShell from './components/layout/AppShell';
@@ -140,6 +141,7 @@ function AppRoutes() {
   return (
     <>
       <GlobalSearch open={globalSearchOpen} onClose={() => setGlobalSearchOpen(false)} />
+      <UpdateBanner />
       <Routes>
         <Route path="/login" element={loading ? null : (user ? <Navigate to="/" replace /> : <Login />)} />
         <Route path="/" element={<ProtectedRoute blockForAccounting><AppShell><ErrorBoundary><Dashboard /></ErrorBoundary></AppShell></ProtectedRoute>} />
