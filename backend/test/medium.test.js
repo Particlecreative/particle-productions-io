@@ -709,3 +709,39 @@ test('corpus: the exemplar product comes from the Product dropdown, then Product
   assert.equal(toRow('design', item([{ id: 'label9', text: 'Neck Cream' }, { id: 'dropdown_mm8q7ysv', text: null }]), DEFAULTS).product, 'Neck Cream');
   assert.equal(toRow('design', item([{ id: 'label9', text: null }]), DEFAULTS).product, null);
 });
+
+// ── Clearstep (12 Nov 2026): a separate brand — its tickets never teach Particle's house style ──
+test('test brands: Clearstep tickets are a separate brand, by name, campaign, product or Brands column', () => {
+  const C = require('../src/lib/medium/classify');
+  const { DEFAULTS, withDefaultBrands } = require('../src/lib/medium/config');
+  const reg = DEFAULTS.test_brands;
+  assert.equal(C.testBrandOf({ name: 'Clearstep | Antifungal Foot Treatment | Meta | 48 Hours' }, reg), 'Clearstep');
+  assert.equal(C.testBrandOf({ name: 'Meta — Meet Urea', product: 'Antifungal Nail Repair' }, reg), 'Clearstep');
+  assert.equal(C.testBrandOf({ name: 'Meta — 2 Days', campaign: 'Clearstep Launch' }, reg), 'Clearstep');
+  assert.equal(C.testBrandOf({ name: 'Meta — anything', brandColumn: 'Clearstep' }, []), 'Clearstep');
+  assert.equal(C.testBrandOf({ name: 'Face Cream | Meta | Split Face', product: 'Face Cream' }, reg), null);
+  // a panel that saved its brand list before Clearstep existed still gets it; saved entries are kept
+  const saved = withDefaultBrands({ test_brands: [{ name: 'Ashford', tokens: ['ashford', 'house ashford'], campaigns: [], products: [] }] });
+  assert.deepEqual(saved.test_brands.map(b => b.name).sort(), ['Ashford', 'Biomella', 'Blurr', 'Clearstep', 'Levitas']);
+  assert.deepEqual(saved.test_brands.find(b => b.name === 'Ashford').tokens, ['ashford', 'house ashford']);
+});
+
+test('corpus: a Video ticket reads the Brands column too', () => {
+  const { toRow } = require('../src/lib/medium/corpus');
+  const { DEFAULTS } = require('../src/lib/medium/config');
+  const row = toRow('video', { id: 3, name: 'Meta — Foot Story', created_at: '2026-11-12T10:00:00Z', updates: [],
+    column_values: [{ id: 'person', text: 'Lilian Krumholz' }, { id: 'color_mm8q1bam', text: 'Clearstep' }, { id: 'long_text_mkn8c1ax', text: 'A man in his 50s takes off his socks at the gym bench and looks at his feet, embarrassed.' }] }, DEFAULTS);
+  assert.equal(row.excluded, true);
+  assert.match(row.exclude_reason, /Clearstep/);
+});
+
+test('brand websites: a store that isn\'t open yet is recognised, and its cookie is kept', () => {
+  const S = require('../src/lib/captain/site');
+  assert.ok(S.SITES.some(s => s.brand === 'Clearstep' && s.url === 'https://goclearstep.com'));
+  assert.equal(S.lockedPage({ url: 'https://goclearstep.com/password' }), true);
+  assert.equal(S.lockedPage({ url: 'https://goclearstep.com/' }), false);
+  assert.equal(S.lockedPage({ url: 'https://goclearstep.com/products/password-reset-kit' }), false);
+  assert.equal(S.lockedPage({}), false);
+  assert.equal(S.cookieHeader(['storefront_digest=abc123; path=/; HttpOnly', '_shopify_s=xyz; Expires=Thu, 01 Jan 2027 00:00:00 GMT', 'junk']), 'storefront_digest=abc123; _shopify_s=xyz');
+  assert.equal(S.cookieHeader([]), '');
+});

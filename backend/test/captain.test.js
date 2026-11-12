@@ -315,3 +315,33 @@ test('readItem: the product comes from the Product dropdown, then Product (old)'
   item = base([{ id: 'label9', type: 'status', text: '' }, { id: 'dropdown_mm8q7ysv', type: 'dropdown', text: null }]);
   assert.equal((await readItem('1')).product, null);
 });
+
+// ── Clearstep (12 Nov 2026): which brand an ad is — Brands column, name, then a product only one brand sells ──
+test('brandOf: Clearstep from the Brands column, the task name or its product', () => {
+  const { brandOf } = require('../src/lib/captain/brand');
+  const name = (x) => brandOf(x).name;
+  assert.equal(name({ brand: 'Clearstep', itemName: 'Meta — Tired of Hiding Your Feet?' }), 'Clearstep');
+  assert.equal(name({ itemName: 'Clearstep | Antifungal Nail Repair | Meta | Meet Urea' }), 'Clearstep');
+  assert.equal(name({ itemName: 'Meta — Toenails Looking Like This?', product: 'Antifungal Nail Repair' }), 'Clearstep');
+  assert.equal(name({ itemName: 'ClearStep vs Generic Antifungal' }), 'Clearstep');   // the briefs' spelling
+  assert.equal(name({ itemName: 'Meta — Renting Relief', product: 'Bone & Joint' }), 'Ashford');
+  // the Brands column wins over a name; shared creams never decide a brand
+  assert.equal(name({ brand: 'Particle', itemName: 'Clearstep | x' }), 'Particle');
+  assert.equal(name({ itemName: 'Face Cream | Meta | Split Face', product: 'Face Cream' }), 'Particle');
+  const c = brandOf({ brand: 'clearstep' });
+  assert.equal(c.site, 'goclearstep.com');
+  assert.match(c.about, /foot and nail/);
+});
+
+test('readItem: the brand comes from Monday\'s Brands column', async () => {
+  const mondayLib = require('../src/lib/monday');
+  const real = mondayLib.mondayQuery;
+  mondayLib.mondayQuery = async () => ({ items: [{ id: '2', name: 'Meta — Meet Urea', state: 'active', board: { id: '8036329818', name: 'b' }, group: { id: 'g', title: 'g' }, updates: [],
+    column_values: [{ id: 'color_mm8q3pn9', type: 'status', text: 'Clearstep' }, { id: 'dropdown_mm8q7ysv', type: 'dropdown', text: 'Antifungal Nail Repair' }] }] });
+  delete require.cache[require.resolve('../src/lib/captain/monday')];
+  const { readItem } = require('../src/lib/captain/monday');
+  mondayLib.mondayQuery = real;
+  const it = await readItem('2');
+  assert.equal(it.brand, 'Clearstep');
+  assert.equal(it.product, 'Antifungal Nail Repair');
+});

@@ -13,6 +13,7 @@ const SITES = [
   { brand: 'Blurr', url: 'https://www.blurrskin.com' },
   { brand: 'Biomella', url: 'https://www.gobiomella.com' },
   { brand: 'Ashford', url: 'https://www.houseashford.com' },
+  { brand: 'Clearstep', url: 'https://goclearstep.com' },   // "Opening Soon" (password) until launch — see unlock()
 ];
 const MAX_PRODUCTS = 70, PAGE_TEXT = 5000, BATCH = 5;
 const SKIP = /subscription|subscribe|-sub\b|gift-card|giftcard|sample|test-product|free-gift|shipping-protection|route-protection|insurance/i;
@@ -20,6 +21,8 @@ const SKIP = /subscription|subscribe|-sub\b|gift-card|giftcard|sample|test-produ
 async function ensureTables() {
   await db.query(`CREATE TABLE IF NOT EXISTS brand_sites (brand TEXT PRIMARY KEY, url TEXT NOT NULL, status TEXT, error TEXT, products INT, pages INT, read_at TIMESTAMPTZ, cost_usd NUMERIC(8,4))`);
   await db.query('ALTER TABLE brand_sites ADD COLUMN IF NOT EXISTS tried_at TIMESTAMPTZ');
+  // a store that isn't open yet: its password, typed into the panel by an admin — kept here, never in code, never sent back
+  await db.query('ALTER TABLE brand_sites ADD COLUMN IF NOT EXISTS access_password TEXT');
   await db.query(`CREATE TABLE IF NOT EXISTS brand_site_pages (brand TEXT NOT NULL, handle TEXT NOT NULL, kind TEXT NOT NULL, url TEXT, data JSONB NOT NULL, fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (brand, handle))`);
   for (const s of SITES) await db.query('INSERT INTO brand_sites (brand, url) VALUES ($1, $2) ON CONFLICT (brand) DO NOTHING', [s.brand, s.url]);
 }
@@ -110,6 +113,7 @@ function siteBlock(brandRow, products, { product = null } = {}) {
 // Polite by design: an honest user-agent, one page every 2 s per website, and a "too many requests" answer is
 // respected — we wait only when the site says when (Retry-After ≤ 30 s), once; otherwise that site is left for this run.
 const pace = new Map();   // host → { last, gap, stopped }
+const jar = new Map();    // host → Cookie header, for a store opened with its password
 async function get(url, { retried = false } = {}) {
   const host = new URL(url).hostname.replace(/^www\./, '');
   const p = pace.get(host) || { last: 0, gap: 2000, stopped: false };
@@ -118,13 +122,42 @@ async function get(url, { retried = false } = {}) {
   const wait = p.last + p.gap - Date.now();
   if (wait > 0) await new Promise(r => setTimeout(r, wait));
   p.last = Date.now();
-  const r = await fetch(url, { headers: { 'User-Agent': UA, Accept: 'text/html,application/xml;q=0.9,*/*;q=0.8' }, redirect: 'follow', signal: AbortSignal.timeout(25000) });
+  const headers = { 'User-Agent': UA, Accept: 'text/html,application/xml;q=0.9,*/*;q=0.8' };
+  if (jar.has(host)) headers.Cookie = jar.get(host);
+  const r = await fetch(url, { headers, redirect: 'follow', signal: AbortSignal.timeout(25000) });
   if (r.status === 429) {
     const after = Number(r.headers.get('retry-after'));
     if (!retried && after > 0 && after <= 120) { await new Promise(res => setTimeout(res, after * 1000)); return get(url, { retried: true }); }
     p.stopped = true;
   }
   return { ok: r.ok, status: r.status, url: r.url, text: r.ok ? await r.text() : '' };
+}
+
+// ── A store that isn't open yet ("Opening Soon") ────────────────────────────
+/** Shopify sends every page of a closed store to /password (pure — tested). */
+const lockedPage = (r) => { try { return /^\/password\/?$/.test(new URL(r?.url || '').pathname); } catch { return false; } };
+
+/** "name=value" pairs from Set-Cookie headers, as one Cookie header (pure — tested). */
+const cookieHeader = (setCookies) => (setCookies || []).map(c => String(c).split(';')[0].trim()).filter(c => /^[^=\s]+=/.test(c)).join('; ');
+
+/**
+ * Open a closed Shopify store with its password, the way a visitor does on its password page; the cookie it sets
+ * is sent with every page after. Returns true when the store opened.
+ */
+async function unlock(site) {
+  if (!site.access_password) return false;
+  const base = new URL(site.url);
+  const host = base.hostname.replace(/^www\./, '');
+  const body = new URLSearchParams({ form_type: 'storefront_password', utf8: '✓', password: site.access_password });
+  const r = await fetch(new URL('/password', base), {
+    method: 'POST', body, redirect: 'manual', signal: AbortSignal.timeout(25000),
+    headers: { 'User-Agent': UA, 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'text/html' },
+  });
+  const cookie = cookieHeader(r.headers.getSetCookie ? r.headers.getSetCookie() : [r.headers.get('set-cookie')].filter(Boolean));
+  if (!cookie) return false;
+  jar.set(host, cookie);
+  const home = await get(base.toString());
+  return home.ok && !lockedPage(home);
 }
 
 /** Shopify stores limit fast readers — read them slowly (one page every 10 s); it takes a few minutes, that's fine. */
@@ -189,7 +222,14 @@ async function readSite(brand) {
   await db.query("UPDATE brand_sites SET status = 'reading', error = NULL, tried_at = NOW() WHERE brand = $1", [site.brand]);
   let cost = 0;
   try {
+    const opened = await unlock(site).catch(() => false);
     const d = await discover(site);
+    // never learn from the "Opening Soon" page
+    if (lockedPage(d.home)) {
+      throw new Error(site.access_password && !opened
+        ? 'The store password didn’t open the store — check it'
+        : 'The store isn’t open yet (password page) — add its password, or it’s read once the store opens');
+    }
     if (!d.home.ok && !d.products.length) throw new Error(`The website answered ${d.home.status}`);
     const pages = [];
     let limited = false;
@@ -262,7 +302,8 @@ async function brainBlock({ brand, product = null }) {
 
 async function status() {
   await ensureTables();
-  return (await db.query('SELECT brand, url, status, error, products, pages, read_at, tried_at, cost_usd FROM brand_sites ORDER BY brand')).rows;
+  return (await db.query(`SELECT brand, url, status, error, products, pages, read_at, tried_at, cost_usd,
+    (COALESCE(access_password, '') <> '') AS has_password FROM brand_sites ORDER BY brand`)).rows;
 }
 
 async function setUrl(brand, url) {
@@ -272,9 +313,18 @@ async function setUrl(brand, url) {
   return { brand, url: u.origin };
 }
 
+/** The password of a store that isn't open yet ('' removes it). Admin only; never read back. */
+async function setPassword(brand, password) {
+  await ensureTables();
+  const pw = String(password || '').slice(0, 200);
+  const { rowCount } = await db.query('UPDATE brand_sites SET access_password = NULLIF($2, \'\') WHERE lower(brand) = lower($1)', [brand, pw]);
+  if (!rowCount) throw Object.assign(new Error(`No website set for ${brand}`), { status: 404 });
+  return { brand, has_password: !!pw };
+}
+
 /** Stamp for caches (brief checks): changes when any site is re-read. */
 async function stamp() {
   try { const { rows } = await db.query('SELECT COALESCE(MAX(read_at), \'epoch\') AS at FROM brand_sites'); return new Date(rows[0].at).toISOString(); } catch { return 'none'; }
 }
 
-module.exports = { SITES, discover, get, readSite, brainBlock, status, setUrl, stamp, ensureTables, locs, productUrls, productFromJsonLd, mainText, siteBlock };
+module.exports = { SITES, discover, get, readSite, brainBlock, status, setUrl, setPassword, stamp, ensureTables, locs, productUrls, productFromJsonLd, mainText, siteBlock, lockedPage, cookieHeader };

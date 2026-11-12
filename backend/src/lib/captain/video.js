@@ -64,7 +64,7 @@ function referenceBlock(master) {
 }
 
 function buildPrompt({ brain, item, master, brand = null }) {
-  const b = brand || brandOf({ itemName: item?.name });
+  const b = brand || brandOf({ brand: item?.brand, itemName: item?.name, product: item?.product });
   return PROMPT.replaceAll('{{BRAND_ABOUT}}', b.about).replaceAll('{{BRAND}}', b.name)
     .replace('{{BRAIN}}', brainText(brain)).replace('{{BRIEF}}', briefBlock(item)).replace('{{REFERENCE}}', referenceBlock(master));
 }
@@ -276,7 +276,7 @@ async function runVideoJob(payload) {
     );
   }
 
-  const brand = brandOf({ itemName: item?.name, names: [target.name, deliverables[0]?.name] }, cfg);
+  const brand = brandOf({ brand: item?.brand, itemName: item?.name, names: [target.name, deliverables[0]?.name], product: item?.product }, cfg);
   const lane = brand.default ? laneOf({ names: [item?.name, target.name], text: item?.brief?.concept || '' }, cfg).name : null;
   const brain = await loadBrain({ discipline: 'video', product: item?.product, campaign: item?.campaign, department: item?.department, brand: brand.name, lane });
   const posting = postingFor(cfg, { frameioFolderId: target.folder_id, itemId: fromLink ? null : item?.id });

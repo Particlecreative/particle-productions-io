@@ -70,6 +70,7 @@ export const mediumApi = {
   brandSites: () => call('/brand-sites'),
   brandSiteRead: (brand) => call(`/brand-sites/${encodeURIComponent(brand)}/read`, { method: 'POST' }),
   brandSiteUrl: (brand, url) => call(`/brand-sites/${encodeURIComponent(brand)}`, { method: 'PUT', body: { url } }),
+  brandSitePassword: (brand, password) => call(`/brand-sites/${encodeURIComponent(brand)}/password`, { method: 'PUT', body: { password } }),
   upspringConnect: () => call('/upspring/connect', { method: 'POST' }),
   upspringDisconnect: () => call('/upspring', { method: 'DELETE' }),
   upspringRefresh: () => call('/upspring/refresh', { method: 'POST' }),

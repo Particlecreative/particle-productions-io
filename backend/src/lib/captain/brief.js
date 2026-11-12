@@ -133,7 +133,7 @@ async function runBriefCheck(body, { trigger = 'medium', actor = null, force = f
   const bc = cfg.brief || {};
   const { errors, req } = R.normalizeRequest(body, bc);
   if (errors.length) throw bad(errors.join(' · '));
-  const brand = brandOf({ brand: req.brand, itemName: req.name, names: [req.product, req.campaign] }, cfg);
+  const brand = brandOf({ brand: req.brand, itemName: req.name, names: [req.product, req.campaign], product: req.product }, cfg);
   const lane = laneOf({ lane: req.lane, names: [req.name, req.campaign] }, cfg);
   const engine = cfg.engines?.brief || { engine: 'claude', model: 'claude-sonnet-5-5' };
   if (engine.engine !== 'claude') throw bad(`Brief engine "${engine.engine}" isn't available — set Claude in Settings`, 503);
@@ -303,7 +303,7 @@ async function runBriefBatch({ batch_id }) {
 
     // Checks only a batch can do: one code + end date for the campaign, one price per product × tier, no leftovers
     const first = R.normalizeRequest(items[0], cfg.brief || {}).req;
-    const facts = await loadFacts({ brand: brandOf({ brand: first.brand, names: [first.product, first.campaign] }, cfg).name });
+    const facts = await loadFacts({ brand: brandOf({ brand: first.brand, names: [first.product, first.campaign], product: first.product }, cfg).name });
     const normed = items.map((x, k) => ({ k, brief_id: results[k]?.brief_id || x.brief_id || `#${k + 1}`, req: R.normalizeRequest(x, cfg.brief || {}).req, issues: [...(results[k]?.issues || [])], result: results[k] }))
       .filter(n => n.result && n.result.verdict !== 'error' && n.result.check_id);
     const cross = R.crossBrief(normed, facts, { campaign: b.campaign });

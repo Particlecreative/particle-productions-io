@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Mail, Download, Loader2 } from 'lucide-react';
 import { captainApi } from '../../lib/captainService';
 
-const BRANDS = ['Particle', 'Blurr', 'Biomella', 'Ashford'];
+const BRANDS = ['Particle', 'Clearstep', 'Blurr', 'Biomella', 'Ashford'];
 
 /**
  * Captain as an email proofreader for the Retention team: a .md file they load into Claude (a Project or a Skill).

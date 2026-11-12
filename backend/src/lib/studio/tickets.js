@@ -61,7 +61,7 @@ const FIELDS = {
 };
 const ALL_KEYS = [...new Set([...FIELDS.video, ...FIELDS.design].map(f => f.key))];
 // The brands the studio makes work for — always offered, even before Monday's Brands column has the label (it's created with the first ticket)
-const STUDIO_BRANDS = ['Particle', 'Ashford', 'Blurr', 'Biomella'];
+const STUDIO_BRANDS = ['Particle', 'Ashford', 'Clearstep', 'Blurr', 'Biomella'];
 
 /** Options of a status / dropdown column on a board (from the cached board meta). */
 function columnOptions(meta, col, type) {
@@ -125,7 +125,7 @@ You help Tomer (head of creative) and Omer write Monday tickets for two boards:
 Every turn you receive today's date, the current draft and every field's allowed options. Update the draft from the conversation and return it whole.
 Rules:
 - Pick the board from the request (video vs design); keep the current board unless the user clearly changes it.
-- brand: the brand the work is for — ONLY when the request makes it clear: the brand is named, or a product, campaign or website that belongs to one brand only (Gravité, NeoRoot, Science For You → Particle; Bone & Joint, Testosterone and Hormone → Ashford). Products like Face Cream, Hand Cream or Neck Cream exist for more than one brand (Particle and Biomella) — never guess from them: leave brand "" and ask which brand.
+- brand: the brand the work is for — ONLY when the request makes it clear: the brand is named, or a product, campaign or website that belongs to one brand only (Gravité, NeoRoot, Science For You → Particle; Bone & Joint, Testosterone and Hormone → Ashford; Antifungal Foot Treatment, Antifungal Nail Repair, athlete's foot, toenail fungus, the Clearstep Launch campaign → Clearstep). Products like Face Cream, Hand Cream or Neck Cream exist for more than one brand (Particle and Biomella) — never guess from them: leave brand "" and ask which brand.
 - For status / dropdown / people fields use ONLY exact option texts from the lists. Never invent people, products or labels. Use "" (or []) when unknown.
   Exception — campaign: only when the user names one (never guess it); use the existing option when one matches, otherwise the name as the user wrote it (it goes in the ticket name and the brief).
 - Resolve relative dates ("Thursday", "next week", "end of month") to YYYY-MM-DD in Israel time from today. Studio work days are Sunday–Thursday.

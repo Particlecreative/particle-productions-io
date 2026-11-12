@@ -10,7 +10,7 @@ const BOARDS = {
     board_id: '5433027071',
     columns: {
       // product = "Product (old)" (label9); product_dropdown = the new Product dropdown (12 Nov 2026) — Medium writes both, reads the dropdown first
-      requester: 'person', product: 'label9', product_dropdown: 'dropdown_mm8qh5b', type: 'label4', department: 'label', platform: 'single_selectu06tevn', ratio: 'multi_select_Mjj2VFZH',
+      requester: 'person', product: 'label9', product_dropdown: 'dropdown_mm8qh5b', brand: 'color_mm8q1bam', type: 'label4', department: 'label', platform: 'single_selectu06tevn', ratio: 'multi_select_Mjj2VFZH',
       duration: 'numeric_mm209bwg', hook: 'short_text_mkn8n4bx', brief: 'long_text_mkn8c1ax', script: 'long_text_Mjj2uK4g', priority: 'priority_mkm11w0a',
       campaign: 'dropdown_mm3n9vjc', editor: 'people',
     },
@@ -50,6 +50,7 @@ const DEFAULTS = {
     { name: 'Levitas', tokens: ['levitas'], campaigns: ['Levitas 1.0'], products: [] },
     { name: 'Biomella', tokens: ['biomella'], campaigns: [], products: [] },
     { name: 'Blurr', tokens: ['blurr'], campaigns: [], products: [] },
+    { name: 'Clearstep', tokens: ['clearstep', 'clear step'], campaigns: ['Clearstep Launch'], products: ['Antifungal Foot Treatment', 'Antifungal Nail Repair'] },
   ],
   lane_mix: { Particle: { video: 3, static: 3 }, SFY: { video: 2, static: 2 }, GT: { video: 1, static: 0 }, WAC: { video: 0, static: 2 }, transfers: { video: 2, static: 2 } },
   caps: { per_week: 40, per_winner: 3, transfer_tests_per_product: 2 },
@@ -150,7 +151,17 @@ const BELIEFS = [
 async function getConfig(brandId = 'particle') {
   const { rows } = await db.query('SELECT medium_config FROM settings WHERE brand_id = $1', [brandId]).catch(() => ({ rows: [] }));
   const saved = rows[0]?.medium_config;
-  return merge(DEFAULTS, typeof saved === 'string' ? JSON.parse(saved) : saved);
+  return withDefaultBrands(merge(DEFAULTS, typeof saved === 'string' ? JSON.parse(saved) : saved));
+}
+
+/**
+ * A saved test_brands list replaces the default one wholesale — so a brand added in code later (Clearstep, 12 Nov
+ * 2026) would never reach a panel that saved its list before. Keep the saved entries; add any default brand missing.
+ */
+function withDefaultBrands(cfg) {
+  const have = new Set((cfg.test_brands || []).map(b => String(b?.name || '').toLowerCase()));
+  const missing = DEFAULTS.test_brands.filter(b => !have.has(b.name.toLowerCase()));
+  return missing.length ? { ...cfg, test_brands: [...(cfg.test_brands || []), ...missing] } : cfg;
 }
 
 const EDITABLE = ['product_notes', 'upspring_link', 'market_watch', 'monday_submit', 'monday_groups', 'autopilot', 'digest', 'corpus', 'test_brands', 'lane_mix', 'caps', 'models', 'style_guide', 'upspring_snapshot', 'language_bank'];
@@ -188,4 +199,4 @@ function productNotes(cfg, product = null) {
   return exact.length ? exact : list.filter(x => f(product).includes(f(x.product)) && !/bundle|kit|set/i.test(product));
 }
 
-module.exports = { productNotes, BOARDS, DEFAULTS, LANES, LANE_RULES, MOVES, PRODUCTS, TEMPLATES, DONORS, PERSONAS, AFFINITY, BELIEFS, getConfig, saveConfig, seed };
+module.exports = { productNotes, BOARDS, DEFAULTS, LANES, LANE_RULES, MOVES, PRODUCTS, TEMPLATES, DONORS, PERSONAS, AFFINITY, BELIEFS, getConfig, saveConfig, seed, withDefaultBrands };

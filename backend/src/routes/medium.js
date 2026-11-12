@@ -291,6 +291,10 @@ router.post('/brand-sites/:brand/read', requireAdmin, async (req, res) => {
     res.json({ queued: !!jobId, already_queued: !jobId });
   } catch (err) { errorJson(res, err); }
 });
+// A store that isn't open yet: its password (admin only; stored, never sent back — the list shows only that one is set)
+router.put('/brand-sites/:brand/password', requireAdmin, async (req, res) => {
+  try { res.json(await require('../lib/captain/site').setPassword(String(req.params.brand).slice(0, 60), String(req.body?.password || ''))); } catch (err) { errorJson(res, err); }
+});
 router.put('/brand-sites/:brand', requireAdmin, async (req, res) => {
   try { res.json(await require('../lib/captain/site').setUrl(String(req.params.brand).slice(0, 60), String(req.body?.url || ''))); } catch (err) { errorJson(res, bad('Type the website, e.g. www.brand.com')); }
 });

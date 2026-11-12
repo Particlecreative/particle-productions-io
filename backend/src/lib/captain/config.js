@@ -15,6 +15,7 @@ const BOARDS = {
     service: 'frameio',
     columns: {
       status: 'status', department: 'label', type: 'label4', link: 'link', dropbox: 'link4__1', product: 'label9', product_dropdown: 'dropdown_mm8qh5b',
+      brand: 'color_mm8q1bam',   // "Brands" (12 Nov 2026)
       person: 'people', campaign: 'dropdown_mm3n9vjc', platform: 'single_selectu06tevn',
       hook: 'short_text_mkn8n4bx', concept: 'long_text_mkn8c1ax', script: 'long_text_Mjj2uK4g',
       versions: 'numbers', sizes: 'multi_select_Mjj2VFZH',
@@ -25,6 +26,7 @@ const BOARDS = {
     service: 'figma',
     columns: {
       status: 'status', department: 'status_1__1', type: null, link: 'link', dropbox: 'link0__1', product: 'label9', product_dropdown: 'dropdown_mm8q7ysv',
+      brand: 'color_mm8q3pn9',   // "Brands" (12 Nov 2026)
       person: 'people', campaign: 'dropdown_mm3n7bw1', platform: 'single_selectrz7230p',
       concept: 'long_textpvqldjpg', supporting_text: 'long_text_mkngjytf', versions: 'numberpuotbeaf',
       sizes: 'multi_select_Mjj2tEdu', other_sizes: 'short_text_Mjj2RnHq',
@@ -65,9 +67,11 @@ const DEFAULTS = {
   worker: { concurrency: 1 },
   // Brain bootstrap: what the history import reads (read-only)
   // Brands the studio makes ads for. The Captain uses only the matching brand's Brain items (+ general house style).
+  // Which brand a task is: Monday's Brands column, else the name ("Clearstep | …"), else a product only that brand sells.
   brands: [
     { name: 'Particle', default: true, match: ['particle'], about: "the men's skincare brand Particle (DTC, particleformen.com)", site: 'particleformen.com' },
-    { name: 'Ashford', match: ['ashford'], about: 'Ashford Formulary & Co., a men\'s joint and wellness supplement brand (DTC, houseashford.com)', site: 'houseashford.com' },
+    { name: 'Ashford', match: ['ashford'], products: ['Bone & Joint', 'Bone and Joint', 'Testosterone and Hormone', 'Joint Mobility'], about: 'Ashford Formulary & Co., a men\'s joint and wellness supplement brand (DTC, houseashford.com)', site: 'houseashford.com' },
+    { name: 'Clearstep', match: ['clearstep', 'clear step'], products: ['Antifungal Foot Treatment', 'Antifungal Nail Repair'], about: 'Clearstep, a foot and nail care brand (DTC, goclearstep.com)', site: 'goclearstep.com' },
     { name: 'Blurr', match: ['blurr'], about: 'Blurr, a skincare brand (DTC, blurrskin.com)', site: 'blurrskin.com' },
     { name: 'Biomella', match: ['biomella'], about: 'Biomella, a DTC brand (gobiomella.com)', site: 'gobiomella.com' },
   ],

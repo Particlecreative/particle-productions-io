@@ -176,6 +176,7 @@ export function fixtureCall(path, { method = 'GET', body } = {}) {
   if (p === '/brand-sites') return { sites: [
     { brand: 'Ashford', url: 'https://www.houseashford.com', status: 'partial', products: 2, read_at: ago(60 * 5), error: 'The site limited reading after 2 of 4 product pages — the rest next time' },
     { brand: 'Biomella', url: 'https://www.gobiomella.com', status: null, products: null, read_at: null },
+    { brand: 'Clearstep', url: 'https://goclearstep.com', status: 'error', error: 'The store isn’t open yet (password page) — add its password, or it’s read once the store opens', products: null, read_at: null, has_password: false },
     { brand: 'Blurr', url: 'https://www.blurrskin.com', status: 'reading', products: null, read_at: null },
     { brand: 'Particle', url: 'https://www.particleformen.com', status: 'ok', products: 68, read_at: ago(60 * 3) },
   ] };

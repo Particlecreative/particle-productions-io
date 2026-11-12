@@ -9,7 +9,7 @@
  */
 const { DEFAULTS } = require('./config');
 
-function brandOf({ itemName = null, names = [], brand = null } = {}, cfg = DEFAULTS) {
+function brandOf({ itemName = null, names = [], brand = null, product = null } = {}, cfg = DEFAULTS) {
   const brands = cfg.brands || DEFAULTS.brands;
   const want = String(brand || '').trim().toLowerCase();
   const named = want && brands.find(b => b.name.toLowerCase() === want || (b.match || []).includes(want));
@@ -18,7 +18,11 @@ function brandOf({ itemName = null, names = [], brand = null } = {}, cfg = DEFAU
   const hay = [itemName, ...names].filter(Boolean).join(' ').toLowerCase();
   const hit = brands.find(b => (b.match || []).some(m => first === m || first.startsWith(`${m} `)))
     || brands.find(b => (b.match || []).some(m => new RegExp(`(^|[^a-z])${m}([^a-z]|$)`).test(hay)));
-  return hit || brands.find(b => b.default) || brands[0];
+  if (hit) return hit;
+  // a product only one brand sells (Antifungal Nail Repair → Clearstep); never the creams Particle and Biomella share
+  const p = String(product || '').trim().toLowerCase();
+  const byProduct = p && brands.find(b => (b.products || []).some(x => x.toLowerCase() === p));
+  return byProduct || brands.find(b => b.default) || brands[0];
 }
 
 /**

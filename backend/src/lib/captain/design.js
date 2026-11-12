@@ -178,7 +178,7 @@ async function runDesignJob(payload) {
     if (!images.length) throw new Error("Figma couldn't render the frames");
     const thumb = await thumbFrom(images[0].bytes);
 
-    const brand = brandOf({ itemName: item?.name, names: [name, nodeRes?.fileName] }, cfg);
+    const brand = brandOf({ brand: item?.brand, itemName: item?.name, names: [name, nodeRes?.fileName], product: item?.product }, cfg);
     const lane = brand.default ? laneOf({ names: [item?.name, name], text: item?.brief?.concept || '' }, cfg).name : null;
     const brain = await loadBrain({ discipline: 'design', product: item?.product, campaign: item?.campaign, department: item?.department, brand: brand.name, lane });
     const prompt = PROMPT.replaceAll('{{BRAND_ABOUT}}', brand.about).replaceAll('{{BRAND}}', brand.name).replace('{{BRAIN}}', brainText(brain)).replace('{{BRIEF}}', briefBlock(item)).replace('{{LAYERS}}', layersBlock(frames));
