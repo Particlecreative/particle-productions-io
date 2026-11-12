@@ -127,6 +127,14 @@ export function fixtureCall(path, { method = 'GET', body } = {}) {
         { discipline: 'design', type: 'spelling', severity: 'must_fix', n: 51, good: 20, wrong: 4 }, { discipline: 'design', type: 'inconsistent', severity: 'must_fix', n: 22, good: 5, wrong: 1 },
       ] };
   }
+  if (p === '/brain/brand-sort') return method === 'POST' ? { queued: true } : { status: 'done', items: 301, cost_usd: 0.14, finished_at: new Date().toISOString(), proposals: [
+    { id: 18, type: 'insight', title: 'Proofread every bottle label and on-image word', status: 'approved', from: 'Particle', to: 'any', why: 'general proofreading craft' },
+    { id: 197, type: 'learned', title: 'Vitamine → Vitamin', status: 'approved', from: 'Particle', to: 'any', why: 'ordinary spelling' },
+    { id: 242, type: 'learned', title: '/ → • in feature lists', status: 'approved', from: 'Particle', to: 'any', why: 'house formatting' },
+    { id: 229, type: 'learned', title: 'Shop Now → נסה עכשיו', status: 'approved', from: 'any', to: 'Particle', why: "Particle's Hebrew CTA" },
+    { id: 538, type: 'do_not_flag', title: 'but the spots fade and your hands stop giving away your age.', status: 'pending', from: 'any', to: 'Biomella', why: 'a Biomella ad line kept on purpose' },
+  ] };
+  if (p === '/brain/brand-sort/apply') return { changed: (body?.changes || []).length };
   if (p === '/brain') return method === 'POST' ? { item: body } : { items: brain };
   if (p.startsWith('/brain/')) return { ok: true };
   if (p === '/settings') return { settings: method === 'PUT' ? { ...settings, ...body, posting: { ...settings.posting, ...(body?.posting || {}) } } : settings };

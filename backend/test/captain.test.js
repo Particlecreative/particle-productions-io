@@ -345,3 +345,51 @@ test('readItem: the brand comes from Monday\'s Brands column', async () => {
   assert.equal(it.brand, 'Clearstep');
   assert.equal(it.product, 'Antifungal Nail Repair');
 });
+
+// ── Every brand vs one brand (12 Nov 2026) ──
+test('brand guide: every configured brand, with the rule for "any" vs one brand', () => {
+  const { brandGuide } = require('../src/lib/captain/brandScope');
+  const g = brandGuide(DEFAULTS.brands);
+  for (const b of ['Particle', 'Ashford', 'Clearstep', 'Blurr', 'Biomella']) assert.match(g, new RegExp(`- ${b}`));
+  assert.match(g, /house brand/);
+  assert.match(g, /EVERY brand \("any"\)/);
+  assert.match(g, /still "any"/);
+});
+
+test('brand sort: each item is described with its brand today and the ad it came from', () => {
+  const { itemLine } = require('../src/lib/captain/brandScope');
+  const line = itemLine({ id: 538, type: 'do_not_flag', title: 'but the spots fade', content: 'Marked "not a typo"', scope: {}, item_name: 'Hand Cream | Meta | Biomella Postbiotic Hand Cream', check_product: 'Hand Cream' }, DEFAULTS);
+  assert.match(line, /^538\. \[do_not_flag \| now: any \| learned on a Biomella ad\]/);
+  const p = itemLine({ id: 9, type: 'term', title: 'Gravité', content: 'accent', scope: { brand: 'Particle', product: ['Gravité'] } }, DEFAULTS);
+  assert.match(p, /now: Particle \| products: Gravité\]/);
+  assert.doesNotMatch(p, /learned on/);
+});
+
+test('brand sort: proposals are only the changes, only to known brands', () => {
+  const { proposalsFrom } = require('../src/lib/captain/brandScope');
+  const rows = [
+    { id: 18, type: 'insight', title: 'Proofread every bottle label', scope: { brand: 'Particle' }, status: 'approved' },
+    { id: 65, type: 'insight', title: 'Premium look for Gravité', scope: { brand: 'Particle' }, status: 'approved' },
+    { id: 538, type: 'do_not_flag', title: 'but the spots fade', scope: {}, status: 'pending' },
+  ];
+  const names = DEFAULTS.brands.map(b => b.name);
+  const out = proposalsFrom(rows, [
+    { id: 18, brand: 'any', why: 'general proofreading' },
+    { id: 65, brand: 'Particle', why: 'Gravité is Particle' },   // unchanged → no proposal
+    { id: 538, brand: 'Biomella', why: 'Biomella copy' },
+    { id: 999, brand: 'any', why: 'not in the Brain' },
+    { id: 18, brand: 'Nordic', why: 'not a brand' },
+  ], names);
+  assert.deepEqual(out.map(p => [p.id, p.from, p.to]), [[18, 'Particle', 'any'], [538, 'any', 'Biomella']]);
+  assert.equal(out[1].status, 'pending');
+});
+
+test('history learner: lines from every non-house brand are tagged; the schema offers every brand', () => {
+  const { bucketLines, brainSchema } = require('../src/lib/captain/learn');
+  const row = (id, brand, house, product) => ({ id, brand, house, product, who: 'Aviad Eilam', source: 'figma', analysis: { kind: 'spelling', found: 'ClearStep', fix: 'Clearstep', rule: 'brand name' }, text: 'Clearstep' });
+  const [line] = bucketLines([row('1', 'Clearstep', false, 'Antifungal Nail Repair'), row('2', 'Clearstep', false, 'Antifungal Nail Repair')], 'text');
+  assert.match(line, /\{Clearstep: Antifungal Nail Repair\}/);
+  const [particle] = bucketLines([row('3', 'Particle', true, 'Face Cream')], 'text');
+  assert.match(particle, /\{Face Cream\}/);
+  assert.deepEqual(brainSchema(DEFAULTS).properties.items.items.properties.brand.enum, ['Particle', 'Ashford', 'Clearstep', 'Blurr', 'Biomella', 'any']);
+});

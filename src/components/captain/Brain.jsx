@@ -4,6 +4,7 @@ import { captainApi } from '../../lib/captainService';
 import HistoryImport from './HistoryImport';
 import ReviewQueue from './ReviewQueue';
 import EmailExport from './EmailExport';
+import BrandSort from './BrandSort';
 
 const TYPES = [
   ['term', 'Approved terms', 'Exact spelling — product names, ingredients, hashtags'],
@@ -95,6 +96,8 @@ export default function Brain({ notify, isAdmin }) {
       <HistoryImport notify={notify} isAdmin={isAdmin} />
 
       {isAdmin && <EmailExport notify={notify} />}
+
+      {isAdmin && <BrandSort notify={notify} onApplied={load} />}
 
       <div className="trk-glass p-3 flex items-center gap-2">
         <Search size={16} className="trk-dim ml-1" />

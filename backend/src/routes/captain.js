@@ -35,6 +35,7 @@ const { verifyJWT } = require('../middleware/auth');
 const { getConfig, saveConfig, BOARDS, disciplineOfBoard } = require('../lib/captain/config');
 const { enqueue } = require('../lib/captain/queue');
 const { logEvent } = require('../lib/captain/log');
+const { brandOf } = require('../lib/captain/brand');
 
 const router = express.Router();
 const RANK = { Viewer: 0, Accounting: 1, Studio: 1, Editor: 2, Admin: 3 };
@@ -282,22 +283,27 @@ router.post('/issues/:id/feedback', async (req, res) => {
     const issue = rows[0];
     if (!issue) return res.status(404).json({ error: 'Not found' });
     let learned = null;
+    // what's learned from an ad belongs to that ad's brand (an admin can widen it to every brand in the review queue)
+    const brandOfCheck = async () => {
+      const chk = (await db.query('SELECT item_name, product FROM captain_checks WHERE id = $1', [issue.check_id]).catch(() => ({ rows: [] }))).rows[0] || {};
+      return brandOf({ itemName: chk.item_name, product: chk.product }, await getConfig()).name;
+    };
     if (fb === 'not_a_typo' && issue.found && CLAIM_TYPES.has(issue.type)) {
       // "Not an issue" on a claim = it's an approved claim → suggest it for the claims sheet (review queue)
       const r = await db.query(
         `INSERT INTO captain_brain (type, title, content, discipline, scope, status, source, evidence, added_by)
-         SELECT 'claim', $1, $2, 'both', CASE WHEN c.product IS NOT NULL THEN jsonb_build_object('product', c.product) ELSE '{}'::jsonb END, 'pending', 'feedback', $3, $4
+         SELECT 'claim', $1, $2, 'both', jsonb_build_object('brand', $6::text) || CASE WHEN c.product IS NOT NULL THEN jsonb_build_object('product', c.product) ELSE '{}'::jsonb END, 'pending', 'feedback', $3, $4
            FROM captain_checks c WHERE c.id = $5
          ON CONFLICT DO NOTHING RETURNING id`,
-        [String(issue.found).slice(0, 300), 'Marked "not an issue" on a brief claim', JSON.stringify({ issue_id: issue.id, check_id: issue.check_id }), actor, issue.check_id]);
+        [String(issue.found).slice(0, 300), 'Marked "not an issue" on a brief claim', JSON.stringify({ issue_id: issue.id, check_id: issue.check_id }), actor, issue.check_id, await brandOfCheck()]);
       learned = r.rows[0]?.id || null;
     } else if (fb === 'not_a_typo' && issue.found && !RULE_TYPES.has(issue.type)) {
       // Goes to the review queue — nothing reaches the Captain's instructions until an admin approves it
       const r = await db.query(
-        `INSERT INTO captain_brain (type, title, content, discipline, status, source, evidence, added_by)
-         SELECT 'do_not_flag', $1, $2, CASE WHEN c.discipline IN ('video', 'design') THEN c.discipline ELSE 'both' END, 'pending', 'feedback', $3, $4 FROM captain_checks c WHERE c.id = $5
+        `INSERT INTO captain_brain (type, title, content, discipline, scope, status, source, evidence, added_by)
+         SELECT 'do_not_flag', $1, $2, CASE WHEN c.discipline IN ('video', 'design') THEN c.discipline ELSE 'both' END, jsonb_build_object('brand', $6::text), 'pending', 'feedback', $3, $4 FROM captain_checks c WHERE c.id = $5
          ON CONFLICT DO NOTHING RETURNING id`,
-        [String(issue.found).slice(0, 200), `Marked "not a typo" (Captain suggested "${issue.fix || ''}")`, JSON.stringify({ issue_id: issue.id, check_id: issue.check_id }), actor, issue.check_id]);
+        [String(issue.found).slice(0, 200), `Marked "not a typo" (Captain suggested "${issue.fix || ''}")`, JSON.stringify({ issue_id: issue.id, check_id: issue.check_id }), actor, issue.check_id, await brandOfCheck()]);
       learned = r.rows[0]?.id || null;
     }
     await logEvent({ kind: 'feedback', check_id: issue.check_id, message: `${actor}: ${fb === 'good_catch' ? '✅ Good catch' : fb === 'not_a_typo' ? '❌ Not a typo' : 'cleared feedback'} on "${issue.found}"`, data: { issue_id: issue.id, learned }, actor });
@@ -359,6 +365,32 @@ router.post('/brain', requireAdmin, async (req, res) => {
     if (err.code === '23505') return res.status(409).json({ error: 'That item already exists' });
     errorJson(res, err);
   }
+});
+
+// ── Sort the Brain by brand: every brand vs one brand (proposals; nothing changes until an admin applies them) ──
+router.post('/brain/brand-sort', requireAdmin, async (req, res) => {
+  try {
+    const jobId = await enqueue('brain_brand_sort', {}, { dedupeKey: 'brain_brand_sort', priority: 4, maxAttempts: 1 });
+    await logEvent({ kind: 'brain', message: `${actorOf(req)} asked the Captain to sort the Brain by brand`, actor: actorOf(req) });
+    res.json({ queued: !!jobId, already_queued: !jobId });
+  } catch (err) { errorJson(res, err); }
+});
+router.get('/brain/brand-sort', requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await db.query(`SELECT status, last_error, created_at, finished_at, result FROM captain_jobs WHERE kind = 'brain_brand_sort' ORDER BY id DESC LIMIT 1`);
+    const j = rows[0];
+    if (!j) return res.json({ status: null, proposals: [] });
+    const proposals = j.status === 'done' ? await require('../lib/captain/brandScope').pending(j.result) : [];
+    res.json({ status: j.status, error: j.last_error || null, started_at: j.created_at, finished_at: j.finished_at, items: j.result?.items ?? null, cost_usd: j.result?.cost_usd ?? null, proposals });
+  } catch (err) { errorJson(res, err); }
+});
+router.post('/brain/brand-sort/apply', requireAdmin, async (req, res) => {
+  try {
+    const actor = actorOf(req);
+    const out = await require('../lib/captain/brandScope').applyBrands(Array.isArray(req.body?.changes) ? req.body.changes : [], actor);
+    await logEvent({ kind: 'brain', message: `${actor} moved ${out.changed} Brain item${out.changed === 1 ? '' : 's'} to the right brand`, data: out, actor });
+    res.json(out);
+  } catch (err) { errorJson(res, err); }
 });
 
 router.put('/brain/:id', requireAdmin, async (req, res) => {
