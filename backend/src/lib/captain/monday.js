@@ -15,6 +15,29 @@ function colText(cv) {
   return (cv.text ?? '').trim() || null;
 }
 
+const FIGMA_RE = /https?:\/\/(?:www\.)?figma\.com\/(?:design|file|proto|board)\/[A-Za-z0-9]{10,}[^\s"'<>)\]]*/gi;
+const FRAMEIO_RE = /https?:\/\/(?:next\.|app\.)?frame\.io\/[^\s"'<>)\]]+|https?:\/\/f\.io\/[A-Za-z0-9_-]+/gi;
+
+/**
+ * The review link a designer / editor posted in the updates or their replies ("here's the file: …") — for when the
+ * link column is empty (Tomer, 12 Nov 2026). Newest first; for Figma a link to a specific frame (node-id) wins.
+ * updates: [{ body, text_body, created_at, creator, replies }] → { url, by, at } | null (pure — tested).
+ */
+function linkFromUpdates(updates, discipline) {
+  const re = discipline === 'video' ? FRAMEIO_RE : FIGMA_RE;
+  const posts = [];
+  for (const u of updates || []) { posts.push(u); for (const r of u.replies || []) posts.push(r); }
+  posts.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+  const found = [];
+  for (const p of posts) {
+    const hay = `${String(p.body || '').replace(/&amp;/g, '&')} ${p.text_body || ''}`;
+    for (const m of hay.matchAll(re)) found.push({ url: m[0].replace(/[.,;]+$/, ''), by: p.creator?.name || null, at: p.created_at || null });
+  }
+  if (!found.length) return null;
+  if (discipline !== 'video') return found.find(f => /node-id=/i.test(f.url)) || found[0];
+  return found[0];
+}
+
 /** A Monday item → everything the Captain needs: discipline, scope fields, review link, and the brief. */
 async function readItem(itemId) {
   const d = await mondayQuery(`query ($ids: [ID!]) {
@@ -23,7 +46,7 @@ async function readItem(itemId) {
       board { id name }
       group { id title }
       column_values { id type text value }
-      updates(limit: 30) { id body text_body created_at creator { id name } }
+      updates(limit: 30) { id body text_body created_at creator { id name } replies { id body text_body created_at creator { id name } } }
     }
   }`, { ids: [String(itemId)] });
   const it = d?.items?.[0];
@@ -38,7 +61,9 @@ async function readItem(itemId) {
   return {
     id: it.id, name: it.name, state: it.state, board_id: it.board?.id, board_name: it.board?.name, group: it.group?.title, discipline,
     status: get('status'), department: get('department'), type: get('type'), product: get('product'), person: get('person'),
-    campaign: get('campaign'), platform: get('platform'), link: get('link'),
+    campaign: get('campaign'), platform: get('platform'),
+    // the link column first; else the newest link a designer / editor posted in the updates
+    ...(() => { const col = get('link'); if (col) return { link: col, link_from: 'column' }; const u = linkFromUpdates(it.updates, discipline); return u ? { link: u.url, link_from: 'update', link_by: u.by, link_at: u.at } : { link: null, link_from: null }; })(),
     brief: {
       hook: get('hook'), concept: get('concept'), script: get('script'), supporting_text: get('supporting_text'),
       versions_needed: Number(get('versions')) || null, sizes: get('sizes'), other_sizes: get('other_sizes'),
@@ -97,4 +122,4 @@ async function status() {
   } catch (e) { return { configured: true, connected: false, error: e.message }; }
 }
 
-module.exports = { PREFIX, readItem, findItemByName, hookVariations, postUpdate, status };
+module.exports = { linkFromUpdates, PREFIX, readItem, findItemByName, hookVariations, postUpdate, status };

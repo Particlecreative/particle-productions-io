@@ -616,3 +616,19 @@ test('Monday: the update is the brief (header, concept, don\'ts, hook, script by
   assert.match(h, /approved by Tomer Wilf Lezmy/);
   assert.doesNotMatch(h, /Evidence|must-fix|pre-flight|score 72/);
 });
+
+test('Captain: the Figma / Frame.io link a designer posted in the updates or replies is found when the column is empty', () => {
+  const { linkFromUpdates } = require('../src/lib/captain/monday');
+  const updates = [
+    { created_at: '2026-11-10T09:00:00Z', creator: { name: 'Lilian' }, body: '<p>Brief attached</p>', text_body: 'Brief attached', replies: [
+      { created_at: '2026-11-11T12:00:00Z', creator: { name: 'Natalie' }, body: '<p>Here is the file: <a href="https://www.figma.com/design/AbCdEf1234567890/Neck-Cream?node-id=12-345&amp;t=x">Figma</a></p>', text_body: 'Here is the file: Figma' },
+    ] },
+    { created_at: '2026-11-11T15:00:00Z', creator: { name: 'Dan' }, body: '<p>whole file https://www.figma.com/file/ZzYyXx9876543210/Bundles</p>', text_body: 'whole file https://www.figma.com/file/ZzYyXx9876543210/Bundles', replies: [] },
+  ];
+  const f = linkFromUpdates(updates, 'design');
+  assert.equal(f.url, 'https://www.figma.com/design/AbCdEf1234567890/Neck-Cream?node-id=12-345&t=x');   // a frame link wins over a newer whole-file link
+  assert.equal(f.by, 'Natalie');
+  assert.equal(linkFromUpdates([{ created_at: '2026-11-11', body: 'done → https://www.figma.com/file/ZzYyXx9876543210/Bundles.', replies: [] }], 'design').url, 'https://www.figma.com/file/ZzYyXx9876543210/Bundles');
+  assert.equal(linkFromUpdates([{ created_at: '2026-11-11', body: '<a href="https://f.io/AbC12">v2</a>', replies: [] }], 'video').url, 'https://f.io/AbC12');
+  assert.equal(linkFromUpdates([{ created_at: '2026-11-11', body: 'no links here', replies: [] }], 'design'), null);
+});

@@ -109,7 +109,7 @@ async function runDesignJob(payload) {
   if (item_id && !item) return skip({ item: null, link: payload.link, reason: `Monday item ${item_id} not found`, trigger, actor });
   if (item && item.discipline !== 'design') return skip({ item, link: payload.link, reason: 'Not a Design board item', trigger, actor });
   const link = payload.link || item?.link;
-  if (!link) return skip({ item, link, reason: 'No Figma link on the item yet', trigger, actor });
+  if (!link) return skip({ item, link, reason: 'No Figma link on the item or in its updates yet', trigger, actor });
   const parsed = figma.parseUrl(link);
   if (!parsed) return skip({ item, link, reason: /frame\.io|f\.io\//i.test(link) ? 'Data-quality flag: a Frame.io link on a design item' : "That isn't a Figma link", trigger, actor });
   if (!parsed.nodeId) return skip({ item, link, reason: 'Please link to the specific frame or section (the link has no node-id)', trigger, actor });
