@@ -649,3 +649,24 @@ test('Captain asset checks: an error copied from the brief stays an error, and s
   assert.deepEqual([out[1].severity, out[1].from_brief], ['must_fix', undefined]);   // a real designer typo stays a must-fix
   assert.equal(tidy([{ found: 'Linda', fix: 'Lynda', severity: 'must_fix' }], { brief: {} })[0].severity, 'must_fix');
 });
+
+test('Captain tidy: the B&A "differs from brief" that IS the brief, self-dismissed notes and per-frame duplicates go; real ones stay', () => {
+  const { tidy } = require('../src/lib/captain/briefed');
+  // Hand Cream Women LP B&A — Supporting Text: "Was made for men."
+  const ba = tidy([{ found: 'Was made for men', fix: 'Particle Hand Cream was made for men', type: 'script_mismatch', severity: 'check', note: 'The headline has no subject. The brief says to use "Was made for men." exactly.' }],
+    { brief: { supporting_text: '"Was made for men."' } });
+  assert.equal(ba.length, 0);
+  // Face Cream SFY Top 5 — five notes, two worth keeping
+  const sfy = tidy([
+    { found: 'Dermatologists Ranked 5 Face Creams for Eye Bags. One Clearly Stood Out.', fix: 'Keep headline as in sibling frames', type: 'inconsistent', severity: 'check', note: 'The render for Frame 7 matches it fine; no issue with the headline itself. Low-confidence check only.' },
+    { found: 'See how the options compare →', fix: 'See how the most talked-about options compared.', type: 'script_mismatch', severity: 'check', note: '1x1 CTA wording differs from the brief subhead.', node_id: 'a', frame_id: 'f1' },
+    { found: 'See how the options compare →', fix: 'See how the most talked-about options compared.', type: 'script_mismatch', severity: 'check', note: 'Same as Frame 1.', node_id: 'b', frame_id: 'f2' },
+    { found: 'See how the most talked-about options compared', fix: 'See how the most talked-about options compared.', type: 'inconsistent', severity: 'check', note: 'Missing end period.' },
+    { found: 'See how the most talked-about options compared', fix: 'The highest-rated option wasn’t the one we expected.', type: 'size_mismatch', severity: 'must_fix', note: 'Variation B headline paired with Variation A subhead.' },
+  ], { brief: { supporting_text: 'Variation A — Headline: Dermatologists Ranked 5 Face Creams for Eye Bags. One Clearly Stood Out. Subhead: See how the most talked-about options compared.\nVariation B — Subhead: The highest-rated option wasn’t the one we expected.' } });
+  assert.equal(sfy.length, 3);
+  assert.match(sfy[0].note, /\(also in 1 more frame\)$/);                 // frames 1 and 2 → one note
+  assert.equal(sfy[1].type, 'inconsistent');
+  assert.deepEqual([sfy[2].severity, sfy[2].from_brief], ['must_fix', undefined]);   // wrong variant isn't "the brief's mistake"
+  assert.doesNotMatch(sfy[2].note, /The brief has this mistake too/);
+});
