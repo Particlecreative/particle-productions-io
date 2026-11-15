@@ -52,6 +52,15 @@ Rules:
 - per_person: one line per person listed, under 18 words, describing what they shipped or worked on. Factual and generous; never rank or compare people against each other.
 - Plain confident business English. No emojis, no hype words like "amazing" or "crushing".`;
 
+// The Creative Team Weekly's "week in brief" is told to the team, not the CEOs (Tomer, 15 Nov 2026) — team wins,
+// no names, no comparisons, no asks for the CEOs.
+const TEAM_EXEC = '- exec_summary: 3 to 5 bullets, each under 20 words, together under 70 words, about the TEAM as one: what we shipped together last week (by division), what landed in market if `market` data is given, and what is on our plate this week. Warm, specific and proud. Never name, credit, rank or compare individual people, and no asks or warnings for the CEOs.';
+function systemFor(deck) {
+  if (deck !== 'team') return SYSTEM;
+  return SYSTEM.replace('presented by the head of creative to the two CEOs', 'presented by the head of creative to the whole creative team (designers, video editors, production) in the Creative Team Weekly')
+    .replace(/^- exec_summary:.*$/m, TEAM_EXEC);
+}
+
 function compactInput(report) {
   const snap = report.snapshot || {};
   const ov = report.overrides || {};
@@ -113,7 +122,15 @@ function compactInput(report) {
     planned_next_week: vis(snap.sections?.planned_next_week).slice(0, 12).map(label),
     cp_productions: (snap.cp_weekly?.productions || []).slice(0, 10).map(p => ({ name: p.name, stage: p.stage, planned_start: p.planned_start, planned_end: p.planned_end, note: String(p.note || '').slice(0, 300) })),
     cp_general_updates: (snap.cp_weekly?.general_updates || []).slice(0, 10).map(u => String(u.text || '').slice(0, 200)),
+    ...(report.deck === 'team' ? { market: marketOf(snap.team?.performance) } : {}),
   };
+}
+
+/** The team's Meta numbers from AFTERLIFE for the team summary (null when it isn't connected). */
+function marketOf(perf) {
+  if (!perf?.totals) return null;
+  const pick = (t) => (t ? { spend: t.spend ?? null, roas: t.roas ?? null, ctr: t.ctr ?? null, thumbstop: t.hook ?? null } : null);
+  return { last_week: pick(perf.totals), week_before: pick(perf.prev), creatives_in_market: (perf.creatives || []).length };
 }
 
 /**
@@ -129,7 +146,7 @@ async function generateNarrative(report, { previous = null, force = false } = {}
     betas: ['server-side-fallback-2026-07-01'],
     fallbacks: 'default',
     output_config: { effort: 'medium', format: { type: 'json_schema', schema: NARRATIVE_SCHEMA } },
-    system: [{ type: 'text', text: SYSTEM, cache_control: { type: 'ephemeral' } }],
+    system: [{ type: 'text', text: systemFor(report.deck), cache_control: { type: 'ephemeral' } }],
     messages: [{ role: 'user', content: `Week data (JSON):\n${JSON.stringify(input)}` }],
   });
   const msg = await stream.finalMessage();
@@ -152,4 +169,4 @@ async function generateNarrative(report, { previous = null, force = false } = {}
   return merged;
 }
 
-module.exports = { generateNarrative, compactInput, NARRATIVE_SCHEMA };
+module.exports = { systemFor, generateNarrative, compactInput, NARRATIVE_SCHEMA };

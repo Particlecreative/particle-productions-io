@@ -340,14 +340,15 @@ export const SPECS = {
     defaults: { builds: true },
     schema: [],
     textSlots: ['eyebrow', 'title'],
-    select(snapshot, { overrides, narrative, key }) {
+    select(snapshot, { overrides, narrative, key, options }) {
       const custom = overrides?.slides?.[key]?.bullets;
       const fromAi = narrative?.exec_summary;
-      const bullets = Array.isArray(custom) ? custom : (Array.isArray(fromAi) && fromAi.length ? fromAi : fallbackSummary(snapshot));
+      const auto = options?.audience === 'team' ? teamFallbackSummary(snapshot) : fallbackSummary(snapshot);
+      const bullets = Array.isArray(custom) ? custom : (Array.isArray(fromAi) && fromAi.length ? fromAi : auto);
       return { bullets, source: Array.isArray(custom) ? 'edited' : (fromAi?.length ? 'ai' : 'auto') };
     },
     isEmpty: (vm) => !vm.bullets?.length,
-    defaultText: () => ({ eyebrow: 'Executive summary', title: 'The week in brief' }),
+    defaultText: (vm, { options } = {}) => ({ eyebrow: options?.audience === 'team' ? 'Last week, together' : 'Executive summary', title: 'The week in brief' }),
     builds: (vm, opts) => (opts.builds ? Math.min(vm.bullets.length, 6) : 0),
   },
 
@@ -778,6 +779,18 @@ function fallbackSummary(snapshot) {
   if (top) out.push(`${top.label} led the week with ${plural(top.total, 'delivery', 'deliveries')}.`);
   if (t.in_progress) out.push(`${plural(t.in_progress, 'ticket')} in the pipeline, ${plural(t.planned_next ?? 0, 'item')} planned for next week.`);
   if ((t.stuck ?? 0) + (t.overdue ?? 0) > 0) out.push(`Needs attention: ${t.stuck ?? 0} stuck, ${t.overdue ?? 0} overdue.`);
+  return out;
+}
+
+/** Before Claude writes it: the team's week in a few lines — team totals, no names, no warnings (pure). */
+function teamFallbackSummary(snapshot) {
+  const t = snapshot.metrics?.totals || {};
+  const vs = snapshot.metrics?.vs_last_week;
+  const top = (snapshot.metrics?.by_product || [])[0];
+  const out = [`Together we delivered ${plural(t.delivered ?? 0, 'piece')} — ${plural(t.video ?? 0, 'video')} and ${plural(t.design ?? 0, 'design')}.`];
+  if (vs?.delivered > 0) out.push(`That's ${vs.delivered} more than the week before.`);
+  if (top) out.push(`${top.label} was the big one, with ${plural(top.total, 'delivery', 'deliveries')}.`);
+  if (t.planned_next) out.push(`${plural(t.planned_next, 'project')} on our plate this week.`);
   return out;
 }
 

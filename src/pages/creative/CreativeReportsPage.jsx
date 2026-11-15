@@ -259,7 +259,9 @@ export default function CreativeReportsPage() {
       const t = res.report.snapshot?.metrics?.totals;
       setGen({ step: 4, claude, totals: t, people: t?.people });
       if (claude) {
-        try { await creativeApi.narrative(res.report.id); } catch { /* deck still works with auto-bullets */ }
+        // both decks' week in brief (the team one is written for the team), side by side
+        const teamId = res.report.deck === 'team' ? null : await creativeApi.get(res.report.id).then(r => r?.decks?.team).catch(() => null);
+        await Promise.all([res.report.id, teamId].filter(Boolean).map(id => creativeApi.narrative(id).catch(() => null)));   // decks still work with auto-bullets
       }
       setGen({ step: 5, claude, totals: t, people: t?.people });
       await new Promise(r => setTimeout(r, 450));

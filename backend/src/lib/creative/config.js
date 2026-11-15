@@ -53,6 +53,7 @@ const DEFAULT_TEAM_TEMPLATE = {
   slides: [
     { id: 'cover',         type: 'cover',         enabled: true, options: { text: { eyebrow: 'Particle · Creative Team', title: 'Team Weekly' } } },
     { id: 'sec_last',      type: 'section',       enabled: true, options: { number: '01', title: 'Last week, together', subtitle: '' } },
+    { id: 'exec_summary',  type: 'exec_summary',  enabled: true, options: { audience: 'team' } },
     { id: 'team_week',     type: 'team_week',     enabled: true, options: {} },
     { id: 'market_wins',   type: 'market_wins',   enabled: true, options: { whenEmpty: 'hide' } },
     { id: 'market_design', type: 'market_people', enabled: true, options: { role: 'design', whenEmpty: 'hide' } },

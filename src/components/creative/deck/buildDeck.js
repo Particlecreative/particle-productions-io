@@ -17,11 +17,19 @@ const CUSTOM_TYPES = new Set(['custom', 'section', 'showcase']);
 // before that still have the per-person workload slide in their saved template.
 const isTeamTemplate = (template) => (template?.slides || []).some(s => s.type === 'team_week' || s.type === 'team_focus');
 
+/** Team decks get "The week in brief" (Tomer, 15 Nov 2026) — added to older team templates before "Last week, together". */
+function withTeamBrief(slides) {
+  if (slides.some(s => s.type === 'exec_summary')) return slides;
+  const brief = { id: 'exec_summary', type: 'exec_summary', enabled: true, options: { audience: 'team' } };
+  const at = slides.findIndex(s => s.type === 'team_week');
+  return at < 0 ? [...slides.slice(0, 1), brief, ...slides.slice(1)] : [...slides.slice(0, at), brief, ...slides.slice(at)];
+}
+
 /** Default (template) order of slide stubs, before overrides.order is applied. */
 function expandTemplate(template, snapshot, overrides) {
   const out = [];
   const team = isTeamTemplate(template);
-  for (const raw of template?.slides || []) {
+  for (const raw of team ? withTeamBrief(template?.slides || []) : (template?.slides || [])) {
     const spec = team && raw.type === 'workload' ? { ...raw, type: 'team_load', options: {} } : raw;
     if (spec.enabled === false) continue;
     const def = SPECS[spec.type];
