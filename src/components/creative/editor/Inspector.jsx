@@ -170,7 +170,10 @@ function ticketsForSlide(slide, snapshot, overrides) {
   const dv = slide.options?.division;
   const inDiv = (ids) => (dv ? ids.filter(id => divisionOf(snapshot.items?.[id]) === dv) : ids);
   if (slide.type === 'division_next' || slide.type === 'planned_next') return { title: 'Planned this week', ids: inDiv(S.planned_next_week || []) };
-  if (slide.type === 'division_overview') return { title: `${DIVISIONS[dv]?.label || ''} · delivered last week`, ids: inDiv(S.delivered || []) };
+  if (slide.type === 'division_overview') {
+    if (slide.options?.include === 'delivered') return { title: `${DIVISIONS[dv]?.label || ''} · delivered last week`, ids: inDiv(S.delivered || []) };
+    return { title: `${DIVISIONS[dv]?.label || ''} · completed, in review and in progress`, ids: inDiv([...(S.delivered || []), ...(S.review || []), ...(S.in_progress || []), ...(S.fixes || [])]) };
+  }
   if (slide.type === 'risks') return { title: 'At risk', ids: [...new Set([...(S.stuck || []), ...(S.overdue || []), ...(S.fixes || []), ...(S.reopened || [])])] };
   return { title: 'All delivered last week', ids: S.delivered || [] };
 }

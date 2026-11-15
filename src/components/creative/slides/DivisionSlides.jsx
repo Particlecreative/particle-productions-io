@@ -6,7 +6,7 @@ import { MediaImage, MediaVideo, FallbackTile } from '../ui/Media';
 import { dayLabel, shortDate, withAlpha, ensureContrast, fmtDays } from '../deck/format';
 import { SlideFrame, SlideHeader } from './SlideFrame';
 import { BulletList } from './StorySlides';
-import { decorate, fmtLoad } from './specs';
+import { decorate, fmtLoad, STAGES } from './specs';
 
 const DIV_ICON = { design: PenTool, video: Film, tv: Tv };
 const STAGE_COLOR = { pending: '#9d99b9', 'pre-production': '#fdab3d', production: '#579bfc', post: '#ff7575', 'post-production': '#ff7575', completed: '#00c875', delivered: '#00c875' };
@@ -87,7 +87,53 @@ export function DivisionOverviewSlide({ slide, active }) {
   return <TeamDivisionOverview slide={slide} active={active} />;
 }
 
+/** The headline when the slide shows every stage: worked on = completed + in review + in progress. */
+function StageKpi({ vm, canvas }) {
+  const s = vm.stats;
+  const accent = vm.meta.accent;
+  const t = vm.totals;
+  return (
+    <Reveal i={2} y={30} className="cr-card" style={{ padding: canvas ? '30px 34px' : 20, display: 'flex', flexDirection: 'column', gap: 16, minHeight: 0, overflow: 'hidden' }}>
+      <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 6, background: accent }} />
+      <Label>Worked on last week</Label>
+      <CountUp className="cr-kpi-num" value={vm.worked} delay={0.45} style={{ fontSize: 'calc(var(--t-kpi) * .82)' }} />
+      {vm.worked > 0 && (
+        <div className="cr-bar-track" style={{ height: canvas ? 18 : 12, gap: 3, background: 'transparent' }} aria-hidden>
+          {STAGES.map((st, j) => t[st.key] > 0 && <GrowBar key={st.key} className="cr-bar-seg" pct={(t[st.key] / vm.worked) * 100} color={withAlpha(accent, st.alpha)} delay={0.5 + j * 0.08} />)}
+        </div>
+      )}
+      <div className="cr-col" style={{ gap: canvas ? 10 : 6 }}>
+        {STAGES.map(st => (
+          <div key={st.key} style={{ display: 'grid', gridTemplateColumns: canvas ? '18px 1fr auto' : '12px 1fr auto', alignItems: 'center', gap: 12 }}>
+            <span style={{ width: canvas ? 18 : 12, height: canvas ? 18 : 12, borderRadius: 5, background: withAlpha(accent, st.alpha) }} />
+            <span className="cr-small" style={{ fontWeight: 600 }}>{st.label}</span>
+            <span className="cr-num" style={{ fontFamily: 'var(--cr-font-display)', fontWeight: 800, fontSize: 'var(--t-h3)', color: 'var(--cr-white)', lineHeight: 1 }}>{t[st.key]}</span>
+          </div>
+        ))}
+      </div>
+      <div style={{ minHeight: 28 }}>{s.delta != null && <DeltaBadge value={s.delta} suffix="completed vs week before" />}</div>
+      <div className="cr-divider" style={{ marginTop: 'auto' }} />
+      <div className="cr-grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 22 }}>
+        <MiniStat label="This week" value={s.planned.length} accent={accent} />
+        <MiniStat label="Turnaround" value={s.medianTurnaround != null ? fmtDays(s.medianTurnaround) : '–'} />
+      </div>
+    </Reveal>
+  );
+}
+
+/** Bars stacked by stage (completed → in review → in progress), in the division's colour. */
+function StageBar({ row, max, accent, height, delay }) {
+  return (
+    <div style={{ height, display: 'flex' }}>
+      <div className="cr-bar-track" style={{ width: `${(row.total / max) * 100}%`, minWidth: 10, gap: 3, background: 'transparent' }}>
+        {STAGES.map((st, j) => row[st.key] > 0 && <GrowBar key={st.key} className="cr-bar-seg" pct={(row[st.key] / row.total) * 100} color={withAlpha(ensureContrast(accent, '#030b2e', 2.6), st.alpha)} delay={delay + j * 0.04} />)}
+      </div>
+    </div>
+  );
+}
+
 function KpiColumn({ vm, canvas }) {
+  if (vm.include === 'all') return <StageKpi vm={vm} canvas={canvas} />;
   const s = vm.stats;
   const accent = vm.meta.accent;
   return (
@@ -116,6 +162,7 @@ function TeamDivisionOverview({ slide, active }) {
   const maxPerson = Math.max(1, ...vm.byPerson.map(r => r.total));
   const rowH = canvas ? Math.min(56, Math.floor(470 / Math.max(vm.byProduct.length, vm.byPerson.length, 1)) - 10) : 40;
   const filter = { division: vm.division };
+  const stages = vm.include === 'all';
   return (
     <SlideFrame slide={slide} active={active}>
       <div className="cr-col" style={{ height: '100%', gap: 40 }}>
@@ -135,16 +182,18 @@ function TeamDivisionOverview({ slide, active }) {
                 return (
                   <div key={r.label} style={{ display: 'grid', gridTemplateColumns: canvas ? '220px 1fr 56px' : '110px 1fr 36px', alignItems: 'center', gap: 16, height: rowH }}>
                     <ProductButton product={r.label} color={r.color} filter={filter} style={{ justifySelf: 'start', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }} />
-                    <div style={{ height: Math.max(14, rowH * 0.42), display: 'flex' }}>
-                      <div className="cr-bar-track" style={{ width: `${(r.total / maxP) * 100}%`, minWidth: 10, background: 'transparent' }}>
-                        <GrowBar className="cr-bar-seg" pct={100} color={c} delay={i * 0.05} />
+                    {stages ? <StageBar row={r} max={maxP} accent={r.color || vm.meta.accent} height={Math.max(14, rowH * 0.42)} delay={i * 0.05} /> : (
+                      <div style={{ height: Math.max(14, rowH * 0.42), display: 'flex' }}>
+                        <div className="cr-bar-track" style={{ width: `${(r.total / maxP) * 100}%`, minWidth: 10, background: 'transparent' }}>
+                          <GrowBar className="cr-bar-seg" pct={100} color={c} delay={i * 0.05} />
+                        </div>
                       </div>
-                    </div>
+                    )}
                     <CountUp className="cr-num" value={r.total} delay={0.4 + i * 0.05} style={{ fontFamily: 'var(--cr-font-display)', fontWeight: 800, fontSize: 'var(--t-h3)', color: '#fff', textAlign: 'right' }} />
                   </div>
                 );
               })}
-              {!vm.byProduct.length && <span className="cr-small">Nothing delivered last week.</span>}
+              {!vm.byProduct.length && <span className="cr-small">{stages ? 'Nothing worked on last week.' : 'Nothing delivered last week.'}</span>}
             </div>
           </Reveal>
 
@@ -156,17 +205,19 @@ function TeamDivisionOverview({ slide, active }) {
                 <div key={r.person.id} style={{ display: 'grid', gridTemplateColumns: canvas ? '44px 150px 1fr 48px' : '28px 80px 1fr 30px', alignItems: 'center', gap: 14, height: rowH }}>
                   <Avatar person={r.person} size={canvas ? 44 : 28} />
                   <span className="cr-clamp-1" style={{ fontWeight: 600, fontSize: 'var(--t-small)' }}>{r.person.name.split(' ')[0]}</span>
-                  <div style={{ height: Math.max(14, rowH * 0.42), display: 'flex' }}>
-                    <div className="cr-bar-track" style={{ width: `${(r.total / maxPerson) * 100}%`, minWidth: 10, gap: 3, background: 'transparent' }}>
-                      {r.segments.map((sg, j) => (
-                        <GrowBar key={sg.label} className="cr-bar-seg" pct={(sg.count / r.total) * 100} color={ensureContrast(sg.color, '#030b2e', 2.4)} delay={i * 0.05 + j * 0.04} />
-                      ))}
+                  {stages ? <StageBar row={r} max={maxPerson} accent={vm.meta.accent} height={Math.max(14, rowH * 0.42)} delay={i * 0.05} /> : (
+                    <div style={{ height: Math.max(14, rowH * 0.42), display: 'flex' }}>
+                      <div className="cr-bar-track" style={{ width: `${(r.total / maxPerson) * 100}%`, minWidth: 10, gap: 3, background: 'transparent' }}>
+                        {r.segments.map((sg, j) => (
+                          <GrowBar key={sg.label} className="cr-bar-seg" pct={(sg.count / r.total) * 100} color={ensureContrast(sg.color, '#030b2e', 2.4)} delay={i * 0.05 + j * 0.04} />
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
                   <span className="cr-num" style={{ fontFamily: 'var(--cr-font-display)', fontWeight: 800, fontSize: 'var(--t-h3)', color: '#fff', textAlign: 'right' }}>{r.total}</span>
                 </div>
               ))}
-              {!vm.byPerson.length && <span className="cr-small">No deliveries yet.</span>}
+              {!vm.byPerson.length && <span className="cr-small">{stages ? 'No work yet.' : 'No deliveries yet.'}</span>}
             </div>
             {vm.departments.length > 1 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 18px' }}>

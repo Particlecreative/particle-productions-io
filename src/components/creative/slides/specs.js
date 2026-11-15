@@ -86,6 +86,7 @@ export function divisionStats(snapshot, overrides, dv) {
     delivered,
     inProgress: pick([...(S.in_progress || []), ...(S.review || []), ...(S.fixes || [])]),
     inReview: pick(S.review),
+    working: pick([...(S.in_progress || []), ...(S.fixes || [])]),
     planned: pick(S.planned_next_week),
     stuck: pick(S.stuck),
     medianTurnaround: median(turn),
@@ -94,6 +95,40 @@ export function divisionStats(snapshot, overrides, dv) {
     byProduct: countRows(dItems, it => (it.product?.label && it.product.label !== '-' ? it.product.label : null), it => it.product?.color),
     byDepartment: countRows(dItems, it => it.department?.label || null, it => it.department?.color),
   };
+}
+
+/**
+ * The work of a week in three stages (Tomer, 15 Nov 2026: "show completed but also in progress / review — it seems like
+ * the team did less"). Completed = delivered last week; in review and in progress = open in those Monday statuses
+ * (fixes count as in progress). The three never overlap, so they add up.
+ */
+export const STAGES = [
+  { key: 'completed', label: 'Completed', alpha: 1 },
+  { key: 'review', label: 'In review', alpha: 0.7 },
+  { key: 'progress', label: 'In progress', alpha: 0.45 },
+];
+
+/** ids by stage for a division (pure). */
+export function stageIds(stats) {
+  return { completed: stats.delivered, review: stats.inReview, progress: stats.working };
+}
+
+/** Rows (product / person) with a count per stage, biggest first (pure — keyFn may return several keys). */
+export function stageRows(snapshot, ids, keyFn, metaFn) {
+  const m = new Map();
+  for (const st of STAGES) {
+    for (const id of ids[st.key] || []) {
+      const it = snapshot.items[id];
+      for (const k of [].concat(keyFn(it) || [])) {
+        const row = m.get(k) || { key: k, ...metaFn(it, k), total: 0, completed: 0, review: 0, progress: 0, ids: [] };
+        row[st.key]++;
+        row.total++;
+        row.ids.push(id);
+        m.set(k, row);
+      }
+    }
+  }
+  return [...m.values()].sort((a, b) => (b.total - a.total) || (b.completed - a.completed));
 }
 
 // ── Common options every slide has ──────────────────────────────────────────
@@ -151,8 +186,11 @@ export const SPECS = {
   division_overview: {
     label: 'Division overview',
     category: 'Numbers',
-    defaults: { division: 'design' },
-    schema: [{ key: 'division', type: 'segmented', label: 'Division', options: [['design', 'Design'], ['video', 'Video'], ['tv', 'TV & SP']] }],
+    defaults: { division: 'design', include: 'all' },
+    schema: [
+      { key: 'division', type: 'segmented', label: 'Division', options: [['design', 'Design'], ['video', 'Video'], ['tv', 'TV & SP']] },
+      { key: 'include', type: 'segmented', label: 'Show', options: [['all', 'Completed + in review + in progress'], ['delivered', 'Completed only']] },
+    ],
     textSlots: ['eyebrow', 'title'],
     select(snapshot, { overrides, options }) {
       const dv = options.division || 'design';
@@ -165,7 +203,15 @@ export const SPECS = {
         }));
         return { division: dv, meta, week: snapshot.week, stats: s, productions, deliveredIds: s.delivered.slice(0, 4) };
       }
-      // By person: everyone who delivered in this division, bars stacked by department
+      if (options.include !== 'delivered') {
+        // Everything the division worked on: completed + in review + in progress, by product and by person
+        const ids = stageIds(s);
+        const byProduct = stageRows(snapshot, ids, it => (it.product?.label && it.product.label !== '-' ? it.product.label : null), it => ({ label: it.product.label, color: it.product?.color || null })).slice(0, 9);
+        const byPerson = stageRows(snapshot, ids, it => (it.people || []).filter(uid => snapshot.people?.[uid] && !overrides?.people?.[uid]?.hidden), (it, uid) => ({ person: { ...snapshot.people[uid], name: displayName(snapshot.people[uid].name) } })).slice(0, 9);
+        const totals = { completed: ids.completed.length, review: ids.review.length, progress: ids.progress.length };
+        return { division: dv, meta, week: snapshot.week, stats: s, include: 'all', totals, worked: totals.completed + totals.review + totals.progress, byProduct, byPerson, departments: [] };
+      }
+      // Completed only: everyone who delivered in this division, bars stacked by department
       const per = new Map();
       for (const id of s.delivered) {
         const it = snapshot.items[id];
@@ -185,7 +231,7 @@ export const SPECS = {
         .sort((a, b) => b.total - a.total)
         .slice(0, 9);
       const departments = [...new Map(byPerson.flatMap(r => r.segments).map(sg => [sg.label, sg])).values()];
-      return { division: dv, meta, week: snapshot.week, stats: s, byPerson, departments, byProduct: s.byProduct.slice(0, 9) };
+      return { division: dv, meta, week: snapshot.week, stats: s, include: 'delivered', byPerson, departments, byProduct: s.byProduct.slice(0, 9) };
     },
     defaultText: (vm) => ({
       eyebrow: `${vm.meta.label} · Last week · ${vm.week?.label || ''}`,
