@@ -19,7 +19,8 @@ const isTeamTemplate = (template) => (template?.slides || []).some(s => s.type =
 
 /** Team decks get "The week in brief" (Tomer, 15 Nov 2026) — added to older team templates before "Last week, together". */
 function withTeamBrief(input) {
-  let slides = input;
+  // '03 How we work' (turnaround SLAs) is no longer in the team deck (Tomer, 15 Nov 2026) — older team decks drop it too
+  let slides = input.filter(s => !(s.type === 'sla' || s.id === 'sec_how' || (s.type === 'section' && /^how we work$/i.test(String(s.options?.title || '').trim()))));
   if (!slides.some(s => s.type === 'exec_summary')) {
     const brief = { id: 'exec_summary', type: 'exec_summary', enabled: true, options: { audience: 'team' } };
     const at = slides.findIndex(s => s.type === 'team_week');

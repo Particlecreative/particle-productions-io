@@ -6,7 +6,7 @@ import { galleryGrid } from './DivisionSlides';
 import { decorate } from './specs';
 import { DIVISIONS } from './divisions';
 import { MediaImage, FallbackTile } from '../ui/Media';
-import { dayLabel, shortDate, fmtDays, fmtHours, withAlpha, firstName } from '../deck/format';
+import { dayLabel, shortDate, fmtDays, fmtHours, withAlpha, firstName, ensureContrast } from '../deck/format';
 import { SlideFrame, SlideHeader } from './SlideFrame';
 import { BulletList } from './StorySlides';
 
@@ -219,44 +219,59 @@ export function TeamFocusSlide({ slide, active }) {
   const n = vm.cards.length;
   const rows = canvas && n > 5 ? 2 : 1;
   const cols = canvas ? Math.max(1, Math.ceil(n / rows)) : 1;
-  // How much fits in a column of the 1920×1080 canvas (header taken out); the busiest column sets the density
-  const listH = rows === 1 ? 650 : 285;
-  // each column sizes its own cards: a light week gets the big card, a busy one smaller cards (everything still shows)
-  const densityFor = (k) => (!canvas ? 'compact'
-    : FOCUS.feature + (k - 1) * (FOCUS.row + FOCUS.gap) <= listH ? 'roomy'
-      : k * (FOCUS.row + FOCUS.gap) <= listH ? 'compact' : 'dense');
-  const denseFits = Math.max(1, Math.floor((listH - 34) / (FOCUS.line + 6)));
+  const narrow = canvas && cols >= 4;   // ~280–330px columns: stacked cards, smaller type
+  // Room for tickets in a column of the 1920×1080 canvas (measured: slide header and person header taken out)
+  const avail = rows === 1 ? 605 : 248;
+  // Height of a card on the canvas, from its title's length (measured 15 Nov 2026: a 1-line row 58px, 2 lines 79px…)
+  const est = (t, kind) => {
+    const len = String(t.title || t.name || '').length;
+    const cpl = narrow ? (kind === 'dense' ? 30 : 24) : (kind === 'dense' ? 60 : 50);   // characters per line
+    const two = len > cpl;
+    if (kind === 'feature') return narrow ? 190 : 160;
+    if (kind === 'dense') return two ? 79 : 58;
+    return (two ? 98 : 76) + (t.hot || t.main ? 14 : 0);
+  };
+  const sum = (kind, list) => list.reduce((h, t) => h + est(t, kind), 0) + Math.max(0, list.length - 1) * FOCUS.gap;
+  // each column sizes its own cards: a light week gets the big card, a busy one smaller cards, then "See all"
+  const plan = (tickets) => {
+    const k = tickets.length;
+    if (!canvas || !k) return { density: 'compact', fits: k };
+    if (est(tickets[0], 'feature') + (k > 1 ? FOCUS.gap + sum('row', tickets.slice(1)) : 0) <= avail) return { density: 'roomy', fits: k };
+    if (sum('row', tickets) <= avail) return { density: 'compact', fits: k };
+    if (sum('dense', tickets) <= avail) return { density: 'dense', fits: k };
+    let h = 0, fits = 0;
+    for (const t of tickets) {
+      const add = est(t, 'dense') + (fits ? FOCUS.gap : 0);
+      if (h + add > avail - FOCUS.seeAll) break;
+      h += add; fits++;
+    }
+    return { density: 'dense', fits: Math.max(1, fits) };
+  };
   return (
     <SlideFrame slide={slide} active={active}>
       <div className="cr-col" style={{ height: '100%', gap: 26 }}>
         <SlideHeader slide={slide} subtitle={false} />
         <div className="cr-grid cr-fill" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0,1fr))`, gridAutoRows: canvas ? 'minmax(0,1fr)' : undefined, gap: canvas ? 18 : 10, minHeight: 0 }}>
           {vm.cards.map((c, i) => {
-            const density = densityFor(c.tickets.length);
-            const shown = density === 'dense' ? c.tickets.slice(0, denseFits) : c.tickets;
+            const { density, fits } = plan(c.tickets);
+            const shown = c.tickets.slice(0, fits);
             const more = c.tickets.length > shown.length;
             const openAll = openProduct ? () => openProduct({ ids: c.tickets.map(t => t.id), title: `${c.person.name} · this week` }) : undefined;
             return (
-              <Reveal key={c.person.id} i={2 + i} y={24} className="cr-card" style={{ padding: canvas ? 18 : 12, display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
-                <div role={openAll ? 'button' : undefined} onClick={openAll} title={openAll ? 'See all their tickets' : undefined}
-                  style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, cursor: openAll ? 'pointer' : undefined }}>
-                  <Avatar person={c.person} size={canvas ? 44 : 28} />
-                  <span className="cr-clamp-1" style={{ fontWeight: 700, fontSize: 'var(--t-small)', flex: 1, minWidth: 0 }}>{c.person.name}</span>
-                  {c.off.length > 0 && <span className="cr-chip" title={c.off.map(shortDate).join(', ')} style={{ flex: 'none' }}><Plane size={12} /> Off {c.off.map(d => dayLabel(d)).join(', ')}</span>}
-                </div>
-                <div className="cr-col" style={{ gap: density === 'dense' ? 6 : FOCUS.gap, minHeight: 0 }}>
+              <Reveal key={c.person.id} i={2 + i} y={24} className="cr-card" style={{ padding: canvas ? (narrow ? 14 : 18) : 12, display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
+                <PersonHead c={c} canvas={canvas} narrow={narrow} onClick={openAll} />
+                <div className="cr-col" style={{ gap: FOCUS.gap, flex: 1, minHeight: 0, overflow: 'hidden' }}>
                   {shown.map((t, j) => {
-                    const open = onTicket ? () => onTicket(t.id) : undefined;
-                    const props = { t, days: vm.days, off: c.off, onClick: open, cover: media.cover(t), canvas };
-                    if (density === 'roomy' && j === 0) return <FeatureTicket key={t.id} {...props} />;
-                    if (density === 'dense') return <LineTicket key={t.id} {...props} />;
-                    return <RowTicket key={t.id} {...props} />;
+                    const props = { key: t.id, t, days: vm.days, off: c.off, onClick: onTicket ? () => onTicket(t.id) : undefined, cover: media.cover(t), canvas, narrow };
+                    if (density === 'roomy' && j === 0) return <FeatureTicket {...props} />;
+                    if (density === 'dense') return <LineTicket {...props} />;
+                    return <RowTicket {...props} />;
                   })}
                   {!c.tickets.length && <span className="cr-small">Nothing scheduled yet.</span>}
                 </div>
                 {more && openAll && (
                   <button type="button" onClick={openAll} className="cr-small" data-no-advance
-                    style={{ marginTop: 'auto', alignSelf: 'flex-start', background: 'none', border: 0, padding: 0, color: '#8c93ff', fontWeight: 700, cursor: 'pointer' }}>
+                    style={{ flex: 'none', alignSelf: 'flex-start', background: 'none', border: 0, padding: 0, color: '#8c93ff', fontWeight: 700, cursor: 'pointer', fontSize: 'calc(var(--t-small) * .82)' }}>
                     See all their tickets →
                   </button>
                 )}
@@ -269,13 +284,31 @@ export function TeamFocusSlide({ slide, active }) {
   );
 }
 
-const FOCUS = { feature: 176, row: 92, line: 50, gap: 10 };
+const FOCUS = { gap: 8, seeAll: 36 };
+
+/** Name on its own line (never squeezed); time off underneath as day initials. Tap → all their tickets. */
+function PersonHead({ c, canvas, narrow, onClick }) {
+  return (
+    <div role={onClick ? 'button' : undefined} onClick={onClick} title={onClick ? 'See all their tickets' : undefined}
+      style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flex: 'none', cursor: onClick ? 'pointer' : undefined }}>
+      <Avatar person={c.person} size={canvas ? (narrow ? 40 : 44) : 28} />
+      <span className="cr-col" style={{ gap: 2, minWidth: 0, flex: 1 }}>
+        <span className="cr-clamp-1" style={{ fontWeight: 700, fontSize: narrow ? 'calc(var(--t-small) * .92)' : 'var(--t-small)' }}>{c.person.name}</span>
+        {c.off.length > 0 && (
+          <span className="cr-small" title={c.off.map(shortDate).join(', ')} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'calc(var(--t-small) * .7)', color: 'var(--cr-faint)' }}>
+            <Plane size={12} style={{ flex: 'none' }} /> Off {c.off.map(d => dayLabel(d).slice(0, 2)).join(' · ')}
+          </span>
+        )}
+      </span>
+    </div>
+  );
+}
 
 /** Sun–Thu strip: the days this ticket is planned, time off hatched. */
 function DayStrip({ days, on, off, color, labels, height }) {
   if (!days.length) return null;
   return (
-    <span style={{ display: 'flex', gap: 3 }} aria-hidden>
+    <span style={{ display: 'flex', gap: 3, flex: 'none' }} aria-hidden>
       {days.map(d => {
         const isOn = on.includes(d);
         const isOff = off.includes(d);
@@ -292,51 +325,69 @@ function DayStrip({ days, on, off, color, labels, height }) {
 }
 
 const colorOf = (t) => t.product?.color || '#4a55ff';
+const productOf = (t) => (t.product?.label && t.product.label !== '-' ? t.product.label : null);
+const metaOf = (t) => [productOf(t), t.status?.label].filter(Boolean).join(' · ');
 
 function TicketKicker({ t }) {
   if (!t.hot && !t.main) return null;
   return (
-    <span className="cr-small" style={{ ...CAP, fontSize: 'calc(var(--t-small) * .62)', display: 'flex', alignItems: 'center', gap: 5, color: t.hot ? '#ffb27a' : 'var(--cr-faint)' }}>
+    <span className="cr-small" style={{ ...CAP, fontSize: 'calc(var(--t-small) * .6)', display: 'flex', alignItems: 'center', gap: 5, color: t.hot ? '#ffb27a' : 'var(--cr-faint)' }}>
       {t.hot && <Flame size={12} />}{t.hot ? 'Hot project' : 'Main project'}
     </span>
   );
 }
 
-function FeatureTicket({ t, days, off, onClick, cover, canvas }) {
+/** A chip that never spills out of its card. */
+function FitChip({ color, children }) {
   return (
-    <div role={onClick ? 'button' : undefined} onClick={onClick} style={{ display: 'flex', gap: 14, alignItems: 'flex-start', cursor: onClick ? 'pointer' : undefined, padding: 10, borderRadius: 16, background: withAlpha(colorOf(t), 0.12), border: `1px solid ${withAlpha(colorOf(t), 0.35)}` }}>
-      <div style={{ width: canvas ? 112 : 60, flex: 'none' }}>
-        <Thumb src={cover} color={colorOf(t)} board={t.board} radius={12} label={t.title} />
+    <span className="cr-chip" style={{ maxWidth: '100%', minWidth: 0, borderColor: withAlpha(color, 0.45), background: withAlpha(color, 0.14), fontSize: 'calc(var(--t-small) * .74)' }}>
+      <span className="cr-chip-dot" style={{ background: color, flex: 'none' }} />
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{children}</span>
+    </span>
+  );
+}
+
+function FeatureTicket({ t, days, off, onClick, cover, canvas, narrow }) {
+  const tint = colorOf(t);
+  return (
+    <div role={onClick ? 'button' : undefined} onClick={onClick}
+      style={{ flex: 'none', display: 'flex', flexDirection: narrow ? 'column' : 'row', gap: narrow ? 10 : 14, cursor: onClick ? 'pointer' : undefined, padding: 10, borderRadius: 16, background: withAlpha(tint, 0.12), border: `1px solid ${withAlpha(tint, 0.35)}`, minWidth: 0 }}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', minWidth: 0 }}>
+        <div style={{ width: canvas ? (narrow ? 64 : 104) : 56, flex: 'none' }}>
+          <Thumb src={cover} color={tint} board={t.board} radius={10} label={t.title} />
+        </div>
+        {narrow && (
+          <div className="cr-col" style={{ gap: 6, minWidth: 0, flex: 1 }}>
+            <TicketKicker t={t} />
+            <span className="cr-clamp-3" style={{ ...DISPLAY, fontSize: 24, textTransform: 'uppercase', color: '#fff' }} title={t.name}>{t.title || t.name}</span>
+          </div>
+        )}
       </div>
       <div className="cr-col" style={{ gap: 8, minWidth: 0, flex: 1 }}>
-        <TicketKicker t={t} />
-        <span className="cr-clamp-2" style={{ ...DISPLAY, fontSize: canvas ? 32 : 20, textTransform: 'uppercase', color: '#fff' }} title={t.name}>{t.title || t.name}</span>
-        <span style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          <ProductChip product={t.product} small />
-          <StatusChip status={t.status} />
+        {!narrow && <TicketKicker t={t} />}
+        {!narrow && <span className="cr-clamp-2" style={{ ...DISPLAY, fontSize: canvas ? 30 : 20, textTransform: 'uppercase', color: '#fff' }} title={t.name}>{t.title || t.name}</span>}
+        <span style={{ display: 'flex', flexWrap: 'wrap', gap: 6, minWidth: 0 }}>
+          {productOf(t) && <FitChip color={ensureContrast(tint, '#030b2e', 2.6)}>{productOf(t)}</FitChip>}
+          {t.status?.label && <FitChip color={t.status.color || '#8c93ff'}>{t.status.label}</FitChip>}
         </span>
-        <DayStrip days={days} on={t.days} off={off} color={colorOf(t)} labels={canvas} height={canvas ? 20 : 12} />
+        <DayStrip days={days} on={t.days} off={off} color={tint} labels={canvas} height={canvas ? 18 : 12} />
       </div>
     </div>
   );
 }
 
-function RowTicket({ t, days, off, onClick, cover, canvas }) {
+function RowTicket({ t, days, off, onClick, cover, canvas, narrow }) {
   return (
-    <div role={onClick ? 'button' : undefined} onClick={onClick} style={{ display: 'flex', gap: 12, alignItems: 'center', cursor: onClick ? 'pointer' : undefined, padding: 8, borderRadius: 14, background: 'rgba(255,255,255,.04)', border: `1px solid ${t.hot ? 'rgba(255,178,122,.45)' : 'rgba(255,255,255,.07)'}`, minHeight: canvas ? FOCUS.row : undefined }}>
-      <div style={{ width: canvas ? 58 : 40, flex: 'none' }}>
-        <Thumb src={cover} color={colorOf(t)} board={t.board} radius={9} label={t.title} />
+    <div role={onClick ? 'button' : undefined} onClick={onClick}
+      style={{ flex: 'none', display: 'flex', gap: 10, alignItems: 'center', cursor: onClick ? 'pointer' : undefined, padding: 8, borderRadius: 14, background: 'rgba(255,255,255,.04)', border: `1px solid ${t.hot ? 'rgba(255,178,122,.45)' : 'rgba(255,255,255,.07)'}`, minWidth: 0 }}>
+      <div style={{ width: canvas ? (narrow ? 44 : 52) : 40, flex: 'none' }}>
+        <Thumb src={cover} color={colorOf(t)} board={t.board} radius={8} label={t.title} />
       </div>
-      <div className="cr-col" style={{ gap: 6, minWidth: 0, flex: 1 }}>
+      <div className="cr-col" style={{ gap: 4, minWidth: 0, flex: 1 }}>
         <TicketKicker t={t} />
-        <span className="cr-clamp-2" style={{ fontWeight: 700, fontSize: 'calc(var(--t-small) * .92)', lineHeight: 1.2, color: '#fff' }} title={t.name}>{t.title || t.name}</span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-          <span className="cr-small cr-clamp-1" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'calc(var(--t-small) * .74)', minWidth: 0 }}>
-            <span style={{ width: 8, height: 8, borderRadius: 99, background: colorOf(t), flex: 'none' }} />{t.product?.label && t.product.label !== '-' ? t.product.label : ''}
-            {t.status?.label ? <span style={{ color: 'var(--cr-faint)' }}>· {t.status.label}</span> : null}
-          </span>
-        </span>
-        <DayStrip days={days} on={t.days} off={off} color={colorOf(t)} height={canvas ? 7 : 5} />
+        <span className="cr-clamp-2" style={{ fontWeight: 700, fontSize: 'calc(var(--t-small) * .86)', lineHeight: 1.2, color: '#fff' }} title={t.name}>{t.title || t.name}</span>
+        <span className="cr-clamp-1" style={{ fontSize: 'calc(var(--t-small) * .7)', color: 'var(--cr-faint)' }}>{metaOf(t)}</span>
+        <DayStrip days={days} on={t.days} off={off} color={colorOf(t)} height={canvas ? 6 : 5} />
       </div>
     </div>
   );
@@ -344,18 +395,22 @@ function RowTicket({ t, days, off, onClick, cover, canvas }) {
 
 function LineTicket({ t, days, off, onClick }) {
   return (
-    <div role={onClick ? 'button' : undefined} onClick={onClick} style={{ display: 'grid', gridTemplateColumns: '4px minmax(0,1fr) 92px', gap: 10, alignItems: 'center', cursor: onClick ? 'pointer' : undefined, minHeight: FOCUS.line, padding: '4px 8px 4px 0', borderRadius: 10, background: 'rgba(255,255,255,.035)' }}>
-      <span style={{ alignSelf: 'stretch', borderRadius: 4, background: colorOf(t) }} />
-      <span className="cr-col" style={{ gap: 2, minWidth: 0 }}>
-        <span className="cr-clamp-1" style={{ fontWeight: 700, fontSize: 'calc(var(--t-small) * .86)', color: '#fff', display: 'flex', alignItems: 'center', gap: 5 }} title={t.name}>
-          {t.hot && <Flame size={12} color="#ffb27a" style={{ flex: 'none' }} />}{t.title || t.name}
+    <div role={onClick ? 'button' : undefined} onClick={onClick}
+      style={{ flex: 'none', display: 'flex', gap: 10, cursor: onClick ? 'pointer' : undefined, padding: '7px 10px 7px 0', borderRadius: 10, background: 'rgba(255,255,255,.035)', minWidth: 0 }}>
+      <span style={{ width: 4, flex: 'none', borderRadius: 4, background: colorOf(t) }} />
+      <span className="cr-col" style={{ gap: 3, minWidth: 0, flex: 1 }}>
+        <span className="cr-clamp-2" style={{ fontWeight: 700, fontSize: 'calc(var(--t-small) * .8)', lineHeight: 1.2, color: '#fff' }} title={t.name}>
+          {t.hot && <Flame size={11} color="#ffb27a" style={{ display: 'inline', verticalAlign: '-1px', marginRight: 4 }} />}{t.title || t.name}
         </span>
-        <span className="cr-small cr-clamp-1" style={{ fontSize: 'calc(var(--t-small) * .7)' }}>{[t.product?.label !== '-' ? t.product?.label : null, t.status?.label].filter(Boolean).join(' · ')}</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+          <span className="cr-clamp-1" style={{ fontSize: 'calc(var(--t-small) * .66)', color: 'var(--cr-faint)', flex: 1, minWidth: 0 }}>{metaOf(t)}</span>
+          <span style={{ width: 64, flex: 'none' }}><DayStrip days={days} on={t.days} off={off} color={colorOf(t)} height={6} /></span>
+        </span>
       </span>
-      <DayStrip days={days} on={t.days} off={off} color={colorOf(t)} height={8} />
     </div>
   );
 }
+
 
 // ── The team's plate: this week and next, one total — never per person ─────────
 const FULLNESS = (f) => (f == null ? ['No capacity set', '#8c93ff'] : f < 0.6 ? ['Room for more', '#3ddc97'] : f <= 0.95 ? ['Nicely full', '#8c93ff'] : f <= 1.1 ? ['At capacity', '#ffb547'] : ['Overbooked', '#ff6b81']);

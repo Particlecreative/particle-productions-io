@@ -18,8 +18,6 @@ export const DEFAULT_TEAM_TEMPLATE = {
     { id: 'focus_design', type: 'team_focus', enabled: true, options: { role: 'design' } },
     { id: 'workload', type: 'team_load', enabled: true, options: {} },
     { id: 'hot_projects', type: 'hot_projects', enabled: true, options: { whenEmpty: 'hide' } },
-    { id: 'sec_how', type: 'section', enabled: true, options: { number: '03', title: 'How we work', subtitle: '' } },
-    { id: 'sla', type: 'sla', enabled: true, options: {} },
     { id: 'shoutouts', type: 'custom', enabled: true, options: { text: { eyebrow: 'Shoutouts', title: 'Thank you, team' } } },
   ],
 };

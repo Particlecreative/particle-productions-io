@@ -66,8 +66,7 @@ const DEFAULT_TEAM_TEMPLATE = {
     // The team's plate this week and next — one total, never per person (Tomer, 15 Nov 2026: "not a competition")
     { id: 'workload',      type: 'team_load',     enabled: true, options: {} },
     { id: 'hot_projects',  type: 'hot_projects',  enabled: true, options: { whenEmpty: 'hide' } },
-    { id: 'sec_how',       type: 'section',       enabled: true, options: { number: '03', title: 'How we work', subtitle: '' } },
-    { id: 'sla',           type: 'sla',           enabled: true, options: {} },
+    // '03 How we work' (turnaround SLAs) removed from the team deck — Tomer, 15 Nov 2026
     { id: 'shoutouts',     type: 'custom',        enabled: true, options: { text: { eyebrow: 'Shoutouts', title: 'Thank you, team' } } },
   ],
 };
