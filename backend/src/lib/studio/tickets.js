@@ -342,13 +342,13 @@ async function submitTicket({ config, form, board, fields, people, user, convers
     const v = clean[f.key];
     if (!f.col || v === '' || (Array.isArray(v) && !v.length)) continue;
     if (f.also) {   // product: each column only gets a label it already has
-      if (meta?.columns[f.col] && has(f.col, 'status', v)) values[f.col] = { label: v };
+      if (meta?.columns[f.col] && has(f.col, 'status', v)) values[f.col] = monday.statusValue(meta.statusMaps?.[f.col], v);
       if (meta?.columns[f.also] && has(f.also, 'dropdown', v)) values[f.also] = { labels: [v] };
       if (!meta) values[f.col] = { label: v };
       continue;
     }
     if (f.brands && !has(f.col, 'status', v)) newLabel = true;   // Blurr / Biomella: Monday adds the label with the first ticket
-    if (f.type === 'status') values[f.col] = { label: v };
+    if (f.type === 'status') values[f.col] = monday.statusValue(meta?.statusMaps?.[f.col], v);   // by index: never the deactivated twin
     else if (f.type === 'dropdown') {
       // Only labels Monday already has (a new campaign lives in the name and brief until it's added there)
       const known = v.filter(x => def.fields.find(d => d.key === f.key)?.options?.includes(x));

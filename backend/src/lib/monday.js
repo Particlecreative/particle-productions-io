@@ -326,11 +326,22 @@ async function boardMeta(boardId, { force = false } = {}) {
       if (c.type === 'dropdown') {
         let s = {};
         try { s = JSON.parse(c.settings_str || '{}'); } catch { s = {}; }
-        dropdowns[c.id] = (Array.isArray(s.labels) ? s.labels : []).filter(l => l && !l.is_deactivated).map(l => l.name).filter(Boolean);
+        const off = new Set((s.deactivated_labels || []).map(String));   // Monday lists deactivated dropdown labels here
+        dropdowns[c.id] = (Array.isArray(s.labels) ? s.labels : []).filter(l => l && !l.is_deactivated && !off.has(String(l.id))).map(l => l.name).filter(Boolean);
       }
     }
     return { id: String(b.id), name: b.name, columns, groups: b.groups || [], statusMaps, dropdowns };
   }, { force });
+}
+
+/**
+ * A status value that never lands on a deactivated twin (Video Type has "TV" twice — the old one deactivated — and
+ * writing { label: 'TV' } fails with "label has been deactivated"). The active label's index when the board meta
+ * knows it, else the text (pure — tested). statusMap = boardMeta().statusMaps[col].
+ */
+function statusValue(statusMap, label) {
+  const idx = statusMap?.byLabel?.[normLabel(label)];
+  return idx != null && !statusMap.byIndex?.[idx]?.deactivated ? { index: Number(idx) } : { label };
 }
 
 /** Upload a file through Monday's file endpoint (multipart; the mutation's $file is the uploaded part). */
@@ -409,6 +420,7 @@ module.exports = {
   activityLogsMulti,
   activityTsToMs,
   boardMeta,
+  statusValue,
   usersByIds,
   assetsByIds,
   normLabel,

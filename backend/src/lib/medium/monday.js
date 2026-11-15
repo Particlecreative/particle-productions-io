@@ -18,18 +18,27 @@ const DEPARTMENT = { video: 'Marketing/Media', design: 'Marketing' };
 
 /** Status labels per column on a board → so an unknown label is skipped instead of failing the whole create. */
 const labelCache = new Map();
+const normLabel = (x) => String(x || '').toLowerCase().replace(/\s+/g, ' ').trim();
+
 async function boardLabels(boardId) {
   const hit = labelCache.get(boardId);
   if (hit && Date.now() - hit.at < 3600000) return hit.v;
   const d = await mondayQuery('query ($b: [ID!]) { boards(ids: $b) { columns { id type settings_str } } }', { b: [String(boardId)] });
   const v = {};
+  // Active labels only; a status is written by its index (a deactivated twin with the same name would fail the create)
+  const index = {};
   for (const c of d?.boards?.[0]?.columns || []) {
     try {
       const s = JSON.parse(c.settings_str || '{}');
-      if (c.type === 'status') v[c.id] = Object.values(s.labels || {}).filter(Boolean);
-      else if (c.type === 'dropdown') v[c.id] = (s.labels || []).map(l => l.name);
+      const off = new Set((s.deactivated_labels || []).map(String));
+      if (c.type === 'status') {
+        const active = Object.entries(s.labels || {}).filter(([i, l]) => l && !off.has(String(i)));
+        v[c.id] = active.map(([, l]) => l);
+        index[c.id] = Object.fromEntries(active.map(([i, l]) => [normLabel(l), Number(i)]));
+      } else if (c.type === 'dropdown') v[c.id] = (s.labels || []).filter(l => !off.has(String(l.id))).map(l => l.name);
     } catch { /* not a labelled column */ }
   }
+  Object.defineProperty(v, '__index', { value: index, enumerable: false });
   labelCache.set(boardId, { at: Date.now(), v });
   return v;
 }
@@ -77,6 +86,11 @@ function columnValues(b, { labels = {}, requesterId = null } = {}) {
   } else {
     if (f.copy) values[cols.copy] = { text: f.copy };
     status(cols.brand, 'Particle');
+  }
+  // statuses by index when the board's active labels are known (never a deactivated twin)
+  for (const [col, val] of Object.entries(values)) {
+    const idx = val && typeof val === 'object' && 'label' in val ? labels.__index?.[col]?.[normLabel(val.label)] : undefined;
+    if (idx != null) values[col] = { index: idx };
   }
   return { values, skipped };
 }
