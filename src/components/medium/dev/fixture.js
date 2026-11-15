@@ -183,6 +183,32 @@ export function fixtureCall(path, { method = 'GET', body } = {}) {
   if (/^\/brand-sites\//.test(p)) return { queued: true };
   if (p === '/upspring') return { account: { connected: false, last_error: null }, ranks: { as_of: null, creatives: 0, winners: 0 } };
   if (p === '/upspring/connect') return { url: '#upspring-sign-in' };
+  if (p === '/higgsfield') {
+    const card = (id, title, subtitle, style, realistic, seconds, poster) => ({ id, title, subtitle, style, style_id: style, realistic, seconds, poster: `https://static-public-media.higgsfield.ai/ads-story-presets/${poster}.webp`, video: null });
+    return {
+      connected: true, lengths: [40, 60, 90, 120], read_at: new Date(Date.now() - 3 * 3600000).toISOString(), error: null,
+      settings: { enabled: true, per_day: 1, hour: 7, realistic_share: 0.8, length: 60 },
+      catalog: {
+        styles: [], brand: { id: 'b1', name: 'Particle for Men' },
+        cards: [
+          card('c1', 'Family sabotage', "The user's product beats a sibling's sabotage", 'Micro drama', true, 240, 'fd522bd7-f8da-4c47-9f59-d23b48b17318'),
+          card('c2', 'Trap backfires', "A smug rival mocks the hero's visible trouble in public, then sets a trap the user's product defeats", 'Micro drama', true, 120, 'd6ac9eae-00b6-4bb3-923a-6e5e579bd2cb'),
+          card('c3', 'Fake unmasked', "A rival shames the hero's flaw; at the next day's event the rival's fake is unmasked", 'Micro drama', true, 150, '4bc060da-aad7-4506-b6ca-75955976db49'),
+          card('c4', 'Second chance', "The user's product replaces a worn thing holding the hero's loss and brings the nerve to say yes", 'Micro drama', true, 180, '13983dd9-8d7c-4ede-a005-3122177bf648'),
+          card('c5', 'Lost and found', "The user's product, found as a missing person's trace, leads a lone searcher to them", 'Cinematic story', true, 115, '9630bca8-af2c-47cf-8812-9b2ffe802fc7'),
+          card('c6', 'Bear proof', 'An absurd problem the narrator quietly ends with the user\'s product', 'Cartoon story', false, 55, '205cd55d-1f80-4e5e-8595-baae5a60aec5'),
+          card('c7', 'Shrink the creature', 'A problem, made a clay creature with a face, grows until the product shrinks it', 'Claymation story', false, 45, 'f91a0ed2-0f01-476c-9595-0bf5f4ef51d1'),
+        ],
+        products: [
+          { id: 'p1', name: 'Particle Face Cream', product: 'Face Cream', ready: true }, { id: 'p2', name: 'Particle Gravité Cologne', product: 'Gravité', ready: true },
+          { id: 'p3', name: 'Particle Neck Cream', product: 'Neck Cream', ready: true }, { id: 'p4', name: 'Particle Hair Revival Kit', product: 'Hair Revival Kit', ready: true },
+        ],
+      },
+      changes: [{ at: new Date(Date.now() - 86400000).toISOString(), added_cards: [{ id: 'c4', title: 'Second chance', style: 'Micro drama' }], removed_cards: [], added_styles: [], removed_styles: [], added_products: [], removed_products: [] }],
+    };
+  }
+  if (p === '/higgsfield/refresh') return { cards: 7, styles: 4, products: 4, changed: false };
+  if (p === '/higgsfield/briefs') return { queued: body?.count || 1, ids: [] };
   if (p === '/mass/plan') return { summary: 'A Black Friday batch for Neck Cream: 20 statics split between SFY listicles and direct, plus 6 videos testing the mirror hook.', question: '', capped: false, total: 26, est_cost: 3.9, groups: [
     { lane: 'SFY', product: 'Neck Cream', format: 'design', move: 'NEW_ANGLE', count: 10, angle: 'Listicle-style statics leading to the SFY neck article', note: 'Code BF30, 30% off, ends Nov 30', campaign: 'Black Friday 2026' },
     { lane: 'Particle', product: 'Neck Cream', format: 'design', move: 'NEW_ANGLE', count: 10, angle: 'Direct statics with the offer up front', note: 'Code BF30, 30% off, ends Nov 30', campaign: 'Black Friday 2026' },

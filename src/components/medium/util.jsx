@@ -16,6 +16,7 @@ export const MOVE_INFO = {
   HEADLINE_HOOK: ['🪝', 'Headline → video hook', 'A winning static’s headline opens a new video.'],
   REVIVE: ['🌱', 'Bring back an unused idea', 'A sibling of a winner that never got to run.'],
   FREEFORM: ['💡', 'Your idea', 'Written from your own words.'],
+  HIGGSFIELD_DRAMA: ['🎬', 'Higgsfield story film', 'A 40–60s drama (up to 2 min) the editor makes in Higgsfield Ads Studio.'],
 };
 export const MOVE_LABEL = Object.fromEntries(Object.entries(MOVE_INFO).map(([k, v]) => [k, v[1]]));
 export const KIND_LABEL = { original: 'Original concept', reference_adaptation: 'Reference adaptation', template_swap: 'Template swap', static_gif: 'Static → GIF', creator_edit: 'Creator edit', new_hooks: 'New hooks', translation: 'Translation' };

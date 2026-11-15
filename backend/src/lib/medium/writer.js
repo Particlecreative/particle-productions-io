@@ -17,6 +17,7 @@ const { styleCheck, composeBrief } = require('./style');
 
 const WRITER = fs.readFileSync(path.join(__dirname, 'prompts', 'writer.txt'), 'utf8');
 const SCORER = fs.readFileSync(path.join(__dirname, 'prompts', 'scorer.txt'), 'utf8');
+const DRAMA = fs.readFileSync(path.join(__dirname, 'prompts', 'drama.txt'), 'utf8');
 const WEIGHTS = { evidence: 15, pattern_fit: 15, hook_strength: 15, proof: 15, freshness: 10, message_match: 10, maker_ready: 10, test_design: 10 };
 const fill = (tpl, vals) => Object.entries(vals).reduce((s, [k, v]) => s.split(`{{${k}}}`).join(String(v ?? '')), tpl);
 
@@ -57,7 +58,7 @@ const FREEFORM_SCHEMA = {
 
 // ── what kind of job each move is, per format ────────────────────────────────
 const KIND_FOR = {
-  video: { HEADLINE_HOOK: 'original', ITERATE: 'new_hooks', REFRESH: 'original', TRANSFER_PRODUCT: 'original', TRANSFER_LANE: 'original', TRANSFER_FORMAT: 'original', REVIVE: 'original', NEW_ANGLE: 'original' },
+  video: { HIGGSFIELD_DRAMA: 'original', HEADLINE_HOOK: 'original', ITERATE: 'new_hooks', REFRESH: 'original', TRANSFER_PRODUCT: 'original', TRANSFER_LANE: 'original', TRANSFER_FORMAT: 'original', REVIVE: 'original', NEW_ANGLE: 'original' },
   design: { ITERATE: 'template_swap', REFRESH: 'reference_adaptation', TRANSFER_PRODUCT: 'template_swap', TRANSFER_LANE: 'reference_adaptation', TRANSFER_FORMAT: 'original', REVIVE: 'reference_adaptation', NEW_ANGLE: 'reference_adaptation' },
 };
 const kindFor = (move, format, kind = null) => (kind && KINDS.includes(kind) ? kind : KIND_FOR[format]?.[move] || 'original');
@@ -106,6 +107,24 @@ async function buildContext(req, cfg) {
   return { lane, format, kind, brain, facts, claims, examples, templates, donors, winners, brand, evidence: ev.join('\n\n') };
 }
 
+/** The Higgsfield story-film instructions for one brief (pure — tested). h = request.higgsfield (+ recipe). */
+function dramaBlock(req) {
+  const h = req.higgsfield || {};
+  const length = Number(h.length) || 60;
+  const clips = Number(h.clips) || Math.max(2, Math.round(length / 15));
+  const step = length / clips;
+  const times = Array.from({ length: clips }, (_, i) => `${Math.round(i * step)}–${Math.round((i + 1) * step)}s`).join(', ');
+  const look = h.realistic === false
+    ? `${h.style || 'Stylized'} — keep the card's look; the characters stay recognisable from clip to clip and the product's label still reads.`
+    : 'Realistic live action — real people, real rooms, natural light, shot like a film. Not glossy, not cartoon, not an influencer selfie.';
+  return fill(DRAMA, {
+    LENGTH: length, CLIPS: clips, CLIP_TIMES: times, LOOK: look, STYLE: h.style || 'Micro drama', CARD: h.card_title || 'Medium’s own story',
+    CARD_SUBTITLE: h.card_subtitle || 'a turn the product makes possible', CARD_SECONDS: h.card_seconds ? `${h.card_seconds}s` : 'longer',
+    PRODUCT: req.product || h.product_name || 'the product', ADS_PRODUCT: h.product_name || `Particle ${req.product || ''}`.trim(),
+    RECIPE: h.recipe || '(not available — write the story from the card line above)',
+  });
+}
+
 function writerPrompt(ctx, req, cfg) {
   const job = [
     `Lane: ${ctx.lane.name} · Product: ${req.product || '(choose the best fit and say why)'} · Format: ${ctx.format === 'video' ? 'video' : 'static design'}`,
@@ -127,6 +146,7 @@ function writerPrompt(ctx, req, cfg) {
       req.headline_other?.length ? `Other text on the winning static (context, not hooks): ${req.headline_other.join(' · ')}` : null,
     ].filter(Boolean).join('\n') : null,
     req.transfer ? `TRANSFER PLAN (from the analyst — follow it; change only what it says to swap):\n${JSON.stringify(req.transfer, null, 1).slice(0, 4000)}` : null,
+    req.move === 'HIGGSFIELD_DRAMA' ? dramaBlock(req) : null,
     req.note ? `Note from ${req.author || 'the requester'}: ${req.note}` : null,
     req.siblings?.length ? `This is one of several briefs in a batch — make it clearly different from: ${req.siblings.join(' · ')}` : null,
   ].filter(Boolean).join('\n');
@@ -330,6 +350,11 @@ async function runGenerate({ brief_id }) {
         } else headline.image_note = read.reason;
       }
     }
+    // Higgsfield story films: the chosen Ads Studio card's recipe (free to read) — the arc the film borrows
+    if (req.move === 'HIGGSFIELD_DRAMA' && req.higgsfield?.card_id && !req.higgsfield.recipe) {
+      const H = require('./higgsfield');
+      req.higgsfield = { ...req.higgsfield, recipe: await H.recipe(req.higgsfield.card_id, req.higgsfield.product_id).catch(() => null) };
+    }
     const meta = { format: ctx.format, kind: ctx.kind, move: req.move, lane: ctx.lane.name, onRewrite: () => progress(row.id, 'rewrite') };
     await progress(row.id, 'writing');
     const w = await writeWithStyle(writerPrompt(ctx, req, cfg), cfg, meta);
@@ -440,6 +465,10 @@ async function runImprove({ brief_id }) {
     const cfg = await getConfig();
     const req = { ...(b.request || {}), lane: b.lane, format: b.format, product: b.product, move: b.move === 'FREEFORM' ? 'NEW_ANGLE' : b.move, kind: b.kind };
     const ctx = await buildContext(req, cfg);
+    // a Higgsfield film improves against the same Ads Studio card it was written from
+    if (req.move === 'HIGGSFIELD_DRAMA' && req.higgsfield?.card_id && !req.higgsfield.recipe) {
+      req.higgsfield = { ...req.higgsfield, recipe: await require('./higgsfield').recipe(req.higgsfield.card_id, req.higgsfield.product_id).catch(() => null) };
+    }
     const current = { ticket_name: b.ticket_name, kind: b.kind, ...b.fields, lines: b.lines, evidence: b.evidence?.items || [] };
     const prompt = writerPrompt(ctx, req, cfg) + improveBlock(current, b.score, b.preflight);
     const meta = { format: ctx.format, kind: b.kind, move: req.move, lane: ctx.lane.name };
@@ -564,4 +593,4 @@ async function runFreeform({ brief_id }) {
   }
 }
 
-module.exports = { STAGES, ensureProgress, needsAutoFix, isBetter, improveBlock, runGenerate, runFreeform, runImprove, canImprove, relines, preflight, score, gate, freshnessScore, tokenSet, buildContext, writerPrompt, normalizeOut, kindFor, laneFirstFor, setRow, toParam, composeBrief, WEIGHTS };
+module.exports = { dramaBlock, STAGES, ensureProgress, needsAutoFix, isBetter, improveBlock, runGenerate, runFreeform, runImprove, canImprove, relines, preflight, score, gate, freshnessScore, tokenSet, buildContext, writerPrompt, normalizeOut, kindFor, laneFirstFor, setRow, toParam, composeBrief, WEIGHTS };

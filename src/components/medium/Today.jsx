@@ -8,6 +8,7 @@ export const START = [
   { mode: 'winner', emoji: '🏆', title: 'Build on a winner', line: 'New hooks, a fresh take, or a winning idea moved to another product or lane.' },
   { mode: 'hooks', emoji: '🪝', title: 'Headline → video hook', line: 'A static’s headline that already won opens a new video, word for word.' },
   { mode: 'holiday', emoji: '🎁', title: 'Plan a holiday', line: 'One setup — every product, every format, the sale math and the deadlines.' },
+  { mode: 'higgsfield', emoji: '🎬', title: 'Higgsfield story film', line: 'A 40–60s drama (up to 2 min) with the product at its turn — made by the editor in Higgsfield Ads Studio. Medium also writes one every day.' },
   { mode: 'mass', emoji: '🏭', title: 'Mass production', line: 'Write what you need in plain words — how many, which products and lanes. Medium plans it, you check it, it writes them all.' },
 ];
 

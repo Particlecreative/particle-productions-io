@@ -144,6 +144,12 @@ async function tick() {
     const due = (await site.status()).find(x => stalled(x) || (x.status !== 'reading' && (!x.tried_at || (now.hour >= 2 && now.hour < 6 && ago(x.read_at) > 7 * 86400000 && ago(x.tried_at) > 20 * 3600000))));
     if (due) out.site = await enqueue('brand_site_read', { brand: due.brand }, { dedupeKey: `brand_site_read:${due.brand}`, priority: 3, maxAttempts: 1 });
   } catch (e) { out.site = { error: e.message }; }
+  // Higgsfield story films: every day from the set hour — read what changed in Ads Studio (free), then the day's briefs
+  const hf = cfg.higgsfield || {};
+  if (now.hour >= Number(hf.hour ?? 7) && String(state.higgsfield_at || '').slice(0, 10) !== now.date) {
+    await stamp('higgsfield_at');
+    out.higgsfield = await require('./higgsfield').daily().catch(e => ({ error: e.message }));
+  }
   // autopilot once a week, on the set weekday/hour
   const ap = cfg.autopilot || {};
   if (ap.enabled && now.weekday === Number(ap.weekday ?? 0) && now.hour >= Number(ap.hour ?? 7) && String(state.autopilot_at || '').slice(0, 10) !== now.date) {

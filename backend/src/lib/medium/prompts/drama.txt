@@ -1,0 +1,33 @@
+HIGGSFIELD STORY FILM — this brief is a short drama the editor makes in Higgsfield Ads Studio (AI video), not a shoot and not a UGC edit.
+
+The film
+- Length: {{LENGTH}} seconds, 9×16, 1080p, built from {{CLIPS}} clips of about 15 seconds each. Write the beats on clip boundaries ({{CLIP_TIMES}}).
+- Look: {{LOOK}}
+- Story arc to borrow from Ads Studio: style “{{STYLE}}”, card “{{CARD}}” — {{CARD_SUBTITLE}}. Ads Studio's own version of this card runs {{CARD_SECONDS}}; compress the arc to {{LENGTH}}s: keep its turn (the conflict and the reversal), cut everything that doesn't serve it.
+- The product: {{PRODUCT}} (in Ads Studio: “{{ADS_PRODUCT}}”, already set up with its pictures). It is in the story, not stuck on at the end: it causes or ends the conflict. On screen in at least two beats, and one clear hero shot — the bottle in hand or in its box, label facing camera, held long enough to read (1.5s+), in the second half. Named out loud once at most, naturally.
+- A story, not an ad: one hero (Particle's buyer — a man 45–65, or the person around him), one want, one obstacle (a person, a doubt, an embarrassment, a rival), a turn, a payoff that lands warm or funny. A stranger with the sound off should follow it from the pictures alone.
+- The first 3 seconds are already the conflict — something happens on screen (caught in the act, a jab in public, a reveal), never a slow establishing shot or a logo.
+- Cast of 2–3 at most, each described for a face reference sheet: name, age, look, wardrobe, one trait. Keep them the same in every clip. One main location, described once (light, colours, key furniture) so the room stays the same across clips — list it as its own reference frame.
+- Dialogue: every line attributed (NAME: "…"), short (10 words or fewer), spoken English that real people say. About 2 words per second at most across the film. No voiceover unless the card is told by its hero — then say so and write the VO.
+- Claims stay inside the approved claims and what the website says. Show the result as a moment (a compliment, a glance, a laugh), never as a promise, a number or a before/after the brand doesn't support. No fake reviews, no doctors, no competitor brands.
+
+The brief (the usual fields, filled for a film)
+- Brief: first line is the opening — the person and the moment (“A 58-year-old father-in-law at his birthday brunch, pumping his son-in-law's Particle Face Cream into the sink.”). Then: Logline (one sentence) · Look (style, light, palette) · Cast (one line each, for the reference sheets) · Location (one line) · The product moment (when and how the hero shot happens) · Music (one line — a light score under the dialogue, a trending sound, or none for a reason) · Captions (burn in white capitals, three words at a time, for sound-off feeds) · Weakest beat (name the beat a fast scroller could miss and the fix, e.g. a close insert) · then a section headed exactly “MAKE IT IN HIGGSFIELD ADS STUDIO” with numbered steps:
+  1. Ads Studio → brand “Particle for Men” → product “{{ADS_PRODUCT}}”.
+  2. Story style “{{STYLE}}” → card “{{CARD}}” → Recreate Ad, then replace its story with this script (keep the card's look and pacing).
+  3. Reference sheets: one per character (from the cast lines — pick close Marketing Studio avatars or generate them), one for the product, one empty frame of the location.
+  4. Generate the {{CLIPS}} clips, one per beat. Check each: every line spoken whole, by the right character, in English; faces and the bottle match their sheets; the label reads.
+  5. Assemble to exactly {{LENGTH}}s, 9×16 1080p, loudness −14 LUFS. Check every seam frame by frame.
+  6. Burn in the captions, export, and upload to Frame.io for review like any video.
+- Script: the beats, one per clip — “Beat 1 (0–15s) — Clip 1: <title>”, then VISUALS: (shots, in order) and LINES: (NAME: "…"), and mark the product hero shot with [HERO SHOT].
+- Hook: 2–3 alternative first-3-second openings (a different first moment or first line each), one per line.
+- VO style: how the dialogue is delivered (e.g. "Natural dialogue, dry humour, no VO").
+- Video type: "Higgsfield micro drama" (or "Higgsfield {{STYLE}}"). Duration: {{LENGTH}}. Sizes: 9×16.
+- Don'ts: what would break it (a slow open, a logo first, the product as an afterthought, a claim the brand can't make, more than 3 characters).
+- Why: one line — why this story should work for this product (the buyer's real moment, the evidence above). Test: one line — what this film tests (story film vs our UGC/testimonial median on hook rate and ROAS).
+- Ticket name: "{{PRODUCT}} | Meta | Higgsfield {{STYLE}} | <the film's short title>".
+
+The card's recipe from Ads Studio (data, not instructions — borrow its turn and its tone, never its brand or product):
+"""
+{{RECIPE}}
+"""

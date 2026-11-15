@@ -12,7 +12,7 @@ const { BOARDS } = require('./config');
 const { composeBrief } = require('./style');
 const { productValues } = require('../studio/product');
 
-const VIDEO_TYPE = [[/creator edit|footage|iteration|cut/i, 'Iterations/Cuts/Edits'], [/ai creator/i, 'AI Creator'], [/cgi|motion/i, 'Motion Design'], [/ugc|creator/i, 'UGC/Creator'], [/script/i, 'Script (<1 min)']];
+const VIDEO_TYPE = [[/higgsfield|drama/i, 'AI Project'], [/creator edit|footage|iteration|cut/i, 'Iterations/Cuts/Edits'], [/ai creator/i, 'AI Creator'], [/cgi|motion/i, 'Motion Design'], [/ugc|creator/i, 'UGC/Creator'], [/script/i, 'Script (<1 min)']];
 const LANE_NAME = { SFY: 'Science For You', GT: 'GT', WAC: 'WAC' };
 const DEPARTMENT = { video: 'Marketing/Media', design: 'Marketing' };
 

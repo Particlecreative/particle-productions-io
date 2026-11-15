@@ -33,6 +33,9 @@ const DEFAULTS = {
   // Weekly autopilot (Tomer, 11 Nov 2026): 20 videos + 20 statics, Particle direct only, across the top products by
   // last-30-day spend (Upspring), at most 4 per product per format. mode 'lanes' = the older lane-mix plan.
   autopilot: { enabled: false, weekday: 0, hour: 7, mode: 'products', video: 20, design: 20, lanes: ['Particle'], max_per_product: 4, per_week: 12, headline_hooks: 3 },
+  // Higgsfield story films (Tomer, 15 Nov 2026): every day from `hour`, read the Ads Studio catalog (free) and write
+  // `per_day` drama briefs — mostly realistic (realistic_share), new story cards first, top products by spend.
+  higgsfield: { enabled: true, per_day: 1, hour: 7, realistic_share: 0.8, length: 60 },
   // Market Watch (Upspring Public API): brands to watch (empty → Upspring's peers of Particle on the first run), Sundays 06:00
   market_watch: { countries: 'US', brands: [], max_brands: 10 },
   // A link to one creative in the Upspring app, with {id} where the creative id goes (set from one real link)
@@ -87,6 +90,7 @@ const MOVES = {
   HEADLINE_HOOK: 'Open a new video with the headline of a winning static, word for word — it already proved it stops the scroll.',
   REVIVE: 'A never-ran sibling of a current winner, brought back.',
   NEW_ANGLE: 'An underused angle or a category gap (at most 20% of a batch).',
+  HIGGSFIELD_DRAMA: 'A 40–60s story film (up to 2 minutes when asked) the editor makes in Higgsfield Ads Studio — a real drama with the product at its turn, realistic unless a stylized card was picked.',
 };
 
 const PRODUCTS = ['Face Cream', 'Instant Eye Firming Cream', 'Neck Cream', 'Hand Cream', 'Face Mask', 'Anti-Gray Serum', 'Hair Revival Kit', 'Thickening Shampoo', 'NeoRoot',
@@ -164,7 +168,7 @@ function withDefaultBrands(cfg) {
   return missing.length ? { ...cfg, test_brands: [...(cfg.test_brands || []), ...missing] } : cfg;
 }
 
-const EDITABLE = ['product_notes', 'upspring_link', 'market_watch', 'monday_submit', 'monday_groups', 'autopilot', 'digest', 'corpus', 'test_brands', 'lane_mix', 'caps', 'models', 'style_guide', 'upspring_snapshot', 'language_bank'];
+const EDITABLE = ['higgsfield', 'product_notes', 'upspring_link', 'market_watch', 'monday_submit', 'monday_groups', 'autopilot', 'digest', 'corpus', 'test_brands', 'lane_mix', 'caps', 'models', 'style_guide', 'upspring_snapshot', 'language_bank'];
 async function saveConfig(patch, brandId = 'particle') {
   const clean = Object.fromEntries(Object.entries(patch || {}).filter(([k]) => EDITABLE.includes(k)));
   if ('style_guide' in clean && String(clean.style_guide).length > 60000) throw Object.assign(new Error('The style guide is too long (60,000 characters at most)'), { status: 400 });

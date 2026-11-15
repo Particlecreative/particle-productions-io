@@ -93,7 +93,7 @@ export default function MediumPage() {
 
         <div className="mt-8">
           {tab === 'today' && <Today overview={overview} briefs={briefs} onOpen={openBrief} go={go} />}
-          {tab === 'create' && <Create mode={sub} setMode={setSub} overview={overview} notify={notify} onOpen={openBrief} onQueued={load} />}
+          {tab === 'create' && <Create mode={sub} setMode={setSub} overview={overview} notify={notify} onOpen={openBrief} onQueued={load} isAdmin={isAdmin} />}
           {tab === 'briefs' && <Briefs briefs={briefs} overview={overview} onOpen={openBrief} />}
           {tab === 'market' && <Market notify={notify} isAdmin={isAdmin} go={go} />}
           {tab === 'behind' && <Behind part={sub} setPart={setSub} overview={overview} notify={notify} isAdmin={isAdmin} reload={load} onOpen={openBrief} />}

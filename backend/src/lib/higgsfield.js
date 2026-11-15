@@ -301,5 +301,6 @@ async function generateImage(prompt, referenceImages = []) {
 
 module.exports = {
   isConnected, status, startConnect, finishConnect, disconnect, generateImage, HiggsfieldError,
+  openSession, callTool,   // Medium reads the Ads Studio catalog (free — nothing is generated)
   _setStore: (s) => { store = s; }, // tests only
 };

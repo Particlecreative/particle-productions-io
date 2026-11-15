@@ -311,6 +311,33 @@ router.post('/mass/produce', async (req, res) => {
   try { res.json(await require('../lib/medium/mass').produce(req.body?.plan, { actor: actorOf(req), request: req.body?.request })); } catch (err) { errorJson(res, err); }
 });
 
+// ── Higgsfield story films ───────────────────────────────────────────────────
+router.get('/higgsfield', async (req, res) => {
+  try { res.json(await require('../lib/medium/higgsfield').overview()); } catch (err) { errorJson(res, err); }
+});
+router.post('/higgsfield/refresh', async (req, res) => {
+  try { res.json(await require('../lib/medium/higgsfield').refresh()); } catch (err) { errorJson(res, err); }
+});
+// { product_id?, card_id?, look: realistic | stylized | any, length: 40|60|90|120, count: 1–5, note? } — empty = Medium picks
+router.post('/higgsfield/briefs', async (req, res) => {
+  try {
+    const H = require('../lib/medium/higgsfield');
+    const b = req.body || {};
+    const ov = await H.overview();
+    if (!ov.catalog?.cards?.length) return res.status(409).json({ error: 'Medium hasn’t read the Ads Studio catalog yet — press “Read Ads Studio now”' });
+    const count = Math.min(5, Math.max(1, Number(b.count) || 1));
+    const look = ['realistic', 'stylized'].includes(b.look) ? b.look : 'realistic';
+    const catalog = { ...ov.catalog, products: b.product_id ? ov.catalog.products.filter(p => p.id === b.product_id) : ov.catalog.products };
+    if (!catalog.products.length) return res.status(400).json({ error: 'Unknown Ads Studio product' });
+    const card = b.card_id ? ov.catalog.cards.find(c => c.id === b.card_id) : null;
+    if (b.card_id && !card) return res.status(400).json({ error: 'That story card is no longer in Ads Studio' });
+    const picked = H.pickDaily({ catalog: card ? { ...catalog, cards: [card] } : { ...catalog, cards: catalog.cards.filter(c => look === 'any' || c.realistic === (look === 'realistic')) },
+      n: count, realisticShare: card ? (card.realistic ? 1 : 0) : (look === 'stylized' ? 0 : 1), length: H.lengthOf(b.length || 60), dayIndex: 0 });
+    if (!picked.length) return res.status(400).json({ error: 'No story card fits — pick another look' });
+    res.json(await H.queue(picked, { author: actorOf(req), source: 'manual', note: b.note ? String(b.note).slice(0, 1500) : null }));
+  } catch (err) { errorJson(res, err); }
+});
+
 // ── Market Watch (Upspring Public API) ───────────────────────────────────────
 router.get('/market', async (req, res) => {
   try {
