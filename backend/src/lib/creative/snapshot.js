@@ -563,6 +563,9 @@ async function buildSnapshot({ brandId = 'particle', weekStart, force = false, n
       it.timeline ? W.rangesOverlap(it.timeline.from, it.timeline.to, bounds.next.start, bounds.next.workdays[4])
         : (it.deadline && it.deadline >= bounds.next.start && it.deadline <= bounds.next.workdays[4])
     )).map(it => it.id),
+    // the week after the coming one — for the team's workload (Tomer, 15 Nov 2026)
+    planned_after: all.filter(it => isOpen(it) && it.status.category !== 'paused' && it.timeline
+      && W.rangesOverlap(it.timeline.from, it.timeline.to, W.addDays(bounds.next.start, 7), W.addDays(bounds.next.workdays[4], 7))).map(it => it.id),
     active_this_week: all.filter(it => isOpen(it) && it.timeline
       && W.rangesOverlap(it.timeline.from, it.timeline.to, bounds.start, bounds.lastDay)).map(it => it.id),
     reopened: [...new Set(reopened)].filter(id => items[id]),
@@ -606,20 +609,23 @@ async function buildSnapshot({ brandId = 'particle', weekStart, force = false, n
 
   // ── Workload ──
   const days = [...bounds.workdays, ...bounds.next.workdays];
-  const workload = { days, this_week: bounds.workdays, next_week: bounds.next.workdays, capacity: config.capacity_per_day, people: {}, out: {}, hours: {}, holidays: studio?.holidays || [] };
+  // after_week: planned work + time off only (nothing has happened yet) — the team deck's workload
+  const afterWeek = bounds.next.workdays.map(d => W.addDays(d, 7));
+  const planDays = [...days, ...afterWeek];
+  const workload = { days, this_week: bounds.workdays, next_week: bounds.next.workdays, after_week: afterWeek, capacity: config.capacity_per_day, people: {}, out: {}, hours: {}, holidays: studio?.holidays || [] };
   // Worked on a day = hands-on time that day (Studio), else the Monday timer ran that day
   const workedOn = (it, uid, d) => (studio ? (sItems.get(it.id)?.effort_days?.[uid]?.[d] || 0) >= 900 : it.tracked_days.includes(d));
   const consider = new Set([...sections.delivered, ...sections.active_this_week, ...sections.planned_next_week,
-    ...sections.in_progress, ...sections.review, ...sections.fixes, ...sections.stuck]);
-  for (const uid of Object.keys(people)) workload.people[uid] = Object.fromEntries(days.map(d => [d, { planned: [], active: [] }]));
+    ...sections.in_progress, ...sections.review, ...sections.fixes, ...sections.stuck, ...sections.planned_after]);
+  for (const uid of Object.keys(people)) workload.people[uid] = Object.fromEntries(planDays.map(d => [d, { planned: [], active: [] }]));
   for (const id of consider) {
     const it = items[id];
     for (const uid of it.people) {
       const row = workload.people[uid];
       if (!row) continue;
-      for (const d of days) {
+      for (const d of planDays) {
         if (it.timeline && W.rangesOverlap(it.timeline.from, it.timeline.to, d, d)) row[d].planned.push(id);
-        if (workedOn(it, uid, d)) row[d].active.push(id);
+        if (d < afterWeek[0] && workedOn(it, uid, d)) row[d].active.push(id);
       }
     }
   }
@@ -628,7 +634,7 @@ async function buildSnapshot({ brandId = 'particle', weekStart, force = false, n
     const sp = studio?.people?.[uid];
     if (!sp) continue;
     const off = {};
-    for (const d of days) {
+    for (const d of planDays) {
       const o = (sp.out || []).find(x => x.start <= d && x.end >= d);
       if (o) off[d] = { type: o.type || 'time_off', name: o.name || null };
     }

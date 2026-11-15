@@ -1,6 +1,6 @@
 import { Flame, Plane, Play, Image as ImageIcon, CheckCircle2, AlertTriangle, Clock3, BadgeCheck } from 'lucide-react';
 import { useDeck } from '../deck/DeckContext';
-import { Reveal, CountUp, GrowBar } from '../motion/Motion';
+import { Reveal, CountUp, GrowBar, m, EASE } from '../motion/Motion';
 import { Avatar, ProductChip, StatusChip } from '../ui/Bits';
 import { MediaImage, FallbackTile } from '../ui/Media';
 import { dayLabel, shortDate, fmtDays, fmtHours, withAlpha, firstName } from '../deck/format';
@@ -211,72 +211,51 @@ export function MarketPeopleSlide({ slide, active }) {
 // ── This week: each person's main project ────────────────────────────────────
 export function TeamFocusSlide({ slide, active }) {
   const { vm } = slide;
-  const { layout, media, onTicket } = useDeck();
+  const { layout, media, onTicket, openProduct } = useDeck();
   const canvas = layout === 'canvas';
   const n = vm.cards.length;
-  const cols = canvas ? (n <= 3 ? n : n <= 4 ? 2 : n <= 6 ? 3 : 4) : 1;
-  const compact = canvas && n > 6;
+  const rows = canvas && n > 5 ? 2 : 1;
+  const cols = canvas ? Math.max(1, Math.ceil(n / rows)) : 1;
+  // How much fits in a column of the 1920×1080 canvas (header taken out); the busiest column sets the density
+  const listH = rows === 1 ? 650 : 285;
+  // each column sizes its own cards: a light week gets the big card, a busy one smaller cards (everything still shows)
+  const densityFor = (k) => (!canvas ? 'compact'
+    : FOCUS.feature + (k - 1) * (FOCUS.row + FOCUS.gap) <= listH ? 'roomy'
+      : k * (FOCUS.row + FOCUS.gap) <= listH ? 'compact' : 'dense');
+  const denseFits = Math.max(1, Math.floor((listH - 34) / (FOCUS.line + 6)));
   return (
     <SlideFrame slide={slide} active={active}>
-      <div className="cr-col" style={{ height: '100%', gap: 30 }}>
+      <div className="cr-col" style={{ height: '100%', gap: 26 }}>
         <SlideHeader slide={slide} subtitle={false} />
-        <div className="cr-grid cr-fill" style={{ gridTemplateColumns: `repeat(${Math.max(1, cols)}, minmax(0,1fr))`, gap: canvas ? 20 : 10, minHeight: 0, alignContent: 'start' }}>
+        <div className="cr-grid cr-fill" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0,1fr))`, gridAutoRows: canvas ? 'minmax(0,1fr)' : undefined, gap: canvas ? 18 : 10, minHeight: 0 }}>
           {vm.cards.map((c, i) => {
-            const m = c.main;
+            const density = densityFor(c.tickets.length);
+            const shown = density === 'dense' ? c.tickets.slice(0, denseFits) : c.tickets;
+            const more = c.tickets.length > shown.length;
+            const openAll = openProduct ? () => openProduct({ ids: c.tickets.map(t => t.id), title: `${c.person.name} · this week` }) : undefined;
             return (
-              <Reveal key={c.person.id} i={2 + i} y={24} className="cr-card" style={{ padding: canvas ? (compact ? 16 : 22) : 12, display: 'flex', flexDirection: 'column', gap: compact ? 10 : 14, minWidth: 0 }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-                  <Avatar person={c.person} size={canvas ? (compact ? 36 : 48) : 28} />
-                  <span className="cr-clamp-1" style={{ fontWeight: 700, fontSize: 'var(--t-small)', flex: 1 }}>{c.person.name}</span>
-                  {c.off.length > 0 && (
-                    <span className="cr-chip" title={c.off.map(shortDate).join(', ')}><Plane size={12} /> Off {c.off.map(d => dayLabel(d)).join(', ')}</span>
-                  )}
-                </span>
-                {m ? (
-                  <div role={onTicket ? 'button' : undefined} onClick={onTicket ? () => onTicket(m.id) : undefined} style={{ display: 'flex', gap: canvas ? 16 : 10, alignItems: 'flex-start', cursor: onTicket ? 'pointer' : undefined }}>
-                    {!compact && (
-                      <div style={{ width: canvas ? 110 : 52, flex: 'none' }}>
-                        <Thumb src={media.cover(m)} color={m.product?.color || '#4a55ff'} board={m.board} radius={12} label={m.title} />
-                      </div>
-                    )}
-                    <div className="cr-col" style={{ gap: 8, minWidth: 0, flex: 1 }}>
-                      <span className="cr-small" style={{ ...CAP, display: 'flex', alignItems: 'center', gap: 6, color: m.hot ? '#ffb27a' : undefined }}>
-                        {m.hot && <Flame size={13} />}{m.hot ? 'Hot project' : 'Main project'}
-                      </span>
-                      <span className={compact ? 'cr-clamp-1' : 'cr-clamp-2'} style={{ ...DISPLAY, fontSize: canvas ? (compact ? 30 : 40) : 20, textTransform: 'uppercase', color: '#fff' }} title={m.name}>{m.title || m.name}</span>
-                      <span style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                        <ProductChip product={m.product} small />
-                        {!compact && <StatusChip status={m.status} />}
-                      </span>
-                      {vm.days.length > 0 && (
-                        <span style={{ display: 'flex', gap: 4 }}>
-                          {vm.days.map(d => {
-                            const on = m.days.includes(d);
-                            const off = c.off.includes(d);
-                            return (
-                              <span key={d} title={shortDate(d)} style={{ flex: 1, height: canvas ? 22 : 14, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                background: off ? 'repeating-linear-gradient(135deg, rgba(255,255,255,.05) 0 6px, rgba(255,255,255,.12) 6px 12px)' : on ? withAlpha(m.product?.color || '#4a55ff', 0.75) : 'rgba(255,255,255,.06)',
-                                fontSize: canvas ? 11 : 8, fontWeight: 700, color: on ? '#fff' : 'var(--cr-faint)' }}>
-                                {canvas ? dayLabel(d).slice(0, 2) : ''}
-                              </span>
-                            );
-                          })}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ) : <span className="cr-small">Nothing scheduled yet.</span>}
-                {c.rest.length > 0 && (
-                  <div className="cr-col" style={{ gap: 4, borderTop: '1px solid rgba(255,255,255,.08)', paddingTop: compact ? 8 : 10 }}>
-                    <span className="cr-small" style={{ ...CAP, fontSize: 'calc(var(--t-small) * .6)' }}>Also this week</span>
-                    {c.rest.slice(0, compact ? 2 : 3).map(it => (
-                      <span key={it.id} className="cr-small cr-clamp-1" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ width: 7, height: 7, borderRadius: 99, background: it.product?.color || '#8c93ff', flex: 'none' }} />
-                        {it.hot && <Flame size={11} color="#ffb27a" />}{it.title || it.name}
-                      </span>
-                    ))}
-                    {c.rest.length > (compact ? 2 : 3) && <span className="cr-small" style={{ color: 'var(--cr-faint)' }}>+{c.rest.length - (compact ? 2 : 3)} more</span>}
-                  </div>
+              <Reveal key={c.person.id} i={2 + i} y={24} className="cr-card" style={{ padding: canvas ? 18 : 12, display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
+                <div role={openAll ? 'button' : undefined} onClick={openAll} title={openAll ? 'See all their tickets' : undefined}
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, cursor: openAll ? 'pointer' : undefined }}>
+                  <Avatar person={c.person} size={canvas ? 44 : 28} />
+                  <span className="cr-clamp-1" style={{ fontWeight: 700, fontSize: 'var(--t-small)', flex: 1, minWidth: 0 }}>{c.person.name}</span>
+                  {c.off.length > 0 && <span className="cr-chip" title={c.off.map(shortDate).join(', ')} style={{ flex: 'none' }}><Plane size={12} /> Off {c.off.map(d => dayLabel(d)).join(', ')}</span>}
+                </div>
+                <div className="cr-col" style={{ gap: density === 'dense' ? 6 : FOCUS.gap, minHeight: 0 }}>
+                  {shown.map((t, j) => {
+                    const open = onTicket ? () => onTicket(t.id) : undefined;
+                    const props = { t, days: vm.days, off: c.off, onClick: open, cover: media.cover(t), canvas };
+                    if (density === 'roomy' && j === 0) return <FeatureTicket key={t.id} {...props} />;
+                    if (density === 'dense') return <LineTicket key={t.id} {...props} />;
+                    return <RowTicket key={t.id} {...props} />;
+                  })}
+                  {!c.tickets.length && <span className="cr-small">Nothing scheduled yet.</span>}
+                </div>
+                {more && openAll && (
+                  <button type="button" onClick={openAll} className="cr-small" data-no-advance
+                    style={{ marginTop: 'auto', alignSelf: 'flex-start', background: 'none', border: 0, padding: 0, color: '#8c93ff', fontWeight: 700, cursor: 'pointer' }}>
+                    See all their tickets →
+                  </button>
                 )}
               </Reveal>
             );
@@ -285,6 +264,187 @@ export function TeamFocusSlide({ slide, active }) {
       </div>
     </SlideFrame>
   );
+}
+
+const FOCUS = { feature: 176, row: 92, line: 50, gap: 10 };
+
+/** Sun–Thu strip: the days this ticket is planned, time off hatched. */
+function DayStrip({ days, on, off, color, labels, height }) {
+  if (!days.length) return null;
+  return (
+    <span style={{ display: 'flex', gap: 3 }} aria-hidden>
+      {days.map(d => {
+        const isOn = on.includes(d);
+        const isOff = off.includes(d);
+        return (
+          <span key={d} title={shortDate(d)} style={{ flex: 1, height, borderRadius: 5, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: isOff ? 'repeating-linear-gradient(135deg, rgba(255,255,255,.05) 0 5px, rgba(255,255,255,.12) 5px 10px)' : isOn ? withAlpha(color, 0.8) : 'rgba(255,255,255,.07)',
+            fontSize: 10, fontWeight: 700, color: isOn ? '#fff' : 'var(--cr-faint)' }}>
+            {labels ? dayLabel(d).slice(0, 2) : ''}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
+const colorOf = (t) => t.product?.color || '#4a55ff';
+
+function TicketKicker({ t }) {
+  if (!t.hot && !t.main) return null;
+  return (
+    <span className="cr-small" style={{ ...CAP, fontSize: 'calc(var(--t-small) * .62)', display: 'flex', alignItems: 'center', gap: 5, color: t.hot ? '#ffb27a' : 'var(--cr-faint)' }}>
+      {t.hot && <Flame size={12} />}{t.hot ? 'Hot project' : 'Main project'}
+    </span>
+  );
+}
+
+function FeatureTicket({ t, days, off, onClick, cover, canvas }) {
+  return (
+    <div role={onClick ? 'button' : undefined} onClick={onClick} style={{ display: 'flex', gap: 14, alignItems: 'flex-start', cursor: onClick ? 'pointer' : undefined, padding: 10, borderRadius: 16, background: withAlpha(colorOf(t), 0.12), border: `1px solid ${withAlpha(colorOf(t), 0.35)}` }}>
+      <div style={{ width: canvas ? 112 : 60, flex: 'none' }}>
+        <Thumb src={cover} color={colorOf(t)} board={t.board} radius={12} label={t.title} />
+      </div>
+      <div className="cr-col" style={{ gap: 8, minWidth: 0, flex: 1 }}>
+        <TicketKicker t={t} />
+        <span className="cr-clamp-2" style={{ ...DISPLAY, fontSize: canvas ? 32 : 20, textTransform: 'uppercase', color: '#fff' }} title={t.name}>{t.title || t.name}</span>
+        <span style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          <ProductChip product={t.product} small />
+          <StatusChip status={t.status} />
+        </span>
+        <DayStrip days={days} on={t.days} off={off} color={colorOf(t)} labels={canvas} height={canvas ? 20 : 12} />
+      </div>
+    </div>
+  );
+}
+
+function RowTicket({ t, days, off, onClick, cover, canvas }) {
+  return (
+    <div role={onClick ? 'button' : undefined} onClick={onClick} style={{ display: 'flex', gap: 12, alignItems: 'center', cursor: onClick ? 'pointer' : undefined, padding: 8, borderRadius: 14, background: 'rgba(255,255,255,.04)', border: `1px solid ${t.hot ? 'rgba(255,178,122,.45)' : 'rgba(255,255,255,.07)'}`, minHeight: canvas ? FOCUS.row : undefined }}>
+      <div style={{ width: canvas ? 58 : 40, flex: 'none' }}>
+        <Thumb src={cover} color={colorOf(t)} board={t.board} radius={9} label={t.title} />
+      </div>
+      <div className="cr-col" style={{ gap: 6, minWidth: 0, flex: 1 }}>
+        <TicketKicker t={t} />
+        <span className="cr-clamp-2" style={{ fontWeight: 700, fontSize: 'calc(var(--t-small) * .92)', lineHeight: 1.2, color: '#fff' }} title={t.name}>{t.title || t.name}</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+          <span className="cr-small cr-clamp-1" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'calc(var(--t-small) * .74)', minWidth: 0 }}>
+            <span style={{ width: 8, height: 8, borderRadius: 99, background: colorOf(t), flex: 'none' }} />{t.product?.label && t.product.label !== '-' ? t.product.label : ''}
+            {t.status?.label ? <span style={{ color: 'var(--cr-faint)' }}>· {t.status.label}</span> : null}
+          </span>
+        </span>
+        <DayStrip days={days} on={t.days} off={off} color={colorOf(t)} height={canvas ? 7 : 5} />
+      </div>
+    </div>
+  );
+}
+
+function LineTicket({ t, days, off, onClick }) {
+  return (
+    <div role={onClick ? 'button' : undefined} onClick={onClick} style={{ display: 'grid', gridTemplateColumns: '4px minmax(0,1fr) 92px', gap: 10, alignItems: 'center', cursor: onClick ? 'pointer' : undefined, minHeight: FOCUS.line, padding: '4px 8px 4px 0', borderRadius: 10, background: 'rgba(255,255,255,.035)' }}>
+      <span style={{ alignSelf: 'stretch', borderRadius: 4, background: colorOf(t) }} />
+      <span className="cr-col" style={{ gap: 2, minWidth: 0 }}>
+        <span className="cr-clamp-1" style={{ fontWeight: 700, fontSize: 'calc(var(--t-small) * .86)', color: '#fff', display: 'flex', alignItems: 'center', gap: 5 }} title={t.name}>
+          {t.hot && <Flame size={12} color="#ffb27a" style={{ flex: 'none' }} />}{t.title || t.name}
+        </span>
+        <span className="cr-small cr-clamp-1" style={{ fontSize: 'calc(var(--t-small) * .7)' }}>{[t.product?.label !== '-' ? t.product?.label : null, t.status?.label].filter(Boolean).join(' · ')}</span>
+      </span>
+      <DayStrip days={days} on={t.days} off={off} color={colorOf(t)} height={8} />
+    </div>
+  );
+}
+
+// ── The team's plate: this week and next, one total — never per person ─────────
+const FULLNESS = (f) => (f == null ? ['No capacity set', '#8c93ff'] : f < 0.6 ? ['Room for more', '#3ddc97'] : f <= 0.95 ? ['Nicely full', '#8c93ff'] : f <= 1.1 ? ['At capacity', '#ffb547'] : ['Overbooked', '#ff6b81']);
+
+export function TeamLoadSlide({ slide, active }) {
+  const { vm } = slide;
+  const { layout } = useDeck();
+  const canvas = layout === 'canvas';
+  const maxY = Math.max(1, ...vm.weeks.flatMap(w => w.days.map(x => Math.max(x.load, x.capacity))));
+  return (
+    <SlideFrame slide={slide} active={active}>
+      <div className="cr-col" style={{ height: '100%', gap: 30 }}>
+        <SlideHeader slide={slide} subtitle={false} />
+        <div className="cr-grid cr-fill cr-one-sm" style={{ gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: canvas ? 28 : 12, minHeight: 0 }}>
+          {vm.weeks.map((w, i) => <WeekLoad key={w.key} w={w} maxY={maxY} canvas={canvas} i={i} />)}
+        </div>
+        <span className="cr-small" style={{ color: 'var(--cr-faint)', fontSize: 'calc(var(--t-small) * .78)' }}>
+          Bars: work planned for the whole team that day · line: what the team can take (time off taken out)
+        </span>
+      </div>
+    </SlideFrame>
+  );
+}
+
+function WeekLoad({ w, maxY, canvas, i }) {
+  const [label, color] = FULLNESS(w.fullness);
+  const H = canvas ? 250 : 120;
+  const pctFull = w.fullness != null ? Math.round(w.fullness * 100) : null;
+  return (
+    <Reveal i={2 + i} y={30} className="cr-card" style={{ padding: canvas ? '28px 32px' : 16, display: 'flex', flexDirection: 'column', gap: canvas ? 20 : 12, minHeight: 0, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+        <span className="cr-h3" style={{ color: 'var(--cr-white)' }}>{w.label}</span>
+        {w.from && <span className="cr-small">{shortDate(w.from)} – {shortDate(w.to)}</span>}
+        {w.key === 'next' && <span className="cr-small" style={{ color: 'var(--cr-faint)' }}>· scheduled so far</span>}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 24, flexWrap: 'wrap' }}>
+        <div className="cr-col" style={{ gap: 6 }}>
+          <CountUp className="cr-kpi-num" value={w.total} delay={0.45 + i * 0.1} style={{ fontSize: 'calc(var(--t-kpi) * .7)' }} />
+          <span className="cr-small" style={{ ...CAP }}>projects on the team’s plate</span>
+        </div>
+        {w.total > 0 && <div className="cr-col" style={{ gap: 8, flex: 1, minWidth: 180, paddingBottom: 6 }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span className="cr-chip" style={{ borderColor: withAlpha(color, 0.5), background: withAlpha(color, 0.14), color: '#fff' }}>
+              <span className="cr-chip-dot" style={{ background: color }} />{label}
+            </span>
+            {pctFull != null && <span className="cr-small cr-num">{pctFull}% of capacity</span>}
+          </span>
+          {w.fullness != null && (
+            <div style={{ position: 'relative', height: 10, borderRadius: 99, background: 'rgba(255,255,255,.07)' }}>
+              <GrowBar className="cr-bar-seg" pct={Math.min(w.fullness, 1.25) / 1.25 * 100} color={color} delay={0.5 + i * 0.1} style={{ borderRadius: 99, height: '100%' }} />
+              <span title="Full" style={{ position: 'absolute', left: `${100 / 1.25}%`, top: -4, bottom: -4, width: 2, background: 'rgba(255,255,255,.55)', borderRadius: 2 }} />
+            </div>
+          )}
+        </div>}
+      </div>
+      {!w.total && (
+        <div className="cr-col" style={{ flex: 1, alignItems: 'center', justifyContent: 'center', textAlign: 'center', gap: 6, padding: 20, borderRadius: 18, border: '1px dashed rgba(255,255,255,.14)' }}>
+          <span style={{ fontWeight: 700, fontSize: 'var(--t-small)' }}>Nothing on these days yet</span>
+          <span className="cr-small" style={{ color: 'var(--cr-faint)' }}>It fills up as tickets get dates on Monday.</span>
+        </div>
+      )}
+      {w.total > 0 && <div style={{ display: 'grid', gridTemplateColumns: `repeat(${w.days.length || 5}, minmax(0,1fr))`, gap: canvas ? 14 : 6, marginTop: 'auto' }}>
+        {w.days.map((x, j) => {
+          const over = x.capacity > 0 && x.load > x.capacity;
+          const bar = (x.load / maxY) * H;
+          const cap = (x.capacity / maxY) * H;
+          return (
+            <div key={x.d} className="cr-col" style={{ gap: 8, alignItems: 'stretch', minWidth: 0 }}>
+              <div style={{ position: 'relative', height: H, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+                <div style={{ width: '62%', height: Math.max(bar, x.load ? 4 : 0), borderRadius: '10px 10px 4px 4px', overflow: 'hidden', display: 'flex', alignItems: 'flex-end' }}>
+                  <Grow color={over ? '#ffb547' : '#5d66ff'} delay={0.55 + i * 0.1 + j * 0.05} />
+                </div>
+                {x.capacity > 0 && <span style={{ position: 'absolute', left: '8%', right: '8%', bottom: cap, borderTop: '2px dashed rgba(255,255,255,.5)' }} />}
+              </div>
+              <span className="cr-small" style={{ textAlign: 'center', fontWeight: 700 }}>{dayLabel(x.d)} <span style={{ color: 'var(--cr-faint)', fontWeight: 500 }}>{x.d.slice(8)}</span></span>
+              <span style={{ display: 'flex', justifyContent: 'center', gap: 2, minHeight: canvas ? 26 : 16 }} title={x.off.length ? `Out: ${x.off.map(p => p.name).join(', ')}` : undefined}>
+                {x.off.slice(0, 4).map(p => <Avatar key={p.id} person={p} size={canvas ? 24 : 16} />)}
+              </span>
+            </div>
+          );
+        })}
+      </div>}
+    </Reveal>
+  );
+}
+
+/** A bar that grows upward (the day columns). */
+function Grow({ color, delay }) {
+  const { motionLevel } = useDeck();
+  const style = { width: '100%', height: '100%', background: color, transformOrigin: 'bottom center' };
+  if (motionLevel === 'static') return <div style={style} />;
+  return <m.div style={style} initial={{ scaleY: 0 }} animate={{ scaleY: 1 }} transition={{ duration: 0.7, ease: EASE, delay }} />;
 }
 
 // ── Hot projects ─────────────────────────────────────────────────────────────

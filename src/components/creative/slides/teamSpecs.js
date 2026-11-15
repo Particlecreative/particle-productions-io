@@ -1,7 +1,7 @@
 // Creative Team Weekly slide specs (merged into SPECS in specs.js). Pure, like specs.js.
 // The team deck connects everyone to the numbers without making it a contest: team totals lead, people always
 // appear in the same order, and a person's slide shows their work and their best creative — never a ranking.
-import { displayName } from '../deck/format';
+import { displayName, addDays } from '../deck/format';
 import { isHidden, visibleIds } from './specs';
 import { DIVISIONS, DIVISION_ORDER, divisionOf } from './divisions';
 
@@ -20,6 +20,45 @@ const crewByRole = (snapshot, overrides, role) => Object.values(snapshot.people 
   .filter(p => p.role === role && !overrides?.people?.[p.id]?.hidden)
   .sort((a, b) => ((a.order ?? 999) - (b.order ?? 999)) || a.name.localeCompare(b.name));
 const workdaysIn = (tl, days) => (tl?.from ? days.filter(d => d >= tl.from && d <= (tl.to || tl.from)).length : 0);
+
+/**
+ * The team's workload for this week and next (pure — exported for tests). One total per week and per day, never per
+ * person (Tomer, 15 Nov 2026: "we don't want it to be a competition about who did how much of what").
+ * total = different tickets on the team's plate that week; fullness = person-days of planned work ÷ the team's
+ * capacity (time off taken out). Next week = work already scheduled into it.
+ */
+export function teamLoad(snapshot, overrides) {
+  const wl = snapshot.workload || {};
+  const crew = ['design', 'video'].flatMap(role => crewByRole(snapshot, overrides, role));
+  const delivered = new Set(snapshot.sections?.delivered || []);
+  const open = (it) => it && !delivered.has(it.id) && !['delivered', 'paused'].includes(it.status?.category);
+  const week = (key, label, days) => {
+    const all = new Set();
+    const out = days.map(d => {
+      const ids = new Set();
+      let load = 0, capacity = 0;
+      const off = [];
+      for (const p of crew) {
+        const row = wl.people?.[p.id]?.[d];
+        // saved rows when the snapshot has this day; else (decks made before 15 Nov) the tickets' timelines
+        const planned = (row ? row.planned : Object.values(snapshot.items || {})
+          .filter(it => open(it) && it.people?.includes(p.id) && it.timeline?.from && d >= it.timeline.from && d <= (it.timeline.to || it.timeline.from))
+          .map(it => it.id)).filter(id => open(snapshot.items?.[id]) && !isHidden(overrides, id));   // delivered work isn't on the plate
+        planned.forEach(id => { ids.add(id); all.add(id); });
+        load += planned.length;
+        if (wl.out?.[p.id]?.[d]) off.push({ ...p, name: displayName(p.name) });
+        else capacity += wl.capacity?.[p.role] || 4;
+      }
+      return { d, tickets: ids.size, load, capacity, off };
+    });
+    const load = out.reduce((s, x) => s + x.load, 0);
+    const capacity = out.reduce((s, x) => s + x.capacity, 0);
+    return { key, label, days: out, total: all.size, fullness: capacity ? load / capacity : null, from: days[0] || null, to: days[days.length - 1] || null };
+  };
+  const thisWeek = wl.next_week || [];
+  const nextWeek = wl.after_week || thisWeek.map(d => addDays(d, 7));
+  return { weeks: [week('this', 'This week', thisWeek), week('next', 'Next week', nextWeek)], people: crew.length };
+}
 
 /** The team's Meta numbers from AFTERLIFE (null when it isn't connected). */
 function marketPulse(perf) {
@@ -132,10 +171,14 @@ export const TEAM_SPECS = {
         const main = chosen || sorted[0] || null;
         const rest = sorted.filter(i => i !== main);
         const off = days.filter(d => wl.out?.[p.id]?.[d]);
+        // Every ticket this person has this week (Tomer, 15 Nov 2026: "not just one") — the main one first, no counts
+        const plannedOn = (id) => days.filter(d => (wl.people?.[p.id]?.[d]?.planned || []).includes(id));
+        const tickets = (main ? [main, ...rest] : rest).map(it => ({ ...it, hot: hotIds.has(it.id), main: it === main, days: plannedOn(it.id) }));
         return {
           person: { ...p, name: displayName(p.name) },
-          main: main ? { ...main, hot: hotIds.has(main.id), days: days.filter(d => main.timeline?.from && d >= main.timeline.from && d <= (main.timeline.to || main.timeline.from)) } : null,
-          rest: rest.map(i => ({ ...i, hot: hotIds.has(i.id) })),
+          main: tickets[0] || null,
+          rest: tickets.slice(1),
+          tickets,
           off,
         };
       });
@@ -143,6 +186,19 @@ export const TEAM_SPECS = {
     },
     isEmpty: (vm) => !vm.cards.length,
     defaultText: (vm) => ({ eyebrow: 'This week', title: vm.role === 'video' ? 'Video editors' : 'Designers' }),
+  },
+
+  team_load: {
+    label: 'Team workload',
+    category: 'Team',
+    defaults: {},
+    schema: [],
+    textSlots: ['eyebrow', 'title'],
+    select(snapshot, { overrides }) {
+      return teamLoad(snapshot, overrides);
+    },
+    isEmpty: (vm) => vm.weeks.every(w => !w.total),
+    defaultText: () => ({ eyebrow: 'Workload · this week and next', title: 'The team’s plate' }),
   },
 
   hot_projects: {

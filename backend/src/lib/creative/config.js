@@ -9,7 +9,7 @@ const SLIDE_TYPES = [
   'cover', 'exec_summary', 'dept_overview', 'division_overview', 'division_next', 'production', 'showcase',
   'kpis', 'highlights', 'by_product', 'by_type', 'section',
   'person', 'workload', 'cp_productions', 'cp_updates', 'planned_next', 'risks', 'custom', 'closing',
-  'studio_stats', 'team_week', 'market_wins', 'market_people', 'team_focus', 'hot_projects', 'sla',
+  'studio_stats', 'team_week', 'market_wins', 'market_people', 'team_focus', 'hot_projects', 'sla', 'team_load',
 ];
 
 /**
@@ -60,7 +60,8 @@ const DEFAULT_TEAM_TEMPLATE = {
     { id: 'sec_this',      type: 'section',       enabled: true, options: { number: '02', title: 'This week', subtitle: '' } },
     { id: 'focus_video',   type: 'team_focus',    enabled: true, options: { role: 'video' } },
     { id: 'focus_design',  type: 'team_focus',    enabled: true, options: { role: 'design' } },
-    { id: 'workload',      type: 'workload',      enabled: true, options: { week: 'next', text: { eyebrow: 'Workload · this week', title: 'Who’s on what' } } },
+    // The team's plate this week and next — one total, never per person (Tomer, 15 Nov 2026: "not a competition")
+    { id: 'workload',      type: 'team_load',     enabled: true, options: {} },
     { id: 'hot_projects',  type: 'hot_projects',  enabled: true, options: { whenEmpty: 'hide' } },
     { id: 'sec_how',       type: 'section',       enabled: true, options: { number: '03', title: 'How we work', subtitle: '' } },
     { id: 'sla',           type: 'sla',           enabled: true, options: {} },

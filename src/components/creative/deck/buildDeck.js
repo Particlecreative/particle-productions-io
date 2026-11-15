@@ -13,10 +13,16 @@ export function personKey(specId, uid, page) {
 
 const CUSTOM_TYPES = new Set(['custom', 'section', 'showcase']);
 
+// A team deck shows the team's workload as one total, never per person (Tomer, 15 Nov 2026) — team decks made
+// before that still have the per-person workload slide in their saved template.
+const isTeamTemplate = (template) => (template?.slides || []).some(s => s.type === 'team_week' || s.type === 'team_focus');
+
 /** Default (template) order of slide stubs, before overrides.order is applied. */
 function expandTemplate(template, snapshot, overrides) {
   const out = [];
-  for (const spec of template?.slides || []) {
+  const team = isTeamTemplate(template);
+  for (const raw of template?.slides || []) {
+    const spec = team && raw.type === 'workload' ? { ...raw, type: 'team_load', options: {} } : raw;
     if (spec.enabled === false) continue;
     const def = SPECS[spec.type];
     if (!def) continue;
