@@ -731,8 +731,13 @@ export function fmtLoad(n) {
 }
 
 /** What a person slide shows: the chosen projects, else what they delivered, else what they're on now. */
-export function personShown(snapshot, overrides, uid) {
+export function personShown(snapshot, overrides, uid, { all = false } = {}) {
   const manual = Array.isArray(overrides?.people?.[uid]?.selection);
+  // Team deck (Tomer, 15 Nov 2026): every creative they worked on — delivered first, then in review / in progress / fixes
+  if (all && !manual) {
+    const active = personCandidates(snapshot, uid).active.filter(id => !isHidden(overrides, id));
+    return { ids: [...new Set([...personSelection(snapshot, overrides, uid), ...active])], manual: false, fallback: false };
+  }
   const ids = personSelection(snapshot, overrides, uid);
   if (ids.length || manual) return { ids, manual, fallback: false };
   const active = personCandidates(snapshot, uid).active.filter(id => !isHidden(overrides, id)).slice(0, 6);

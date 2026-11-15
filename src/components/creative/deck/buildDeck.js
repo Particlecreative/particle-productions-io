@@ -18,11 +18,23 @@ const CUSTOM_TYPES = new Set(['custom', 'section', 'showcase']);
 const isTeamTemplate = (template) => (template?.slides || []).some(s => s.type === 'team_week' || s.type === 'team_focus');
 
 /** Team decks get "The week in brief" (Tomer, 15 Nov 2026) — added to older team templates before "Last week, together". */
-function withTeamBrief(slides) {
-  if (slides.some(s => s.type === 'exec_summary')) return slides;
-  const brief = { id: 'exec_summary', type: 'exec_summary', enabled: true, options: { audience: 'team' } };
-  const at = slides.findIndex(s => s.type === 'team_week');
-  return at < 0 ? [...slides.slice(0, 1), brief, ...slides.slice(1)] : [...slides.slice(0, at), brief, ...slides.slice(at)];
+function withTeamBrief(input) {
+  let slides = input;
+  if (!slides.some(s => s.type === 'exec_summary')) {
+    const brief = { id: 'exec_summary', type: 'exec_summary', enabled: true, options: { audience: 'team' } };
+    const at = slides.findIndex(s => s.type === 'team_week');
+    slides = at < 0 ? [...slides.slice(0, 1), brief, ...slides.slice(1)] : [...slides.slice(0, at), brief, ...slides.slice(at)];
+  }
+  // …and each designer's / video editor's work, right after "What we shipped" (Tomer, 15 Nov 2026)
+  if (!slides.some(s => s.type === 'team_person')) {
+    const work = [
+      { id: 'work_design', type: 'team_person', enabled: true, repeat: 'perPerson', options: { role: 'design' } },
+      { id: 'work_video', type: 'team_person', enabled: true, repeat: 'perPerson', options: { role: 'video' } },
+    ];
+    const at = slides.findIndex(s => s.type === 'team_week');
+    slides = at < 0 ? [...slides, ...work] : [...slides.slice(0, at + 1), ...work, ...slides.slice(at + 1)];
+  }
+  return slides;
 }
 
 /** Default (template) order of slide stubs, before overrides.order is applied. */

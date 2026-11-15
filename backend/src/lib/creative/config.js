@@ -9,7 +9,7 @@ const SLIDE_TYPES = [
   'cover', 'exec_summary', 'dept_overview', 'division_overview', 'division_next', 'production', 'showcase',
   'kpis', 'highlights', 'by_product', 'by_type', 'section',
   'person', 'workload', 'cp_productions', 'cp_updates', 'planned_next', 'risks', 'custom', 'closing',
-  'studio_stats', 'team_week', 'market_wins', 'market_people', 'team_focus', 'hot_projects', 'sla', 'team_load',
+  'studio_stats', 'team_week', 'market_wins', 'market_people', 'team_focus', 'hot_projects', 'sla', 'team_load', 'team_person',
 ];
 
 /**
@@ -55,6 +55,8 @@ const DEFAULT_TEAM_TEMPLATE = {
     { id: 'sec_last',      type: 'section',       enabled: true, options: { number: '01', title: 'Last week, together', subtitle: '' } },
     { id: 'exec_summary',  type: 'exec_summary',  enabled: true, options: { audience: 'team' } },
     { id: 'team_week',     type: 'team_week',     enabled: true, options: {} },
+    { id: 'work_design',   type: 'team_person',   enabled: true, repeat: 'perPerson', options: { role: 'design' } },
+    { id: 'work_video',    type: 'team_person',   enabled: true, repeat: 'perPerson', options: { role: 'video' } },
     { id: 'market_wins',   type: 'market_wins',   enabled: true, options: { whenEmpty: 'hide' } },
     { id: 'market_design', type: 'market_people', enabled: true, options: { role: 'design', whenEmpty: 'hide' } },
     { id: 'market_video',  type: 'market_people', enabled: true, options: { role: 'video', whenEmpty: 'hide' } },

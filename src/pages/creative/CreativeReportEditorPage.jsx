@@ -453,7 +453,7 @@ export default function CreativeReportEditorPage() {
               <button type="button" onClick={refresh} disabled={busy.refresh || final} className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg hover:bg-gray-100 text-gray-700 disabled:opacity-40" title={`Data from ${relTime(payload.report.generated_at)}`}>
                 <RefreshCw size={14} className={busy.refresh ? 'animate-spin' : ''} /> Refresh live data
               </button>
-              <button type="button" onClick={() => setChooserFor(slide.type === 'person' ? slide.params.uid : '__first')} title="Choose what each designer and video editor presents"
+              <button type="button" onClick={() => setChooserFor(slide.type === 'person' || slide.type === 'team_person' ? slide.params.uid : '__first')} title="Choose what each designer and video editor presents"
                 className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg hover:bg-gray-100 text-gray-700"><LayoutGrid size={14} /> Projects</button>
               <button type="button" onClick={() => setDialog('versions')} className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg hover:bg-gray-100 text-gray-700"><History size={14} /> History</button>
               {isAdmin && (
@@ -543,7 +543,7 @@ export default function CreativeReportEditorPage() {
                 </SlideStage>
                 <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-2 text-xs">
                   {slide.hidden && <span className="px-2 py-1 rounded-full bg-gray-800 text-white">Hidden — skipped when presenting</span>}
-                  {slide.type === 'person' && (
+                  {(slide.type === 'person' || slide.type === 'team_person') && (
                     <button type="button" onClick={() => setChooserFor(slide.params.uid)} className="px-3 py-1.5 rounded-full text-white shadow flex items-center gap-1.5 font-semibold" style={{ background: '#0808f8' }}>
                       <LayoutGrid size={12} /> Choose projects
                     </button>

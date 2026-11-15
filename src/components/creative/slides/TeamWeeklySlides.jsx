@@ -1,7 +1,10 @@
-import { Flame, Plane, Play, Image as ImageIcon, CheckCircle2, AlertTriangle, Clock3, BadgeCheck } from 'lucide-react';
+import { Flame, Plane, Play, Image as ImageIcon, CheckCircle2, AlertTriangle, Clock3, BadgeCheck, Film, PenTool } from 'lucide-react';
 import { useDeck } from '../deck/DeckContext';
 import { Reveal, CountUp, GrowBar, m, EASE } from '../motion/Motion';
-import { Avatar, ProductChip, StatusChip } from '../ui/Bits';
+import { Avatar, ProductChip, StatusChip, TicketTile, EditableText } from '../ui/Bits';
+import { galleryGrid } from './DivisionSlides';
+import { decorate } from './specs';
+import { DIVISIONS } from './divisions';
 import { MediaImage, FallbackTile } from '../ui/Media';
 import { dayLabel, shortDate, fmtDays, fmtHours, withAlpha, firstName } from '../deck/format';
 import { SlideFrame, SlideHeader } from './SlideFrame';
@@ -445,6 +448,61 @@ function Grow({ color, delay }) {
   const style = { width: '100%', height: '100%', background: color, transformOrigin: 'bottom center' };
   if (motionLevel === 'static') return <div style={style} />;
   return <m.div style={style} initial={{ scaleY: 0 }} animate={{ scaleY: 1 }} transition={{ duration: 0.7, ease: EASE, delay }} />;
+}
+
+// ── A designer's / video editor's work last week (team deck) ─────────────────
+/** Every creative they worked on — delivered, in review, in progress — each with its Monday status. No numbers. */
+export function TeamPersonSlide({ slide, active }) {
+  const { snapshot, overrides, onTicket, editText, layout } = useDeck();
+  const { vm } = slide;
+  const canvas = layout === 'canvas';
+  const tickets = vm.tickets.map(id => decorate(snapshot, overrides, id));
+  const g = galleryGrid(tickets.length);
+  const set = (slot) => (editText ? (v) => editText(slide.key, slot, v) : undefined);
+  const accent = DIVISIONS[vm.role]?.accent || '#4a55ff';
+  const RoleIcon = vm.role === 'video' ? Film : PenTool;
+  const first = vm.page === 0;
+  return (
+    <SlideFrame slide={slide} active={active}>
+      <div className="cr-row" style={{ gap: 48, height: '100%' }}>
+        <div className="cr-col cr-fixed-sm" style={{ width: canvas ? 400 : 'auto', flex: 'none', gap: 20 }}>
+          <Reveal i={0} style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+            <Avatar person={vm.person} size={canvas ? (first ? 104 : 80) : 60} ring={withAlpha(accent, 0.75)} />
+            <div className="cr-col" style={{ gap: 6 }}>
+              <EditableText className="cr-eyebrow" value={slide.text.eyebrow} onCommit={set('eyebrow')} />
+              <span className="cr-small" style={{ display: 'flex', alignItems: 'center', gap: 8 }}><RoleIcon size={18} color={accent} /> {DIVISIONS[vm.role]?.label || 'Creative'}</span>
+            </div>
+          </Reveal>
+          <Reveal i={1}>
+            <EditableText className="cr-title" value={slide.text.title} onCommit={set('title')} style={{ fontSize: canvas ? 'calc(var(--t-title) * .8)' : undefined }} />
+          </Reveal>
+          {(slide.text.subtitle || editText) && (
+            <Reveal i={2}>
+              <EditableText className="cr-sub cr-clamp-3" value={slide.text.subtitle} onCommit={set('subtitle')} multiline placeholder="One line about their week" style={{ fontSize: 'calc(var(--t-sub) * .8)' }} />
+            </Reveal>
+          )}
+          {first && vm.products.length > 0 && (
+            <Reveal i={3} style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {vm.products.map(p => <ProductChip key={p.label} product={p} />)}
+            </Reveal>
+          )}
+        </div>
+        <div className="cr-grid cr-fill" style={{ gridTemplateColumns: `repeat(${g.cols}, minmax(0,1fr))`, gridTemplateRows: `repeat(${g.rows}, minmax(0,1fr))`, gap: 18 }}>
+          {tickets.map((it, i) => (
+            <Reveal key={it.id} i={3 + i} y={30} className="cr-ratio-sm" style={{ position: 'relative', minHeight: 0 }}>
+              <TicketTile item={it} active={active} onClick={onTicket} style={{ position: 'absolute', inset: 0 }} big={tickets.length <= 2} />
+              {it.status?.label && <span style={{ position: 'absolute', top: 12, right: 12, fontSize: '0.7em', pointerEvents: 'none' }}><StatusChip status={it.status} /></span>}
+            </Reveal>
+          ))}
+          {!tickets.length && (
+            <div className="cr-card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gridColumn: '1 / -1' }}>
+              <span className="cr-sub">{vm.manual ? 'No creatives picked for this slide' : 'Nothing last week'}</span>
+            </div>
+          )}
+        </div>
+      </div>
+    </SlideFrame>
+  );
 }
 
 // ── Hot projects ─────────────────────────────────────────────────────────────

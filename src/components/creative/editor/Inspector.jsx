@@ -260,7 +260,8 @@ function PersonProjects({ slide, ctx }) {
   const cand = useMemo(() => personCandidates(snapshot, uid), [snapshot, uid]);
   const sel = overrides.people?.[uid]?.selection;
   const manual = Array.isArray(sel);
-  const shown = personShown(snapshot, overrides, uid).ids;
+  const team = slide.type === 'team_person';
+  const shown = personShown(snapshot, overrides, uid, { all: team }).ids;
   const base = manual ? sel.filter(id => snapshot.items?.[id]) : shown;
   const set = (ids) => ctx.setPersonSelection(uid, ids);
   const move = (id, d) => { const a = [...base]; const i = a.indexOf(id); const j = i + d; if (i < 0 || j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; set(a); };
@@ -272,7 +273,7 @@ function PersonProjects({ slide, ctx }) {
   return (
     <div>
       <div className="text-sm font-bold text-gray-900">{displayName(person?.name || '')}</div>
-      <div className="text-[11px] text-gray-500 mb-3">{manual ? `Hand-picked · ${base.length} project${base.length === 1 ? '' : 's'}` : 'Automatic · everything delivered last week (★ first)'}</div>
+      <div className="text-[11px] text-gray-500 mb-3">{manual ? `Hand-picked · ${base.length} project${base.length === 1 ? '' : 's'}` : (team ? 'Automatic · everything they worked on last week — delivered, in review, in progress' : 'Automatic · everything delivered last week (★ first)')}</div>
       <button type="button" onClick={() => ctx.openProjectChooser(uid)}
         className="w-full mb-4 flex items-center justify-center gap-2 text-sm font-semibold px-3 py-2.5 rounded-xl text-white shadow-sm" style={{ background: '#0808f8' }}>
         <LayoutGrid size={15} /> Open the project chooser
@@ -597,7 +598,7 @@ function ShowcasePick({ slide, ctx }) {
 }
 
 function TicketsTab({ slide, ctx }) {
-  if (slide?.type === 'person') return <PersonProjects slide={slide} ctx={ctx} />;
+  if (slide?.type === 'person' || slide?.type === 'team_person') return <PersonProjects slide={slide} ctx={ctx} />;
   if (slide?.type === 'production') return <ProductionTickets slide={slide} ctx={ctx} />;
   if (slide?.type === 'showcase') return <ShowcasePick slide={slide} ctx={ctx} />;
   return <GenericTickets slide={slide} ctx={ctx} />;

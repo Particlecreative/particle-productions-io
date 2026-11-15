@@ -122,6 +122,9 @@ export default function ProjectChooser({ ctx, slides, initialUid, onClose, onSho
         .sort((a, b) => ((bp[b.id]?.delivered || 0) - (bp[a.id]?.delivered || 0)) || a.name.localeCompare(b.name)),
     })).filter(g => g.list.length);
   }, [snapshot]);
+  // The team deck's person slides show everything they worked on by default (the founders': what they delivered)
+  const team = slides.some(s => s.type === 'team_person');
+  const isPersonSlide = (s) => s.type === 'person' || s.type === 'team_person';
   const firstUid = people[0]?.list[0]?.id;
   const [uid, setUid] = useState(initialUid && snapshot.people?.[initialUid] ? initialUid : firstUid);
   const [q, setQ] = useState('');
@@ -142,9 +145,9 @@ export default function ProjectChooser({ ctx, slides, initialUid, onClose, onSho
   const cand = useMemo(() => (uid ? personCandidates(snapshot, uid) : { delivered: [], active: [], worked: [] }), [snapshot, uid]);
   const pov = overrides.people?.[uid] || {};
   const manual = Array.isArray(pov.selection);
-  const shown = uid ? personShown(snapshot, overrides, uid).ids : [];
+  const shown = uid ? personShown(snapshot, overrides, uid, { all: team }).ids : [];
   const selected = manual ? pov.selection.filter(id => snapshot.items?.[id]) : shown;
-  const perPage = pov.perPage || slides.find(s => s.type === 'person' && s.params?.uid === uid)?.options?.perPage || 8;
+  const perPage = pov.perPage || slides.find(s => isPersonSlide(s) && s.params?.uid === uid)?.options?.perPage || 8;
   const slideCount = Math.min(6, Math.max(1, Math.ceil(selected.length / perPage)));
 
   const setSel = (ids) => ctx.setPersonSelection(uid, ids);
@@ -169,10 +172,10 @@ export default function ProjectChooser({ ctx, slides, initialUid, onClose, onSho
     ['In progress', cand.active],
     ['Also worked on last week', cand.worked],
   ].map(([t, ids]) => [t, ids.filter(match)]).filter(([, ids]) => ids.length);
-  const personKey = slides.find(s => s.type === 'person' && s.params?.uid === uid)?.key;
+  const personKey = slides.find(s => isPersonSlide(s) && s.params?.uid === uid)?.key;
   const countFor = (p) => {
     const o = overrides.people?.[p.id] || {};
-    return { n: Array.isArray(o.selection) ? o.selection.length : personShown(snapshot, overrides, p.id).ids.length, manual: Array.isArray(o.selection), hidden: !!o.hidden };
+    return { n: Array.isArray(o.selection) ? o.selection.length : personShown(snapshot, overrides, p.id, { all: team }).ids.length, manual: Array.isArray(o.selection), hidden: !!o.hidden };
   };
 
   return createPortal(
@@ -223,7 +226,7 @@ export default function ProjectChooser({ ctx, slides, initialUid, onClose, onSho
                 )}
               </div>
             </div>
-            <div className="flex items-center gap-1 p-1 rounded-lg bg-gray-100" title="Automatic shows everything they delivered (★ first)">
+            <div className="flex items-center gap-1 p-1 rounded-lg bg-gray-100" title={team ? 'Automatic shows everything they worked on — delivered (★ first), then in review and in progress' : 'Automatic shows everything they delivered (★ first)'}>
               <button type="button" disabled={ro} onClick={() => setSel(null)} className={`text-xs font-semibold px-3 py-1.5 rounded-md ${!manual ? 'bg-white shadow text-[#030b2e]' : 'text-gray-500'}`}>Automatic</button>
               <button type="button" disabled={ro} onClick={() => !manual && setSel(selected)} className={`text-xs font-semibold px-3 py-1.5 rounded-md ${manual ? 'bg-white shadow text-[#030b2e]' : 'text-gray-500'}`}>Hand-picked</button>
             </div>

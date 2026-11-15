@@ -2,7 +2,7 @@
 // The team deck connects everyone to the numbers without making it a contest: team totals lead, people always
 // appear in the same order, and a person's slide shows their work and their best creative — never a ranking.
 import { displayName, addDays } from '../deck/format';
-import { isHidden, visibleIds } from './specs';
+import { isHidden, visibleIds, personShown } from './specs';
 import { DIVISIONS, DIVISION_ORDER, divisionOf } from './divisions';
 
 const DAY = 86400000;
@@ -143,6 +143,41 @@ export const TEAM_SPECS = {
     },
     isEmpty: (vm) => !vm.cards.some(c => c.live),
     defaultText: (vm) => ({ eyebrow: 'Our work in market', title: vm.role === 'video' ? 'Video editors' : 'Designers' }),
+  },
+
+  // One per designer / video editor: every creative they worked on last week — delivered, in review, in progress —
+  // picked in the project chooser (Tomer, 15 Nov 2026). Their work only: no counts, no stats.
+  team_person: {
+    label: 'Person · their work',
+    category: 'Team',
+    defaults: { role: 'design', perPage: 8 },
+    schema: [
+      { key: 'role', type: 'segmented', label: 'Team', options: [['design', 'Designers'], ['video', 'Video editors']] },
+      { key: 'perPage', type: 'number', label: 'Max creatives per slide', min: 1, max: 12 },
+    ],
+    textSlots: ['eyebrow', 'title', 'subtitle'],
+    repeat(spec, snapshot, overrides, options) {
+      return crewByRole(snapshot, overrides, options.role).flatMap(p => {
+        const n = personShown(snapshot, overrides, p.id, { all: true }).ids.length;
+        if (!n) return [];
+        const per = Math.max(1, overrides?.people?.[p.id]?.perPage || options.perPage || 8);
+        const pages = Math.min(6, Math.ceil(n / per));
+        return Array.from({ length: pages }, (_, page) => ({ uid: p.id, page, pages }));
+      });
+    },
+    select(snapshot, { overrides, params }) {
+      const uid = params.uid;
+      const p = snapshot.people?.[uid] || { id: uid, name: 'Unknown' };
+      const shown = personShown(snapshot, overrides, uid, { all: true });
+      const pages = params.pages || 1;
+      const page = params.page || 0;
+      const size = Math.ceil(shown.ids.length / pages) || 0;   // balanced pages (9 over 2 slides → 5 + 4)
+      const tickets = shown.ids.slice(page * size, page * size + size);
+      const products = [...new Map(shown.ids.map(id => snapshot.items[id]?.product).filter(pr => pr?.label && pr.label !== '-').map(pr => [pr.label, pr])).values()].slice(0, 6);
+      return { person: { ...p, name: displayName(p.name) }, role: p.role, tickets, totalShown: shown.ids.length, manual: shown.manual, products, page, pages };
+    },
+    isEmpty: (vm) => !vm.totalShown,
+    defaultText: (vm) => ({ eyebrow: `${vm.role === 'video' ? 'Video editor' : 'Designer'} · last week${vm.pages > 1 ? ` · ${vm.page + 1}/${vm.pages}` : ''}`, title: vm.person.name, subtitle: '' }),
   },
 
   team_focus: {

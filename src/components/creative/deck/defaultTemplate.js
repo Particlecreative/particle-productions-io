@@ -8,6 +8,8 @@ export const DEFAULT_TEAM_TEMPLATE = {
     { id: 'sec_last', type: 'section', enabled: true, options: { number: '01', title: 'Last week, together', subtitle: '' } },
     { id: 'exec_summary', type: 'exec_summary', enabled: true, options: { audience: 'team' } },
     { id: 'team_week', type: 'team_week', enabled: true, options: {} },
+    { id: 'work_design', type: 'team_person', enabled: true, repeat: 'perPerson', options: { role: 'design' } },
+    { id: 'work_video', type: 'team_person', enabled: true, repeat: 'perPerson', options: { role: 'video' } },
     { id: 'market_wins', type: 'market_wins', enabled: true, options: { whenEmpty: 'hide' } },
     { id: 'market_design', type: 'market_people', enabled: true, options: { role: 'design', whenEmpty: 'hide' } },
     { id: 'market_video', type: 'market_people', enabled: true, options: { role: 'video', whenEmpty: 'hide' } },
