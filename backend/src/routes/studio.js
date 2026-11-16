@@ -260,6 +260,17 @@ function requireAdminTL(req, res, next) {
   next();
 }
 
+// Auto-plan: the timeline follows the work (lib/studio/autoplan.js) — its switch, lengths, what it did, Undo
+router.get('/autoplan', async (req, res) => {
+  try { const A = require('../lib/studio/autoplan'); res.json({ settings: await A.getSettings(req.brandId), recent: await A.recent() }); } catch (err) { errorJson(res, err); }
+});
+router.put('/autoplan', requireAdmin, async (req, res) => {
+  try { res.json({ settings: await require('../lib/studio/autoplan').saveSettings(req.body || {}, req.brandId) }); } catch (err) { errorJson(res, err); }
+});
+router.post('/autoplan/:id/undo', async (req, res) => {
+  try { res.json(await require('../lib/studio/autoplan').undo(Number(req.params.id), { actor: req.user?.name || req.user?.email, brandId: req.brandId })); } catch (err) { errorJson(res, err); }
+});
+
 // Who fits each ticket on "To schedule" — learned from 6 months of finished tickets (lib/studio/fit.js)
 router.post('/fit', async (req, res) => {
   try {

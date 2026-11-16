@@ -152,12 +152,14 @@ function fitOne(model, item, { limit = 5, today = W.localDate(Date.now()) } = {}
 /** items: [{ key, board, … }] → { learned, fits: { [key]: candidates } } */
 async function fitFor(items, { brandId = 'particle' } = {}) {
   const h = await history(brandId);
+  // timelines in the history include the old wait for human review — cap at today's lengths (Auto-plan settings)
+  const s = await require('./autoplan').getSettings(brandId).catch(() => ({ video_days: 2, design_days: 1 }));
   const today = W.localDate(Date.now());
   const models = Object.fromEntries(Object.entries(h.boards).map(([bk, rows]) => [bk, buildModel(rows, today)]));
   const fits = {};
   for (const it of (items || []).slice(0, 200)) {
     const m = models[it.board];
-    if (m) fits[it.key] = fitOne(m, it, { today });
+    if (m) fits[it.key] = fitOne(m, it, { today }).map(c => ({ ...c, days: Math.min(c.days, it.board === 'design' ? s.design_days : s.video_days) }));
   }
   return { learned: { since: h.since, video: h.boards.video?.length || 0, design: h.boards.design?.length || 0 }, fits };
 }

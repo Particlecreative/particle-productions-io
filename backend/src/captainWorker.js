@@ -25,6 +25,7 @@ const medium = { corpus: require('./lib/medium/corpus'), writer: require('./lib/
     handlers: {
       video_check: runVideoJob,
       autopilot_review: (p) => require('./lib/captain/autopilot').review(p),   // a ticket entered a review status
+      studio_autoplan: (p) => require('./lib/studio/autoplan').run(p),          // a task went to Working → its timeline follows
       design_check: runDesignJob,
       brief_check: brief.rerunBriefCheck,      // HQ → Re-run on a brief check
       brief_batch: brief.runBriefBatch,        // Holiday Builder: up to 200 briefs
@@ -56,6 +57,13 @@ const medium = { corpus: require('./lib/medium/corpus'), writer: require('./lib/
     .catch(e => console.warn('[captain-worker] autopilot watch failed:', e.message));
   setTimeout(watch, 30 * 1000);
   setInterval(watch, 2 * 60 * 1000);
+
+  // Studio auto-plan: every 2 minutes, tasks that just went to Working — the timeline follows the work
+  const plan = () => require('./lib/studio/autoplan').watch()
+    .then(r => { if (r && !r.off && Object.values(r).some(n => n > 0)) console.log('[captain-worker] auto-plan queued:', JSON.stringify(r)); })
+    .catch(e => console.warn('[captain-worker] auto-plan watch failed:', e.message));
+  setTimeout(plan, 45 * 1000);
+  setInterval(plan, 2 * 60 * 1000);
 
   // MEDIUM's clock: daily AfterLife outcomes (free) and, when switched on, the Sunday autopilot
   const mediumTick = () => require('./lib/medium/autopilot').tick()

@@ -204,3 +204,17 @@ export function fixtureFit(items) {
   }
   return { learned: { since: '2026-05-20', video: 468, design: 818 }, fits };
 }
+
+// Sample auto-plan log for the local preview
+export function fixtureAutoplan() {
+  const at = (h) => new Date(Date.now() - h * 3600e3).toISOString();
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
+  return {
+    settings: { mode: 'on', video_days: 2, design_days: 1, max_moves: 4 },
+    recent: [
+      { id: 3, at: at(0.4), kind: 'room', item_name: 'NeoRoot | Social Proof Statics | Meta | Stat Badges', person_name: 'Shira Golan', before: { from: today, to: today }, after: { from: '2026-11-19', to: '2026-11-19' }, why: 'made room on today after “Concept 68” started — moved to Thu 19 Nov (due Tue 24 Nov)' },
+      { id: 2, at: at(0.4), kind: 'start', item_name: 'Concept 68', person_name: 'Shira Golan', before: { from: '2026-11-18', to: '2026-11-20' }, after: { from: today, to: today }, why: 'started 2 working days early — the timeline moves to the day they started' },
+      { id: 1, at: at(26), kind: 'note', item_name: 'Concept 22', person_name: 'Dana Mizrahi', why: 'over capacity on Sun 15 Nov — everything else that day is critical, due soon, or has no room before its deadline — left as it is' },
+    ],
+  };
+}

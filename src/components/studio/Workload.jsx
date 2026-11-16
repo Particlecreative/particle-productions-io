@@ -7,6 +7,7 @@ import { studioApi } from '../../lib/studioService';
 import { useStudio, lastWriteAt, outOn, checkSchedule, workdays } from './writes';
 import { ideasFor, reasonText, whenText } from './suggest';
 import { perDay, perWeek, loadByDay, tvDays } from './capacity';
+import AutoPlan from './AutoPlan';
 import { SORTS, QUICK, groupFor, poolFor, urgencyOf, matches, forLine } from './scheduleOrder';
 
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -274,8 +275,9 @@ export default function Workload({ f }) {
             <input type="checkbox" checked={showEmails} onChange={e => setShowEmails(e.target.checked)} /> <Mail size={13} className="text-[#00a9a5]" /> Email tasks
           </label>
         )}
+        <div className="ml-auto"><AutoPlan onChanged={() => load(true)} /></div>
         <button type="button" onClick={() => setPanel(!panel)}
-          className={`ml-auto flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border ${panel ? 'bg-[#030b2e] text-white border-[#030b2e]' : 'bg-white text-gray-700 border-gray-200 hover:border-[#0808f8]/50'}`}>
+          className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border ${panel ? 'bg-[#030b2e] text-white border-[#030b2e]' : 'bg-white text-gray-700 border-gray-200 hover:border-[#0808f8]/50'}`}>
           {panel ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />} To schedule
           {toSchedule > 0 && <span className={`tabular-nums rounded-full px-1.5 text-[10px] ${panel ? 'bg-white/20' : 'bg-[#0808f8] text-white'}`}>{toSchedule}</span>}
         </button>
