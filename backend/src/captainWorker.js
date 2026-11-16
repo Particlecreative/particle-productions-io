@@ -24,6 +24,7 @@ const medium = { corpus: require('./lib/medium/corpus'), writer: require('./lib/
     concurrency,
     handlers: {
       video_check: runVideoJob,
+      autopilot_review: (p) => require('./lib/captain/autopilot').review(p),   // a ticket entered a review status
       design_check: runDesignJob,
       brief_check: brief.rerunBriefCheck,      // HQ → Re-run on a brief check
       brief_batch: brief.runBriefBatch,        // Holiday Builder: up to 200 briefs
@@ -47,6 +48,13 @@ const medium = { corpus: require('./lib/medium/corpus'), writer: require('./lib/
   // Adobe refresh tokens lapse after ~14 days unused — keep the Captain's Frame.io sign-in alive
   const keep = () => require('./lib/captain/frameio').keepalive().catch(e => console.warn('[captain-worker] Frame.io keepalive failed:', e.message));
   setInterval(keep, 12 * 3600 * 1000);
+
+  // The Captain on autopilot: every 2 minutes, tickets that just entered a review status (does nothing while it's off)
+  const watch = () => require('./lib/captain/autopilot').watch()
+    .then(r => { if (r && !r.off && Object.values(r).some(n => n > 0)) console.log('[captain-worker] autopilot queued:', JSON.stringify(r)); })
+    .catch(e => console.warn('[captain-worker] autopilot watch failed:', e.message));
+  setTimeout(watch, 30 * 1000);
+  setInterval(watch, 2 * 60 * 1000);
 
   // MEDIUM's clock: daily AfterLife outcomes (free) and, when switched on, the Sunday autopilot
   const mediumTick = () => require('./lib/medium/autopilot').tick()

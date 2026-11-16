@@ -298,7 +298,7 @@ async function runVideoJob(payload) {
 
   // One Monday summary per Monday trigger (a pasted link only borrows the task's brief)
   const done = results.filter(r => ['passed', 'issues', 'error'].includes(r.status));
-  if (item && !fromLink && done.length) {
+  if (item && !fromLink && done.length && !payload.quiet) {   // quiet = the autopilot: no Monday updates
     const errors = done.filter(r => r.status === 'error');
     const parts = done.map(r => r.status === 'error' ? `${r.label} (round ${r.round}): couldn't check — ${r.error}` : r.status === 'passed' ? `${r.label} (round ${r.round}) passed ✅` : `${r.label} (round ${r.round}): ${r.issue_count} issue${r.issue_count === 1 ? '' : 's'}`);
     const anyIssues = done.some(r => r.status === 'issues');

@@ -72,6 +72,7 @@ const settings = {
   engines: { video: { engine: 'gemini', model: 'gemini-3.8-flash' }, design: { engine: 'claude', model: 'claude-sonnet-5-5' } },
   second_opinion: { video: false, design: false }, max_reference_images: 4, insights: true,
   posting: { mode: 'test', test_frameio_folders: ['d2acf872'], test_figma_files: ['qTzVZh3p4cEXc6OiK24sUY'], test_monday_items: [] },
+  autopilot: { mode: 'off', first_clean_to: 'Approved', fixes_status: 'Fixes Round', approved_status: 'Approved', max_rounds: 3, start_delay_min: 3, wait_new_version_min: 60, test_items: [] },
   worker: { concurrency: 1 },
 };
 
@@ -141,7 +142,20 @@ export function fixtureCall(path, { method = 'GET', body } = {}) {
   if (p === '/brain/brand-sort/apply') return { changed: (body?.changes || []).length };
   if (p === '/brain') return method === 'POST' ? { item: body } : { items: brain };
   if (p.startsWith('/brain/')) return { ok: true };
-  if (p === '/settings') return { settings: method === 'PUT' ? { ...settings, ...body, posting: { ...settings.posting, ...(body?.posting || {}) } } : settings };
+  if (p === '/settings') {
+    if (method === 'PUT') Object.assign(settings, { ...body, posting: { ...settings.posting, ...(body?.posting || {}) }, autopilot: { ...settings.autopilot, ...(body?.autopilot || {}) } });
+    return { settings };
+  }
+  // sample decisions (local dev only)
+  if (p === '/autopilot') return {
+    recent: [
+      { board_id: '5433027071', item_id: '1', item_name: 'Face Cream | Meta | Absorbs Fast', discipline: 'video', rounds: 2, needs_person: false, url: '#', updated_at: ago(12), last: { from: 'For Approval', to: 'Approved', must_fix: 0, notes: 2, why: 'Review 2: every must-fix is fixed (2 “please check” notes left for the editor to judge)' } },
+      { board_id: '8036329818', item_id: '2', item_name: 'NeoRoot | Proof-First Statics | Meta | Red Circles', discipline: 'design', rounds: 1, needs_person: false, url: '#', updated_at: ago(40), last: { from: 'Quality Check', to: 'Fixes Round', must_fix: 3, notes: 1, why: 'Review 1: 3 must-fixes — back to the editor (1 “please check” note left for the editor to judge)' } },
+    ],
+    needs_person: [
+      { board_id: '5433027071', item_id: '3', item_name: 'Ab Firming Cream | Timeline Videos | Meta | Day 1 To Day 90', discipline: 'video', rounds: 3, url: '#', updated_at: ago(90), last: { from: 'For Approval', to: null, must_fix: 1, why: 'Review 3: still 1 must-fix after 3 rounds — left for a person' } },
+    ],
+  };
   if (p === '/import') return { run: { id: 1, status: 'done', since: '2025-01-01', started_at: ago(400), finished_at: ago(200), plan: { frameio: { items: 1463 }, figma: { files: 12, items: 1081 }, learn: { phase: 'video', cost: { classify: 4.82, total: 4.82 }, counts: [{ source: 'frameio', cat: 'text', n: 3702, fixed: 0 }, { source: 'frameio', cat: 'creative', n: 5010 }, { source: 'figma', cat: 'text', n: 1405 }] } } }, progress: { done: 1476, all: 1476, failed: 0 }, assets: [{ source: 'frameio', n: 1180, items: 306 }, { source: 'figma', n: 480, items: 480 }], comments: [{ source: 'frameio', n: 2410, authors: 9 }, { source: 'figma', n: 1302, matched: 1104, authors: 7 }], authors: [{ author: 'Anton Shpakovskiy', n: 812 }, { author: 'Lilian Krumholz', n: 640 }, { author: 'Tomer Wilf Lezmy', n: 377 }], estimate: { total: 12.4 } };
   if (p === '/import/start') return { queued: true };
   if (p === '/frameio/connect') return { url: '#' };

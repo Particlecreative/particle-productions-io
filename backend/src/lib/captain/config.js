@@ -64,6 +64,8 @@ const DEFAULTS = {
     test_figma_files: ['qTzVZh3p4cEXc6OiK24sUY'],                     // "Captain Test"
     test_monday_items: [],
   },
+  // Autopilot (16 Nov 2026): he notices a ticket entering a review status, checks it and moves it on — see autopilot.js
+  autopilot: { mode: 'off', first_clean_to: 'Approved', fixes_status: 'Fixes Round', approved_status: 'Approved', max_rounds: 3, start_delay_min: 3, wait_new_version_min: 60, test_items: [] },
   worker: { concurrency: 1 },
   // Brain bootstrap: what the history import reads (read-only)
   // Brands the studio makes ads for. The Captain uses only the matching brand's Brain items (+ general house style).
@@ -101,13 +103,15 @@ async function getConfig(brandId = 'particle') {
   return merge(DEFAULTS, typeof saved === 'string' ? JSON.parse(saved) : saved);
 }
 
-const EDITABLE = ['triggers', 'done_statuses', 'scope', 'auto_versions', 'engines', 'second_opinion', 'max_reference_images', 'insights', 'posting', 'worker', 'import', 'brief'];
+const EDITABLE = ['triggers', 'done_statuses', 'scope', 'auto_versions', 'engines', 'second_opinion', 'max_reference_images', 'insights', 'posting', 'worker', 'import', 'brief', 'autopilot'];
 async function saveConfig(patch, brandId = 'particle') {
   const clean = Object.fromEntries(Object.entries(patch || {}).filter(([k]) => EDITABLE.includes(k)));
   const { rows } = await db.query('SELECT captain_config FROM settings WHERE brand_id = $1', [brandId]);
   const current = rows[0]?.captain_config || {};
   const next = merge(typeof current === 'string' ? JSON.parse(current) : current, clean);
   if (next.posting && !['off', 'test', 'live'].includes(next.posting.mode)) throw Object.assign(new Error('posting.mode must be off, test or live'), { status: 400 });
+  if (next.autopilot && !['off', 'test', 'live'].includes(next.autopilot.mode)) throw Object.assign(new Error('autopilot.mode must be off, test or live'), { status: 400 });
+  if (next.autopilot && !['Approved', 'For Approval'].includes(next.autopilot.first_clean_to)) throw Object.assign(new Error('A clean first review goes to Approved or For Approval'), { status: 400 });
   await db.query('UPDATE settings SET captain_config = $1 WHERE brand_id = $2', [JSON.stringify(next), brandId]);
   return getConfig(brandId);
 }

@@ -505,6 +505,10 @@ router.delete('/frameio', requireAdmin, async (req, res) => {
   } catch (err) { errorJson(res, err); }
 });
 
+router.get('/autopilot', async (req, res) => {
+  try { res.json(await require('../lib/captain/autopilot').overview()); } catch (err) { errorJson(res, err); }
+});
+
 router.get('/settings', async (req, res) => {
   try { res.json({ settings: await getConfig(), boards: BOARDS }); } catch (err) { errorJson(res, err); }
 });
