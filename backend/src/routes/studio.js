@@ -32,6 +32,19 @@ function errorJson(res, err, fallback = 'Server error') {
   res.status(status).json({ error: err?.message || fallback });
 }
 
+// ── Dropbox (ticket folders) sign-in callback — public: Dropbox sends the browser here; the state check protects it ──
+router.get('/dropbox/callback', async (req, res) => {
+  const back = `${appBase(req)}/studio?tab=connections`;
+  try {
+    if (req.query.error) throw new Error(String(req.query.error_description || req.query.error).slice(0, 200));
+    await require('../lib/studio/dropboxFolders').finishConnect({ code: String(req.query.code || ''), state: String(req.query.state || '') });
+    res.redirect(`${back}&dropbox=connected`);
+  } catch (e) {
+    res.redirect(`${back}&dropbox_error=${encodeURIComponent(e.message)}`);
+  }
+});
+function appBase(req) { return (process.env.APP_URL || `https://${req.get('host')}`).replace(/\/$/, ''); }
+
 router.use(verifyJWT);
 router.use((req, res, next) => {
   if ((RANK[req.user?.role] ?? -1) < RANK.Editor) return res.status(403).json({ error: 'Editor access required' });
@@ -251,7 +264,7 @@ router.post('/ticket/submit', async (req, res) => {
   try {
     if (req.body?.confirm !== true) return res.status(400).json({ error: 'Confirm the ticket first' });
     const { config, people, form } = await formFor(req);
-    const out = await tickets.submitTicket({ config, form, board: req.body.board, fields: req.body.fields, people, user: req.user, conversation: req.body.conversation, files: req.body.files });
+    const out = await tickets.submitTicket({ config, form, board: req.body.board, fields: req.body.fields, people, user: req.user, conversation: req.body.conversation, files: req.body.files, brandId: req.brandId });
     res.json({ ok: true, ...out });
   } catch (err) { errorJson(res, err); }
 });
@@ -270,6 +283,7 @@ router.get('/connections', async (req, res) => {
       monday: { connected: !!process.env.MONDAY_API_TOKEN },
       bamboohr: { connected: !!bc, source: bc?.source || null, subdomain: bc?.subdomain || null, ...(st.bamboohr || {}) },
       tmdb: { connected: await tmdbConfigured(), ...(st.tmdb || {}) },
+      dropbox: { ...(await require('../lib/studio/dropboxFolders').status(req.brandId)), redirect_uri: `${appBase(req)}/api/studio/dropbox/callback` },
     });
   } catch (err) { errorJson(res, err); }
 });
@@ -306,6 +320,17 @@ router.put('/connections/tmdb', requireAdmin, async (req, res) => {
     monday.clearCache('tmdb:');
     res.json({ ok: true });
   } catch (err) { errorJson(res, err); }
+});
+
+// Dropbox for ticket folders: the admin pastes the app key (Full Dropbox app), then signs in at Dropbox
+router.post('/connections/dropbox', requireAdmin, async (req, res) => {
+  try {
+    const url = await require('../lib/studio/dropboxFolders').startConnect({ appKey: req.body?.app_key, base: req.body?.base, redirectUri: `${appBase(req)}/api/studio/dropbox/callback`, user: req.user, brandId: req.brandId });
+    res.json({ url });
+  } catch (err) { errorJson(res, err); }
+});
+router.delete('/connections/dropbox', requireAdmin, async (req, res) => {
+  try { await require('../lib/studio/dropboxFolders').disconnect(req.brandId); res.json({ ok: true }); } catch (err) { errorJson(res, err); }
 });
 
 router.delete('/connections/tmdb', requireAdmin, async (req, res) => {

@@ -143,7 +143,8 @@ router.post('/:token/submit', async (req, res) => {
     const signature = `${requester.name}${requester.email ? ` (${requester.email})` : ''} — via the request link`;
     const out = await tickets.submitTicket({ config, form: full, board: req.body.board, fields, people, user: { name: signature }, conversation: req.body?.conversation, files });
     await links.used(req.params.token);
-    res.json({ ok: true, ...out, requester: requester.name, tagged: !!match });
+    const { dropbox, ...shown } = out;   // the studio's Dropbox folder stays inside the studio (it's on the Monday ticket)
+    res.json({ ok: true, ...shown, requester: requester.name, tagged: !!match });
   } catch (err) { errorJson(res, err); }
 });
 

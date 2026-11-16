@@ -203,6 +203,11 @@ export default function TicketCreator({ api = studioApi, share = null }) {
         <div className="text-sm text-gray-600 mt-1">{created.name}</div>
         <div className="text-xs text-gray-400 mt-1">{share ? <>On {board === 'video' ? 'Video Projects' : 'Design Projects 2.0'} · requested by <b className="text-gray-600">{created.requester || share.requester?.name}</b>{created.tagged ? ' (tagged on Monday)' : ''}</> : 'In “Form Requests” · the brief is posted as an update'}{created.attached ? ` · ${created.attached} file${created.attached === 1 ? '' : 's'} in Relevant Files` : ''}</div>
         {created.failed?.length > 0 && <div className="text-xs text-amber-700 mt-2">Couldn’t attach: {created.failed.join(', ')}</div>}
+        {!share && created.dropbox?.url && (
+          <div className="text-xs text-gray-500 mt-2">📁 <a href={created.dropbox.url} target="_blank" rel="noopener noreferrer" className="text-[#0808f8] hover:underline">{String(created.dropbox.path || 'Dropbox folder').split('/').filter(Boolean).slice(1).join(' › ')}</a>{created.dropbox.in_column ? ' · in the Dropbox column' : ''}</div>
+        )}
+        {!share && created.dropbox?.error && <div className="text-xs text-amber-700 mt-2">{created.dropbox.error}</div>}
+        {!share && created.dropbox === null && <div className="text-xs text-gray-400 mt-2">No Dropbox folder — Dropbox isn’t connected yet (Studio → Connections).</div>}
         <div className="flex justify-center gap-2 mt-6">
           {created.url && <a href={created.url} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold px-5 py-2.5 rounded-xl text-white flex items-center gap-1.5" style={{ background: '#0808f8' }}>Open in Monday <ExternalLink size={14} /></a>}
           <button type="button" onClick={reset} className="text-sm font-semibold px-5 py-2.5 rounded-xl border border-gray-200 hover:bg-gray-50">{share ? 'Request another' : 'New ticket'}</button>

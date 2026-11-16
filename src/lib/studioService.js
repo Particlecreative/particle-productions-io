@@ -93,4 +93,7 @@ export const studioApi = {
   disconnectBamboo: () => call('/connections/bamboohr', { method: 'DELETE' }),
   connectTmdb: (apiKey) => call('/connections/tmdb', { method: 'PUT', body: { api_key: apiKey } }),
   disconnectTmdb: () => call('/connections/tmdb', { method: 'DELETE' }),
+  // Dropbox for ticket folders: returns Dropbox's sign-in URL (the browser goes there, then comes back to Connections)
+  connectDropbox: (appKey, base) => call('/connections/dropbox', { method: 'POST', body: { app_key: appKey, base } }),
+  disconnectDropbox: () => call('/connections/dropbox', { method: 'DELETE' }),
 };

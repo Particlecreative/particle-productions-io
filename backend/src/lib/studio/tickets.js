@@ -9,6 +9,7 @@ const W = require('../creative/week');
 const { getAnthropic } = require('../anthropic');
 const { createItem, addUpdate } = require('./write');
 const sources = require('./sources');
+const folders = require('./dropboxFolders');
 
 const MODEL = 'claude-opus-5-5';
 const FORM_GROUP = 'new_group__1'; // "Form Requests" on both boards
@@ -327,7 +328,7 @@ function briefText(board, f) {
 }
 
 /** Create the ticket on Monday (after the user approved it in the UI). */
-async function submitTicket({ config, form, board, fields, people, user, conversation, files }) {
+async function submitTicket({ config, form, board, fields, people, user, conversation, files, brandId = 'particle' }) {
   const def = form.boards[board];
   if (!def) throw Object.assign(new Error('Unknown board'), { status: 400 });
   const clean = sanitize(form, board, fields);
@@ -366,7 +367,8 @@ async function submitTicket({ config, form, board, fields, people, user, convers
   const name = itemName(clean);
   const item = await createItem({ boardId: config.boards[board].board_id, groupId: FORM_GROUP, name, columnValues: values, createLabels: newLabel });
   if (!item?.id) throw new Error('Monday did not return the new item');
-  const { attached, failed, inColumn } = await attachFiles({ itemId: item.id, column: config.boards[board].columns?.files, fileIds: files, clean, board, user });
+  const dropbox = await makeFolder({ config, board, clean, name, itemId: item.id, brandId });
+  const { attached, failed, inColumn } = await attachFiles({ itemId: item.id, column: config.boards[board].columns?.files, fileIds: files, clean, board, user, dropbox });
 
   try {
     await db.query(
@@ -374,7 +376,32 @@ async function submitTicket({ config, form, board, fields, people, user, convers
       [board, String(item.id), item.url || null, name, JSON.stringify(clean), JSON.stringify((conversation || []).slice(-30)), user?.name || user?.email || null]
     );
   } catch { /* history is best-effort */ }
-  return { id: String(item.id), url: item.url || null, name, attached, in_column: inColumn, failed };
+  return { id: String(item.id), url: item.url || null, name, attached, in_column: inColumn, failed, dropbox };
+}
+
+/**
+ * The ticket's Dropbox folder, where the studio's folders go (dropboxFolders.js), and its link in the ticket's
+ * Dropbox column — Tomer, 16 Nov 2026. → { url, path, in_column } · { error } · null when Dropbox isn't connected.
+ * Never stops the ticket: Monday has it already.
+ */
+async function makeFolder({ config, board, clean, name, itemId, brandId }) {
+  let f;
+  try {
+    f = await folders.createTicketFolder({ board, department: clean.department, product: clean.product, platform: clean.platform, websiteTask: clean.website_task, itemName: name, brandId });
+  } catch (e) {
+    console.warn('[studio] dropbox folder:', e.message);
+    return { error: `Dropbox: ${e.message}` };
+  }
+  if (!f) return null;
+  const col = config.boards[board].columns?.dropbox;
+  if (!col) return { ...f, in_column: false };
+  try {
+    await monday.mondayQuery('mutation ($b: ID!, $i: ID!, $v: JSON!) { change_multiple_column_values(board_id: $b, item_id: $i, column_values: $v) { id } }',
+      { b: String(config.boards[board].board_id), i: String(itemId), v: JSON.stringify({ [col]: { url: f.url, text: 'Dropbox Link' } }) });
+    return { ...f, in_column: true };
+  } catch (e) {
+    return { ...f, in_column: false, error: `The folder is made, but Monday didn’t take the link (${e.message}) — paste it in the Dropbox column` };
+  }
 }
 
 /**
@@ -382,7 +409,7 @@ async function submitTicket({ config, form, board, fields, people, user, convers
  * Every file goes in the item's "Relevant Files" column — where the team looks; one that won't go there is attached to
  * the brief update instead. Then the item is read back, and only files Monday really has count as attached.
  */
-async function attachFiles({ itemId, column, fileIds, clean, board, user }) {
+async function attachFiles({ itemId, column, fileIds, clean, board, user, dropbox = null }) {
   const wanted = [...new Set((fileIds || []).map(String))];
   const failed = [];
   let attach = [];
@@ -401,7 +428,8 @@ async function attachFiles({ itemId, column, fileIds, clean, board, user }) {
   // Same shape as the team's briefs (starts with "Department:"); who wrote it goes at the end
   const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
   const names = uploaded.map(u => esc(u.name)).join(', ');
-  const html = esc(briefText(board, clean)).replace(/\n/g, '<br>') + (uploaded.length ? `<br><br>📎 Files in “Relevant Files”: ${names}` : '');
+  const html = esc(briefText(board, clean)).replace(/\n/g, '<br>') + (uploaded.length ? `<br><br>📎 Files in “Relevant Files”: ${names}` : '')
+    + (dropbox?.url ? `<br><br>📁 Dropbox folder for the finished files: <a href="${esc(dropbox.url)}">${esc(dropbox.path || 'open')}</a>` : '');
   let updateId = null;
   try {
     const u = await addUpdate(itemId, `${html}<br><br><em>— brief from CP Studio, by ${esc(user?.name || 'the studio')}</em>`);

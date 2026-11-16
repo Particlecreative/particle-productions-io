@@ -147,7 +147,8 @@ export function fixtureUpdates(itemId) {
 }
 
 export const fixtureInspiration = { date: '2026-10-21', line: 'Just keep swimming.', title: 'Finding Nemo', year: 2003, director: 'Andrew Stanton', image_url: null, source: null };
-export const fixtureConnections = { monday: { connected: true }, bamboohr: { connected: false }, tmdb: { connected: false } };
+export const fixtureConnections = { monday: { connected: true }, bamboohr: { connected: false }, tmdb: { connected: false },
+  dropbox: { connected: false, base: '/Creative Assets 2026 - MV Sync', redirect_uri: 'http://localhost:5173/api/studio/dropbox/callback' } };
 
 const OPTS = {
   department: ['Marketing/Media', 'TV', 'Amazon', 'CRM', 'Website'], brand: ['Particle', 'Ashford', 'Levitas', 'Clearstep', 'Blurr', 'Biomella'], product: PRODUCTS.map(p => p[0]).concat('Not a Product Task'),
