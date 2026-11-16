@@ -123,7 +123,15 @@ export function fixtureCall(path, { method = 'GET', body } = {}) {
     const lines = String(f.brief || '').split('\n');
     const brief_text = [lines[0], f.why ? `Why: ${f.why}` : null, lines.slice(1).join('\n').trim() || null, (f.donts || []).length ? `Don'ts:\n${f.donts.map(d => `- ${d}`).join('\n')}` : null, f.test ? `Test: ${f.test}` : null].filter(Boolean).join('\n\n');
     // sample reference (local dev only): the winner a REFRESH builds on, as GET /briefs/:id sends it
-    const references = b.move === 'REFRESH' || b.format === 'design' ? [{ kind: 'winner', key: 'w1', label: 'Gravite Deodorant product shoot image 1 headline 1 text Gravite Fans', format: 'static',
+    // a design brief that's not a REFRESH names a template → the file on the last ticket that used it (sample)
+    if (b.format === 'design' && b.move !== 'REFRESH') {
+      const references = [{ kind: 'template', key: 'template:1', template: 'Search Bar', label: 'Search Bar template', format: 'static',
+        image: 'https://storage.googleapis.com/spring-assets-prod/images/afdd1598-1b12-4b42-8e87-722038c38c6d_570810726_25185427484477995_552842309205868905_n.jpg',
+        link: 'https://particle-for-men.monday.com/boards/8036329818/pulses/13345416643', note: 'Real-query search bar + product cards (search-result style)',
+        example: { item_id: '13345416643', name: 'Instant Eye Firming Cream | Meta | IEFC Search Bar', date: '2026-10-21T12:49:15Z' } }];
+      return { brief: { ...b, brief_text }, examples: b.evidence?.examples || [], references };
+    }
+    const references = b.move === 'REFRESH' ? [{ kind: 'winner', key: 'w1', label: 'Gravite Deodorant product shoot image 1 headline 1 text Gravite Fans', format: 'static',
       image: 'https://storage.googleapis.com/spring-assets-prod/images/afdd1598-1b12-4b42-8e87-722038c38c6d_570810726_25185427484477995_552842309205868905_n.jpg',
       link: null, headline: 'Gravité Deodorant for Men: Smell Great, Feel Invincible', stats: { roas: 4.95, spend: 2978, purchases: 159, percentile: 99, account: 'Particle Body', campaign: null } }] : [];
     return { brief: { ...b, brief_text }, examples: b.evidence?.examples || [], references };

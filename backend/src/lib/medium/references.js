@@ -5,6 +5,7 @@
  *   • the winner a move builds on (REFRESH / ITERATE / TRANSFER / HEADLINE_HOOK …): request.source_key → the
  *     Upspring row in evidence.winners — its original image (1200 px, not a thumbnail) and, for a video, the video;
  *   • Freeform references: images, Upspring ads (with their media), Monday tickets and web pages (links).
+ *   • (templateRef.js) a named template's example — the file on the last Monday ticket that used it.
  *
  * referencesOf() is pure (tested) and feeds the brief view; download() fetches the media for the Monday ticket.
  */
@@ -12,7 +13,8 @@
 const MAX_IMAGE = 20 * 1024 * 1024;
 const MAX_VIDEO = 90 * 1024 * 1024;
 // media hosts we fetch directly (Upspring's own storage, Meta's CDN) — anything else goes through the SSRF-safe fetch
-const TRUSTED = /(^|\.)storage\.googleapis\.com$|(^|\.)upspring\.ai$|(^|\.)fbcdn\.net$/i;
+const TRUSTED = /(^|\.)storage\.googleapis\.com$|(^|\.)upspring\.ai$|(^|\.)fbcdn\.net$|^files-monday-com\.s3[a-z0-9.-]*\.amazonaws\.com$/i;
+const MIME_OF = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', mp4: 'video/mp4', mov: 'video/quicktime', m4v: 'video/mp4', webm: 'video/webm' };
 
 const linkFor = (pattern, id) => (pattern && /\{id\}/.test(pattern) && id ? pattern.replace('{id}', encodeURIComponent(id)) : null);
 const fileLabel = (url) => { try { return decodeURIComponent(new URL(url).pathname.split('/').pop() || '') || 'Reference image'; } catch { return 'Reference image'; } };
@@ -75,11 +77,18 @@ async function download(refs) {
   let i = 0;
   for (const ref of attachable(refs)) {
     i += 1;
-    const tries = [ref.video && ['video', ref.video, MAX_VIDEO], ref.image && ['image', ref.image, MAX_IMAGE]].filter(Boolean);
+    let tries = [ref.video && ['video', ref.video, MAX_VIDEO], ref.image && ['image', ref.image, MAX_IMAGE]].filter(Boolean);
     let got = null, why = null;
+    if (ref.asset_id) {   // a file already on Monday (a template's example): its link expires, so ask Monday for a fresh one
+      const a = await require('./templateRef').assetLink(ref.asset_id).catch(e => { why = e.message; return null; });
+      tries = a ? [[ref.video ? 'video' : 'image', a.url, ref.video ? MAX_VIDEO : MAX_IMAGE]] : [];
+      if (!a && !why) why = 'Monday no longer has the file';
+    }
     for (const [type, url, max] of tries) {
       try {
         const f = await fetchMedia(url, max);
+        const ext = (String(ref.file_name || '').match(/\.(\w+)$/)?.[1] || String(url).match(/\.(jpe?g|png|webp|gif|mp4|mov|m4v|webm)(?:\?|$)/i)?.[1] || '').toLowerCase();
+        if (!/^(image|video)\//.test(f.mime) && MIME_OF[ext]) f.mime = MIME_OF[ext];   // S3 sometimes answers "binary/octet-stream"
         if (!f.mime.startsWith(`${type}/`) && !(type === 'image' && /\.(jpe?g|png|webp|gif)(\?|$)/i.test(url))) throw new Error(`not an ${type} (${f.mime || 'unknown type'})`);
         got = { name: fileName(i, ref.label, f.mime, url), mime: f.mime || (type === 'video' ? 'video/mp4' : 'image/jpeg'), buffer: f.buffer, ref };
         break;

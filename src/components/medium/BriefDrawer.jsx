@@ -109,6 +109,11 @@ export default function BriefDrawer({ id, onClose, notify, onChanged, isAdmin, m
               {improving && <p className="mt-4 text-[13.5px] trk-muted"><Loader2 size={13} className="inline animate-spin mr-1" /> Improving — the new version shows up as its own tab when it’s checked.</p>}
 
               {data.references?.length > 0 && <References refs={data.references} b={b} mondayOn={mondayOn} />}
+              {!(data.references || []).some(r => r.image || r.video) && /attached reference/i.test(b.fields?.brief || '') && (
+                <p className="mt-6 text-[13px] rounded-xl px-3.5 py-2.5" style={{ background: 'var(--trk-glass-hi)', color: 'var(--trk-amber)' }}>
+                  The brief says “attached reference”, but Medium has no file for it{b.fields?.template ? ` (“${b.fields.template}” has no example on Monday yet)` : ''} — add it to the Monday ticket by hand, or edit that line.
+                </p>
+              )}
 
               {/* the brief */}
               <section className="mt-7">

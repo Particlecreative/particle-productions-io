@@ -55,6 +55,21 @@ router.get('/upspring/callback', async (req, res) => {
   }
 });
 
+// ── a template's example file on Monday (public, HMAC-signed short-lived URL from the brief endpoints) ──
+// Monday's own link expires after an hour, so the brief carries a signed link to here and this asks Monday for a fresh one.
+router.get('/asset/:id', async (req, res) => {
+  const T = require('../lib/medium/templateRef');
+  if (!T.checkAsset(req.params.id, req.query.exp, req.query.sig)) return res.status(404).end();
+  try {
+    const a = await T.assetLink(req.params.id);
+    if (!a) return res.status(404).end();
+    res.set('Cache-Control', 'private, max-age=600').redirect(302, a.url);
+  } catch (e) {
+    console.warn('[medium] asset', e.message);
+    res.status(502).end();
+  }
+});
+
 // ── the medium-brief plugin (Claude desktop / Cowork) calls a few routes with a service token instead of a session ──
 // Header X-Medium-Token: <token> (or Authorization: Bearer <token>) = MEDIUM_SERVICE_TOKEN, else CAPTAIN_SERVICE_TOKEN.
 // A Bearer value that isn't the service token is treated as a normal user JWT. The token is never logged.
@@ -395,7 +410,7 @@ router.get('/briefs/:id', async (req, res) => {
     const b = cleanBrief(rows[0]);
     const examples = b.exemplar_ids?.length ? (await db.query('SELECT id, board_id, item_id, name, kind, lane, product FROM medium_exemplars WHERE id = ANY($1::int[])', [b.exemplar_ids])).rows : [];
     // the reference it was written from — shown full size in the brief, uploaded to Monday on approval
-    const references = require('../lib/medium/references').referencesOf(b, { upspringLink: (await getConfig().catch(() => ({}))).upspring_link });
+    const references = await require('../lib/medium/templateRef').withTemplate(b, { upspringLink: (await getConfig().catch(() => ({}))).upspring_link });
     res.json({ brief: { ...b, brief_text: require('../lib/medium/style').composeBrief(b.fields || {}) }, examples, references });
   } catch (err) { errorJson(res, err); }
 });

@@ -207,15 +207,15 @@ async function mediumRefs(checks) {
   }
   const out = new Map();
   if (!want.size) return out;
-  const { rows } = await db.query('SELECT id, status, request, evidence, monday_item_id, format FROM medium_briefs WHERE id = ANY($1::uuid[])', [[...new Set(want.values())]]).catch(() => ({ rows: [] }));
+  const { rows } = await db.query('SELECT id, status, request, evidence, monday_item_id, format, fields FROM medium_briefs WHERE id = ANY($1::uuid[])', [[...new Set(want.values())]]).catch(() => ({ rows: [] }));
   const byId = new Map(rows.map(r => [String(r.id), r]));
   const cfg = await require('../lib/medium/config').getConfig().catch(() => ({}));
-  const { referencesOf } = require('../lib/medium/references');
+  const { withTemplate } = require('../lib/medium/templateRef');
   for (const [checkId, briefId] of want) {
     const b = byId.get(briefId);
     if (!b) continue;
     out.set(checkId, {
-      references: referencesOf(b, { upspringLink: cfg.upspring_link }),
+      references: await withTemplate(b, { upspringLink: cfg.upspring_link, timeoutMs: 5000 }),
       medium: { id: briefId, status: b.status, monday_item_id: b.monday_item_id || null, monday_refs: b.evidence?.monday_refs || null },
     });
   }

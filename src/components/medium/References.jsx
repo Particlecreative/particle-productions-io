@@ -3,7 +3,8 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, ExternalLink, Maximize2, Paperclip } from 'lucide-react';
 
-const REF_KIND = { winner: 'The winner it builds on', upspring: 'Upspring ad', image: 'Reference image', monday: 'Monday ticket', web: 'Web page' };
+const REF_KIND = { winner: 'The winner it builds on', template: 'The template it names', upspring: 'Upspring ad', image: 'Reference image', monday: 'Monday ticket', web: 'Web page' };
+const shortDate = (d) => { const t = d ? new Date(d) : null; return t && !Number.isNaN(t.getTime()) ? t.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : null; };
 const usd = (n) => `$${Math.round(n).toLocaleString('en-US')}`;
 
 /**
@@ -63,11 +64,15 @@ function RefCard({ r, onOpen }) {
         <div className="font-semibold text-[14.5px] leading-snug break-words">{r.label}</div>
         {perf.length > 0 && <div className="trk-muted">{perf.join(' · ')}{st.account ? <span className="trk-dim"> · {st.account}</span> : null}</div>}
         {r.headline && <div><span className="trk-dim">On the ad:</span> “{r.headline}”</div>}
+        {r.kind === 'template' && r.example?.name && (
+          <div className="trk-muted">The file on the last ticket that used it: <span className="font-medium">{r.example.name}</span>{shortDate(r.example.date) ? <span className="trk-dim"> · {shortDate(r.example.date)}</span> : null}</div>
+        )}
+        {r.kind === 'template' && r.note && <div className="trk-dim">{r.note}</div>}
         {size && <div className="text-[12px] trk-dim">Original file · {size[0]} × {size[1]}</div>}
         <div className="flex flex-wrap gap-2 mt-auto pt-1">
           {r.video ? <a className="trk-btn !py-1 !text-[12px]" href={r.video} target="_blank" rel="noopener noreferrer"><Maximize2 size={12} /> Full size</a>
             : <button type="button" className="trk-btn !py-1 !text-[12px]" onClick={onOpen}><Maximize2 size={12} /> Full size</button>}
-          {r.link && <a className="trk-btn !py-1 !text-[12px]" href={r.link} target="_blank" rel="noopener noreferrer"><ExternalLink size={12} /> {r.kind === 'winner' || r.kind === 'upspring' ? 'Open in Upspring' : 'Open'}</a>}
+          {r.link && <a className="trk-btn !py-1 !text-[12px]" href={r.link} target="_blank" rel="noopener noreferrer"><ExternalLink size={12} /> {r.kind === 'winner' || r.kind === 'upspring' ? 'Open in Upspring' : r.kind === 'template' ? 'Open that ticket' : 'Open'}</a>}
         </div>
       </div>
     </div>

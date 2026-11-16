@@ -72,3 +72,60 @@ test('upload: Relevant Files first, the update when the column refuses, and only
   assert.equal(v.attached.length, 0);
   assert.match(v.failed[0], /Monday doesn't show it/);
 });
+
+// ── a named template's example (16 Nov 2026: "where is the attached reference") ──
+const T = require('../src/lib/medium/templateRef');
+const TEMPLATES = [
+  { name: 'Search Bar', match: ['search bar', 'search result'] }, { name: 'Hero 25 / Hero 30', match: ['hero 25', 'hero 30', 'hero25', 'hero30'] },
+  { name: '5 Bucks. 5 Problems.', match: ['5 bucks'] }, { name: 'Icon Grid "N Signs"', match: ['icon grid', 'signs'] }, { name: 'Women Lie (Gravité Deo)', match: ['women lie'] },
+];
+
+test('the brief\'s template field finds the house template — longest match wins, nothing when it names none', () => {
+  const m = (s) => T.matchTemplate(s, TEMPLATES)?.name || null;
+  assert.equal(m('Search Bar'), 'Search Bar');
+  assert.equal(m('Search Bar (static)'), 'Search Bar');
+  assert.equal(m('Hero 25 (Advanced Bundle 25% static)'), 'Hero 25 / Hero 30');
+  assert.equal(m('5 Bucks. 5 Problems.'), '5 Bucks. 5 Problems.');
+  assert.equal(m('Icon Grid "N Signs" — 6 signs'), 'Icon Grid "N Signs"');
+  assert.equal(m('Gravité Deodorant product shoot static (winner)'), null);
+  assert.equal(m('Whitelist testimonial static'), null);
+  assert.equal(m(''), null);
+  assert.equal(m(null), null);
+});
+
+test('a brief with its own picture never looks the template up; one without a template field has nothing to add', async () => {
+  const own = await T.withTemplate({ ...REFRESH, fields: { ...REFRESH.fields, template: 'Search Bar' } });
+  assert.deepEqual(own.map(r => r.kind), ['winner']);
+  assert.deepEqual(await T.withTemplate({ format: 'design', request: {}, evidence: {}, fields: {} }), []);
+});
+
+test('signed asset links: only what the server signed, only until it expires', () => {
+  const u = new URL(T.assetUrl('3332066810'), 'https://x');
+  assert.equal(u.pathname, '/api/medium/asset/3332066810');
+  assert.ok(T.checkAsset('3332066810', u.searchParams.get('exp'), u.searchParams.get('sig')));
+  assert.ok(!T.checkAsset('3332066811', u.searchParams.get('exp'), u.searchParams.get('sig')));
+  assert.ok(!T.checkAsset('3332066810', String(Math.floor(Date.now() / 1000) - 5), u.searchParams.get('sig')));
+  assert.ok(!T.checkAsset('../etc', u.searchParams.get('exp'), u.searchParams.get('sig')));
+});
+
+test('the template\'s Monday file uploads through a fresh link, named and typed even when S3 says octet-stream', async (t) => {
+  t.mock.method(T, 'assetLink', async () => ({ url: 'https://files-monday-com.s3.amazonaws.com/1/resources/9/1d29.jpg?X-Amz-Expires=3600', name: '1d29.jpg', ext: 'jpg' }));
+  t.mock.method(globalThis, 'fetch', async () => new Response(Buffer.from('jpeg'), { headers: { 'content-type': 'binary/octet-stream' } }));
+  const ref = { kind: 'template', label: 'Search Bar template', image: '/api/medium/asset/9?exp=1&sig=x', video: null, asset_id: '9', file_name: '1d29.jpg' };
+  const { files, failed } = await R.download([ref]);
+  assert.deepEqual(failed, []);
+  assert.equal(files[0].name, 'Reference 1 — Search Bar template.jpg');
+  assert.equal(files[0].mime, 'image/jpeg');
+  // Monday no longer has it → reported, not thrown
+  t.mock.method(T, 'assetLink', async () => null);
+  const gone = await R.download([ref]);
+  assert.equal(gone.files.length, 0);
+  assert.match(gone.failed[0], /Monday no longer has the file/);
+});
+
+test('the Monday update says where the template example comes from', () => {
+  const ref = { kind: 'template', label: 'Search Bar template', image: '/x', link: 'https://particle-for-men.monday.com/boards/8036329818/pulses/13345416643', attached: 'column',
+    example: { item_id: '13345416643', name: 'Instant Eye Firming Cream | Meta | IEFC Search Bar', date: '2026-10-21T12:00:00Z' } };
+  const html = M.briefHtml({ format: 'design', product: 'Varros', request: {}, fields: { brief: 'Please look at attached reference (the Search Bar static), copy style, apply to Particle design.' } }, 'Tomer', [ref]);
+  assert.match(html, /<li>Search Bar template — as on “Instant Eye Firming Cream \| Meta \| IEFC Search Bar” \(21 Oct 2026\) · 📎 in Relevant Files · <a href="https:\/\/particle-for-men\.monday\.com\/boards\/8036329818\/pulses\/13345416643">Open that ticket<\/a><\/li>/);
+});

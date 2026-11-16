@@ -135,9 +135,10 @@ function briefHtml(b, approver, refs = []) {
     const st = r.stats || {};
     const perf = [st.roas != null ? `ROAS ${Number(st.roas).toFixed(2)}` : null, st.spend ? `${money(st.spend)} spend` : null, st.percentile != null ? `${st.percentile}th pct` : null].filter(Boolean).join(' · ');
     const where = r.attached === 'column' ? '📎 in Relevant Files' : r.attached === 'update' ? '📎 attached below' : null;
-    const link = r.link ? `<a href="${esc(r.link)}">${r.kind === 'winner' || r.kind === 'upspring' ? 'Open in Upspring' : r.kind === 'monday' ? 'Open the ticket' : 'Open'}</a>` : null;
+    const link = r.link ? `<a href="${esc(r.link)}">${r.kind === 'winner' || r.kind === 'upspring' ? 'Open in Upspring' : r.kind === 'monday' || r.kind === 'template' ? 'Open that ticket' : 'Open'}</a>` : null;
     const tail = [where, link].filter(Boolean);
-    return `<li>${esc(r.label)}${r.kind === 'winner' ? ` — ${r.format === 'video' ? 'video' : 'static'} winner${perf ? ` (${esc(perf)})` : ''}` : ''}${tail.length ? ` · ${tail.join(' · ')}` : ''}</li>`;
+    const from = r.kind === 'template' && r.example?.name ? ` — as on “${esc(r.example.name)}”${r.example.date ? ` (${esc(new Date(r.example.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }))})` : ''}` : '';
+    return `<li>${esc(r.label)}${r.kind === 'winner' ? ` — ${r.format === 'video' ? 'video' : 'static'} winner${perf ? ` (${esc(perf)})` : ''}` : from}${tail.length ? ` · ${tail.join(' · ')}` : ''}</li>`;
   };
   const shown = (refs || []).filter(r => r && r.label);
   return [
@@ -223,7 +224,7 @@ async function submitBrief(b, { approver, approverEmail = null, cfg = {} } = {})
   const itemId = d?.create_item?.id;
   if (!itemId) throw new Error('Monday did not return the new item');
   // the reference first, so the update can say where it is
-  const refs = R.referencesOf(b, { upspringLink: cfg.upspring_link });
+  const refs = await require('./templateRef').withTemplate(b, { upspringLink: cfg.upspring_link });
   const up = R.attachable(refs).length ? await attachReferences(itemId, format, refs) : null;
   const inColumn = new Set((up?.done || []).map(d => d.f.ref));
   const inUpdate = new Set((up?.later || []).map(l => l.f.ref));
