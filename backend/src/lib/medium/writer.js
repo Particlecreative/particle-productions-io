@@ -504,7 +504,13 @@ async function resolveReferences(refs = []) {
       } else if (/upspring\.ai|^upspring-ad:/i.test(url)) {
         const U = require('./upspring');
         const adId = U.upspringAdId(url);
-        if (adId && U.configured()) out.push({ kind: 'upspring', url, text: U.adAsReference(await U.ad(adId, 'narrative')) });
+        if (adId && U.configured()) {
+          const a = await U.ad(adId, 'narrative');
+          // its media, for the brief view and the Monday ticket (the original image, the video when it is one)
+          const m = (await U.ad(adId, 'media').catch(() => null))?.media || a?.media || {};
+          out.push({ kind: 'upspring', url, text: U.adAsReference(a), label: [a?.advertiser?.name, a?.one_line || a?.hook_text].filter(Boolean).join(' — ').slice(0, 160) || null,
+            image: m.image_url || m.thumbnail_url || null, video: m.video_url || null, link: a?.ad_library_url || null });
+        }
         else out.push({ kind: 'upspring', url, text: 'Upspring link — could not be read on the server. Treat it as the structure reference the idea names.' });
       } else if (/^https?:\/\//i.test(url)) {
         const r = await fetch(url, { signal: AbortSignal.timeout(15000), headers: { 'User-Agent': 'Mozilla/5.0 (compatible; CP-Medium/1.0)' } });
@@ -515,6 +521,7 @@ async function resolveReferences(refs = []) {
           const buf = Buffer.from(await r.arrayBuffer());
           if (buf.length > 4 * 1024 * 1024) out.push({ kind: 'image', url, text: 'Image too large to read (over 4 MB)' });
           else out.push({ kind: 'image', url, text: 'Reference image — attached above: read its setting, talent, palette and composition', media_type: mt, data: buf.toString('base64') });
+          // (also kept as a reference: shown full size in the brief, uploaded to the Monday ticket)
         } else if (!r.ok || !/text\/html|text\/plain/.test(type)) out.push({ kind: 'web', url, text: `Could not read (${r.status} ${mt})` });
         else {
           const html = (await r.text()).slice(0, 400000);
@@ -584,7 +591,7 @@ async function runFreeform({ brief_id }) {
     await setRow(row.id, {
       status: 'PENDING_REVIEW', lane, product, format, kind: m.kind, move: 'FREEFORM', ticket_name: m.ticket_name, fields: m.fields, lines: m.lines, style: m.style, score: m.score, preflight: m.preflight,
       versions, exemplar_ids: ctx2.examples.map(e => e.id), cost_usd: cost, error: null,
-      evidence: { items: m.evidence, chips: j.chips, findings: j.findings, changed: j.changed, question: j.question, references: refs.map(({ kind, url }) => ({ kind, url })), siblings, ...(auto.length ? { auto_improve: auto } : {}) },
+      evidence: { items: m.evidence, chips: j.chips, findings: j.findings, changed: j.changed, question: j.question, references: refs.map(({ kind, url, label, image, video, link }) => ({ kind, url, ...(label ? { label } : {}), ...(image ? { image } : {}), ...(video ? { video } : {}), ...(link ? { link } : {}) })), siblings, ...(auto.length ? { auto_improve: auto } : {}) },
     });
     return { ok: true };
   } catch (e) {

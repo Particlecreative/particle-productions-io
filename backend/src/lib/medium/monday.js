@@ -6,8 +6,12 @@
  * header line, concept, don'ts, hook, script by beat, test — with one 'Why' line at the end; then Captain Caption
  * locks the approved on-screen text to the item.
  * Only runs when medium_config.monday_submit is on, and only after a person clicked Approve.
+ * A brief written from a reference (16 Nov 2026) carries it: the original image / video goes in Relevant Files and
+ * the update names it right under the header ("Please look at attached reference…" is then true).
  */
-const { mondayQuery } = require('../monday');
+const monday = require('../monday');
+const { mondayQuery } = monday;
+const R = require('./references');
 const { BOARDS } = require('./config');
 const { composeBrief } = require('./style');
 const { productValues } = require('../studio/product');
@@ -100,7 +104,7 @@ function columnValues(b, { labels = {}, requesterId = null } = {}) {
  * Concept, Don'ts, Hook (or hook variations), Script / Message laid out by beat (or Supporting Text), Test, and a
  * one-line Why at the end. Monday updates take simple HTML.
  */
-function briefHtml(b, approver) {
+function briefHtml(b, approver, refs = []) {
   const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const br = (s) => esc(s).replace(/\n/g, '<br>');
   const f = b.fields || {};
@@ -125,8 +129,20 @@ function briefHtml(b, approver) {
     const m = t.match(/^(SCRIPT|VISUALS?|VO|SUPERS?|ON[- ]SCREEN|SFX|MUSIC|CTA)\s*:\s*(.*)$/i);
     return m ? `<p><strong>${esc(m[1].toUpperCase())}:</strong> ${esc(m[2])}</p>` : `<p>${esc(t)}</p>`;
   }).join('');
+  // the reference it's written from — where the file is, and a link to the original
+  const money = (n) => `$${Math.round(n).toLocaleString('en-US')}`;
+  const refLine = (r) => {
+    const st = r.stats || {};
+    const perf = [st.roas != null ? `ROAS ${Number(st.roas).toFixed(2)}` : null, st.spend ? `${money(st.spend)} spend` : null, st.percentile != null ? `${st.percentile}th pct` : null].filter(Boolean).join(' · ');
+    const where = r.attached === 'column' ? '📎 in Relevant Files' : r.attached === 'update' ? '📎 attached below' : null;
+    const link = r.link ? `<a href="${esc(r.link)}">${r.kind === 'winner' || r.kind === 'upspring' ? 'Open in Upspring' : r.kind === 'monday' ? 'Open the ticket' : 'Open'}</a>` : null;
+    const tail = [where, link].filter(Boolean);
+    return `<li>${esc(r.label)}${r.kind === 'winner' ? ` — ${r.format === 'video' ? 'video' : 'static'} winner${perf ? ` (${esc(perf)})` : ''}` : ''}${tail.length ? ` · ${tail.join(' · ')}` : ''}</li>`;
+  };
+  const shown = (refs || []).filter(r => r && r.label);
   return [
     `<p>${header}</p>`,
+    shown.length ? section(shown.length > 1 ? 'References' : 'Reference', `<ul>${shown.map(refLine).join('')}</ul>`) : '',
     section(video ? 'Video Concept' : 'Concept / Idea', concept),
     donts.length ? section('Don\u2019ts', `<ul>${donts.map(d => `<li>${esc(d)}</li>`).join('')}</ul>`) : '',
     video && hooks.length ? section(hooks.length > 1 ? 'Hook Variations' : 'Hook', hooks.length > 1 ? `<ol>${hooks.map(h => `<li>${esc(h)}</li>`).join('')}</ol>` : `<p>${esc(hooks[0])}</p>`) : '',
@@ -161,7 +177,40 @@ async function mondayUserId(email) {
   return d?.users?.[0]?.id || null;
 }
 
-/** Create the ticket + evidence update; returns { item_id, board_id, skipped }. */
+/**
+ * Upload the reference media to the item: Relevant Files first; what the column refuses goes on the update (finish),
+ * then the item is read back — a file counts only when Monday has it.
+ */
+async function attachReferences(itemId, format, refs) {
+  const { files, failed } = await R.download(refs).catch(e => ({ files: [], failed: [`references: ${e.message}`] }));
+  const column = BOARDS[format].columns.files;
+  const done = [], later = [];
+  for (const f of files) {
+    try {
+      const r = await monday.addFileToColumn(itemId, column, f);
+      if (!r?.add_file_to_column?.id) throw new Error('Monday returned no file');
+      done.push({ id: String(r.add_file_to_column.id), f, where: 'column' });
+    } catch (e) { later.push({ f, why: e.message }); }
+  }
+  const finish = async (updateId) => {
+    for (const { f, why } of later) {
+      try {
+        if (!updateId) throw new Error(why);
+        const r = await monday.addFileToUpdate(updateId, f);
+        if (!r?.add_file_to_update?.id) throw new Error('Monday returned no file');
+        done.push({ id: String(r.add_file_to_update.id), f, where: 'update' });
+      } catch (e) { failed.push(`${f.name} (${e.message})`); }
+    }
+    if (done.length) {
+      const have = await monday.itemAssetIds(itemId).catch(() => null);
+      if (have) for (const d of done.filter(x => !have.has(x.id))) { failed.push(`${d.f.name} (uploaded, but Monday doesn't show it on the ticket)`); d.lost = true; }
+    }
+    return { attached: done.filter(d => !d.lost).map(d => ({ name: d.f.name, where: d.where, label: d.f.ref.label })), failed };
+  };
+  return { done, later, failed, finish };
+}
+
+/** Create the ticket + the brief update (+ the reference files); returns { item_id, board_id, skipped, references }. */
 async function submitBrief(b, { approver, approverEmail = null, cfg = {} } = {}) {
   const format = b.format === 'design' ? 'design' : 'video';
   const boardId = BOARDS[format].board_id;
@@ -173,8 +222,17 @@ async function submitBrief(b, { approver, approverEmail = null, cfg = {} } = {})
     { b: boardId, g: group, n: ticketName(b), v: JSON.stringify(values) }, { timeoutMs: 60000 });
   const itemId = d?.create_item?.id;
   if (!itemId) throw new Error('Monday did not return the new item');
-  await mondayQuery('mutation ($i: ID!, $body: String!) { create_update(item_id: $i, body: $body) { id } }', { i: itemId, body: briefHtml(b, approver) }).catch(e => skipped.push(`brief update: ${e.message}`));
-  return { item_id: String(itemId), board_id: boardId, skipped };
+  // the reference first, so the update can say where it is
+  const refs = R.referencesOf(b, { upspringLink: cfg.upspring_link });
+  const up = R.attachable(refs).length ? await attachReferences(itemId, format, refs) : null;
+  const inColumn = new Set((up?.done || []).map(d => d.f.ref));
+  const inUpdate = new Set((up?.later || []).map(l => l.f.ref));
+  const shown = refs.map(r => ({ ...r, attached: inColumn.has(r) ? 'column' : inUpdate.has(r) ? 'update' : null }));
+  const u = await mondayQuery('mutation ($i: ID!, $body: String!) { create_update(item_id: $i, body: $body) { id } }', { i: itemId, body: briefHtml(b, approver, shown) })
+    .catch(e => { skipped.push(`brief update: ${e.message}`); return null; });
+  const references = up ? await up.finish(u?.create_update?.id || null) : { attached: [], failed: [] };
+  if (references.failed.length) skipped.push(`reference: ${references.failed.join('; ')}`);
+  return { item_id: String(itemId), board_id: boardId, skipped, references };
 }
 
-module.exports = { briefHtml, submitBrief, columnValues, ticketName, evidenceHtml, boardLabels };
+module.exports = { briefHtml, submitBrief, columnValues, ticketName, evidenceHtml, boardLabels, attachReferences };

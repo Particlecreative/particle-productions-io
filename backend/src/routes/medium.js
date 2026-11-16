@@ -386,7 +386,9 @@ router.get('/briefs/:id', async (req, res) => {
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
     const b = cleanBrief(rows[0]);
     const examples = b.exemplar_ids?.length ? (await db.query('SELECT id, board_id, item_id, name, kind, lane, product FROM medium_exemplars WHERE id = ANY($1::int[])', [b.exemplar_ids])).rows : [];
-    res.json({ brief: { ...b, brief_text: require('../lib/medium/style').composeBrief(b.fields || {}) }, examples });
+    // the reference it was written from — shown full size in the brief, uploaded to Monday on approval
+    const references = require('../lib/medium/references').referencesOf(b, { upspringLink: (await getConfig().catch(() => ({}))).upspring_link });
+    res.json({ brief: { ...b, brief_text: require('../lib/medium/style').composeBrief(b.fields || {}) }, examples, references });
   } catch (err) { errorJson(res, err); }
 });
 
@@ -480,8 +482,12 @@ async function submitToMonday(b, req, cfg) {
       captain = await require('../lib/captain/brief').attachApproved(b.preflight.check_id, { item_id: r.item_id, board_id: r.board_id, actor: `Medium · ${actorOf(req)}`, override })
         .then(x => ` · approved text locked (Captain update ${x.monday_update})`).catch(e => ` · approved text not locked: ${e.message}`);
     }
-    await db.query(`UPDATE medium_briefs SET status = 'SUBMITTED', monday_item_id = $2, error = NULL, updated_at = NOW() WHERE id = $1`, [b.id, r.item_id]);
-    return { ok: true, item_id: r.item_id, message: `Created on Monday (item ${r.item_id})${captain}${r.skipped.length ? ` · not set: ${r.skipped.join('; ')}` : ''}` };
+    await db.query(`UPDATE medium_briefs SET status = 'SUBMITTED', monday_item_id = $2, error = NULL, updated_at = NOW(),
+      evidence = COALESCE(evidence, '{}'::jsonb) || jsonb_build_object('monday_refs', $3::jsonb) WHERE id = $1`,
+    [b.id, r.item_id, JSON.stringify({ attached: r.references?.attached || [], failed: r.references?.failed || [], at: new Date().toISOString() })]);
+    const n = r.references?.attached?.length || 0;
+    const refNote = n ? ` · reference attached (${n} file${n === 1 ? '' : 's'} in Relevant Files)` : '';
+    return { ok: true, item_id: r.item_id, message: `Created on Monday (item ${r.item_id})${refNote}${captain}${r.skipped.length ? ` · not set: ${r.skipped.join('; ')}` : ''}` };
   } catch (e) {
     await db.query(`UPDATE medium_briefs SET error = $2, updated_at = NOW() WHERE id = $1`, [b.id, `Monday: ${String(e.message).slice(0, 500)}`]).catch(() => null);
     return { ok: false, message: `Approved, but Monday creation failed: ${e.message} — use "Create on Monday" to try again` };
