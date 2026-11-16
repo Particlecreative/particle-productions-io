@@ -37,6 +37,8 @@ const fx = () => import('../components/studio/dev/fixture');
 const hfx = () => import('../components/studio/dev/hotFixture');
 
 export const studioApi = {
+  // Who fits each ticket on "To schedule" (the brain: 6 months of finished tickets)
+  fit: async (items) => (LIVE ? call('/fit', { method: 'POST', body: { items } }) : (await fx()).fixtureFit(items)),
   dashboard: async ({ from, to, force = false, lite = false }) => (LIVE ? call(`/dashboard?from=${from}&to=${to}${force ? '&force=1' : ''}${lite ? '&lite=1' : ''}`) : (await fx()).studioFixture({ from, to })),
   /** Every Video + Design ticket that has a Campaign (Campaign Tracker) */
   campaigns: async ({ force = false } = {}) => (LIVE ? call(`/campaigns${force ? '?force=1' : ''}`) : (await fx()).fixtureCampaigns()),

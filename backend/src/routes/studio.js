@@ -260,6 +260,18 @@ function requireAdminTL(req, res, next) {
   next();
 }
 
+// Who fits each ticket on "To schedule" — learned from 6 months of finished tickets (lib/studio/fit.js)
+router.post('/fit', async (req, res) => {
+  try {
+    const items = (Array.isArray(req.body?.items) ? req.body.items : []).map(i => ({
+      key: String(i.key || ''), board: i.board === 'design' ? 'design' : i.board === 'video' ? 'video' : null,
+      type: i.type || '', product: i.product || '', brand: i.brand || '', platform: i.platform || '', department: i.department || '',
+      requested_by: (Array.isArray(i.requested_by) ? i.requested_by : []).map(String).slice(0, 5),
+    })).filter(i => i.key && i.board);
+    res.json(await require('../lib/studio/fit').fitFor(items, { brandId: req.brandId }));
+  } catch (err) { errorJson(res, err); }
+});
+
 router.post('/ticket/submit', async (req, res) => {
   try {
     if (req.body?.confirm !== true) return res.status(400).json({ error: 'Confirm the ticket first' });

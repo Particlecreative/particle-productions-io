@@ -1,10 +1,11 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronLeft, ChevronRight, Loader2, Plane, Mail, X, AlertTriangle, Inbox, Search, Check, PanelRightOpen, PanelRightClose, RefreshCw, Flag, ArrowUpDown } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2, Plane, Mail, X, AlertTriangle, Inbox, Search, Check, PanelRightOpen, PanelRightClose, RefreshCw, Flag, ArrowUpDown, Sparkles, ChevronDown } from 'lucide-react';
 import { Avatar, Seg, StatusPill, ProductTag, BrandTag, brandsOf, textOn } from './Bits';
 import { applyFilters, addDays, sundayOf, ymd } from './Filters';
 import { studioApi } from '../../lib/studioService';
 import { useStudio, lastWriteAt, outOn, checkSchedule, workdays } from './writes';
+import { ideasFor, reasonText, whenText, loadOf } from './suggest';
 import { SORTS, QUICK, groupFor, poolFor, urgencyOf, matches, forLine } from './scheduleOrder';
 
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -16,6 +17,7 @@ const PANEL_KEY = 'cp_studio_wl_panel';
 const ROLE_KEY = 'cp_studio_wl_role';
 const WEEKS_KEY = 'cp_studio_wl_weeks';
 const SORT_KEY = 'cp_studio_wl_sort';
+const IDEAS_KEY = 'cp_studio_wl_ideas';
 const CACHE_MS = 3 * 60 * 1000;
 const cache = new Map(); // `${from}:${to}` → { data, at } — kept while you move between weeks
 
@@ -424,7 +426,12 @@ export default function Workload({ f }) {
 
           {panel && (
             <SchedulePanel rows={rows} unassigned={unassigned} data={data} q={panelQ} setQ={setPanelQ} who={panelWho} setWho={setPanelWho}
-              onClose={() => setPanel(false)} onGrab={onPointerDown} today={today} byBrand={byBrand} />
+              onClose={() => setPanel(false)} onGrab={onPointerDown} today={today} byBrand={byBrand} all={all}
+              onSchedule={(it, idea) => {
+                const next = { timeline: { from: idea.from, to: idea.to } };
+                if (!it.people.includes(idea.person)) next.people = [idea.person];
+                writes.save(it, next, data);
+              }} />
           )}
         </div>
       )}
@@ -442,7 +449,7 @@ export default function Workload({ f }) {
 
 /** Everything not on the timeline yet — drag a card onto a person and a day.
  *  Smart order by default (overdue → due soon → priority → TV → waiting longest); or group by due date, priority, brand, requester or person. */
-function SchedulePanel({ rows, unassigned, data, q, setQ, who, setWho, onClose, onGrab, today, byBrand }) {
+function SchedulePanel({ rows, unassigned, data, q, setQ, who, setWho, onClose, onGrab, today, byBrand, all, onSchedule }) {
   const [sort, setSortState] = useState(() => { const v = pref(SORT_KEY, 'smart'); return SORTS.some(([k]) => k === v) ? v : 'smart'; });
   const setSort = (v) => { setSortState(v); setPref(SORT_KEY, v); };
   const [quick, setQuick] = useState(null);
@@ -456,6 +463,27 @@ function SchedulePanel({ rows, unassigned, data, q, setQ, who, setWho, onClose, 
   const groups = useMemo(() => groupFor(sort, { unassigned, rows, today, requesters: reqs, who, keep: (it) => matches(it, q, reqs) && (!qf || qf.test(uOf(it))) }),
     [sort, unassigned, rows, today, reqs, who, q, quick, urg]); // eslint-disable-line react-hooks/exhaustive-deps
   const showBrand = sort !== 'brand' && (byBrand || new Set(pool.map(it => it.brand?.label).filter(Boolean)).size > 1);
+
+  // ✨ Ideas: who fits (the brain, from 6 months of finished tickets) and when they have room (from the timeline)
+  const [showIdeas, setShowIdeasState] = useState(() => pref(IDEAS_KEY, '1') !== '0');
+  const setShowIdeas = (v) => { setShowIdeasState(v); setPref(IDEAS_KEY, v ? '1' : '0'); };
+  const [fits, setFits] = useState({});
+  const [learned, setLearned] = useState(null);
+  const [fitErr, setFitErr] = useState(null);
+  const asked = useRef(new Set());
+  useEffect(() => {
+    if (!showIdeas) return;
+    const want = pool.filter(it => ['video', 'design'].includes(it.board) && !asked.current.has(keyOf(it))).slice(0, 150);
+    if (!want.length) return;
+    want.forEach(it => asked.current.add(keyOf(it)));
+    studioApi.fit(want.map(it => ({ key: keyOf(it), board: it.board, type: it.type?.label || '', product: it.product?.label || '', brand: it.brand?.label || '',
+      platform: it.platform || '', department: it.department?.label || '', requested_by: it.requested_by || [] })))
+      .then(r => { setFits(f => ({ ...f, ...r.fits })); setLearned(r.learned); setFitErr(null); })
+      .catch(e => { want.forEach(it => asked.current.delete(keyOf(it))); setFitErr(e.message); });
+  }, [pool, showIdeas]); // eslint-disable-line react-hooks/exhaustive-deps
+  const loads = useMemo(() => Object.fromEntries(Object.keys(data.people || {}).map(id => [id, loadOf(all, id)])), [all, data]);
+  const ideasOf = (it) => (showIdeas && ['video', 'design'].includes(it.board) && (fits[keyOf(it)] || it.people.length)
+    ? ideasFor(it, { fits: fits[keyOf(it)], data, loads, today }) : null);
   return (
     <aside className="hidden md:flex w-[300px] flex-none bg-white rounded-2xl border border-gray-200 flex-col sticky top-2 max-h-[calc(100vh-140px)]">
       <div className="px-3 pt-3 pb-2 border-b border-gray-100">
@@ -486,6 +514,11 @@ function SchedulePanel({ rows, unassigned, data, q, setQ, who, setWho, onClose, 
             ))}
           </div>
         )}
+        <div className="mt-2 flex items-center gap-1.5 text-[10.5px] text-gray-500">
+          <Sparkles size={12} className="text-[#0808f8] flex-none" />
+          <span className="truncate">{!showIdeas ? 'Ideas are hidden' : fitErr ? 'Ideas unavailable right now' : learned ? `Ideas from ${(learned.video + learned.design).toLocaleString('en-US')} finished tickets` : 'Learning from the last 6 months…'}</span>
+          <button type="button" onClick={() => setShowIdeas(!showIdeas)} className="ml-auto flex-none font-semibold text-[#0808f8] hover:underline">{showIdeas ? 'Hide' : 'Show'}</button>
+        </div>
         {who && (
           <button type="button" onClick={() => setWho(null)} className="mt-2 text-[11px] font-semibold text-[#0808f8] flex items-center gap-1">
             Only {first(data.people[who]?.name)} · show everyone <X size={11} />
@@ -506,6 +539,7 @@ function SchedulePanel({ rows, unassigned, data, q, setQ, who, setWho, onClose, 
             <div className="flex flex-col gap-1.5">
               {g.items.slice(0, 40).map(it => (
                 <ScheduleCard key={keyOf(it)} it={it} u={uOf(it)} data={data} sort={sort} showBrand={showBrand} byBrand={byBrand} today={today}
+                  ideas={ideasOf(it)} onSchedule={onSchedule}
                   onGrab={(e) => onGrab(e, it, 'tray', g.person?.id || (it.people.length === 1 ? it.people[0] : null))} />
               ))}
               {g.items.length > 40 && <div className="text-[10px] text-gray-400 text-center py-1">+{g.items.length - 40} more — search or filter to narrow</div>}
@@ -521,7 +555,7 @@ function SchedulePanel({ rows, unassigned, data, q, setQ, who, setWho, onClose, 
 const TONE = { red: '#e2445c', orange: '#fdab3d', gray: '#c4c4c4' };
 const REASON = { red: 'bg-red-50 text-red-600', orange: 'bg-orange-50 text-orange-600', blue: 'bg-[#0808f8]/10 text-[#0808f8]', gray: 'bg-gray-100 text-gray-500' };
 
-function ScheduleCard({ it, u, data, sort, showBrand, byBrand, today, onGrab }) {
+function ScheduleCard({ it, u, data, sort, showBrand, byBrand, today, onGrab, ideas, onSchedule }) {
   const late = it.deadline && it.deadline < today;
   const owners = sort !== 'person' ? it.people.map(p => data.people[p]).filter(Boolean) : [];
   const forWho = sort !== 'requester' ? forLine(it, data.requesters) : '';
@@ -558,6 +592,49 @@ function ScheduleCard({ it, u, data, sort, showBrand, byBrand, today, onGrab }) 
           ))}
         </div>
       )}
+      {ideas?.length > 0 && <Ideas it={it} ideas={ideas} data={data} today={today} onSchedule={onSchedule} />}
+    </div>
+  );
+}
+
+/** ✨ Who should take it and when — the best idea, with a one-click Schedule (Undo like any change); more on request. */
+function Ideas({ it, ideas, data, today, onSchedule }) {
+  const [more, setMore] = useState(false);
+  const [best, ...rest] = ideas;
+  return (
+    <div className="mt-2 pt-2 border-t border-dashed border-gray-200 flex flex-col gap-1.5" onPointerDown={(e) => e.stopPropagation()}>
+      <IdeaRow it={it} idea={best} data={data} today={today} onSchedule={onSchedule} best />
+      {more && rest.map(x => <IdeaRow key={x.person} it={it} idea={x} data={data} today={today} onSchedule={onSchedule} />)}
+      {rest.length > 0 && (
+        <button type="button" onClick={() => setMore(!more)} className="self-start text-[10px] font-semibold text-gray-500 hover:text-[#0808f8] flex items-center gap-0.5">
+          {more ? 'Fewer ideas' : `${rest.length} more idea${rest.length === 1 ? '' : 's'}`} <ChevronDown size={11} className={more ? 'rotate-180' : ''} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function IdeaRow({ it, idea, data, today, onSchedule, best }) {
+  const reasons = (idea.reasons || []).map(r => reasonText(r, data)).filter(Boolean);
+  const lead = idea.assigned ? 'has room' : best ? 'fits best' : null;
+  return (
+    <div className={`flex items-start gap-2 rounded-lg ${best ? 'bg-[#0808f8]/[0.04] -mx-1 px-1 py-1' : ''}`}>
+      {best ? <Sparkles size={12} className="text-[#0808f8] mt-1 flex-none" /> : <span className="w-3 flex-none" />}
+      <Avatar person={idea.p} size={20} />
+      <div className="min-w-0 flex-1">
+        <div className="text-[11px] text-gray-800 leading-snug">
+          <b>{first(idea.p.name)}</b>{lead ? <span className="text-gray-500"> {lead}</span> : null} · <span className="font-semibold text-[#0808f8]">{whenText(idea, today)}</span>
+        </div>
+        <div className="text-[10px] text-gray-500 leading-snug" title={reasons.join(' · ')}>
+          {reasons.length ? reasons.slice(0, 2).join(' · ') : idea.assigned ? 'first days with room' : 'free soonest'}
+          {idea.days > 1 && <span className="text-gray-400"> · {idea.days} days{idea.days_from === 'theirs' ? ', their usual' : ''}</span>}
+        </div>
+        {idea.tight && <div className="text-[10px] font-semibold text-red-600">ends after the deadline ({fmt(it.deadline)})</div>}
+      </div>
+      <button type="button" onClick={() => onSchedule(it, idea)} title={`Put it on ${first(idea.p.name)}’s timeline, ${whenText(idea, today)} — Undo is right there`}
+        className={`flex-none text-[10px] font-semibold px-2 py-1 rounded-md ${best ? 'bg-[#0808f8] text-white hover:bg-[#0606d0]' : 'border border-gray-200 text-gray-700 hover:border-[#0808f8]/50'}`}>
+        Schedule
+      </button>
     </div>
   );
 }

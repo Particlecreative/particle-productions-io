@@ -187,3 +187,20 @@ export function fixtureDraft({ messages, draft, files }) {
   const sources = [...(files || []).map(id => ({ type: 'file', id, name: 'attached file', ok: true })), ...links];
   return { reply: missing.length ? `Got it. Which ${missing[0]}?` : 'Ready — review the form and submit.', board: design ? 'design' : 'video', fields, missing, ready: !missing.length, sources };
 }
+
+// Sample "who fits" answers for the local preview (the live ones come from 6 months of finished tickets)
+export function fixtureFit(items) {
+  const hash = (s) => [...String(s)].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
+  const fits = {};
+  for (const it of items || []) {
+    fits[it.key] = PEOPLE.filter(([, , role]) => role === it.board).map(([id]) => {
+      const h = hash(`${it.key}:${id}`);
+      const reasons = [];
+      if (it.requested_by?.[0]) reasons.push({ kind: 'req', id: it.requested_by[0], n: 3 + (h % 12), of: 24 });
+      if (it.type) reasons.push({ kind: 'type', label: it.type, n: 2 + (h % 15), spec: (h % 10) / 10 });
+      if (it.product && h % 3) reasons.push({ kind: 'product', label: it.product, n: 2 + (h % 7) });
+      return { person: id, score: (h % 100) / 100, days: it.board === 'video' ? 1 + (h % 3) : 1, days_from: 'theirs', done: 20 + (h % 40), reasons: reasons.slice(0, 3) };
+    }).sort((a, b) => b.score - a.score);
+  }
+  return { learned: { since: '2026-05-20', video: 468, design: 818 }, fits };
+}
