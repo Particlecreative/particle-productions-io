@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { X, ExternalLink, RotateCcw, Loader2, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { captainApi } from '../../lib/captainService';
+import References from '../medium/References';
 import { dateTime, mmss, statusMeta, TRIGGERS, ISSUE_TYPES, SEVERITY, DISCIPLINES, money } from './util';
 
 // Issue types where "found → fix" is not a text swap but a measurement and an instruction ("17 words in 3s — split…")
@@ -176,6 +177,12 @@ export default function CheckDrawer({ id, onClose, notify, onChanged }) {
               {c.thumb_url && <img src={c.thumb_url} alt="" className="mt-5 w-full max-h-[300px] object-contain rounded-2xl" style={{ background: 'rgba(0,0,0,.25)' }} />}
               {c.status === 'skipped' && <p className="mt-5 text-sm">Skipped: <b>{c.skip_reason}</b></p>}
               {c.status === 'error' && <p className="mt-5 text-sm" style={{ color: 'var(--trk-red)' }}>{c.error}</p>}
+
+              {isBrief && data.references?.length > 0 && (
+                <References refs={data.references} b={{ status: data.medium?.status, evidence: { monday_refs: data.medium?.monday_refs } }}
+                  pendingText="Goes into the Monday ticket’s Relevant Files when the brief is approved in Medium"
+                  mediumLink={data.medium?.id ? `/medium?tab=briefs&brief=${data.medium.id}` : null} />
+              )}
 
               {isBrief && <BriefLines c={c} issues={data.issues} busy={busy} onFeedback={feedback} />}
 

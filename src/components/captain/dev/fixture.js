@@ -31,8 +31,9 @@ const briefIssues = [
   { id: 108, idx: 7, line_id: null, found: 'No code on V2', fix: 'Add “USE CODE: XMAS30”', type: 'missing_code', severity: 'check', rule: 'Code + end date on every asset' },
 ];
 
+const SAMPLE_REF = 'https://storage.googleapis.com/spring-assets-prod/images/afdd1598-1b12-4b42-8e87-722038c38c6d_570810726_25185427484477995_552842309205868905_n.jpg';
 const checks = [
-  { id: '66666666-6666-4666-8666-666666666666', discipline: 'brief', status: 'issues', trigger: 'medium', item_name: 'Neck Cream | Christmas 2026 | Meta | 5 Bucks. 5 Problems. — Medium', product: 'Neck Cream', campaign: 'Christmas 2026', person: 'Medium', deliverable: '6 lines · 5 Bucks. 5 Problems.', scope_reason: 'Brief pre-flight · Particle', engine: 'claude', model: 'claude-sonnet-5-5', issue_count: 8, cost_usd: 0.014, duration_ms: 9200, created_at: ago(3), asset: { brief_id: 'mb_123', lane: 'Particle', brand: 'Particle', board: 'design', layout_ref: '5 Bucks. 5 Problems.', offer: { tier: 30, code: 'XMAS30', ends: '2026-12-21' }, lines: 6 },
+  { id: '66666666-6666-4666-8666-666666666666', reference_image: SAMPLE_REF, discipline: 'brief', status: 'issues', trigger: 'medium', item_name: 'Neck Cream | Christmas 2026 | Meta | 5 Bucks. 5 Problems. — Medium', product: 'Neck Cream', campaign: 'Christmas 2026', person: 'Medium', deliverable: '6 lines · 5 Bucks. 5 Problems.', scope_reason: 'Brief pre-flight · Particle', engine: 'claude', model: 'claude-sonnet-5-5', issue_count: 8, cost_usd: 0.014, duration_ms: 9200, created_at: ago(3), asset: { brief_id: 'mb_123', lane: 'Particle', brand: 'Particle', board: 'design', layout_ref: '5 Bucks. 5 Problems.', offer: { tier: 30, code: 'XMAS30', ends: '2026-12-21' }, lines: 6 },
     top_issues: briefIssues.slice(0, 4).map(({ idx, found, fix, type, severity }) => ({ idx, found, fix, type, severity })) },
   { id: '11111111-1111-4111-8111-111111111111', discipline: 'video', status: 'issues', trigger: 'manual', board_id: '5433027071', item_id: '12818442030', item_name: 'Face Cream | Meta | Claude | COPYCAT Campaign | RESELLERS', department: 'Marketing/Media', product: 'Face Cream', person: 'Omri Tabachnik', scope_reason: 'Department: Marketing/Media', deliverable: 'Version 1 · 16x9', round: 2, engine: 'gemini', model: 'gemini-3.8-flash', issue_count: 5, cost_usd: 0.021, duration_ms: 16400, posting: 'test', posted_at: ago(4), created_at: ago(5), asset: { view_url: 'https://next.frame.io/' }, top_issues: issuesH1.map(({ idx, found, fix, type, severity }) => ({ idx, found, fix, type, severity })) },
   { id: '22222222-2222-4222-8222-222222222222', discipline: 'video', status: 'running', trigger: 'manual', item_name: 'Face Cream | Meta | Claude | COPYCAT Campaign | RESELLERS', deliverable: 'Version 2 · 16x9', round: 2, person: 'Omri Tabachnik', product: 'Face Cream', issue_count: 0, created_at: ago(1), asset: {} },
@@ -98,6 +99,9 @@ export function fixtureCall(path, { method = 'GET', body } = {}) {
         check: { ...c, raw: { request: { brief_id: 'mb_123', lines: briefLines, product: 'Neck Cream', campaign: 'Christmas 2026', offer: c.asset.offer }, notes: ['No article text was sent — claims weren’t checked against the article'], claims: [{ line_id: 'l3', claim: 'Firms, lifts and moisturises in one night', in_sheet: 'no', in_article: 'n/a', note: 'no overnight results' }] } },
         issues: briefIssues,
         events: [{ id: 1, created_at: c.created_at, message: 'Checking brief “Neck Cream · Christmas 2026” (6 lines)' }, { id: 2, created_at: c.created_at, message: 'Brief: 7 must-fix issues' }],
+        references: [{ kind: 'winner', key: 'w1', label: 'Gravite Deodorant product shoot image 1 headline 1 text Gravite Fans', format: 'static', image: SAMPLE_REF, link: null,
+          headline: 'Gravité Deodorant for Men: Smell Great, Feel Invincible', stats: { roas: 4.95, spend: 2978, purchases: 159, percentile: 99, account: 'Particle Body', campaign: null } }],
+        medium: { id: 'b2', status: 'PENDING_REVIEW', monday_refs: null },
       };
     }
     return {

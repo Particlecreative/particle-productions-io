@@ -195,6 +195,33 @@ function prefixQuery(q) {
   return words.slice(0, 6).map(w => `${w.toLowerCase()}:*`).join(' & ') || null;
 }
 
+/**
+ * Medium brief checks → that brief's reference (the ad it's written from) and whether it's on the Monday ticket.
+ * checks: rows with asset.brief_id "medium:<uuid>" → Map(check id → { references, medium })
+ */
+async function mediumRefs(checks) {
+  const want = new Map();
+  for (const c of checks) {
+    const m = String(c?.asset?.brief_id || '').match(/^medium:([0-9a-f-]{36})$/i);
+    if (c?.discipline === 'brief' && m) want.set(c.id, m[1]);
+  }
+  const out = new Map();
+  if (!want.size) return out;
+  const { rows } = await db.query('SELECT id, status, request, evidence, monday_item_id, format FROM medium_briefs WHERE id = ANY($1::uuid[])', [[...new Set(want.values())]]).catch(() => ({ rows: [] }));
+  const byId = new Map(rows.map(r => [String(r.id), r]));
+  const cfg = await require('../lib/medium/config').getConfig().catch(() => ({}));
+  const { referencesOf } = require('../lib/medium/references');
+  for (const [checkId, briefId] of want) {
+    const b = byId.get(briefId);
+    if (!b) continue;
+    out.set(checkId, {
+      references: referencesOf(b, { upspringLink: cfg.upspring_link }),
+      medium: { id: briefId, status: b.status, monday_item_id: b.monday_item_id || null, monday_refs: b.evidence?.monday_refs || null },
+    });
+  }
+  return out;
+}
+
 router.get('/checks', async (req, res) => {
   try {
     const where = [], params = [];
@@ -226,7 +253,8 @@ router.get('/checks', async (req, res) => {
       params,
     );
     const total = (await db.query(`SELECT COUNT(*)::int AS n FROM captain_checks c ${sqlWhere}`, params)).rows[0].n;
-    res.json({ total, checks: rows.map(r => ({ ...r, thumb_url: r.has_thumb ? thumbUrl(r.id) : null, monday_url: r.item_id && r.board_id ? `https://particle-for-men.monday.com/boards/${r.board_id}/pulses/${r.item_id}` : null })) });
+    const refs = await mediumRefs(rows).catch(() => new Map());   // a Medium brief check shows the reference it's written from
+    res.json({ total, checks: rows.map(r => ({ ...r, thumb_url: r.has_thumb ? thumbUrl(r.id) : null, reference_image: refs.get(r.id)?.references?.find(x => x.image)?.image || null, monday_url: r.item_id && r.board_id ? `https://particle-for-men.monday.com/boards/${r.board_id}/pulses/${r.item_id}` : null })) });
   } catch (err) { errorJson(res, err); }
 });
 
@@ -239,7 +267,9 @@ router.get('/checks/:id', async (req, res) => {
     delete c.thumb; delete c.search;
     const issues = (await db.query('SELECT * FROM captain_issues WHERE check_id = $1 ORDER BY idx', [c.id])).rows.map(({ search, ...i }) => i);
     const events = (await db.query('SELECT id, kind, message, data, actor, created_at FROM captain_events WHERE check_id = $1 ORDER BY id', [c.id])).rows;
-    res.json({ check: { ...c, thumb_url: c.has_thumb ? thumbUrl(c.id) : null, monday_url: c.item_id && c.board_id ? `https://particle-for-men.monday.com/boards/${c.board_id}/pulses/${c.item_id}` : null }, issues, events });
+    const ref = (await mediumRefs([c]).catch(() => new Map())).get(c.id) || null;
+    res.json({ check: { ...c, thumb_url: c.has_thumb ? thumbUrl(c.id) : null, monday_url: c.item_id && c.board_id ? `https://particle-for-men.monday.com/boards/${c.board_id}/pulses/${c.item_id}` : null }, issues, events,
+      references: ref?.references || [], medium: ref?.medium || null });
   } catch (err) { errorJson(res, err); }
 });
 

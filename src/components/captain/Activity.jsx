@@ -100,7 +100,7 @@ function Row({ c, onOpen }) {
   const title = c.item_name || c.asset?.name || 'Untitled';
   return (
     <button type="button" className="cc-row" onClick={onOpen}>
-      <div className="cc-thumb">{c.thumb_url ? <img src={c.thumb_url} alt="" className="w-full h-full object-cover" loading="lazy" /> : discIcon(c.discipline)}</div>
+      <div className="cc-thumb">{c.thumb_url || c.reference_image ? <img src={c.thumb_url || c.reference_image} alt="" className="w-full h-full object-cover" loading="lazy" referrerPolicy="no-referrer" title={c.reference_image && !c.thumb_url ? 'The reference this brief is written from' : undefined} /> : discIcon(c.discipline)}</div>
       <div className="min-w-0">
         <div className="flex items-center gap-2 min-w-0">
           <span aria-hidden>{discIcon(c.discipline)}</span>
