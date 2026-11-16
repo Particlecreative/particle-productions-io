@@ -46,6 +46,7 @@ export function studioFixture({ from, to }) {
         status: { label: s.label, color: s.color, category: s.category }, group: s.category === 'queued' && r() > 0.5 ? 'Form Requests' : s.label,
         people: s.category === 'queued' && r() > 0.6 ? [] : [pid], requested_by: [REQ[Math.floor(r() * REQ.length)][0]],
         timeline: (() => { const a = Math.floor(r() * days.length); return { from: days[a], to: days[Math.min(days.length - 1, a + Math.floor(r() * 4))] }; })(),
+        priority: n % 7 === 0 ? { label: 'Critical ⚠️️', color: '#333333' } : n % 4 === 0 ? { label: 'High', color: '#e2445c' } : n % 3 === 0 ? { label: 'Medium', color: '#fdab3d' } : n % 5 === 0 ? { label: 'Low', color: '#579bfc' } : null,
         deadline: add(from, Math.floor(r() * 12) - 2), versions: 1, created_at: at(add(from, -2 - Math.floor(r() * 18)), 10), monday_url: 'https://monday.com',
         open: s.category !== 'delivered', active_now: ['in_progress', 'fixes'].includes(s.category),
         effort_s: effort, effort_by_person: { [pid]: effort }, effort_total_s: effort + Math.round(r() * 20 * 3600),

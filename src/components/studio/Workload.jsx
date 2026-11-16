@@ -1,10 +1,11 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronLeft, ChevronRight, Loader2, Plane, Mail, X, AlertTriangle, Inbox, Search, Check, PanelRightOpen, PanelRightClose, RefreshCw, Flag } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2, Plane, Mail, X, AlertTriangle, Inbox, Search, Check, PanelRightOpen, PanelRightClose, RefreshCw, Flag, ArrowUpDown } from 'lucide-react';
 import { Avatar, Seg, StatusPill, ProductTag, BrandTag, brandsOf, textOn } from './Bits';
 import { applyFilters, addDays, sundayOf, ymd } from './Filters';
 import { studioApi } from '../../lib/studioService';
 import { useStudio, lastWriteAt, outOn, checkSchedule, workdays } from './writes';
+import { SORTS, QUICK, groupFor, poolFor, urgencyOf, matches, forLine } from './scheduleOrder';
 
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const LANE_H = 32;
@@ -14,6 +15,7 @@ const WEEKEND = 0.36; // Fri/Sat columns, relative to a workday
 const PANEL_KEY = 'cp_studio_wl_panel';
 const ROLE_KEY = 'cp_studio_wl_role';
 const WEEKS_KEY = 'cp_studio_wl_weeks';
+const SORT_KEY = 'cp_studio_wl_sort';
 const CACHE_MS = 3 * 60 * 1000;
 const cache = new Map(); // `${from}:${to}` → { data, at } — kept while you move between weeks
 
@@ -438,13 +440,22 @@ export default function Workload({ f }) {
   );
 }
 
-/** Everything not on the timeline yet — drag a card onto a person and a day. */
+/** Everything not on the timeline yet — drag a card onto a person and a day.
+ *  Smart order by default (overdue → due soon → priority → TV → waiting longest); or group by due date, priority, brand, requester or person. */
 function SchedulePanel({ rows, unassigned, data, q, setQ, who, setWho, onClose, onGrab, today, byBrand }) {
-  const match = (it) => !q.trim() || it.name.toLowerCase().includes(q.trim().toLowerCase());
-  const groups = [
-    ...(!who ? [{ key: 'none', title: 'Waiting for someone', icon: <Inbox size={12} />, items: unassigned.filter(match) }] : []),
-    ...rows.filter(r => r.unscheduled.length && (!who || r.p.id === who)).map(r => ({ key: r.p.id, title: r.p.name, person: r.p, items: r.unscheduled.filter(match) })),
-  ].filter(g => g.items.length);
+  const [sort, setSortState] = useState(() => { const v = pref(SORT_KEY, 'smart'); return SORTS.some(([k]) => k === v) ? v : 'smart'; });
+  const setSort = (v) => { setSortState(v); setPref(SORT_KEY, v); };
+  const [quick, setQuick] = useState(null);
+  const reqs = data.requesters || {};
+  const keyOf = (it) => `${it.board}:${it.id}`;
+  const pool = useMemo(() => poolFor({ unassigned, rows, who }).filter(it => matches(it, q, reqs)), [unassigned, rows, who, q, reqs]);
+  const urg = useMemo(() => new Map(pool.map(it => [keyOf(it), urgencyOf(it, today)])), [pool, today]);
+  const uOf = (it) => urg.get(keyOf(it)) || urgencyOf(it, today);
+  const chips = QUICK.map(x => ({ ...x, n: pool.filter(it => x.test(uOf(it))).length })).filter(x => x.n || quick === x.key);
+  const qf = QUICK.find(x => x.key === quick);
+  const groups = useMemo(() => groupFor(sort, { unassigned, rows, today, requesters: reqs, who, keep: (it) => matches(it, q, reqs) && (!qf || qf.test(uOf(it))) }),
+    [sort, unassigned, rows, today, reqs, who, q, quick, urg]); // eslint-disable-line react-hooks/exhaustive-deps
+  const showBrand = sort !== 'brand' && (byBrand || new Set(pool.map(it => it.brand?.label).filter(Boolean)).size > 1);
   return (
     <aside className="hidden md:flex w-[300px] flex-none bg-white rounded-2xl border border-gray-200 flex-col sticky top-2 max-h-[calc(100vh-140px)]">
       <div className="px-3 pt-3 pb-2 border-b border-gray-100">
@@ -455,8 +466,26 @@ function SchedulePanel({ rows, unassigned, data, q, setQ, who, setWho, onClose, 
         </div>
         <div className="relative">
           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search" className="w-full text-xs pl-8 pr-2 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-[#0808f8]/50" />
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search name, brand, requester…" className="w-full text-xs pl-8 pr-2 py-1.5 rounded-lg border border-gray-200 focus:outline-none focus:border-[#0808f8]/50" />
         </div>
+        <label className="mt-2 flex items-center gap-2 text-[11px] text-gray-500">
+          <ArrowUpDown size={12} className="text-gray-400 flex-none" />
+          <span className="flex-none">Sort by</span>
+          <select value={sort} onChange={e => setSort(e.target.value)}
+            className="flex-1 min-w-0 text-xs font-semibold text-[#030b2e] bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:border-[#0808f8]/50 cursor-pointer">
+            {SORTS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+          </select>
+        </label>
+        {chips.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1">
+            {chips.map(x => (
+              <button key={x.key} type="button" onClick={() => setQuick(quick === x.key ? null : x.key)}
+                className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border transition-colors ${quick === x.key ? 'bg-[#030b2e] border-[#030b2e] text-white' : x.key === 'overdue' ? 'border-red-200 bg-red-50 text-red-600 hover:border-red-300' : x.key === 'soon' ? 'border-orange-200 bg-orange-50 text-orange-600 hover:border-orange-300' : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-gray-300'}`}>
+                {x.label} <span className="tabular-nums opacity-70">{x.n}</span>{quick === x.key && <X size={9} className="inline ml-0.5 -mt-px" />}
+              </button>
+            ))}
+          </div>
+        )}
         {who && (
           <button type="button" onClick={() => setWho(null)} className="mt-2 text-[11px] font-semibold text-[#0808f8] flex items-center gap-1">
             Only {first(data.people[who]?.name)} · show everyone <X size={11} />
@@ -467,36 +496,69 @@ function SchedulePanel({ rows, unassigned, data, q, setQ, who, setWho, onClose, 
         {groups.map(g => (
           <div key={g.key}>
             <div className="flex items-center gap-1.5 px-1 mb-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-500">
-              {g.person ? <Avatar person={g.person} size={16} /> : g.icon} <span className="truncate">{g.title}</span><span className="text-gray-400 tabular-nums">{g.items.length}</span>
+              {g.person ? <Avatar person={g.person} size={16} />
+                : g.requester ? <Avatar person={g.requester} size={16} />
+                  : g.tone === 'inbox' ? <Inbox size={12} />
+                    : <span className={`w-2 h-2 flex-none ${g.square ? 'rounded-sm' : 'rounded-full'}`} style={{ background: g.dot || TONE[g.tone] || '#c4c4c4' }} />}
+              <span className="truncate">{g.title}</span><span className="text-gray-400 tabular-nums">{g.items.length}</span>
             </div>
+            {g.note && <div className="px-1 -mt-1 mb-1.5 text-[10px] text-gray-400">{g.note}</div>}
             <div className="flex flex-col gap-1.5">
-              {g.items.slice(0, 40).map(it => {
-                const late = it.deadline && it.deadline < today;
-                return (
-                  <div key={`${it.board}:${it.id}`} onPointerDown={(e) => onGrab(e, it, 'tray', g.person?.id || null)}
-                    className="rounded-lg bg-white border border-gray-200 px-2.5 py-2 cursor-grab hover:border-[#0808f8]/50 hover:shadow-sm active:cursor-grabbing"
-                    style={byBrand && it.brand?.color ? { boxShadow: `inset 3px 0 0 ${it.brand.color}` } : undefined}>
-                    <div className="flex items-center gap-1.5 text-[10px] text-gray-500">
-                      <span className="w-2 h-2 rounded-full flex-none" style={{ background: it.status.color || '#c4c4c4' }} />
-                      <span className="truncate">{it.status.label}</span>
-                      {it.board === 'retention' && <Mail size={10} className="text-[#00a9a5]" />}
-                      {it.deadline && <span className={`ml-auto flex-none ${late ? 'text-red-600 font-semibold' : ''}`}>due {fmt(it.deadline)}</span>}
-                    </div>
-                    <div className="text-xs font-semibold text-gray-900 leading-snug mt-0.5" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{it.title || it.name}</div>
-                    <div className="flex items-center gap-2 mt-1 min-w-0">
-                      {byBrand && <BrandTag brand={it.brand} />}
-                      <ProductTag product={it.product} />
-                      {it.requested_by?.length > 0 && <span className="text-[10px] text-gray-400 truncate">for {it.requested_by.map(r => first(data.requesters[r]?.name)).filter(Boolean).join(', ')}</span>}
-                    </div>
-                  </div>
-                );
-              })}
+              {g.items.slice(0, 40).map(it => (
+                <ScheduleCard key={keyOf(it)} it={it} u={uOf(it)} data={data} sort={sort} showBrand={showBrand} byBrand={byBrand} today={today}
+                  onGrab={(e) => onGrab(e, it, 'tray', g.person?.id || (it.people.length === 1 ? it.people[0] : null))} />
+              ))}
+              {g.items.length > 40 && <div className="text-[10px] text-gray-400 text-center py-1">+{g.items.length - 40} more — search or filter to narrow</div>}
             </div>
           </div>
         ))}
-        {!groups.length && <div className="text-xs text-gray-400 text-center py-8">{q ? 'Nothing matches.' : 'Everything is on the timeline.'}</div>}
+        {!groups.length && <div className="text-xs text-gray-400 text-center py-8">{q || quick ? 'Nothing matches.' : 'Everything is on the timeline.'}</div>}
       </div>
     </aside>
+  );
+}
+
+const TONE = { red: '#e2445c', orange: '#fdab3d', gray: '#c4c4c4' };
+const REASON = { red: 'bg-red-50 text-red-600', orange: 'bg-orange-50 text-orange-600', blue: 'bg-[#0808f8]/10 text-[#0808f8]', gray: 'bg-gray-100 text-gray-500' };
+
+function ScheduleCard({ it, u, data, sort, showBrand, byBrand, today, onGrab }) {
+  const late = it.deadline && it.deadline < today;
+  const owners = sort !== 'person' ? it.people.map(p => data.people[p]).filter(Boolean) : [];
+  const forWho = sort !== 'requester' ? forLine(it, data.requesters) : '';
+  // the reasons it's here — minus what the grouping already says
+  const why = u.why.filter(w => !(sort === 'priority' && w.tone === 'priority') && !(sort === 'due' && /due|overdue/i.test(w.text)));
+  return (
+    <div onPointerDown={onGrab}
+      className="rounded-lg bg-white border border-gray-200 px-2.5 py-2 cursor-grab hover:border-[#0808f8]/50 hover:shadow-sm active:cursor-grabbing"
+      style={byBrand && it.brand?.color ? { boxShadow: `inset 3px 0 0 ${it.brand.color}` } : undefined}>
+      <div className="flex items-center gap-1.5 text-[10px] text-gray-500">
+        <span className="w-2 h-2 rounded-full flex-none" style={{ background: it.status.color || '#c4c4c4' }} />
+        <span className="truncate">{it.status.label}</span>
+        {it.board === 'retention' && <Mail size={10} className="text-[#00a9a5]" />}
+        {it.deadline && <span className={`ml-auto flex-none ${late ? 'text-red-600 font-semibold' : ''}`}>due {fmt(it.deadline)}</span>}
+      </div>
+      <div className="text-xs font-semibold text-gray-900 leading-snug mt-0.5" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{it.title || it.name}</div>
+      <div className="flex items-center gap-2 mt-1 min-w-0">
+        {showBrand && <BrandTag brand={it.brand} />}
+        <ProductTag product={it.product} />
+        {forWho && <span className="text-[10px] text-gray-400 truncate">for {forWho}</span>}
+        {owners.length > 0 && (
+          <span className="ml-auto flex -space-x-1.5 flex-none" title={owners.map(p => p.name).join(', ')}>
+            {owners.slice(0, 3).map(p => <Avatar key={p.id} person={p} size={16} ring="#fff" />)}
+          </span>
+        )}
+      </div>
+      {why.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-1.5">
+          {why.map(w => (
+            <span key={w.text} className={`text-[10px] font-semibold px-1.5 py-px rounded ${REASON[w.tone] || ''}`}
+              style={w.tone === 'priority' ? { background: `${w.color}1f`, color: w.color === '#333333' ? '#030b2e' : w.color } : undefined}>
+              {w.text}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
