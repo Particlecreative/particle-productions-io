@@ -76,6 +76,7 @@ function columnValues(b, { labels = {}, requesterId = null } = {}) {
   Object.assign(values, product.values);
   if (b.product && !product.written.length) skipped.push(`Product: "${b.product}" isn't a label on the board`);
   status(cols.department, DEPARTMENT[format]);
+  status(cols.brand, b.request?.brand || 'Particle');   // Brands — both boards (a film can be for Clearstep, Blurr…)
   status(cols.platform, 'Meta');
   const sizes = (f.sizes || []).filter(s => !labels[cols.ratio] || labels[cols.ratio].includes(s));
   if (sizes.length) values[cols.ratio] = { labels: sizes };
@@ -89,7 +90,6 @@ function columnValues(b, { labels = {}, requesterId = null } = {}) {
     if (type) status(cols.type, type);
   } else {
     if (f.copy) values[cols.copy] = { text: f.copy };
-    status(cols.brand, 'Particle');
   }
   // statuses by index when the board's active labels are known (never a deactivated twin)
   for (const [col, val] of Object.entries(values)) {

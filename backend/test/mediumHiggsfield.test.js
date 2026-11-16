@@ -95,3 +95,45 @@ test('Monday: a Higgsfield film is an "AI Project" on Video Projects', () => {
   const { values } = M.columnValues({ format: 'video', product: 'Face Cream', fields: { video_type: 'Higgsfield micro drama' } }, { labels });
   assert.deepEqual(values.label4, { label: 'AI Project' });
 });
+
+// ── brand, product, how many (Tomer, 16 Nov 2026) ──
+test('brands: every studio brand, Ads Studio products first, the rest marked to add', () => {
+  assert.equal(H.studioBrand('Particle for Men', 'https://www.particleformen.com/'), 'Particle');
+  assert.equal(H.studioBrand('Clearstep', 'https://goclearstep.com'), 'Clearstep');
+  assert.ok(H.sameProduct('Testosterone and Hormone', 'Testosterone & Hormonal Support'));
+  assert.ok(!H.sameProduct('Face Cream', 'Hand Cream'));
+  const sites = { Ashford: [{ name: 'Testosterone & Hormonal Support', url: 'https://houseashford.com/t' }, { name: 'Daily Foundation Multivitamins', url: 'https://houseashford.com/m' }],
+    Blurr: [{ name: 'INSTANT LIP VOLUME PLUMPER GLOSS', url: 'https://blurrskin.com/l' }, { name: 'Package Protection - Preview', url: 'x' }] };
+  const o = H.brandOptions({ catalog: cat, sites });
+  assert.deepEqual(o.map(b => b.name), ['Particle', 'Ashford', 'Clearstep', 'Blurr', 'Biomella']);
+  const p = o[0];
+  assert.equal(p.ads_studio, true);
+  assert.deepEqual(p.products.filter(x => x.ads_studio).map(x => [x.product, x.ready]), [['Face Cream', true], ['Thickening Shampoo', true], ['Gravité', true], ['Neck Cream', false]]);   // its Ads Studio copy isn't ready yet
+  assert.ok(p.products.some(x => x.product === 'Gravité Deodorant' && !x.ads_studio));   // never mistaken for Gravité
+  assert.ok(p.products.some(x => x.product === 'Hand Cream' && !x.ads_studio && x.key === 'p:Hand Cream'));
+  const ash = o[1];
+  assert.equal(ash.ads_studio, false);
+  assert.deepEqual(ash.products.map(x => [x.product, x.url]), [['Bone & Joint', null], ['Testosterone and Hormone', 'https://houseashford.com/t'], ['Joint Mobility', null], ['Daily Foundation Multivitamins', 'https://houseashford.com/m']]);
+  assert.deepEqual(o[3].products.map(x => x.product), ['Instant Lip Volume Plumper Gloss']);   // shouty names tidied, "Package Protection" dropped
+});
+
+test('a film for another brand: its buyer, how to set it up in Ads Studio, its ticket name; siblings differ', () => {
+  const block = W.dramaBlock({ product: 'Antifungal Foot Treatment', brand: 'Clearstep', higgsfield: { brand: 'Clearstep', ads_studio: false, brand_in_ads_studio: false, brand_site: 'goclearstep.com', product_url: 'https://goclearstep.com/p/foot', style: 'Micro drama', realistic: true, length: 60, variant: { n: 2, of: 3 } } });
+  assert.match(block, /1\. Ads Studio → New brand → paste https:\/\/goclearstep\.com .* Add product “Antifungal Foot Treatment” from its page \(https:\/\/goclearstep\.com\/p\/foot\)/);
+  assert.match(block, /not in Ads Studio yet — step 1 below sets it up/);
+  assert.match(block, /Clearstep’s buyer/);
+  assert.doesNotMatch(block, /a man 45–65/);
+  assert.match(block, /Ticket name: "Clearstep \| Antifungal Foot Treatment \| Meta \| Higgsfield Micro drama/);
+  assert.match(block, /film 2 of 3 in one batch/);
+  // a Particle product not in Ads Studio yet → add it to Particle for Men
+  const hand = W.dramaBlock({ product: 'Hand Cream', higgsfield: { ads_studio: false, style: 'Micro drama', realistic: true, length: 60 } });
+  assert.match(hand, /Ads Studio → brand “Particle for Men” → Add product → paste its page \(its page on particleformen\.com\)/);
+  assert.match(hand, /a man 45–65/);
+});
+
+test('Monday: the Brands column on both boards — Particle unless the brief is for another brand', () => {
+  const labels = { color_mm8q1bam: ['Particle', 'Clearstep'], color_mm8q3pn9: ['Particle', 'Clearstep'] };
+  assert.deepEqual(M.columnValues({ format: 'video', product: 'Face Cream', fields: {} }, { labels }).values.color_mm8q1bam, { label: 'Particle' });
+  assert.deepEqual(M.columnValues({ format: 'video', product: 'Antifungal Foot Treatment', request: { brand: 'Clearstep' }, fields: {} }, { labels }).values.color_mm8q1bam, { label: 'Clearstep' });
+  assert.deepEqual(M.columnValues({ format: 'design', product: 'Face Cream', fields: {} }, { labels }).values.color_mm8q3pn9, { label: 'Particle' });
+});

@@ -83,13 +83,16 @@ async function buildContext(req, cfg) {
   const lane = laneOf({ lane: req.lane }, require('../captain/config').DEFAULTS);
   const format = req.format === 'design' ? 'design' : 'video';
   const kind = kindFor(req.move, format, req.kind);
+  // a brief can be for another studio brand (Higgsfield films, 16 Nov 2026): its Brain, facts and website, not Particle's
+  const brandName = req.brand || 'Particle';
   const [brain, facts, examples, templates, donors, winners] = await Promise.all([
-    loadBrain({ discipline: format, product: req.product, campaign: req.campaign, brand: 'Particle', lane: lane.name }),
-    loadFacts({ brand: 'Particle', lane: lane.name }),
+    loadBrain({ discipline: format, product: req.product, campaign: req.campaign, brand: brandName, lane: lane.name }),
+    loadFacts({ brand: brandName, lane: lane.name }),
     corpus.pickExemplars({ format, kind, lane: lane.name, product: req.product, template: req.template, n: 3 }).catch(() => []),
     db.query(`SELECT name, format, description FROM medium_templates WHERE active ORDER BY usage_count DESC, name`).then(r => r.rows).catch(() => []),
     db.query(`SELECT brand, takes FROM medium_donors ORDER BY usage_count DESC LIMIT 14`).then(r => r.rows).catch(() => []),
-    ranks.winners({ lane: lane.name, product: req.product, format, limit: 5 }).catch(e => ({ available: false, reason: e.message })),
+    brandName === 'Particle' ? ranks.winners({ lane: lane.name, product: req.product, format, limit: 5 }).catch(e => ({ available: false, reason: e.message }))
+      : Promise.resolve({ available: false, reason: `the Upspring ranking covers Particle only, not ${brandName}` }),
   ]);
   const claims = facts.claims.filter(c => !c.scope?.product || [].concat(c.scope.product).some(p => String(p).toLowerCase() === String(req.product || '').toLowerCase()));
   const offer = req.campaign ? facts.offers.find(o => String(o.title).toLowerCase() === String(req.campaign).toLowerCase()) : null;
@@ -117,17 +120,36 @@ function dramaBlock(req) {
   const look = h.realistic === false
     ? `${h.style || 'Stylized'} — keep the card's look; the characters stay recognisable from clip to clip and the product's label still reads.`
     : 'Realistic live action — real people, real rooms, natural light, shot like a film. Not glossy, not cartoon, not an influencer selfie.';
-  return fill(DRAMA, {
+  const brand = h.brand || req.brand || 'Particle';
+  const product = req.product || h.product_name || 'the product';
+  const adsProduct = h.product_name || (brand === 'Particle' ? `Particle ${req.product || ''}`.trim() : product);
+  const studioBrand = brand === 'Particle' ? 'Particle for Men' : brand;
+  const page = h.product_url ? ` (${h.product_url})` : '';
+  // step 1: straight to the product when it's in Ads Studio; otherwise how to add it (and the brand, when that's new too)
+  const step1 = h.ads_studio !== false
+    ? `Ads Studio → brand “${studioBrand}” → product “${adsProduct}”.`
+    : h.brand_in_ads_studio || brand === 'Particle'
+      ? `Ads Studio → brand “${studioBrand}” → Add product → paste its page${page || (brand === 'Particle' ? ' (its page on particleformen.com)' : '')} and wait until its pictures and copy are ready (a few minutes) → pick “${product}”.`
+      : `Ads Studio → New brand → paste ${h.brand_site ? `https://${h.brand_site}` : `${brand}'s website`} (Ads Studio reads the brand — a few minutes) → Add product “${product}” from its page${page} and wait until its pictures and copy are ready. ${brand} stays set up for the next films.`;
+  const text = fill(DRAMA, {
     LENGTH: length, CLIPS: clips, CLIP_TIMES: times, LOOK: look, STYLE: h.style || 'Micro drama', CARD: h.card_title || 'Medium’s own story',
     CARD_SUBTITLE: h.card_subtitle || 'a turn the product makes possible', CARD_SECONDS: h.card_seconds ? `${h.card_seconds}s` : 'longer',
-    PRODUCT: req.product || h.product_name || 'the product', ADS_PRODUCT: h.product_name || `Particle ${req.product || ''}`.trim(),
+    PRODUCT: product, ADS_PRODUCT: adsProduct,
+    ADS_STATE: h.ads_studio !== false ? `in Ads Studio: “${adsProduct}”, already set up with its pictures` : 'not in Ads Studio yet — step 1 below sets it up',
+    ADS_STEP1: step1,
+    HERO: brand === 'Particle' ? 'Particle’s buyer — a man 45–65, or the person around him' : `${brand}’s buyer — who that is comes from the ${brand} notes and website above`,
+    TICKET_PREFIX: brand === 'Particle' ? '' : `${brand} | `,
     RECIPE: h.recipe || '(not available — write the story from the card line above)',
   });
+  const v = h.variant;
+  return v?.of > 1 ? `${text}\nThis is film ${v.n} of ${v.of} in one batch: give it its own setting, cast and conflict — never a variation of the others.\n` : text;
 }
 
 function writerPrompt(ctx, req, cfg) {
+  const reg = req.brand && req.brand !== 'Particle' ? require('../captain/config').DEFAULTS.brands.find(x => x.name === req.brand) : null;
   const job = [
-    `Lane: ${ctx.lane.name} · Product: ${req.product || '(choose the best fit and say why)'} · Format: ${ctx.format === 'video' ? 'video' : 'static design'}`,
+    reg ? `BRAND: this brief is for ${reg.name} — ${reg.about}. Not Particle: never name Particle, particleformen.com or a Particle product; the ad leads to ${reg.site}. Write for ${reg.name}'s buyer, from the ${reg.name} notes and website above. The team's house style (the fields, the format, how briefs are written) still applies.` : null,
+    `${reg ? 'Brand' : 'Lane'}: ${reg ? reg.name : ctx.lane.name} · Product: ${req.product || '(choose the best fit and say why)'} · Format: ${ctx.format === 'video' ? 'video' : 'static design'}`,
     `Move: ${req.move || 'NEW_ANGLE'} — ${MOVES[req.move] || 'write the strongest brief you can for this product and lane'}`,
     `Kind of job: ${ctx.kind}`,
     req.campaign ? `Campaign: ${req.campaign}${req.offer ? ` · offer ${[req.offer.tier && `${req.offer.tier}% off`, req.offer.code && `code ${req.offer.code}`, req.offer.ends && `ends ${req.offer.ends}`].filter(Boolean).join(', ')}` : ''} — code and end date go on every asset.` : null,
@@ -262,7 +284,7 @@ async function score(out, ctx, cfg, { selfId = null } = {}) {
 async function preflight(row, out) {
   try {
     const r = await require('../captain/brief').runBriefCheck({
-      brief_id: `medium:${row.id}`, name: out.ticket_name, lane: row.lane, product: row.product, campaign: row.request?.campaign || null, offer: row.request?.offer || null,
+      brief_id: `medium:${row.id}`, name: out.ticket_name, lane: row.lane, product: row.product, campaign: row.request?.campaign || null, offer: row.request?.offer || null, brand: row.request?.brand || null,
       board: row.format, layout_ref: out.fields.template || null, lines: out.lines, author: 'Medium', article_text: row.request?.article_text || null,
     }, { trigger: 'medium', actor: 'Medium' });
     return { check_id: r.check_id, verdict: r.verdict, must_fix: r.must_fix, issues: r.issues, notes: r.notes, cost: r.cached ? 0 : r.cost_usd || 0 };

@@ -318,23 +318,31 @@ router.get('/higgsfield', async (req, res) => {
 router.post('/higgsfield/refresh', async (req, res) => {
   try { res.json(await require('../lib/medium/higgsfield').refresh()); } catch (err) { errorJson(res, err); }
 });
-// { product_id?, card_id?, look: realistic | stylized | any, length: 40|60|90|120, count: 1–5, note? } — empty = Medium picks
+// { brand?, product_key?, card_id?, look: realistic | stylized | any, length: 40|60|90|120, count: 1–10, note? } — empty = Medium picks
+// brand: any studio brand (Particle by default); product_key from GET /higgsfield brands[].products[].key (product_id = old name)
 router.post('/higgsfield/briefs', async (req, res) => {
   try {
     const H = require('../lib/medium/higgsfield');
     const b = req.body || {};
     const ov = await H.overview();
     if (!ov.catalog?.cards?.length) return res.status(409).json({ error: 'Medium hasn’t read the Ads Studio catalog yet — press “Read Ads Studio now”' });
-    const count = Math.min(5, Math.max(1, Number(b.count) || 1));
+    const count = Math.min(10, Math.max(1, Number(b.count) || 1));
     const look = ['realistic', 'stylized'].includes(b.look) ? b.look : 'realistic';
-    const catalog = { ...ov.catalog, products: b.product_id ? ov.catalog.products.filter(p => p.id === b.product_id) : ov.catalog.products };
-    if (!catalog.products.length) return res.status(400).json({ error: 'Unknown Ads Studio product' });
+    const brand = (ov.brands || []).find(x => x.name === (b.brand || 'Particle'));
+    if (!brand) return res.status(400).json({ error: `Unknown brand “${String(b.brand).slice(0, 40)}”` });
+    const key = b.product_key || (b.product_id ? `hf:${b.product_id}` : '');
+    // a product you pick is used as it is (even one whose Ads Studio copy is still being written); Medium's own picks take
+    // ready products — for Particle, the ones set up in Ads Studio
+    let products = key ? brand.products.filter(p => p.key === key).map(p => ({ ...p, ready: true }))
+      : brand.products.filter(p => p.ready && (brand.name !== 'Particle' || p.ads_studio));
+    if (!products.length) return res.status(400).json({ error: key ? `That product isn’t one of ${brand.name}’s` : `No ${brand.name} products to pick from` });
+    const catalog = { ...ov.catalog, products: products.map(p => ({ ...p, brand: brand.name })) };
     const card = b.card_id ? ov.catalog.cards.find(c => c.id === b.card_id) : null;
     if (b.card_id && !card) return res.status(400).json({ error: 'That story card is no longer in Ads Studio' });
     const picked = H.pickDaily({ catalog: card ? { ...catalog, cards: [card] } : { ...catalog, cards: catalog.cards.filter(c => look === 'any' || c.realistic === (look === 'realistic')) },
       n: count, realisticShare: card ? (card.realistic ? 1 : 0) : (look === 'stylized' ? 0 : 1), length: H.lengthOf(b.length || 60), dayIndex: 0 });
     if (!picked.length) return res.status(400).json({ error: 'No story card fits — pick another look' });
-    res.json(await H.queue(picked, { author: actorOf(req), source: 'manual', note: b.note ? String(b.note).slice(0, 1500) : null }));
+    res.json(await H.queue(picked.map(x => ({ ...x, brand_in_ads_studio: brand.ads_studio })), { author: actorOf(req), source: 'manual', note: b.note ? String(b.note).slice(0, 1500) : null }));
   } catch (err) { errorJson(res, err); }
 });
 

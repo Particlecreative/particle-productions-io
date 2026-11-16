@@ -22,6 +22,15 @@ const LENGTHS = [40, 60, 90, 120];   // seconds — up to 60 by default, longer 
 const CLIP_S = 15;                    // Ads Studio clips run ~15 s; a film is built from several
 
 const fold = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+// The studio's brands (Captain Caption's registry: name, site, what it is, its products) — a film can be for any of them
+const STUDIO_BRANDS = () => require('../captain/config').DEFAULTS.brands;
+
+/** An Ads Studio brand → the studio's brand name ("Particle for Men" → "Particle") (pure — tested). */
+function studioBrand(name, website = '') {
+  const n = fold(name), host = fold(website).replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
+  const b = STUDIO_BRANDS().find(x => (x.match || []).some(t => n.includes(fold(t))) || (x.site && host && host === fold(x.site)));
+  return b ? b.name : (String(name || '').trim() || 'Particle');
+}
 
 /** Ads Studio product name → Medium's product name ("Particle Hair Thickening Shampoo" → "Thickening Shampoo") (pure — tested). */
 function mediumProduct(name) {
@@ -31,7 +40,7 @@ function mediumProduct(name) {
 }
 
 /** The catalog as Medium keeps it (pure — tested). raw = ads_studio_story_presets; products = ads_studio_list_products. */
-function shapeCatalog(raw, { brand = null, products = [] } = {}) {
+function shapeCatalog(raw, { brand = null, products = [], brands = [] } = {}) {
   const styles = (raw?.styles || []).filter(s => s?.id && !s.command && !NOT_A_DRAMA.test(s.title || ''))
     .map(s => ({ id: s.id, title: s.title, subtitle: s.subtitle || '', cover: s.cover || null, realistic: REALISTIC.test(s.title || '') }));
   const byId = new Map(styles.map(s => [s.id, s]));
@@ -43,7 +52,9 @@ function shapeCatalog(raw, { brand = null, products = [] } = {}) {
   return {
     styles, cards,
     brand: brand ? { id: brand.brand_id || brand.id, name: brand.name } : null,
-    products: (products || []).map(p => ({ id: p.product_id || p.id, name: p.name, product: mediumProduct(p.name), price: p.price || null, images: p.images_count ?? null, ready: p.texts_ready !== false })),
+    brands: (brands || []).map(b => ({ id: b.brand_id || b.id, name: b.name, brand: studioBrand(b.name, b.website) })),
+    products: (products || []).map(p => ({ id: p.product_id || p.id, name: p.name, product: mediumProduct(p.name), price: p.price || null, images: p.images_count ?? null, ready: p.texts_ready !== false,
+      brand: p.brand_name ? studioBrand(p.brand_name, p.brand_site) : 'Particle' })),
   };
 }
 
@@ -98,6 +109,40 @@ function pickDaily({ catalog, n = 1, realisticShare = 0.8, added = [], used = {}
   return out;
 }
 
+const SKIP_PRODUCT = /package protection|shipping protection|\bpreview\b|gift ?card|subscription|\bsamples?\b|\btest(ing|in)?\b/i;   // not "Testosterone"
+const titleCase = (s) => (s === s.toUpperCase() ? s.toLowerCase().replace(/\b\w/g, c => c.toUpperCase()) : s);
+const STOP = new Set(['and', 'the', 'for', 'men', 'particle', 'by', 'of', 'x']);
+const tokens = (s) => fold(s).replace(/&/g, ' and ').split(/[^a-z0-9]+/).filter(t => t && !STOP.has(t)).map(t => t.slice(0, 5));
+/** Same product, loosely ("Testosterone and Hormone" ≈ "Testosterone & Hormonal Support") (pure). */
+function sameProduct(a, b) {
+  const x = tokens(a), y = tokens(b);
+  if (!x.length || !y.length) return false;
+  const [short, long] = x.length <= y.length ? [x, y] : [y, x];
+  return short.filter(t => long.includes(t)).length / short.length >= 0.75;
+}
+
+/**
+ * Every brand a film can be for, with its products (pure — tested). Ads Studio's products first (ready to use);
+ * then the brand's other products — Particle's from Medium's list, the others from their websites (Captain's read)
+ * and Captain's registry — marked ads_studio: false: the brief then tells the editor how to add them in Ads Studio.
+ * sites: { brand → [{ name, url }] } (brand_site_pages).
+ */
+function brandOptions({ catalog = null, sites = {} } = {}) {
+  return STUDIO_BRANDS().map(b => {
+    const site = (sites[b.name] || []).filter(s => s?.name && !SKIP_PRODUCT.test(s.name));
+    const exactUrl = (name) => site.find(s => fold(String(s.name).replace(/^particle\s+/i, '')) === fold(name))?.url || null;
+    const looseUrl = (name) => exactUrl(name) || site.find(s => sameProduct(s.name, name))?.url || null;
+    const list = (catalog?.products || []).filter(p => (p.brand || 'Particle') === b.name)
+      .map(p => ({ key: `hf:${p.id}`, id: p.id, name: p.name, product: p.product, ready: p.ready !== false, ads_studio: true, url: exactUrl(p.product) }));
+    const more = b.name === 'Particle' ? PRODUCTS : [...(b.products || []), ...site.map(s => titleCase(String(s.name).trim()))];
+    for (const name of more) {
+      const taken = b.name === 'Particle' ? list.some(x => fold(x.product) === fold(name)) : list.some(x => sameProduct(x.product, name));
+      if (!taken) list.push({ key: `p:${name}`, id: null, name, product: name, ready: true, ads_studio: false, url: b.name === 'Particle' ? exactUrl(name) : looseUrl(name) });
+    }
+    return { name: b.name, about: b.about, site: b.site || null, ads_studio: (catalog?.brands || []).some(x => x.brand === b.name) || (b.name === 'Particle' && !!catalog?.brand), products: list };
+  });
+}
+
 // ── Higgsfield (over CP's connection — Settings → Integrations → Higgsfield) ──
 const HF = () => require('../higgsfield');
 
@@ -108,8 +153,13 @@ async function readCatalog() {
   const raw = await hf.callTool(session, 'ads_studio_story_presets', {});
   const brands = (await hf.callTool(session, 'ads_studio_list_brands', {}).catch(() => ({})))?.brands || [];
   const brand = brands.find(b => /particle/i.test(b.name || '')) || null;
-  const products = brand ? ((await hf.callTool(session, 'ads_studio_list_products', { brand_id: brand.brand_id }).catch(() => ({})))?.products || []) : [];
-  return shapeCatalog(raw, { brand, products });
+  // every brand set up in Ads Studio, with its products (today only Particle for Men; others appear when the team adds them)
+  const products = [];
+  for (const b of brands.slice(0, 10)) {
+    const list = (await hf.callTool(session, 'ads_studio_list_products', { brand_id: b.brand_id }).catch(() => ({})))?.products || [];
+    for (const p of list) products.push({ ...p, brand_name: b.name, brand_site: b.website || '' });
+  }
+  return shapeCatalog(raw, { brand, products, brands });
 }
 
 /** The card's recipe (film prompt, screenplay, style) with our product — free, starts nothing. Trimmed for the writer. */
@@ -146,17 +196,24 @@ async function refresh() {
   }
 }
 
-/** Queue drama briefs. items: [{ card, product, length }]. */
+/**
+ * Queue drama briefs. items: [{ card, product, length }] — product.brand (default Particle), product.ads_studio
+ * (false → the brief starts with setting it up in Ads Studio), product.url (its page, for that).
+ */
 async function queue(items, { author = 'Medium', source = 'manual', note = null, batch = null } = {}) {
   const ids = [];
   const batchId = batch || (items.length > 1 ? `hf_${Date.now()}` : null);
-  for (const it of items) {
+  for (const [i, it] of items.entries()) {
     const len = lengthOf(it.length);
+    const brand = it.product.brand || 'Particle';
+    const reg = STUDIO_BRANDS().find(b => b.name === brand) || {};
     const request = {
-      lane: 'Particle', format: 'video', move: 'HIGGSFIELD_DRAMA', product: it.product.product, author, note, batch_id: batchId, autopilot: source === 'daily',
-      source: `Higgsfield Ads Studio · ${it.card.style} · “${it.card.title}”${it.fresh ? ' (new in Ads Studio)' : ''}`,
+      lane: 'Particle', format: 'video', move: 'HIGGSFIELD_DRAMA', product: it.product.product, brand, author, note, batch_id: batchId, autopilot: source === 'daily',
+      source: `Higgsfield Ads Studio · ${it.card.style} · “${it.card.title}”${it.fresh ? ' (new in Ads Studio)' : ''}${brand !== 'Particle' ? ` · ${brand}` : ''}`,
       higgsfield: { card_id: it.card.id, card_title: it.card.title, card_subtitle: it.card.subtitle, card_seconds: it.card.seconds || null, style: it.card.style, realistic: it.card.realistic,
-        product_id: it.product.id, product_name: it.product.name, length: len, clips: clipsFor(len) },
+        product_id: it.product.ads_studio === false ? null : it.product.id, product_name: it.product.name, length: len, clips: clipsFor(len),
+        brand, ads_studio: it.product.ads_studio !== false, brand_in_ads_studio: !!it.brand_in_ads_studio || brand === 'Particle', product_url: it.product.url || null, brand_site: reg.site || null,
+        ...(items.length > 1 ? { variant: { n: i + 1, of: items.length } } : {}) },
     };
     const { rows } = await db.query(`INSERT INTO medium_briefs (status, source, author, lane, product, format, move, request) VALUES ('QUEUED', $1, $2, 'Particle', $3, 'video', 'HIGGSFIELD_DRAMA', $4) RETURNING id`,
       [source === 'daily' ? 'autopilot' : 'generator', author, it.product.product, JSON.stringify(request)]);
@@ -184,15 +241,29 @@ async function daily({ now = new Date() } = {}) {
   const added = (st.changes || []).filter(c => Date.now() - new Date(c.at).getTime() < 7 * 86400000).flatMap(c => (c.added_cards || []).map(x => x.id));
   const top = await require('./ranks').monthProducts().then(list => (list || []).map(p => p.product)).catch(() => []);
   const dayIndex = Math.floor(now.getTime() / 86400000);
-  const items = pickDaily({ catalog: st.catalog, n: Math.min(5, Math.max(1, Number(h.per_day) || 1)), realisticShare: Number(h.realistic_share ?? 0.8), added, ...(await usage()), topProducts: top, dayIndex, length: lengthOf(h.length || 60) });
+  // the daily films are Particle's (its Ads Studio products, top sellers first)
+  const particle = st.catalog ? { ...st.catalog, products: (st.catalog.products || []).filter(p => (p.brand || 'Particle') === 'Particle') } : null;
+  const items = pickDaily({ catalog: particle, n: Math.min(5, Math.max(1, Number(h.per_day) || 1)), realisticShare: Number(h.realistic_share ?? 0.8), added, ...(await usage()), topProducts: top, dayIndex, length: lengthOf(h.length || 60) });
   out.queued = items.length ? await queue(items, { author: 'Medium (daily Higgsfield brief)', source: 'daily' }) : { queued: 0, reason: 'no catalog or products' };
   return out;
 }
 
-/** For the screen: the catalog, what changed, and the switch. */
-async function overview() {
-  const [cfg, st, connected] = await Promise.all([getConfig(), loadState(), HF().isConnected().catch(() => false)]);
-  return { connected, settings: cfg.higgsfield || {}, lengths: LENGTHS, catalog: st.catalog || null, read_at: st.read_at || null, error: st.error || null, changes: (st.changes || []).slice(0, 10) };
+/** The brands' product pages Captain read from their websites: { brand → [{ name, url }] }. */
+async function sitesProducts() {
+  const { rows } = await db.query(`SELECT brand, data->>'name' AS name, url FROM brand_site_pages WHERE kind = 'product' ORDER BY (data->>'reviews')::int DESC NULLS LAST, data->>'name'`).catch(() => ({ rows: [] }));
+  const out = {};
+  for (const r of rows) {
+    const list = (out[r.brand] = out[r.brand] || []);
+    if (r.name && !list.some(x => fold(x.name) === fold(r.name))) list.push({ name: r.name, url: r.url || null });
+  }
+  return out;
 }
 
-module.exports = { readCatalog, recipe, refresh, queue, daily, overview, pickDaily, shapeCatalog, diffCatalog, hasChanges, mediumProduct, clipsFor, lengthOf, LENGTHS, REALISTIC };
+/** For the screen: the catalog, the brands and their products, what changed, and the switch. */
+async function overview() {
+  const [cfg, st, connected, sites] = await Promise.all([getConfig(), loadState(), HF().isConnected().catch(() => false), sitesProducts()]);
+  return { connected, settings: cfg.higgsfield || {}, lengths: LENGTHS, catalog: st.catalog || null, brands: brandOptions({ catalog: st.catalog, sites }),
+    read_at: st.read_at || null, error: st.error || null, changes: (st.changes || []).slice(0, 10) };
+}
+
+module.exports = { readCatalog, recipe, refresh, queue, daily, overview, pickDaily, shapeCatalog, diffCatalog, hasChanges, mediumProduct, clipsFor, lengthOf, brandOptions, studioBrand, sameProduct, LENGTHS, REALISTIC };

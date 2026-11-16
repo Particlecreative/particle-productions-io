@@ -209,6 +209,16 @@ export function fixtureCall(path, { method = 'GET', body } = {}) {
         ],
       },
       changes: [{ at: new Date(Date.now() - 86400000).toISOString(), added_cards: [{ id: 'c4', title: 'Second chance', style: 'Micro drama' }], removed_cards: [], added_styles: [], removed_styles: [], added_products: [], removed_products: [] }],
+      brands: [
+        { name: 'Particle', ads_studio: true, site: 'particleformen.com', products: [
+          { key: 'hf:p1', id: 'p1', product: 'Face Cream', ready: true, ads_studio: true }, { key: 'hf:p2', id: 'p2', product: 'Gravité', ready: true, ads_studio: true },
+          { key: 'hf:p3', id: 'p3', product: 'Neck Cream', ready: true, ads_studio: true }, { key: 'hf:p4', id: 'p4', product: 'Hair Revival Kit', ready: true, ads_studio: true },
+          { key: 'p:Hand Cream', product: 'Hand Cream', ready: true, ads_studio: false }, { key: 'p:Varros', product: 'Varros', ready: true, ads_studio: false }] },
+        { name: 'Ashford', ads_studio: false, site: 'houseashford.com', products: [{ key: 'p:Bone & Joint', product: 'Bone & Joint', ready: true, ads_studio: false }, { key: 'p:Testosterone and Hormone', product: 'Testosterone and Hormone', ready: true, ads_studio: false }] },
+        { name: 'Clearstep', ads_studio: false, site: 'goclearstep.com', products: [{ key: 'p:Antifungal Foot Treatment', product: 'Antifungal Foot Treatment', ready: true, ads_studio: false, url: 'https://goclearstep.com/products/foot' }, { key: 'p:Antifungal Nail Repair', product: 'Antifungal Nail Repair', ready: true, ads_studio: false }] },
+        { name: 'Blurr', ads_studio: false, site: 'blurrskin.com', products: [{ key: 'p:Instant Eye Tightener', product: 'Instant Eye Tightener', ready: true, ads_studio: false }] },
+        { name: 'Biomella', ads_studio: false, site: 'gobiomella.com', products: [{ key: 'p:Postbiotic Face Cream', product: 'Postbiotic Face Cream', ready: true, ads_studio: false }] },
+      ],
     };
   }
   if (p === '/higgsfield/refresh') return { cards: 7, styles: 4, products: 4, changed: false };

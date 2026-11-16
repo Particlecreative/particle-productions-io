@@ -6,7 +6,8 @@ import { BriefRow } from './BriefItems';
 
 const LENGTH_LABEL = { 40: '40s', 60: '60s', 90: '90s', 120: '2 min' };
 const SHARE = [[1, 'Realistic only'], [0.8, 'Mostly realistic'], [0.5, 'Half and half']];
-const COST_EACH = 0.15;
+const COST_EACH = 0.6;   // measured: the first film briefs cost about 60¢ each (written, scored, proofread, improved)
+const MAX_COUNT = 10;
 
 /** One story card from Ads Studio, as a picker tile. */
 function CardTile({ card, on, fresh, onPick }) {
@@ -35,7 +36,7 @@ function CardTile({ card, on, fresh, onPick }) {
 export default function HiggsfieldFilms({ notify, onOpen, onQueued, isAdmin }) {
   const [ov, setOv] = useState(null);
   const [busy, setBusy] = useState(null);
-  const [form, setForm] = useState({ product_id: '', look: 'realistic', card_id: '', length: 60, count: 1, note: '' });
+  const [form, setForm] = useState({ brand: 'Particle', product_key: '', look: 'realistic', card_id: '', length: 60, count: 1, note: '' });
   const [ids, setIds] = useState([]);
   const [rows, setRows] = useState([]);
   const set = (patch) => setForm(f => ({ ...f, ...patch }));
@@ -63,8 +64,14 @@ export default function HiggsfieldFilms({ notify, onOpen, onQueued, isAdmin }) {
   const fresh = useMemo(() => new Set((ov?.changes || []).filter(c => Date.now() - new Date(c.at).getTime() < 7 * 86400000).flatMap(c => (c.added_cards || []).map(x => x.id))), [ov]);
   const cards = useMemo(() => (ov?.catalog?.cards || []).filter(c => c.realistic === (form.look === 'realistic'))
     .sort((a, b) => Number(fresh.has(b.id)) - Number(fresh.has(a.id))), [ov, form.look, fresh]);
-  const products = (ov?.catalog?.products || []).filter(p => p.ready);
+  const products = (ov?.catalog?.products || []).filter(p => p.ready && (p.brand || 'Particle') === 'Particle');
   const s = ov?.settings || {};
+  // every studio brand, with its products — Ads Studio's first; the rest are added in Ads Studio by the editor (the brief says how)
+  const brands = ov?.brands?.length ? ov.brands : [{ name: 'Particle', ads_studio: true, products: products.map(p => ({ key: `hf:${p.id}`, product: p.product, ready: true, ads_studio: true })) }];
+  const brand = brands.find(b => b.name === form.brand) || brands[0];
+  const inStudio = (brand?.products || []).filter(p => p.ads_studio);
+  const notInStudio = (brand?.products || []).filter(p => p.ready && !p.ads_studio);
+  const chosen = (brand?.products || []).find(p => p.key === form.product_key) || null;
 
   const refresh = async () => {
     setBusy('refresh');
@@ -123,13 +130,38 @@ export default function HiggsfieldFilms({ notify, onOpen, onQueued, isAdmin }) {
 
       {catalog && (
         <div className="trk-glass rounded-3xl p-5 sm:p-7 grid gap-5">
-          <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto_auto] items-end">
-            <label className="grid gap-1"><span className="trk-label">Product</span>
-              <select className="trk-input" value={form.product_id} onChange={(e) => set({ product_id: e.target.value })}>
-                <option value="">Medium picks (top sellers first)</option>
-                {products.map(p => <option key={p.id} value={p.id}>{p.product}</option>)}
+          <div className="grid gap-4 sm:grid-cols-[250px_minmax(0,1fr)_auto] items-end">
+            <label className="grid gap-1"><span className="trk-label">Brand</span>
+              <select className="trk-input" value={brand?.name || 'Particle'} onChange={(e) => set({ brand: e.target.value, product_key: '' })}>
+                {brands.map(b => <option key={b.name} value={b.name}>{b.name}{b.ads_studio ? '' : ' — not in Ads Studio yet'}</option>)}
               </select>
             </label>
+            <label className="grid gap-1"><span className="trk-label">Product</span>
+              <select className="trk-input" value={chosen ? chosen.key : ''} onChange={(e) => set({ product_key: e.target.value })}>
+                <option value="">{brand?.name === 'Particle' ? 'Medium picks (top sellers first)' : `Medium picks (takes turns across ${brand?.name}’s products)`}</option>
+                {inStudio.length > 0 && <optgroup label="In Ads Studio">{inStudio.map(p => <option key={p.key} value={p.key}>{p.product}{p.ready ? '' : ' — copy still being written in Ads Studio'}</option>)}</optgroup>}
+                {notInStudio.length > 0 && <optgroup label="Not in Ads Studio yet — the brief says how to add it">{notInStudio.map(p => <option key={p.key} value={p.key}>{p.product}</option>)}</optgroup>}
+              </select>
+            </label>
+            <div className="grid gap-1"><span className="trk-label">How many briefs</span>
+              <div className="flex items-center gap-1.5 p-1 rounded-xl" style={{ background: 'var(--trk-glass)' }}>
+                <button type="button" className="trk-btn !p-2" aria-label="Fewer briefs" disabled={form.count <= 1} onClick={() => set({ count: Math.max(1, form.count - 1) })}><Minus size={13} /></button>
+                <input className="trk-input !w-14 text-center !px-1 font-semibold tabular-nums" type="number" min={1} max={MAX_COUNT} aria-label="How many briefs" value={form.count}
+                  onChange={(e) => set({ count: Math.min(MAX_COUNT, Math.max(1, Math.round(Number(e.target.value) || 1))) })} />
+                <button type="button" className="trk-btn !p-2" aria-label="More briefs" disabled={form.count >= MAX_COUNT} onClick={() => set({ count: Math.min(MAX_COUNT, form.count + 1) })}><Plus size={13} /></button>
+              </div>
+            </div>
+          </div>
+          {(!brand?.ads_studio || (chosen && !chosen.ads_studio)) && (
+            <p className="-mt-2 text-[13px]" style={{ color: 'var(--trk-amber)' }}>
+              {!brand?.ads_studio
+                ? `${brand?.name} isn’t set up in Higgsfield Ads Studio yet — each brief starts with the editor adding the brand (from ${brand?.site || 'its website'}) and the product, a few minutes the first time. It’s written for ${brand?.name}’s buyer and claims, and lands on Monday as ${brand?.name}.`
+                : `${chosen.product} isn’t in Ads Studio yet — the brief starts with the editor adding it from its page${chosen.url ? '' : ' on the website'} (a few minutes).`}
+            </p>
+          )}
+          {brand?.name !== 'Particle' && brand?.products?.length === 0 && <p className="-mt-2 text-[13px]" style={{ color: 'var(--trk-red)' }}>Medium doesn’t know {brand.name}’s products yet — Captain Caption reads them from the website (Captain → Brain → Brand websites).</p>}
+
+          <div className="flex flex-wrap gap-4 items-end">
             <div className="grid gap-1"><span className="trk-label">Look</span>
               <div className="flex gap-1 p-1 rounded-xl" style={{ background: 'var(--trk-glass)' }}>
                 {[['realistic', 'Realistic'], ['stylized', 'Stylized']].map(([k, l]) => (
@@ -164,15 +196,10 @@ export default function HiggsfieldFilms({ notify, onOpen, onQueued, isAdmin }) {
           </label>
 
           <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-1.5">
-              <button type="button" className="trk-btn !p-1.5" aria-label="Fewer" onClick={() => set({ count: Math.max(1, form.count - 1) })}><Minus size={12} /></button>
-              <span className="w-8 text-center font-semibold">{form.count}</span>
-              <button type="button" className="trk-btn !p-1.5" aria-label="More" onClick={() => set({ count: Math.min(5, form.count + 1) })}><Plus size={12} /></button>
-            </div>
-            <button type="button" className="trk-btn primary !px-5 !py-2.5" onClick={generate} disabled={busy === 'write'}>
-              {busy === 'write' ? <Loader2 size={15} className="animate-spin" /> : <Clapperboard size={15} />} Write {form.count === 1 ? 'the film brief' : `${form.count} film briefs`}
+            <button type="button" className="trk-btn primary !px-5 !py-2.5" onClick={generate} disabled={busy === 'write' || (brand?.name !== 'Particle' && !brand?.products?.length)}>
+              {busy === 'write' ? <Loader2 size={15} className="animate-spin" /> : <Clapperboard size={15} />} Write {form.count === 1 ? 'the film brief' : `${form.count} film briefs`}{brand?.name !== 'Particle' ? ` for ${brand.name}` : ''}
             </button>
-            <span className="md-sub">About {money(form.count * COST_EACH)} · a minute or two each · nothing goes to Monday until you approve it</span>
+            <span className="md-sub">About {money(form.count * COST_EACH)} · a minute or two each{form.count > 1 ? ' — each with its own setting, cast and conflict' : ''} · nothing goes to Monday until you approve it</span>
           </div>
         </div>
       )}
