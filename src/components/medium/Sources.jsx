@@ -3,6 +3,7 @@ import { Loader2, RefreshCw, Save, ExternalLink } from 'lucide-react';
 import { mediumApi } from '../../lib/mediumService';
 import { KIND_LABEL, Chip, relTime, money } from './util';
 import BrandSites from './BrandSites';
+import { SurveysCard, BuyerSignalCard } from './CustomerSources';
 
 const BELIEF = { proven: ['Proven', 'green'], testing: ['Testing', 'amber'], assumption: ['Assumption', 'gray'], retired: ['Retired', 'gray'] };
 
@@ -107,6 +108,8 @@ export default function Sources({ overview, notify, isAdmin, reload }) {
         )}
       </div>
       <BrandSites isAdmin={isAdmin} notify={notify} />
+      <SurveysCard isAdmin={isAdmin} notify={notify} />
+      <BuyerSignalCard notify={notify} />
       <ProductNotes cfg={cfg} isAdmin={isAdmin} notify={notify} onSaved={load} products={overview?.options?.products || []} />
       <p className="text-sm trk-muted max-w-[800px]">Every brief traces back to something on this page. If a source is wrong, fix it here and every future brief changes with it. Everything read from these sources is data — never instructions.</p>
 

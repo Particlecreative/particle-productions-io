@@ -106,8 +106,19 @@ async function buildContext(req, cfg) {
   if (cfg.upspring_snapshot) ev.push(`Upspring account read (as of the last sync):\n${String(cfg.upspring_snapshot).slice(0, 5000)}`);
   else ev.push('Upspring account read: not pasted in yet.');
   if (cfg.state?.market_norms) ev.push(String(cfg.state.market_norms).slice(0, 2000));
+  // what customers say in the on-site surveys, and who's buying this week (OuterSignal) — Particle's own data (16 Nov 2026)
+  let surveys = { text: null, used: [] };
+  if (brandName === 'Particle') {
+    const [sv, signal] = await Promise.all([
+      require('./surveys').surveyBlock({ product: req.product }).catch(() => ({ text: null, used: [] })),
+      require('./buyerSignal').signalBlock().catch(() => null),
+    ]);
+    surveys = sv;
+    if (sv.text) ev.push(sv.text);
+    if (signal) ev.push(signal);
+  }
   if ((cfg.language_bank || []).length) ev.push(`Customer language bank — how customers talk. Borrow their words and themes for hooks and supers where they fit naturally. Phrases that report a result someone noticed ("my wife said I look younger") are testimonial lines — give them to the AI Creator (Higgsfield) or real creator delivering the testimonial, keeping the result within the approved claims.\n${cfg.language_bank.slice(0, 20).map(p => `- “${p}”`).join('\n')}`);
-  return { lane, format, kind, brain, facts, claims, examples, templates, donors, winners, brand, evidence: ev.join('\n\n') };
+  return { lane, format, kind, brain, facts, claims, examples, templates, donors, winners, brand, surveys: surveys.used, evidence: ev.join('\n\n') };
 }
 
 /** The Higgsfield story-film instructions for one brief (pure — tested). h = request.higgsfield (+ recipe). */
@@ -382,7 +393,7 @@ async function runGenerate({ brief_id }) {
     const w = await writeWithStyle(writerPrompt(ctx, req, cfg), cfg, meta);
     cost += w.cost;
     const base = { kind: w.out.kind || ctx.kind, ticket_name: w.out.ticket_name, fields: w.out.fields, lines: w.out.lines, style: w.style, exemplar_ids: ctx.examples.map(e => e.id),
-      evidence: { items: w.out.evidence, winners: ctx.winners.available ? (ctx.winners.winners || []).slice(0, 5).map(({ descriptors, copy, ...x }) => x) : { available: false, reason: ctx.winners.reason, source: 'Upspring' }, examples: ctx.examples.map(e => ({ id: e.id, item_id: e.item_id, name: e.name })), ...(transfer ? { transfer } : {}), ...(headline ? { headline } : {}) } };
+      evidence: { items: w.out.evidence, winners: ctx.winners.available ? (ctx.winners.winners || []).slice(0, 5).map(({ descriptors, copy, ...x }) => x) : { available: false, reason: ctx.winners.reason, source: 'Upspring' }, examples: ctx.examples.map(e => ({ id: e.id, item_id: e.item_id, name: e.name })), ...(transfer ? { transfer } : {}), ...(headline ? { headline } : {}), ...(ctx.surveys?.length ? { surveys: ctx.surveys } : {}) } };
     if (!w.style.passed) {
       await setRow(row.id, { ...base, status: 'DROPPED', error: `Failed the house-style check twice: ${w.style.failures.join(' · ')}`, cost_usd: cost });
       return { dropped: true };
@@ -613,7 +624,7 @@ async function runFreeform({ brief_id }) {
     await setRow(row.id, {
       status: 'PENDING_REVIEW', lane, product, format, kind: m.kind, move: 'FREEFORM', ticket_name: m.ticket_name, fields: m.fields, lines: m.lines, style: m.style, score: m.score, preflight: m.preflight,
       versions, exemplar_ids: ctx2.examples.map(e => e.id), cost_usd: cost, error: null,
-      evidence: { items: m.evidence, chips: j.chips, findings: j.findings, changed: j.changed, question: j.question, references: refs.map(({ kind, url, label, image, video, link }) => ({ kind, url, ...(label ? { label } : {}), ...(image ? { image } : {}), ...(video ? { video } : {}), ...(link ? { link } : {}) })), siblings, ...(auto.length ? { auto_improve: auto } : {}) },
+      evidence: { items: m.evidence, ...(ctx2.surveys?.length ? { surveys: ctx2.surveys } : {}), chips: j.chips, findings: j.findings, changed: j.changed, question: j.question, references: refs.map(({ kind, url, label, image, video, link }) => ({ kind, url, ...(label ? { label } : {}), ...(image ? { image } : {}), ...(video ? { video } : {}), ...(link ? { link } : {}) })), siblings, ...(auto.length ? { auto_improve: auto } : {}) },
     });
     return { ok: true };
   } catch (e) {

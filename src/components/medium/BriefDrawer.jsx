@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { X, Check, Pencil, RotateCcw, Ban, Loader2, ExternalLink, Save, Sparkles } from 'lucide-react';
 import { mediumApi } from '../../lib/mediumService';
 import References from './References';
+import CustomerData from './CustomerData';
 import { BAND, SUB_LABEL, SUB_WEIGHT, MOVE_LABEL, KIND_LABEL, FINDING, LANE_LABEL, Chip, money, readiness, origin, headline, progressInfo } from './util';
 
 const ISSUE_SEV = { must_fix: ['Must fix', 'red'], should_fix: ['Please check', 'amber'], info: ['Note', 'gray'] };
@@ -114,6 +115,8 @@ export default function BriefDrawer({ id, onClose, notify, onChanged, isAdmin, m
                   The brief says “attached reference”, but Medium has no file for it{b.fields?.template ? ` (“${b.fields.template}” has no example on Monday yet)` : ''} — add it to the Monday ticket by hand, or edit that line.
                 </p>
               )}
+
+              <CustomerData b={b} />
 
               {/* the brief */}
               <section className="mt-7">

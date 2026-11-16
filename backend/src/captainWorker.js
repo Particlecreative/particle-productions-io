@@ -35,6 +35,7 @@ const medium = { corpus: require('./lib/medium/corpus'), writer: require('./lib/
       medium_improve: medium.writer.runImprove,
       medium_market: () => require('./lib/medium/market').runMarket(),
       medium_ranks: () => require('./lib/medium/ranks').refresh(),
+      medium_surveys_sync: () => require('./lib/medium/surveys').sync(),   // PFM Surveys → what customers tell us
       medium_account_read: () => require('./lib/medium/accountRead').syncAccountRead(),
       brand_site_read: (p) => require('./lib/captain/site').readSite(p.brand),
       brain_brand_sort: () => require('./lib/captain/brandScope').sortBrands(),   // Brain → Sort by brand

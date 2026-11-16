@@ -123,6 +123,14 @@ async function tick() {
     await stamp('market_at');
     out.market = await enqueue('medium_market', { reason: 'weekly' }, { dedupeKey: 'medium_market', priority: 5, maxAttempts: 1 }).catch(e => ({ error: e.message }));
   }
+  // Customer surveys (PFM Surveys): once a day from 04:00, and right away the first time
+  if ((now.hour >= 4 && String(state.surveys_at || '').slice(0, 10) !== now.date) || !state.surveys_at) {
+    const st = await require('./surveys').status().catch(() => ({ connected: false }));
+    if (st.connected) {
+      await stamp('surveys_at');
+      out.surveys = await enqueue('medium_surveys_sync', { reason: 'daily' }, { dedupeKey: 'medium_surveys_sync', priority: 6, maxAttempts: 2 }).catch(e => ({ error: e.message }));
+    }
+  }
   // Upspring ranks: refresh twice a day (the cache is good for 12 h)
   if (now.hour >= 5 && Date.now() - new Date(state.ranks_at || 0).getTime() > 12 * 3600000 && (await require('./upspringAccount').status()).connected) {
     await stamp('ranks_at');

@@ -141,9 +141,12 @@ function briefHtml(b, approver, refs = []) {
     return `<li>${esc(r.label)}${r.kind === 'winner' ? ` — ${r.format === 'video' ? 'video' : 'static'} winner${perf ? ` (${esc(perf)})` : ''}` : from}${tail.length ? ` · ${tail.join(' · ')}` : ''}</li>`;
   };
   const shown = (refs || []).filter(r => r && r.label);
+  const customer = (b.evidence?.items || []).filter(e => /survey|outersignal/i.test(String(e?.source || ''))).slice(0, 6);
   return [
     `<p>${header}</p>`,
     shown.length ? section(shown.length > 1 ? 'References' : 'Reference', `<ul>${shown.map(refLine).join('')}</ul>`) : '',
+    // the customer data it's built on — survey answers, who's buying (Tomer: "let us know the data, it's important")
+    customer.length ? section('From our customer data', `<ul>${customer.map(e => `<li>${esc(e.claim)} <em>(${esc(e.source)})</em></li>`).join('')}</ul>`) : '',
     section(video ? 'Video Concept' : 'Concept / Idea', concept),
     donts.length ? section('Don\u2019ts', `<ul>${donts.map(d => `<li>${esc(d)}</li>`).join('')}</ul>`) : '',
     video && hooks.length ? section(hooks.length > 1 ? 'Hook Variations' : 'Hook', hooks.length > 1 ? `<ol>${hooks.map(h => `<li>${esc(h)}</li>`).join('')}</ol>` : `<p>${esc(hooks[0])}</p>`) : '',

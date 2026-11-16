@@ -296,6 +296,32 @@ router.post('/upspring/refresh', requireAdmin, async (req, res) => {
 });
 
 // ── Brand websites → the Brain (shared with Captain Caption) ─────────────────
+// ── Customer surveys (PFM Surveys) — the key is pasted once (sealed), synced daily ──
+router.get('/surveys', async (req, res) => {
+  try { res.json(await require('../lib/medium/surveys').status()); } catch (err) { errorJson(res, err); }
+});
+router.put('/surveys/key', requireAdmin, async (req, res) => {
+  try {
+    const r = await require('../lib/medium/surveys').connect(req.body?.api_key, { user: req.user });
+    await enqueue('medium_surveys_sync', { reason: 'connected' }, { dedupeKey: 'medium_surveys_sync', priority: 4, maxAttempts: 1 }).catch(() => null);
+    res.json({ ok: true, ...r });
+  } catch (err) { errorJson(res, err); }
+});
+router.delete('/surveys/key', requireAdmin, async (req, res) => {
+  try { await require('../lib/medium/surveys').disconnect(); res.json({ ok: true }); } catch (err) { errorJson(res, err); }
+});
+router.post('/surveys/sync', async (req, res) => {
+  try { res.json({ ok: true, job: await enqueue('medium_surveys_sync', { reason: 'manual', by: actorOf(req) }, { dedupeKey: 'medium_surveys_sync', priority: 4, maxAttempts: 1 }) }); } catch (err) { errorJson(res, err); }
+});
+
+// ── Who's buying (OuterSignal's weekly email, pasted) ──
+router.get('/buyer-signal', async (req, res) => {
+  try { res.json({ weeks: await require('../lib/medium/buyerSignal').latest(8) }); } catch (err) { errorJson(res, err); }
+});
+router.post('/buyer-signal', async (req, res) => {
+  try { res.json({ ok: true, week: await require('../lib/medium/buyerSignal').add(req.body?.text, { user: req.user }) }); } catch (err) { errorJson(res, err); }
+});
+
 router.get('/brand-sites', async (req, res) => {
   try { res.json({ sites: await require('../lib/captain/site').status() }); } catch (err) { errorJson(res, err); }
 });

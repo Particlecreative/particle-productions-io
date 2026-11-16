@@ -44,7 +44,11 @@ const briefs = [
     fields: designFields, score: score(84, 'ready'), preflight: { check_id: 'c2', verdict: 'issues', must_fix: 1, issues: [{ line_id: 'l5', found: 'Your Face Gets Cream. Your Neck Gets Nothing.', fix: 'At most 32 for the headline in 9x16 — cut 13', type: 'fit', severity: 'must_fix', rule: 'Layout limit: Respect Your Face' }], notes: [] },
     style: { passed: true, failures: [], rewrites: 1 }, cost_usd: 0.12, created_at: ago(40),
     versions: { medium: { ticket_name: 'Neck Cream | Meta | Medium | Respect Your Neck — Split Face V1–V3', fields: designFields, score: score(84, 'ready') }, mine: { ticket_name: 'Neck Cream | Meta | Medium | Neck B&A static', fields: { ...designFields, copy: 'V1\nHeadline: Your neck ages first.\n\nV2\nHeadline: Neck cream for men.' }, score: score(68, 'one_more_pass') } },
-    evidence: { items: [], chips: { lane: 'Particle', product: 'Neck Cream', format: 'design', length: '—', talent: 'man 55–65', move: 'NEW_ANGLE', structure: 'Respect Your Face', offer: 'none' },
+    evidence: { items: [{ claim: '28% of 1,240 Face Cream visitors said wrinkles and fine lines bother them most — the neck is where they show first (FC LP survey)', source: 'Survey' },
+        { claim: 'Silver Leisure Seekers rose 1.9 pts to 8.8% of buyers this week — cast a 60+ man (OuterSignal, 9–16 Nov)', source: 'OuterSignal' }],
+      surveys: [{ id: 's1', name: 'FC LP | Skin concerns', product: 'Face Cream', responses: 1240, last_answer_at: '2026-11-16', questions: [{ text: 'What bothers you most about your skin?', total: 1240,
+        bars: [{ label: 'Dark circles under my eyes', pct: 34 }, { label: 'Wrinkles and fine lines', pct: 28 }, { label: 'Dry, flaky skin', pct: 21 }, { label: 'Oily skin', pct: 9 }], verbatims: [] }] }],
+      chips: { lane: 'Particle', product: 'Neck Cream', format: 'design', length: '—', talent: 'man 55–65', move: 'NEW_ANGLE', structure: 'Respect Your Face', offer: 'none' },
       findings: [{ tag: 'supports', text: 'Split-face B&A is the most-used static layout in the corpus.', source: 'corpus' }, { tag: 'overlap', text: '“Respect Your Face” already ran on Face Cream — this makes it a deliberate product transfer.', source: 'corpus' }, { tag: 'gap', text: 'No neck B&A photography on file — book a shoot or use the texture close-up fallback.', source: 'brand doc' }],
       changed: 'Medium added V3 and the “Results may vary” line, and named the reference layout.', question: '' } },
   { id: 'b3', status: 'DROPPED', source: 'generator', author: 'Tomer W.', lane: 'SFY', product: 'Hand Cream', format: 'video', move: 'REFRESH', kind: 'original', ticket_name: 'Hand Cream | Science For You | Meta | Medium | Understand the Why', fields: { ...videoFields, brief: 'This ad explains why hands age.' },
@@ -185,6 +189,12 @@ export function fixtureCall(path, { method = 'GET', body } = {}) {
     norms: { hook_archetype: [{ id: 'demo', label: 'Demo / proof-first', all: 3.5, winners: 5.2, lift: 1.7 }, { id: 'pattern_interrupt', label: 'Pattern interrupt', all: 3.5, winners: 5.2, lift: 1.7 }, { id: 'question', label: 'Question', all: 9.2, winners: 7.5, lift: -1.7 }, { id: 'myth_correction', label: 'Myth correction', all: 11, winners: 8.8, lift: -2.2 }], persona: [] },
   } };
   if (p === '/market/refresh') return { queued: true };
+  // sample survey + OuterSignal data (local dev only; the OuterSignal week is the real 9–16 Nov totals, no names)
+  if (p === '/surveys') return { connected: true, sites: ['Particle for Men'], synced_at: new Date(Date.now() - 3 * 3600e3).toISOString(), surveys: SAMPLE_SURVEYS };
+  if (p === '/surveys/key') return { ok: true, sites: ['Particle for Men'], surveys: 84 };
+  if (p === '/surveys/sync') return { ok: true };
+  if (p === '/buyer-signal' && method === 'POST') return { ok: true, week: SAMPLE_SIGNAL.data };
+  if (p === '/buyer-signal') return { weeks: [SAMPLE_SIGNAL] };
   if (p === '/brand-sites') return { sites: [
     { brand: 'Ashford', url: 'https://www.houseashford.com', status: 'partial', products: 2, read_at: ago(60 * 5), error: 'The site limited reading after 2 of 4 product pages — the rest next time' },
     { brand: 'Biomella', url: 'https://www.gobiomella.com', status: null, products: null, read_at: null },
@@ -244,3 +254,17 @@ export function fixtureCall(path, { method = 'GET', body } = {}) {
   if (p === '/scorecard') return { rows: [{ lane: 'Particle', source: 'generator', move: 'TRANSFER_PRODUCT', briefs: 3, approved: 1, rejected: 0, shipped: 0, edited: 1, avg_score: 78, cost: 0.31 }], tests: [] };
   return {};
 }
+
+const SAMPLE_SURVEYS = [
+  { id: 's1', name: 'FC LP | Skin concerns', product: 'Face Cream', active: true, responses: 1240, last_answer_at: new Date(Date.now() - 2 * 3600e3).toISOString(),
+    top: [{ text: 'What bothers you most about your skin?', total: 1240, bars: [{ label: 'Dark circles under my eyes', pct: 34 }, { label: 'Wrinkles and fine lines', pct: 28 }, { label: 'Dry, flaky skin', pct: 21 }, { label: 'Oily skin', pct: 9 }] }] },
+  { id: 's2', name: 'Post-purchase | Why did you buy?', product: null, active: true, responses: 612, last_answer_at: new Date(Date.now() - 5 * 3600e3).toISOString(),
+    top: [{ text: 'What almost stopped you from buying?', total: 388, bars: [], verbatims: [{ text: 'I didn’t think a cream would actually do anything', at: '2026-11-15' }, { text: 'Price — but the guarantee made it easy', at: '2026-11-14' }] }] },
+];
+const SAMPLE_SIGNAL = { id: 1, week_from: '2026-11-09', week_to: '2026-11-16', added_by: 'Tomer Wilf Lezmy', data: {
+  headline: 'Silver Leisure Seekers and Modern Mavericks are rising; Gravité doubled its share with Distinguished Professionals.',
+  notable_total: 521, types: [{ type: 'Industry Experts', count: 226 }, { type: 'Ultra High Net Worth', count: 161 }, { type: 'Executives & Leadership', count: 156 }, { type: 'Public Recognition', count: 58 }, { type: 'Influencers', count: 34 }],
+  personas: [{ name: 'Corporate Commander', share_pct: 42.6, change_pts: -4 }, { name: 'Distinguished Professional', share_pct: 23.4, change_pts: -0.3 }, { name: 'Modern Maverick', share_pct: 12.9, change_pts: 1.5 },
+    { name: 'Silver Leisure Seeker', share_pct: 8.8, change_pts: 1.9 }, { name: 'Disciplined Guardian', share_pct: 5.4, change_pts: -0.2 }, { name: 'Self-Made Tradesman', share_pct: 5, change_pts: 0.2 }],
+  trending: [{ product: 'Particle Gravité', persona: 'Distinguished Professional', share_pct: 10.1, prior_share_pct: 4.7, units: 216, prior_units_per_week: 104 }],
+} };

@@ -68,6 +68,12 @@ export const mediumApi = {
   market: () => call('/market'),
   upspring: () => call('/upspring'),
   brandSites: () => call('/brand-sites'),
+  // what customers tell us (PFM Surveys) and who's buying (OuterSignal)
+  surveys: () => call('/surveys'),
+  surveysKey: (apiKey) => call('/surveys/key', { method: 'PUT', body: { api_key: apiKey } }),
+  surveysSync: () => call('/surveys/sync', { method: 'POST' }),
+  buyerSignal: () => call('/buyer-signal'),
+  addBuyerSignal: (text) => call('/buyer-signal', { method: 'POST', body: { text } }),
   brandSiteRead: (brand) => call(`/brand-sites/${encodeURIComponent(brand)}/read`, { method: 'POST' }),
   brandSiteUrl: (brand, url) => call(`/brand-sites/${encodeURIComponent(brand)}`, { method: 'PUT', body: { url } }),
   brandSitePassword: (brand, password) => call(`/brand-sites/${encodeURIComponent(brand)}/password`, { method: 'PUT', body: { password } }),
