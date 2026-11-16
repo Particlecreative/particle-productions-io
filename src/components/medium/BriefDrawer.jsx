@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { X, Check, Pencil, RotateCcw, Ban, Loader2, ExternalLink, Save, Sparkles } from 'lucide-react';
 import { mediumApi } from '../../lib/mediumService';
 import References from './References';
@@ -17,9 +17,16 @@ export default function BriefDrawer({ id, onClose, notify, onChanged, isAdmin, m
   const [rejecting, setRejecting] = useState(false);
   const [tab, setTab] = useState('medium');
 
+  // The page re-renders often (every toast, and every 6 s while another brief is being written) and hands us a new
+  // onClose each time — so the brief reloads only when it's a different brief, never because the page re-rendered
+  // (Tomer, 16 Nov 2026: "why does the Medium brief keep refreshing itself?" — it was blanking and losing edits).
+  const notifyRef = useRef(notify);
+  const closeRef = useRef(onClose);
+  notifyRef.current = notify;
+  closeRef.current = onClose;
   const load = useCallback(async () => {
-    try { setData(await mediumApi.brief(id)); } catch (e) { notify(e.message, true); onClose(); }
-  }, [id, notify, onClose]);
+    try { setData(await mediumApi.brief(id)); } catch (e) { notifyRef.current(e.message, true); closeRef.current(); }
+  }, [id]);
   useEffect(() => { setData(null); setEdit(null); load(); }, [load]);
   useEffect(() => { const k = (e) => e.key === 'Escape' && !edit && onClose(); window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [onClose, edit]);
   const [improving, setImproving] = useState(null);   // the improve round we're waiting for

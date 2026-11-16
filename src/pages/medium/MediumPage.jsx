@@ -71,6 +71,7 @@ export default function MediumPage() {
   const go = useCallback((t, mode) => setParams(prev => { const n = new URLSearchParams(prev); n.set('tab', t); if (mode) n.set('mode', mode); else n.delete('mode'); return n; }), [setParams]);
   const setSub = useCallback((mode) => go(tab, mode), [go, tab]);
   const openBrief = useCallback((id) => setParam('brief', id), [setParam]);
+  const closeBrief = useCallback(() => setParam('brief', ''), [setParam]);
 
   if (brandId && brandId !== 'particle') return <div className="p-10 text-center text-sm text-gray-500">Medium works for Particle — switch to the Particle brand to use it.</div>;
 
@@ -100,7 +101,7 @@ export default function MediumPage() {
         </div>
       </div>
 
-      {open && <BriefDrawer id={open} isAdmin={isAdmin} mondayOn={mondayOn} notify={notify} onClose={() => setParam('brief', '')} onChanged={load} />}
+      {open && <BriefDrawer id={open} isAdmin={isAdmin} mondayOn={mondayOn} notify={notify} onClose={closeBrief} onChanged={load} />}
       {toast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[80] px-4 py-2.5 rounded-full text-sm font-semibold shadow-lg" style={{ background: toast.error ? '#ff5c7a' : '#0808f8', color: '#fff' }} role="status">{toast.text}</div>
       )}
