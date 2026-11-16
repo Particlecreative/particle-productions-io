@@ -9,6 +9,7 @@ import Inspiration from './Inspiration';
 import TaskListModal from './TaskListModal';
 import { studioApi } from '../../lib/studioService';
 import { useStudio, workdays, firstName, workdaysSince } from './writes';
+import { perDay, loadByDay } from './capacity';
 
 const BOARD_LABEL = { video: 'Video', design: 'Design' };
 const isNew = (it) => /form requests|ready for assign/i.test(it.group || '') || (it.status.category === 'queued' && !it.people.length);
@@ -340,17 +341,12 @@ function needsAttention({ data, items, allItems, range, today }) {
 
   // People: overbooked days this period, and clocked-in time with nothing in Working (statuses not updated)
   const people = [];
-  const cap = data.capacity || {};
   for (const p of Object.values(data.people)) {
     if (p.role !== 'design' && p.role !== 'video') continue;
-    const capacity = cap[p.role] || (p.role === 'video' ? 3 : 5);
-    const load = {};
-    for (const it of items) {
-      if (!it.open || !it.people.includes(p.id) || !it.timeline?.from || !it.timeline?.to) continue;
-      const wd = workdays(it.timeline.from, it.timeline.to);
-      for (const d of wd) if (d >= range.from && d <= range.to) load[d] = (load[d] || 0) + 1 / Math.max(1, wd.length);
-    }
-    const over = Object.entries(load).filter(([, v]) => v > capacity).map(([d]) => d).sort();
+    // capacity.js: 20 a week for a designer, 10 for an editor; a TV production fills its days; carry-overs don't count
+    const capacity = perDay(data, p.role);
+    const load = loadByDay(items, p.id, capacity);
+    const over = Object.entries(load).filter(([d, v]) => d >= range.from && d <= range.to && v > capacity + 1e-9).map(([d]) => d).sort();
     if (over.length) people.push({ key: `over:${p.id}`, kind: 'over', person: p, days: over });
     if (p.clocked_s > 4 * 3600 && p.unassigned_s / p.clocked_s > 0.35) people.push({ key: `idle:${p.id}`, kind: 'idle', person: p, pct: Math.round((p.unassigned_s / p.clocked_s) * 100) });
   }

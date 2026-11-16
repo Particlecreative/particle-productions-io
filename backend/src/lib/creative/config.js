@@ -155,7 +155,9 @@ const DEFAULTS = {
   },
   delivery_rule: { count_intra_delivered: false, exclude_reopened_in_week: true, treat_is_done_as_delivered: true },
   exclude: { products: [], groups: [] },
-  capacity_per_day: { video: 3, design: 5 },
+  capacity_per_day: { video: 3, design: 5 },   // old — the Studio uses capacity_per_week (16 Nov 2026)
+  // Tomer, 16 Nov 2026: a designer takes 20 tasks a week, a video editor 10 (a TV production fills its days; carry-overs don't count)
+  capacity_per_week: { video: 10, design: 20 },
   // Creative Control flags non-TV tasks sitting in one status longer than this (workdays)
   stale_status: { working_days: 3, paused_days: 5 },
   // { mondayUserId: { role, display_name, hidden, order } } — Omer Ben Simon's Monday profile has no name yet

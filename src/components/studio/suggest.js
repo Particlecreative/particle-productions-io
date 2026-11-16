@@ -3,6 +3,7 @@
 // When: worked out here, from what the Workload already knows — everyone's open tasks, capacity and time off.
 import { addDays } from './Filters';
 import { outOn } from './writes';
+import { perDay, loadByDay } from './capacity';
 
 const dowOf = (d) => new Date(`${d}T12:00:00Z`).getUTCDay();
 const isWorkday = (d) => dowOf(d) <= 4;   // Sun–Thu
@@ -11,17 +12,8 @@ export const nextWorkdayAfter = (d) => nextWorkday(addDays(d, 1));
 const DEFAULT_DAYS = { video: 2, design: 1 };
 const first = (n) => String(n || '').split(' ')[0];
 
-/** A person's load per day: each open, scheduled task's work spread over its working days (as the Workload rows do). */
-export function loadOf(items, personId) {
-  const load = {};
-  for (const it of items) {
-    if (!it.open || !it.people?.includes(personId) || !it.timeline?.from || !it.timeline?.to) continue;
-    const days = [];
-    for (let d = it.timeline.from; d <= it.timeline.to && days.length < 60; d = addDays(d, 1)) if (isWorkday(d)) days.push(d);
-    for (const d of days) load[d] = (load[d] || 0) + 1 / Math.max(1, days.length);
-  }
-  return load;
-}
+/** A person's load per day — the Workload's own rule (capacity.js). */
+export const loadOf = (items, personId, data) => loadByDay(items, personId, perDay(data, data?.people?.[personId]?.role));
 
 /** The earliest run of `days` working days, from today, with room every day and none of them off (pure). */
 export function whenFor({ person, days, load, capacity, today, horizon = 20 }) {
@@ -50,7 +42,7 @@ export function ideasFor(it, { fits, data, loads, today }) {
   const out = [];
   for (const c of cands) {
     const p = data.people[c.person];
-    const capacity = data.capacity?.[p.role] || (p.role === 'video' ? 3 : 5);
+    const capacity = perDay(data, p.role);
     const when = whenFor({ person: p, days: c.days || DEFAULT_DAYS[it.board] || 1, load: loads[c.person] || {}, capacity, today });
     if (!when) continue;
     // already overdue: every day is late — the card says so; "ends after the deadline" is only for one still ahead

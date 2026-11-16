@@ -413,7 +413,8 @@ async function buildStudio({ brandId = 'particle', from, to, now = Date.now(), f
     effort_source: lite ? null : clockSource,
     lite,
     holidays,
-    capacity: config.capacity_per_day,
+    capacity: Object.fromEntries(Object.entries(config.capacity_per_week || { video: 10, design: 20 }).map(([k, v]) => [k, v / 5])),   // a day (Sun–Thu)
+    capacity_week: config.capacity_per_week || { video: 10, design: 20 },
     stale: config.stale_status,
     warnings,
   };

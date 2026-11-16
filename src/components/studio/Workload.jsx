@@ -5,7 +5,8 @@ import { Avatar, Seg, StatusPill, ProductTag, BrandTag, brandsOf, textOn } from 
 import { applyFilters, addDays, sundayOf, ymd } from './Filters';
 import { studioApi } from '../../lib/studioService';
 import { useStudio, lastWriteAt, outOn, checkSchedule, workdays } from './writes';
-import { ideasFor, reasonText, whenText, loadOf } from './suggest';
+import { ideasFor, reasonText, whenText } from './suggest';
+import { perDay, perWeek, loadByDay, tvDays } from './capacity';
 import { SORTS, QUICK, groupFor, poolFor, urgencyOf, matches, forLine } from './scheduleOrder';
 
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -144,19 +145,16 @@ export default function Workload({ f }) {
   const rows = useMemo(() => people.map(p => {
     const mine = all.filter(it => it.people.includes(p.id) && it.timeline?.from && it.timeline?.to && it.timeline.to >= start && it.timeline.from <= end);
     const bars = lanes(mine.map(it => ({ it, from: it.timeline.from < start ? start : it.timeline.from, to: it.timeline.to > end ? end : it.timeline.to })));
-    const capacity = data?.capacity?.[p.role] || (p.role === 'video' ? 3 : 5);
-    // Load per day: each open task's work is spread over its timeline's working days
-    const load = Object.fromEntries(days.map(d => [d, 0]));
-    for (const it of mine) {
-      if (!it.open) continue;
-      const wd = workdays(it.timeline.from, it.timeline.to);
-      for (const d of wd) if (d in load) load[d] += 1 / Math.max(1, wd.length);
-    }
+    // Capacity (capacity.js): 20 a week for a designer, 10 for an editor; a TV production fills its days; carry-overs don't count
+    const capacity = perDay(data, p.role);
+    const byDay = loadByDay(mine, p.id, capacity);
+    const load = Object.fromEntries(days.map(d => [d, byDay[d] || 0]));
+    const tv = tvDays(mine, p.id);
     const avail = days.filter(d => dow(d) <= 4 && !outOn(p, d));
     const booked = avail.length ? avail.reduce((a, d) => a + load[d], 0) / (capacity * avail.length) : 0;
     const free = avail.filter(d => d >= today && load[d] < 0.05).slice(0, 3);
     const unscheduled = all.filter(it => it.open && it.people.includes(p.id) && !(it.timeline?.from && it.timeline?.to));
-    return { p, bars, laneCount: Math.max(1, ...bars.map(b => b.lane + 1)), load, capacity, booked, free, unscheduled, open: mine.filter(i => i.open).length };
+    return { p, bars, laneCount: Math.max(1, ...bars.map(b => b.lane + 1)), load, capacity, booked, free, unscheduled, open: mine.filter(i => i.open).length, tv };
   }), [people, all, start, end, days, today, data]);
   const unassigned = useMemo(() => all.filter(it => it.open && !it.people.length && (role === 'all' || roleOf(it) === role)), [all, role]);
   const toSchedule = rows.reduce((a, r) => a + r.unscheduled.length, 0) + unassigned.length;
@@ -316,7 +314,7 @@ export default function Workload({ f }) {
                 })}
               </div>
 
-              {rows.map(({ p, bars, laneCount, load, capacity, booked, free, unscheduled, open }) => {
+              {rows.map(({ p, bars, laneCount, load, capacity, booked, free, unscheduled, open, tv }) => {
                 const isTarget = ghost && !ghost.floating && ghost.owner === p.id;
                 const h = TOP + (laneCount + (isTarget ? 1 : 0)) * LANE_H + 8;
                 const header = role === 'all' && p.role !== lastRole;
@@ -342,7 +340,7 @@ export default function Workload({ f }) {
                             </div>
                           </div>
                         </div>
-                        <div title={`${Math.round(booked * 100)}% of ${first(p.name)}’s capacity in these weeks (${capacity} tasks a day)`}>
+                        <div title={`${Math.round(booked * 100)}% of ${first(p.name)}’s capacity in these weeks (${perWeek(data, p.role)} tasks a week · a TV production is a full day · carry-overs from an earlier week don’t count)`}>
                           <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
                             <div className="h-full rounded-full" style={{ width: `${Math.min(100, booked * 100)}%`, background: booked > 1 ? '#e2445c' : booked > 0.85 ? '#fdab3d' : '#0808f8' }} />
                           </div>
@@ -357,7 +355,8 @@ export default function Workload({ f }) {
                         {days.map((d, i) => {
                           const o = outOn(p, d);
                           const ld = load[d];
-                          const over = ld > capacity;
+                          const over = ld > capacity + 1e-9;
+                          const tvDay = tv.has(d);
                           const we = dow(d) > 4;
                           return (
                             <div key={d} className={`absolute top-0 bottom-0 border-l ${dow(d) === 0 ? 'border-gray-200' : 'border-gray-100'}`} style={{
@@ -366,9 +365,13 @@ export default function Workload({ f }) {
                             }}>
                               {o && !we ? (
                                 <div className="text-[10px] text-gray-400 font-semibold flex items-center justify-center gap-1 pt-1.5" title={o.name || 'Out'}><Plane size={10} /> {cols.w[i] >= 56 ? (o.type === 'holiday' ? 'Holiday' : 'Off') : ''}</div>
+                              ) : tvDay && !we && !over ? (
+                                <div className="flex justify-center pt-1.5">
+                                  <span title={`A TV production — the only thing ${first(p.name)} does this day`} className="text-[10px] font-bold rounded-full px-1.5 bg-[#030b2e] text-white">TV</span>
+                                </div>
                               ) : ld > 0 && !we ? (
                                 <div className="flex justify-center pt-1.5">
-                                  <span title={`${Math.round(ld * 10) / 10} tasks’ worth of work · capacity ${capacity}`}
+                                  <span title={tvDay ? `A TV production day — anything else on top of it is too much` : `${Math.round(ld * 10) / 10} tasks’ worth of work · capacity ${Math.round(capacity * 10) / 10} a day (${perWeek(data, p.role)} a week)`}
                                     className={`text-[10px] font-bold rounded-full px-1.5 min-w-[22px] text-center ${over ? 'bg-red-500 text-white' : 'bg-[#0808f8]/10 text-[#0808f8]'}`}>
                                     {Math.round(ld * 10) / 10}
                                   </span>
@@ -481,7 +484,7 @@ function SchedulePanel({ rows, unassigned, data, q, setQ, who, setWho, onClose, 
       .then(r => { setFits(f => ({ ...f, ...r.fits })); setLearned(r.learned); setFitErr(null); })
       .catch(e => { want.forEach(it => asked.current.delete(keyOf(it))); setFitErr(e.message); });
   }, [pool, showIdeas]); // eslint-disable-line react-hooks/exhaustive-deps
-  const loads = useMemo(() => Object.fromEntries(Object.keys(data.people || {}).map(id => [id, loadOf(all, id)])), [all, data]);
+  const loads = useMemo(() => Object.fromEntries(Object.entries(data.people || {}).map(([id, p]) => [id, loadByDay(all, id, perDay(data, p.role))])), [all, data]);
   const ideasOf = (it) => (showIdeas && ['video', 'design'].includes(it.board) && (fits[keyOf(it)] || it.people.length)
     ? ideasFor(it, { fits: fits[keyOf(it)], data, loads, today }) : null);
   return (
