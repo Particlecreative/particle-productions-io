@@ -119,8 +119,10 @@ test('inside a shared folder: the path starts at that folder, with its namespace
   });
   F.reset();
   const f = await F.createTicketFolder({ board: 'video', department: 'Marketing/Media', product: 'Gravité', platform: 'Meta', itemName: 'Gravité | Meta | The Last Spritz', when: NOV16 });
-  assert.equal(seen[0][1], '/Marketing Ads/Products/Gravité/Video/Meta/11_November 2026/The Last Spritz');
-  assert.equal(seen[0][2], JSON.stringify({ '.tag': 'namespace_id', namespace_id: '13399577827' }));
+  const made = seen.find(x => x[0] === 'files/create_folder_v2');
+  assert.equal(made[1], '/Marketing Ads/Products/Gravité/Video/Meta/11_November 2026/The Last Spritz');
+  assert.equal(made[2], JSON.stringify({ '.tag': 'namespace_id', namespace_id: '13399577827' }));
+  assert.ok(seen.some(x => x[0] === 'files/list_folder' && x[1] === '/Marketing Ads/Products'));   // looked at what's there first
   assert.equal(f.path, `${B}/Marketing Ads/Products/Gravité/Video/Meta/11_November 2026/The Last Spritz`);
   assert.equal(f.url, 'https://www.dropbox.com/scl/fo/x');
   F.reset();
@@ -133,4 +135,50 @@ test('the sign-in asks Dropbox for exactly the permissions it uses', async (t) =
   assert.equal(url.searchParams.get('scope'), 'account_info.read files.metadata.read files.content.write sharing.read sharing.write');
   assert.equal(url.searchParams.get('code_challenge_method'), 'S256');
   assert.equal(url.searchParams.get('token_access_type'), 'offline');
+});
+
+
+// ── the product folder that's already there (16 Nov 2026 listing of Marketing Ads) ──
+const MA = {
+  Products: ['Ab Firming Cream', 'Anti Gray Serum', 'Deodorant', 'Face Cream', 'Shampoo', 'Gravité', 'Power Shower Set', "Ultimate Men's Gift Bundle", "Men's Gift Bundle", 'Multiple Products', 'NeoRoot', 'Bone & Joint', 'Testosterone and Hormone', 'Antifungal Nail Repair', 'Unknown Product'],
+  Bundles: ["Ultimate Men's Gift Bundle", 'Power Shower Set', 'Gravité', 'Face Cream', 'Hair Revival Kit', 'Lady Killer Kit', 'Eye Bag Killer set', 'Eye Bag-Killer Set', 'Gravite Bundle', 'Eyebag Killer Set'],
+  Other: ['Not a Product Task', 'Multiple Products'],
+};
+
+test('the folder already there wins: exact in its group, then another group, then the same name spelled differently', () => {
+  assert.deepEqual(F.pickFolder('Face Cream', MA), { cat: 'Products', name: 'Face Cream' });            // not Bundles/Face Cream
+  assert.deepEqual(F.pickFolder('Gravité', MA), { cat: 'Products', name: 'Gravité' });
+  assert.deepEqual(F.pickFolder('Power Shower Set', MA), { cat: 'Bundles', name: 'Power Shower Set' });
+  assert.deepEqual(F.pickFolder('Eyebag Killer Set', MA), { cat: 'Bundles', name: 'Eyebag Killer Set' }); // each board's spelling keeps its own folder
+  assert.deepEqual(F.pickFolder('Eye Bag-Killer Set', MA), { cat: 'Bundles', name: 'Eye Bag-Killer Set' });
+  assert.deepEqual(F.pickFolder('Anti-Gray Serum', MA), { cat: 'Products', name: 'Anti Gray Serum' });   // spelled differently → the existing one
+  assert.deepEqual(F.pickFolder('gravite', MA), { cat: 'Products', name: 'Gravité' });
+  assert.deepEqual(F.pickFolder('Multiple Products', MA), { cat: 'Other', name: 'Multiple Products' });
+  assert.deepEqual(F.pickFolder('Hair Revival Kit', MA), { cat: 'Bundles', name: 'Hair Revival Kit' });
+  assert.deepEqual(F.pickFolder('Face Shield', MA), { cat: 'Products', name: 'Face Shield' });          // new product → a new folder
+  assert.deepEqual(F.pickFolder('Head Turner Set', null), { cat: 'Bundles', name: 'Head Turner Set' });
+});
+
+test('a sister brand on a product name Particle sells gets its own folder; its own products keep their names', () => {
+  assert.equal(F.productName('Face Cream', 'Biomella'), 'Biomella Face Cream');
+  assert.equal(F.productName('Hand Cream', 'Blurr'), 'Blurr Hand Cream');
+  assert.equal(F.productName('Bone & Joint', 'Ashford'), 'Bone & Joint');
+  assert.equal(F.productName('Testosterone and Hormone', 'Ashford'), 'Testosterone and Hormone');
+  assert.equal(F.productName('Antifungal Nail Repair', 'Clearstep'), 'Antifungal Nail Repair');
+  assert.equal(F.productName('Face Cream', 'Particle'), 'Face Cream');
+  assert.equal(F.productName('Face Cream', ''), 'Face Cream');
+  assert.equal(F.productName('Multiple Products', 'Biomella'), 'Multiple Products');
+  assert.equal(F.productName('Biomella Face Cream', 'Biomella'), 'Biomella Face Cream');
+  assert.equal(F.folderPath({ board: 'video', department: 'Marketing/Media', brand: 'Biomella', product: 'Face Cream', platform: 'Meta', concept: 'Deep-Sea AMA', when: NOV16, existing: MA }),
+    `${B}/Marketing Ads/Products/Biomella Face Cream/Video/Meta/11_November 2026/Deep-Sea AMA`);
+});
+
+test('the path uses the existing folders — and TV matches its own (Gravite without the accent)', () => {
+  assert.equal(F.folderPath({ board: 'design', department: 'Marketing', brand: 'Particle', product: 'Power Shower Set', platform: 'Meta', concept: 'X', when: NOV16, existing: MA }),
+    `${B}/Marketing Ads/Bundles/Power Shower Set/Image/Meta/11_November 2026/X`);
+  assert.equal(F.folderPath({ board: 'video', department: 'TV', product: 'Gravité', platform: 'Other', concept: 'Bending Time', when: NOV16, existing: { TV: ['Face Cream', 'Gravite', 'IEFC'] } }),
+    `${B}/TV/Products/Gravite/November 2026/Bending Time`);
+  assert.equal(F.rootOf('video', 'Marketing/Media'), 'Marketing Ads');
+  assert.equal(F.rootOf('design', 'Socials'), 'Marketing Ads');
+  assert.equal(F.rootOf('video', 'Socials'), 'Unknown');
 });

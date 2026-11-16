@@ -387,7 +387,7 @@ async function submitTicket({ config, form, board, fields, people, user, convers
 async function makeFolder({ config, board, clean, name, itemId, brandId }) {
   let f;
   try {
-    f = await folders.createTicketFolder({ board, department: clean.department, product: clean.product, platform: clean.platform, websiteTask: clean.website_task, itemName: name, brandId });
+    f = await folders.createTicketFolder({ board, department: clean.department, brand: clean.brand, product: clean.product, platform: clean.platform, websiteTask: clean.website_task, itemName: name, brandId });
   } catch (e) {
     console.warn('[studio] dropbox folder:', e.message);
     return { error: `Dropbox: ${e.message}` };

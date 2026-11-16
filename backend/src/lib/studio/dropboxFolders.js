@@ -9,6 +9,12 @@
  *     (no platform, no month; video has no task level); TV → TV/Products/<Product>/<Month YYYY>/<Concept>;
  *     any other video department (Socials, SP, Creative, Amazon…) → Unknown/… — exactly as today.
  *   · Products | Bundles | Other — "Multiple Products" / "Not a Product Task" → Other; a bundle, kit or set → Bundles.
+ *   · The product folder that's already there wins (Tomer: "save it by the product smartly, as the rest of the
+ *     tickets"): the exact name in its group, then the same name in the other group (Power Shower Set lives in both),
+ *     then the same name spelled differently (Gravite / Gravité, Eye Bag-Killer Set / Eyebag Killer Set). A new one is
+ *     made only for a product that has no folder yet.
+ *   · A sister brand's ticket on a product name Particle also sells gets its brand in front ("Biomella Face Cream"),
+ *     so it never lands in Particle's folder; a brand's own product keeps its name (Bone & Joint → Ashford).
  *   · Month — when the folder is made (Israel time). Concept — the ticket name's last part (after the last " | "),
  *     without " ? * < > : and with "/" as "-" (the old script turned "before/after" into a sub-folder).
  *   · The ticket folder starts empty — the finished files go straight in (the column is "DropBox (For Uploading
@@ -21,6 +27,7 @@
  */
 const crypto = require('crypto');
 const secrets = require('./secrets');
+const { BRANDS } = require('./brand');
 
 const SECRET = 'dropbox_folders';
 const PENDING = 'dropbox_folders_pending';
@@ -49,24 +56,67 @@ function categoryOf(product) {
   return 'Products';
 }
 
+const fold = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+const GENERIC = /^(multiple products|not a product task|test product|unknown product)$/i;
+const GROUPS = ['Products', 'Bundles', 'Other'];
+
+/** The product's folder name; a sister brand on a product name Particle sells gets the brand in front (pure). */
+function productName(product, brand) {
+  const p = clean(product) && clean(product) !== '-' ? clean(product) : 'Unknown Product';
+  const b = BRANDS.find(x => x.name.toLowerCase() === String(brand || '').trim().toLowerCase());
+  if (!b || b.default || GENERIC.test(p)) return p;
+  if ((b.products || []).some(x => fold(x) === fold(p)) || fold(p).includes(fold(b.name))) return p;   // its own product
+  return `${b.name} ${p}`;
+}
+
+/**
+ * The folder that's already there: exact name in its group, exact in another group, then the same name spelled
+ * differently; else a new one in its group. existing: { Products: [names], Bundles: [...], Other: [...] } (pure).
+ */
+function pickFolder(name, existing) {
+  const guess = categoryOf(name);
+  if (!existing) return { cat: guess, name };
+  const order = [guess, ...GROUPS.filter(c => c !== guess)];
+  for (const c of order) if ((existing[c] || []).includes(name)) return { cat: c, name };
+  for (const c of order) {
+    const hit = (existing[c] || []).find(f => fold(f) === fold(name));
+    if (hit) return { cat: c, name: hit };
+  }
+  return { cat: guess, name };
+}
+
+/** The department branch a ticket goes in (pure). */
+function rootOf(board, department) {
+  const dept = String(department || '').trim();
+  if (/^website$/i.test(dept)) return 'Website';
+  if (board !== 'design' && /^tv$/i.test(dept)) return 'TV';
+  return board === 'design' || /^marketing/i.test(dept) ? 'Marketing Ads' : 'Unknown';
+}
+
 /** The ticket's last name part — "Product | Campaign | Meta | The Last Spritz" → "The Last Spritz". */
 const conceptOf = (itemName) => String(itemName || '').split(' | ').pop().trim();
 
 /**
  * Where the ticket's folder goes.
- * { board: 'video'|'design', department, product, platform, websiteTask, concept, when, base } → "/Creative Assets…/…/Concept"
+ * { board: 'video'|'design', department, brand, product, platform, websiteTask, concept, when, base, existing }
+ *   existing = the product folders already in that branch ({ Products, Bundles, Other } — TV: { TV: [names] })
+ * → "/Creative Assets…/…/Concept"
  */
-function folderPath({ board, department, product, platform, websiteTask, concept, when = new Date(), base = DEFAULT_BASE }) {
-  const prod = clean(product) && clean(product) !== '-' ? clean(product) : 'Unknown Product';
-  const cat = categoryOf(prod);
+function folderPath({ board, department, brand, product, platform, websiteTask, concept, when = new Date(), base = DEFAULT_BASE, existing = null }) {
+  const name = productName(product, brand);
   const kind = board === 'design' ? 'Image' : 'Video';
   const leaf = clean(concept) || 'Untitled';
   const m = monthOf(when);
-  const dept = String(department || '').trim();
+  const root = rootOf(board, department);
   let parts;
-  if (/^website$/i.test(dept)) parts = ['Website', cat, prod, kind, ...(board === 'design' ? [clean(websiteTask) || 'Other'] : []), leaf];
-  else if (board !== 'design' && /^tv$/i.test(dept)) parts = ['TV', 'Products', prod, `${m.name} ${m.year}`, leaf];
-  else parts = [board === 'design' || /^marketing/i.test(dept) ? 'Marketing Ads' : 'Unknown', cat, prod, kind, clean(platform) || 'Other', `${m.mm}_${m.name} ${m.year}`, leaf];
+  if (root === 'TV') {
+    parts = ['TV', 'Products', (existing?.TV || []).find(f => fold(f) === fold(name)) || name, `${m.name} ${m.year}`, leaf];
+  } else {
+    const at = pickFolder(name, existing);
+    parts = root === 'Website'
+      ? ['Website', at.cat, at.name, kind, ...(board === 'design' ? [clean(websiteTask) || 'Other'] : []), leaf]
+      : [root, at.cat, at.name, kind, clean(platform) || 'Other', `${m.mm}_${m.name} ${m.year}`, leaf];
+  }
   return [String(base || DEFAULT_BASE).replace(/\/+$/, ''), ...parts].join('/');
 }
 
@@ -182,7 +232,7 @@ async function connection(brandId = 'particle') {
   memo = { conn, token: t.access_token, exp: Date.now() + (Number(t.expires_in) || 3600) * 1000 };
   return memo;
 }
-const reset = () => { memo = null; };
+const reset = () => { memo = null; listed.clear(); };
 
 function rootHeader(conn) {
   if (conn.mode === 'root') return { 'Dropbox-API-Path-Root': JSON.stringify({ '.tag': 'root', root: conn.root_ns }) };
@@ -208,14 +258,36 @@ async function linkFor(c, path) {
   throw new Error(`the link: ${r.text}`);
 }
 
+/** The product folders already in a branch (read-only; cached 30 min) → { Products, Bundles, Other } or { TV }. */
+const listed = new Map();
+async function productFolders(c, root) {
+  const hit = listed.get(root);
+  if (hit && Date.now() - hit.at < 30 * 60 * 1000) return hit.value;
+  const names = async (sub) => {
+    const r = await api(c, 'files/list_folder', { path: apiPath(c.conn, `${c.conn.base}/${sub}`), recursive: false, limit: 2000 });
+    if (!r.ok) { if (/not_found/.test(r.text)) return []; throw new Error(r.text); }
+    let page = r.data, out = page.entries.filter(e => e['.tag'] === 'folder').map(e => e.name);
+    while (page.has_more) {
+      const n = await api(c, 'files/list_folder/continue', { cursor: page.cursor });
+      if (!n.ok) break;
+      page = n.data; out = out.concat(page.entries.filter(e => e['.tag'] === 'folder').map(e => e.name));
+    }
+    return out;
+  };
+  const value = root === 'TV' ? { TV: await names('TV/Products') } : Object.fromEntries(await Promise.all(GROUPS.map(async g => [g, await names(`${root}/${g}`)])));
+  listed.set(root, { at: Date.now(), value });
+  return value;
+}
+
 /**
  * Make the ticket's folder and its link. → { url, path } (path from the base, for showing), or null when Dropbox
  * isn't connected. Throws with a readable reason otherwise.
  */
-async function createTicketFolder({ board, department, product, platform, websiteTask, itemName, when = new Date(), brandId = 'particle' }) {
+async function createTicketFolder({ board, department, brand, product, platform, websiteTask, itemName, when = new Date(), brandId = 'particle' }) {
   const c = await connection(brandId);
   if (!c) return null;
-  const rel = folderPath({ board, department, product, platform, websiteTask, concept: conceptOf(itemName), when, base: c.conn.base });
+  const existing = await productFolders(c, rootOf(board, department)).catch(e => { console.warn('[studio] dropbox product folders:', e.message); return null; });
+  const rel = folderPath({ board, department, brand, product, platform, websiteTask, concept: conceptOf(itemName), when, base: c.conn.base, existing });
   const r = await api(c, 'files/create_folder_v2', { path: apiPath(c.conn, rel), autorename: true });   // a second ticket with the same name gets "… (1)"
   if (!r.ok) throw new Error(`the folder: ${r.text}`);
   const made = r.data.metadata.path_display;
@@ -234,4 +306,4 @@ async function disconnect(brandId = 'particle') {
   memo = null;
 }
 
-module.exports = { folderPath, conceptOf, clean, categoryOf, monthOf, startConnect, finishConnect, createTicketFolder, status, disconnect, reset, DEFAULT_BASE, SCOPES, _locate: locate };
+module.exports = { folderPath, conceptOf, clean, categoryOf, monthOf, productName, pickFolder, rootOf, startConnect, finishConnect, createTicketFolder, status, disconnect, reset, DEFAULT_BASE, SCOPES, _locate: locate };
