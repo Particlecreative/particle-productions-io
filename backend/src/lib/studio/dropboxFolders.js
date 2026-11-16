@@ -25,6 +25,8 @@ const secrets = require('./secrets');
 const SECRET = 'dropbox_folders';
 const PENDING = 'dropbox_folders_pending';
 const DEFAULT_BASE = '/Creative Assets 2026 - MV Sync';
+// what it does: look the folder up (metadata.read), make folders (content.write), make and read links (sharing.*)
+const SCOPES = 'account_info.read files.metadata.read files.content.write sharing.read sharing.write';
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 // ── the path (pure — tested against the real folders) ─────────────────────────
@@ -79,7 +81,7 @@ async function startConnect({ appKey, base, redirectUri, user, brandId = 'partic
   const state = b64url(crypto.randomBytes(24));
   await secrets.setSecret(PENDING, { app_key: key, verifier, state, base: cleanBase(base), redirect_uri: redirectUri, at: Date.now() }, { brandId, user });
   const q = new URLSearchParams({
-    client_id: key, response_type: 'code', token_access_type: 'offline', redirect_uri: redirectUri, state,
+    client_id: key, response_type: 'code', token_access_type: 'offline', redirect_uri: redirectUri, state, scope: SCOPES,
     code_challenge: b64url(crypto.createHash('sha256').update(verifier).digest()), code_challenge_method: 'S256',
   });
   return `https://www.dropbox.com/oauth2/authorize?${q}`;
@@ -110,11 +112,22 @@ async function raw(token, endpoint, body, headers = {}) {
   return { ok: r.ok, status: r.status, data, text: data?.error_summary || text.slice(0, 200) };
 }
 
-/** Where the studio's folder sits for this account: home-relative, or under the team root (team spaces). */
+const missingScope = (r) => (r.status === 401 && /missing_scope/.test(r.text) ? (r.data?.error?.required_scope || 'a permission') : null);
+function needScope(scope) {
+  return Object.assign(new Error(`The Dropbox app is missing the “${scope}” permission — on the app’s Permissions tab tick files.metadata.read, files.content.write, sharing.read and sharing.write, press Submit, then connect again`), { status: 400 });
+}
+
+/**
+ * Where the studio's folder sits for this account. Tried in order: under the account's own folder (home), under the
+ * team root (team spaces), then as a shared folder the account is in (by its name) — so it's found wherever it's mounted.
+ * → { mode: 'home'|'root'|'ns', root_ns, ns, prefix, account, found }
+ */
 async function locate(token, base) {
   const acct = await raw(token, 'users/get_current_account', null);
   if (!acct.ok) throw new Error(`Dropbox: ${acct.text}`);
+  const who = acct.data.name?.display_name || null;
   const ri = acct.data.root_info || {};
+  const said = [];
   const tries = [{ mode: 'home', path: base, headers: {} }];
   if (ri.root_namespace_id && ri.root_namespace_id !== ri.home_namespace_id && ri.home_path) {
     tries.push({ mode: 'root', path: `${ri.home_path}${base}`, headers: { 'Dropbox-API-Path-Root': JSON.stringify({ '.tag': 'root', root: ri.root_namespace_id }) } });
@@ -122,11 +135,26 @@ async function locate(token, base) {
   for (const t of tries) {
     const r = await raw(token, 'files/get_metadata', { path: t.path }, t.headers);
     if (/sandbox app/i.test(r.text)) throw Object.assign(new Error('This Dropbox app has “App folder” access — it needs “Full Dropbox” to reach the studio’s folders. Create a new app with Full Dropbox access.'), { status: 400 });
+    const scope = missingScope(r);
+    if (scope) throw needScope(scope);
     if (r.ok && r.data?.['.tag'] === 'folder') {
-      return { mode: t.mode, root_ns: t.mode === 'root' ? ri.root_namespace_id : null, prefix: t.mode === 'root' ? ri.home_path : '', account: acct.data.name?.display_name || null, found: r.data.path_display };
+      return { mode: t.mode, root_ns: t.mode === 'root' ? ri.root_namespace_id : null, ns: null, prefix: t.mode === 'root' ? ri.home_path : '', account: who, found: r.data.path_display };
     }
+    said.push(`${t.mode}: ${r.text}`);
   }
-  throw Object.assign(new Error(`Couldn’t find “${base}” in ${acct.data.name?.display_name || 'this'}’s Dropbox — connect the account that has the studio’s folders, or change the folder name`), { status: 400 });
+  // a shared folder the account is in, by name
+  const name = base.split('/').filter(Boolean).pop().toLowerCase();
+  let page = await raw(token, 'sharing/list_folders', { limit: 1000 });
+  for (let i = 0; i < 5 && page.ok; i++) {
+    const hit = (page.data.entries || []).find(e => String(e.name || '').toLowerCase() === name);
+    if (hit) return { mode: 'ns', root_ns: null, ns: String(hit.shared_folder_id), prefix: '', account: who, found: hit.path_lower || hit.name };
+    if (!page.data.cursor) break;
+    page = await raw(token, 'sharing/list_folders/continue', { cursor: page.data.cursor });
+  }
+  const scope = missingScope(page);
+  if (scope) throw needScope(scope);
+  if (!page.ok) said.push(`shared folders: ${page.text}`);
+  throw Object.assign(new Error(`Couldn’t find “${base}” in ${who || 'this'}’s Dropbox — connect the account that has the studio’s folders, or change the folder name (Dropbox said: ${said.join(' · ') || 'not found'})`), { status: 400 });
 }
 
 /** Dropbox sent the browser back with a code: swap it, find the folder, keep the refresh token (sealed). */
@@ -156,10 +184,15 @@ async function connection(brandId = 'particle') {
 }
 const reset = () => { memo = null; };
 
-async function api(c, endpoint, body) {
-  const headers = c.conn.mode === 'root' ? { 'Dropbox-API-Path-Root': JSON.stringify({ '.tag': 'root', root: c.conn.root_ns }) } : {};
-  return raw(c.token, endpoint, body, headers);
+function rootHeader(conn) {
+  if (conn.mode === 'root') return { 'Dropbox-API-Path-Root': JSON.stringify({ '.tag': 'root', root: conn.root_ns }) };
+  if (conn.mode === 'ns') return { 'Dropbox-API-Path-Root': JSON.stringify({ '.tag': 'namespace_id', namespace_id: conn.ns }) };
+  return {};
 }
+async function api(c, endpoint, body) { return raw(c.token, endpoint, body, rootHeader(c.conn)); }
+/** The path Dropbox wants (ns: inside the studio's folder itself) and back to the path the team reads. */
+const apiPath = (conn, rel) => (conn.mode === 'ns' ? rel.slice(String(conn.base).length) : `${conn.prefix || ''}${rel}`);
+const shownPath = (conn, made) => (conn.mode === 'ns' ? `${conn.base}${made}` : made.slice((conn.prefix || '').length));
 
 /** A public, view-only link to the folder (the existing one when there is one). */
 async function linkFor(c, path) {
@@ -183,11 +216,11 @@ async function createTicketFolder({ board, department, product, platform, websit
   const c = await connection(brandId);
   if (!c) return null;
   const rel = folderPath({ board, department, product, platform, websiteTask, concept: conceptOf(itemName), when, base: c.conn.base });
-  const r = await api(c, 'files/create_folder_v2', { path: `${c.conn.prefix || ''}${rel}`, autorename: true });   // a second ticket with the same name gets "… (1)"
+  const r = await api(c, 'files/create_folder_v2', { path: apiPath(c.conn, rel), autorename: true });   // a second ticket with the same name gets "… (1)"
   if (!r.ok) throw new Error(`the folder: ${r.text}`);
   const made = r.data.metadata.path_display;
   const url = await linkFor(c, made);
-  return { url, path: made.slice((c.conn.prefix || '').length) };
+  return { url, path: shownPath(c.conn, made) };
 }
 
 async function status(brandId = 'particle') {
@@ -201,4 +234,4 @@ async function disconnect(brandId = 'particle') {
   memo = null;
 }
 
-module.exports = { folderPath, conceptOf, clean, categoryOf, monthOf, startConnect, finishConnect, createTicketFolder, status, disconnect, reset, DEFAULT_BASE };
+module.exports = { folderPath, conceptOf, clean, categoryOf, monthOf, startConnect, finishConnect, createTicketFolder, status, disconnect, reset, DEFAULT_BASE, SCOPES, _locate: locate };

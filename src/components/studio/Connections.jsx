@@ -114,7 +114,7 @@ function DropboxCard({ d, isAdmin, busy, dbx, setDbx, connect, disconnect }) {
       ) : (
         <ol className="text-sm text-gray-600 mb-3 list-decimal pl-5 space-y-1">
           <li>At <a className="text-[#0808f8] inline-flex items-center gap-1" href="https://www.dropbox.com/developers/apps/create" target="_blank" rel="noopener noreferrer">dropbox.com/developers <ExternalLink size={11} /></a> → <b>Scoped access</b> → <b>Full Dropbox</b> → name it (e.g. “CP Studio folders”).</li>
-          <li><b>Permissions</b> tab: tick <code className="text-xs">files.content.write</code> and <code className="text-xs">sharing.write</code> → Submit.</li>
+          <li><b>Permissions</b> tab: tick <code className="text-xs">files.metadata.read</code>, <code className="text-xs">files.content.write</code>, <code className="text-xs">sharing.read</code> and <code className="text-xs">sharing.write</code> → Submit.</li>
           <li><b>Settings</b> tab → Redirect URIs → add
             <button type="button" onClick={copy} className="ml-1 inline-flex items-center gap-1 text-xs font-mono px-2 py-0.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 break-all text-left">{d.redirect_uri}<Copy size={11} className="flex-none" /></button>
             {copied && <span className="text-xs text-emerald-700 ml-1">copied</span>}

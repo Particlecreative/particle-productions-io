@@ -72,3 +72,65 @@ test('a ticket is never blocked by Dropbox: not connected → no folder (null)',
   assert.equal(await F.createTicketFolder({ board: 'video', department: 'Marketing/Media', product: 'Gravité', platform: 'Meta', itemName: 'Gravité | Meta | X' }), null);
   t.mock.restore();
 });
+
+// ── connecting: the folder is found wherever it's mounted; a missing permission is named ──
+function dropboxMock(t, routes) {
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+    const ep = String(url).replace(/^https:\/\/api\.dropboxapi\.com\/(2\/)?/, '');
+    const body = opts?.body && typeof opts.body === 'string' ? JSON.parse(opts.body) : null;
+    const [status, json] = routes(ep, body, opts?.headers || {});
+    return new Response(JSON.stringify(json), { status, headers: { 'content-type': 'application/json' } });
+  });
+}
+const ACCT = { name: { display_name: 'Tomer Wilf Lezmy' }, root_info: { '.tag': 'user', home_namespace_id: '4934121985', home_path: '/Tomer Wilf Lezmy', root_namespace_id: '3261297731' } };
+
+test('a missing permission is named, not reported as "folder not found"', async (t) => {
+  dropboxMock(t, (ep) => (ep === 'users/get_current_account' ? [200, ACCT]
+    : [401, { error_summary: 'missing_scope/..', error: { '.tag': 'missing_scope', required_scope: 'files.metadata.read' } }]));
+  await assert.rejects(F._locate('tk', B), /missing the “files\.metadata\.read” permission/);
+});
+
+test('found under the account\'s own folder first; else as a shared folder (by name) → that folder becomes the root', async (t) => {
+  dropboxMock(t, (ep, body) => (ep === 'users/get_current_account' ? [200, ACCT]
+    : ep === 'files/get_metadata' && body.path === B ? [200, { '.tag': 'folder', path_display: B }] : [409, { error_summary: 'path/not_found/' }]));
+  assert.deepEqual(await F._locate('tk', B), { mode: 'home', root_ns: null, ns: null, prefix: '', account: 'Tomer Wilf Lezmy', found: B });
+  t.mock.restoreAll();
+  dropboxMock(t, (ep) => (ep === 'users/get_current_account' ? [200, ACCT]
+    : ep === 'sharing/list_folders' ? [200, { entries: [{ name: 'Other', shared_folder_id: '1' }, { name: 'Creative Assets 2026 - MV Sync', shared_folder_id: '13399577827', path_lower: null }] }]
+      : [409, { error_summary: 'path/not_found/' }]));
+  const at = await F._locate('tk', B);
+  assert.equal(at.mode, 'ns');
+  assert.equal(at.ns, '13399577827');
+  t.mock.restoreAll();
+  dropboxMock(t, (ep) => (ep === 'users/get_current_account' ? [200, ACCT] : ep === 'sharing/list_folders' ? [200, { entries: [] }] : [409, { error_summary: 'path/not_found/' }]));
+  await assert.rejects(F._locate('tk', B), /Couldn’t find .*Dropbox said: home: path\/not_found\/ · root: path\/not_found\//);
+});
+
+test('inside a shared folder: the path starts at that folder, with its namespace; the team still sees the full path', async (t) => {
+  const secrets = require('../src/lib/studio/secrets');
+  t.mock.method(secrets, 'getSecret', async () => ({ app_key: 'k', refresh_token: 'r', base: B, mode: 'ns', ns: '13399577827', prefix: '' }));
+  const seen = [];
+  t.mock.method(globalThis, 'fetch', async (url, opts) => {
+    if (String(url).endsWith('/oauth2/token')) return new Response(JSON.stringify({ access_token: 'a', expires_in: 14400 }), { status: 200 });
+    const body = JSON.parse(opts.body);
+    seen.push([String(url).split('/2/')[1], body.path, opts.headers['Dropbox-API-Path-Root']]);
+    if (String(url).endsWith('files/create_folder_v2')) return new Response(JSON.stringify({ metadata: { path_display: body.path } }), { status: 200 });
+    return new Response(JSON.stringify({ url: 'https://www.dropbox.com/scl/fo/x' }), { status: 200 });
+  });
+  F.reset();
+  const f = await F.createTicketFolder({ board: 'video', department: 'Marketing/Media', product: 'Gravité', platform: 'Meta', itemName: 'Gravité | Meta | The Last Spritz', when: NOV16 });
+  assert.equal(seen[0][1], '/Marketing Ads/Products/Gravité/Video/Meta/11_November 2026/The Last Spritz');
+  assert.equal(seen[0][2], JSON.stringify({ '.tag': 'namespace_id', namespace_id: '13399577827' }));
+  assert.equal(f.path, `${B}/Marketing Ads/Products/Gravité/Video/Meta/11_November 2026/The Last Spritz`);
+  assert.equal(f.url, 'https://www.dropbox.com/scl/fo/x');
+  F.reset();
+});
+
+test('the sign-in asks Dropbox for exactly the permissions it uses', async (t) => {
+  const secrets = require('../src/lib/studio/secrets');
+  t.mock.method(secrets, 'setSecret', async () => null);
+  const url = new URL(await F.startConnect({ appKey: 'abcdefgh123', redirectUri: 'https://x/api/studio/dropbox/callback' }));
+  assert.equal(url.searchParams.get('scope'), 'account_info.read files.metadata.read files.content.write sharing.read sharing.write');
+  assert.equal(url.searchParams.get('code_challenge_method'), 'S256');
+  assert.equal(url.searchParams.get('token_access_type'), 'offline');
+});
