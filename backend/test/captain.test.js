@@ -393,3 +393,17 @@ test('history learner: lines from every non-house brand are tagged; the schema o
   assert.match(particle, /\{Face Cream\}/);
   assert.deepEqual(brainSchema(DEFAULTS).properties.items.items.properties.brand.enum, ['Particle', 'Ashford', 'Clearstep', 'Blurr', 'Biomella', 'any']);
 });
+
+test('Video notes past the end of the cut are pulled inside it (Frame.io refuses a frame beyond the last one)', () => {
+  // a 54 s cut at 24 fps = 1296 frames; a missing brief line placed at 56–60 s
+  const [late, ok] = normIssues([
+    { start: 56, end: 60, found: '', fix: 'Line from the brief', type: 'brief_missing', severity: 'check' },
+    { start: 10, end: 12, found: 'TEH', fix: 'THE', type: 'spelling', severity: 'must_fix' },
+  ], 24, 54);
+  assert.ok(late.frame <= 1296 && late.frame >= 1);
+  assert.ok(late.frame + late.duration_frames - 1 <= 1296);
+  assert.equal(ok.frame, 241);
+  assert.equal(ok.duration_frames, 48);
+  // no length known → as before
+  assert.equal(normIssues([{ start: 56, end: 60 }], 24)[0].frame, 1345);
+});

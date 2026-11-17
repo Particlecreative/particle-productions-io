@@ -88,14 +88,19 @@ function commentText(issue) {
   return issue.severity === 'check' ? `${head} (please check${issue.note ? `: ${issue.note}` : ''})` : head;
 }
 
-function normIssues(issues, fps) {
+// durationSec: the video's length — a moment past the end (a brief line placed by where it sits in the brief, e.g. 56 s
+// on a 54 s cut) is pulled back inside it; Frame.io refuses a comment beyond the last frame (422, 17 Nov 2026)
+function normIssues(issues, fps, durationSec = null) {
+  const last = Number(durationSec) > 0 ? Math.max(1, Math.floor(Number(durationSec) * fps)) : null;
   return (issues || []).map((i, idx) => {
-    const start = Math.max(0, Number(i.start) || 0);
-    const end = Math.max(start, Number(i.end) || start);
+    let start = Math.max(0, Number(i.start) || 0);
+    let end = Math.max(start, Number(i.end) || start);
+    if (last) { const max = (last - 1) / fps; start = Math.min(start, max); end = Math.min(Math.max(start, end), last / fps); }
+    const frame = last ? Math.min(last, Math.round(start * fps) + 1) : Math.round(start * fps) + 1;
     return {
       idx, start_s: start, end_s: end,
-      frame: Math.round(start * fps) + 1,
-      duration_frames: Math.max(1, Math.round((end - start) * fps)),
+      frame,
+      duration_frames: Math.max(1, last ? Math.min(Math.round((end - start) * fps), last - frame + 1) : Math.round((end - start) * fps)),
       found: i.found ?? null, fix: i.fix ?? null, type: i.type || 'other',
       severity: i.severity === 'check' ? 'check' : 'must_fix', note: i.note ?? null,
     };
@@ -116,6 +121,14 @@ async function probeFps(file) {
     const out = String(await sh('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=r_frame_rate', '-of', 'csv=p=0', file])).trim();
     const [n, d] = out.split('/').map(Number);
     return d ? n / d : n || null;
+  } catch { return null; }
+}
+
+/** The video's length in seconds (when Frame.io didn't say) — null if ffprobe can't tell. */
+async function probeDuration(file) {
+  try {
+    const n = Number(String(await sh('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', file])).trim());
+    return Number.isFinite(n) && n > 0 ? n : null;
   } catch { return null; }
 }
 
@@ -169,7 +182,7 @@ async function checkDeliverable({ d, round, ctx, cfg, posting, master }) {
     // own "add/remove the period" notes on those lines are dropped
     const punct = EP.forVideo({ onScreen: r.on_screen_text || [], voiceover: r.voiceover || [], brief: briefRawOf(item) });
     const ai = (r.issues || []).filter(i => !(EP.endOnly(i) && punct.covers(i.found)));
-    const issues = normIssues(require('./briefed').tidy([...ai, ...matched, ...punct.issues], item), fps);
+    const issues = normIssues(require('./briefed').tidy([...ai, ...matched, ...punct.issues], item), fps, info.duration || (await probeDuration(tmp)));
 
     for (const i of issues) await insertIssue(checkId, i);
     await updateCheck(checkId, {
@@ -192,7 +205,14 @@ async function checkDeliverable({ d, round, ctx, cfg, posting, master }) {
         const text = commentText(i);
         const prev = already(text, i.frame);
         if (prev) { skipped++; await setIssueComment(checkId, i.idx, prev.id); continue; }
-        const c = await frameio.createComment(fileId, { text, timestamp: i.frame, duration: i.duration_frames });
+        let c;
+        try {
+          c = await frameio.createComment(fileId, { text, timestamp: i.frame, duration: i.duration_frames });
+        } catch (e) {
+          // Frame.io refused the moment (e.g. "timestamp is not valid") — post the note on the file rather than lose the review
+          if (!/\b422\b|timestamp/i.test(e.message)) throw e;
+          c = await frameio.createComment(fileId, { text });
+        }
         if (c?.id) await setIssueComment(checkId, i.idx, c.id);
         posted++;
       }
