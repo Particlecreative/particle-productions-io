@@ -162,9 +162,17 @@ async function review(payload) {
   const { rows } = await db.query('SELECT rounds, last FROM captain_autopilot WHERE board_id = $1 AND item_id = $2', [item.board_id, item.id]);
   const n = (rows[0]?.rounds || 0) + 1;
 
-  const run = discipline === 'design'
-    ? await require('./design').runDesignJob({ item_id: item.id, trigger: 'autopilot', actor: 'Captain (autopilot)', quiet: true })
-    : await require('./video').runVideoJob({ item_id: item.id, trigger: 'autopilot', actor: 'Captain (autopilot)', quiet: true });
+  let run;
+  try {
+    run = discipline === 'design'
+      ? await require('./design').runDesignJob({ item_id: item.id, trigger: 'autopilot', actor: 'Captain (autopilot)', quiet: true })
+      : await require('./video').runVideoJob({ item_id: item.id, trigger: 'autopilot', actor: 'Captain (autopilot)', quiet: true });
+  } catch (e) {
+    // e.g. "Figma 404" — the file isn't shared with the Captain's account: say so, leave the ticket, don't retry forever
+    const why = /figma 40[34]|not found/i.test(e.message) ? `couldn’t open the ${discipline === 'design' ? 'Figma file' : 'Frame.io link'} (not shared with the Captain’s account, or deleted)` : e.message;
+    await logEvent({ ...base, kind: 'error', message: `Autopilot: couldn’t review “${item.name}” — ${why}. Left for a person.` });
+    return { left: why };
+  }
 
   if (run?.skipped) {
     await logEvent({ ...base, kind: 'skip', message: `Autopilot: couldn’t review “${item.name}” — ${run.reason}. Left for a person.` });
