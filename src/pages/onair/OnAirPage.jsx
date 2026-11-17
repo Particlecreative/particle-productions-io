@@ -503,6 +503,8 @@ function MetaTab() {
   const [maker, setMaker] = useState('');
   const [lane, setLane] = useState('');
   const [sort, setSort] = useState('spend');
+  const [limit, setLimit] = useState(36);   // hundreds of statics run during a sale — draw them in pages
+  useEffect(() => { setLimit(36); }, [format, show, q, product, maker, lane, sort]);
   const load = useCallback((force) => {
     setError(null); setBusy(!!force);
     onairApi.media(force).then(setData).catch(e => setError(e.message)).finally(() => setBusy(false));
@@ -641,8 +643,13 @@ function MetaTab() {
 
       {!list.length && <Empty icon={Smartphone} title="Nothing matches">Try “All”, or clear the filters.</Empty>}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-        {list.map(c => <CreativeCard key={c.key} c={c} />)}
+        {list.slice(0, limit).map(c => <CreativeCard key={c.key} c={c} />)}
       </div>
+      {list.length > limit && (
+        <button type="button" onClick={() => setLimit(limit + 36)} className="self-center text-sm font-semibold px-4 py-2 rounded-xl bg-white border border-gray-200 hover:border-gray-300" style={{ color: NAVY }}>
+          Show more · {list.length - limit} left
+        </button>
+      )}
     </div>
   );
 }
