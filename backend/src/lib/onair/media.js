@@ -39,7 +39,7 @@ async function getMedia({ force = false } = {}) {
     if (!r.ok) throw new Error(`AfterLife ${r.status}`);
     const raw = await r.json();
     const data = {
-      connected: true, ready: true, last_day: raw.last_day, since: raw.since, days: raw.days, totals: raw.totals,
+      connected: true, ready: true, last_day: raw.last_day, since: raw.since, days: raw.days, totals: raw.totals, benchmarks: raw.benchmarks || null,
       afterlife_url: base,
       creatives: (raw.creatives || []).map(c => ({ ...c, thumb: c.thumb ? thumbUrl(c.thumb) : null })),
       fetched_at: new Date().toISOString(),
