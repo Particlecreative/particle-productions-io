@@ -25,6 +25,8 @@ const L = require('./labels');
 const { frameioMatcher } = require('./dedupe');
 const { brandOf, laneOf } = require('./brand');
 const { matchVideo } = require('./briefMatch');
+const EP = require('./endPunct');   // end punctuation — the house rule, judged by code (17 Nov 2026)
+const { briefRawOf } = require('./briefed');
 
 const PREFIX = monday.PREFIX;
 const PROMPT = fs.readFileSync(path.join(__dirname, 'prompts', 'qc-video.txt'), 'utf8');
@@ -65,7 +67,7 @@ function referenceBlock(master) {
 
 function buildPrompt({ brain, item, master, brand = null }) {
   const b = brand || brandOf({ brand: item?.brand, itemName: item?.name, product: item?.product });
-  return PROMPT.replaceAll('{{BRAND_ABOUT}}', b.about).replaceAll('{{BRAND}}', b.name)
+  return PROMPT.replaceAll('{{BRAND_ABOUT}}', b.about).replaceAll('{{BRAND}}', b.name).replace('{{END_PUNCT}}', () => EP.PROMPT_RULE)
     .replace('{{BRAIN}}', brainText(brain)).replace('{{BRIEF}}', briefBlock(item)).replace('{{REFERENCE}}', referenceBlock(master));
 }
 
@@ -163,7 +165,11 @@ async function checkDeliverable({ d, round, ctx, cfg, posting, master }) {
     const r = await gemini.checkVideo({ path: tmp, name: `${base.item_name} · ${d.label} · r${round.round}`, prompt, model: engine.model, prices: cfg.prices || {} });
     // Brief-match: the item's brief passed pre-flight → compare with the approved on-screen text and voiceover
     const matched = ctx.approved ? matchVideo(ctx.approved.lines, { onScreen: r.on_screen_text || [], voiceover: r.voiceover || [] }, { variant: d.variant, size: d.size }) : [];
-    const issues = normIssues(require('./briefed').tidy([...(r.issues || []), ...matched], item), fps);
+    // End punctuation (17 Nov 2026 rule spec): code judges the closing marks on the transcribed on-screen text; the AI's
+    // own "add/remove the period" notes on those lines are dropped
+    const punct = EP.forVideo({ onScreen: r.on_screen_text || [], voiceover: r.voiceover || [], brief: briefRawOf(item) });
+    const ai = (r.issues || []).filter(i => !(EP.endOnly(i) && punct.covers(i.found)));
+    const issues = normIssues(require('./briefed').tidy([...ai, ...matched, ...punct.issues], item), fps);
 
     for (const i of issues) await insertIssue(checkId, i);
     await updateCheck(checkId, {

@@ -70,4 +70,4 @@ function tidy(issues, item) {
   return mergeDuplicates(kept);
 }
 
-module.exports = { briefTextOf, asBriefed, isNoOp, selfDismissed, mergeDuplicates, tidy, norm, light };
+module.exports = { briefTextOf, briefRawOf: briefRaw, asBriefed, isNoOp, selfDismissed, mergeDuplicates, tidy, norm, light };

@@ -21,6 +21,8 @@ const { brandOf, laneOf } = require('./brand');
 const { postingFor } = require('./video');
 const { insertCheck, updateCheck, lastCheckOf, insertIssue, setIssueComment, approvedTextFor } = require('./store');
 const { matchDesign } = require('./briefMatch');
+const EP = require('./endPunct');   // end punctuation — the house rule, judged by code (17 Nov 2026)
+const { briefRawOf } = require('./briefed');
 
 const PREFIX = monday.PREFIX;
 const PROMPT = fs.readFileSync(path.join(__dirname, 'prompts', 'qc-design.txt'), 'utf8');
@@ -181,15 +183,19 @@ async function runDesignJob(payload) {
     const brand = brandOf({ brand: item?.brand, itemName: item?.name, names: [name, nodeRes?.fileName], product: item?.product }, cfg);
     const lane = brand.default ? laneOf({ names: [item?.name, name], text: item?.brief?.concept || '' }, cfg).name : null;
     const brain = await loadBrain({ discipline: 'design', product: item?.product, campaign: item?.campaign, department: item?.department, brand: brand.name, lane });
-    const prompt = PROMPT.replaceAll('{{BRAND_ABOUT}}', brand.about).replaceAll('{{BRAND}}', brand.name).replace('{{BRAIN}}', brainText(brain)).replace('{{BRIEF}}', briefBlock(item)).replace('{{LAYERS}}', layersBlock(frames));
+    const prompt = PROMPT.replaceAll('{{BRAND_ABOUT}}', brand.about).replaceAll('{{BRAND}}', brand.name).replace('{{END_PUNCT}}', () => EP.PROMPT_RULE).replace('{{BRAIN}}', brainText(brain)).replace('{{BRIEF}}', briefBlock(item)).replace('{{LAYERS}}', layersBlock(frames));
     const r = await claude.checkDesign({ images: images.map(({ bytes, ...i }) => i), prompt, model: engine.model, prices: cfg.prices || {} });
 
     const known = new Set(frames.flatMap(f => [f.id, ...f.texts.map(t => t.id)]));
     // Brief-match: the item's brief passed pre-flight → compare the layers with the approved copy
     const approved = item ? await approvedTextFor(item.id) : null;
     const matched = approved ? matchDesign(approved.lines, frames) : [];
+    // End punctuation (17 Nov 2026 rule spec): code judges every layer's closing mark across the set and the brief;
+    // the AI's own "add/remove the period" notes on those layers are dropped (baked-in text it read stays)
+    const punct = EP.forDesign({ frames, brief: briefRawOf(item) });
+    const ai = r.issues.filter(i => !(EP.endOnly(i) && punct.covers(i.found)));
     // no-op notes dropped; text that's word for word in the brief → "as briefed" (a please-check for the requester)
-    const issues = require('./briefed').tidy([...r.issues, ...matched.map(m => ({ ...m, frame_id: m.frame_node_id }))], item).map((i, idx) => {
+    const issues = require('./briefed').tidy([...ai, ...matched.map(m => ({ ...m, frame_id: m.frame_node_id })), ...punct.issues], item).map((i, idx) => {
       const frame = frames.find(f => f.id === i.frame_id) || frames.find(f => f.texts.some(t => t.id === i.node_id)) || frames[0];
       return {
         idx, node_id: known.has(i.node_id) ? i.node_id : frame.id, frame_node_id: frame.id,

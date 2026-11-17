@@ -22,6 +22,7 @@ Voiceover:
 
 Do NOT flag casual UGC language (gonna, obsessed!!, lowercase style, emojis) — it's intentional, unless a house rule below says otherwise.
 Ignore text on third-party websites, marketplaces or competitor products shown as examples — only {{BRAND}}'s own text counts.
+{{END_PUNCT}} Transcribe on-screen text with its punctuation exactly as shown — the code reads the endings from your transcription.
 
 Brand knowledge from the Brain:
 {{BRAIN}}
@@ -34,7 +35,7 @@ Return ONLY valid JSON:
 {"on_screen_text": [{"start": 0.0, "end": 2.5, "text": "..."}],
  "voiceover": [{"start": 0.0, "end": 3.1, "text": "..."}],
  "issues": [{"start": 7.2, "end": 9.8, "found": "recieve", "fix": "receive",
-             "type": "spelling|wrong_word|inconsistent|brand_name|cut_off|caption_vs_voiceover|label_mismatch|claim|vo_unclear|vo_wrong_word|vo_pronunciation|vo_script_mismatch|vo_order|script_mismatch|size_mismatch",
+             "type": "spelling|wrong_word|inconsistent|brand_name|cut_off|caption_vs_voiceover|label_mismatch|claim|vo_unclear|vo_wrong_word|vo_pronunciation|vo_script_mismatch|vo_order|script_mismatch|size_mismatch|punctuation",
              "severity": "must_fix|check", "note": "short reason"}]}
 "start"/"end" are seconds from the start of the video. List every piece of on-screen text in "on_screen_text" and every spoken line in "voiceover" (empty list if there is no voice).
 Severity: real typos, wrong words, wrong brand names, an old product name on the packaging, captions that contradict the voice, garbled or wrong spoken words → "must_fix". Mispronunciations, claims and anything a human should judge → "check". Differences from the brief/script and sentence order → "check".
