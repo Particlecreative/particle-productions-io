@@ -145,12 +145,28 @@ function AutopilotCard({ s, isAdmin, notify, onSaved }) {
   useEffect(() => { captainApi.autopilot().then(setLog).catch(() => setLog({ recent: [], needs_person: [] })); }, [a.mode]);
   const save = async (patch, msg) => {
     setBusy(Object.keys(patch)[0]);
-    try { const r = await captainApi.saveSettings({ autopilot: { ...a, ...patch } }); onSaved(r.settings); notify(msg); } catch (e) { notify(e.message, true); } finally { setBusy(null); }
+    try {
+      const r = await captainApi.saveSettings({ autopilot: { ...a, ...patch } });
+      onSaved(r.settings);
+      const n = r.catchup?.queued;
+      notify(n ? `${msg} — starting with the ${n} ticket${n === 1 ? '' : 's'} already waiting in review` : msg);
+      captainApi.autopilot().then(setLog).catch(() => {});
+      return r;
+    } catch (e) { notify(e.message, true); return null; } finally { setBusy(null); }
   };
-  const setMode = (mode) => {
-    if (mode === 'live' && !window.confirm('Turn the autopilot on for every ticket in scope? The Captain will review tickets in Review, Quality Check and For Approval and move them to Fixes Round or Approved on his own.')) return;
+  const setMode = async (mode) => {
+    const w = log?.waiting || 0;
+    if (mode === 'live' && !window.confirm(`Turn Captain Caption on for every ticket in scope?\n\nHe starts right away with the ${w} ticket${w === 1 ? '' : 's'} already waiting in Review, Quality Check and For Approval — then every new one — and moves each to Fixes Round or Approved on his own.`)) return;
     if (mode === 'test' && !String(tests).trim()) { notify('Add a test ticket first (a Monday link or item ID)', true); return; }
-    save({ mode, test_items: String(tests).split(/[\n,]+/).map(x => x.trim()).filter(Boolean) }, mode === 'off' ? 'Autopilot off — nothing moves on its own' : mode === 'test' ? 'Autopilot on for the test tickets' : 'Autopilot is live 🧑‍✈️');
+    const r = await save({ mode, test_items: String(tests).split(/[\n,]+/).map(x => x.trim()).filter(Boolean) }, mode === 'off' ? 'Autopilot off — nothing moves on its own' : mode === 'test' ? 'Autopilot on for the test tickets' : 'Autopilot is live 🧑‍✈️');
+    // editors only see his comments when Posting is Live
+    if (r && mode === 'live' && r.settings?.posting?.mode !== 'live' && window.confirm('Also set Posting to Live, so editors and designers see his comments on Frame.io and Figma?')) {
+      try { const p = await captainApi.saveSettings({ posting: { mode: 'live' } }); onSaved(p.settings); notify('Posting is live — his comments go on the real videos and designs'); } catch (e) { notify(e.message, true); }
+    }
+  };
+  const catchUp = async () => {
+    setBusy('catchup');
+    try { const r = await captainApi.autopilotBackfill(); notify(r.queued ? `Reviewing the ${r.queued} ticket${r.queued === 1 ? '' : 's'} waiting now — a few minutes` : 'Nothing new to review — he already decided on everything waiting'); captainApi.autopilot().then(setLog).catch(() => {}); } catch (e) { notify(e.message, true); } finally { setBusy(null); }
   };
   const t = s.triggers || {};
   const postingNote = s.posting?.mode === 'live' ? null
@@ -196,6 +212,14 @@ function AutopilotCard({ s, isAdmin, notify, onSaved }) {
         <li><BellOff size={13} className="inline -mt-0.5 mr-1" />If a ticket moves on before he gets to it, is out of scope, has no file yet or can’t be opened, he leaves it alone.</li>
       </ul>
       {a.mode !== 'off' && postingNote && <p className="mt-3 text-[13px]" style={{ color: 'var(--trk-amber)' }}>{postingNote}</p>}
+      {log?.waiting > 0 && (
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-[13px]">
+          <span>🕐 <b>{log.waiting} ticket{log.waiting === 1 ? '' : 's'}</b> waiting in review right now{log.waiting_by ? <span className="trk-muted"> — {Object.entries(log.waiting_by).map(([k, v]) => `${v} in ${k}`).join(' · ')}</span> : null}.</span>
+          {a.mode === 'off'
+            ? <span className="trk-muted">He starts with these the moment you turn him on.</span>
+            : isAdmin && <button type="button" className="trk-btn !py-1" disabled={busy === 'catchup'} onClick={catchUp}>{busy === 'catchup' ? <Loader2 size={12} className="animate-spin" /> : null} Review them now</button>}
+        </div>
+      )}
 
       <div className="mt-4 grid md:grid-cols-2 gap-4">
         <div className="grid gap-1.5">

@@ -508,6 +508,10 @@ router.delete('/frameio', requireAdmin, async (req, res) => {
 router.get('/autopilot', async (req, res) => {
   try { res.json(await require('../lib/captain/autopilot').overview()); } catch (err) { errorJson(res, err); }
 });
+// Review everything already waiting in review (also runs by itself when the autopilot is switched on)
+router.post('/autopilot/backfill', requireAdmin, async (req, res) => {
+  try { res.json(await require('../lib/captain/autopilot').backfill({ actor: actorOf(req) })); } catch (err) { errorJson(res, err); }
+});
 
 router.get('/settings', async (req, res) => {
   try { res.json({ settings: await getConfig(), boards: BOARDS }); } catch (err) { errorJson(res, err); }
@@ -519,7 +523,12 @@ router.put('/settings', requireAdmin, async (req, res) => {
     const actor = actorOf(req);
     const changed = Object.keys(req.body || {}).filter(k => JSON.stringify(before[k]) !== JSON.stringify(settings[k]));
     await logEvent({ kind: 'settings', message: `${actor} changed ${changed.join(', ') || 'nothing'}`, data: { changed, posting: settings.posting.mode }, actor });
-    res.json({ settings });
+    // switched on → catch up on what's already waiting (Tomer: "start reviewing everything in review")
+    let catchup = null;
+    if ((before.autopilot?.mode || 'off') === 'off' && settings.autopilot?.mode && settings.autopilot.mode !== 'off') {
+      catchup = await require('../lib/captain/autopilot').backfill({ actor }).catch(e => ({ error: e.message }));
+    }
+    res.json({ settings, catchup });
   } catch (err) { errorJson(res, err); }
 });
 

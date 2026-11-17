@@ -147,7 +147,9 @@ export function fixtureCall(path, { method = 'GET', body } = {}) {
     return { settings };
   }
   // sample decisions (local dev only)
+  if (p === '/autopilot/backfill') return { queued: 10, waiting: 10 };
   if (p === '/autopilot') return {
+    waiting: 10, waiting_by: { Review: 1, 'For Approval': 4, 'Quality Check': 5 },
     recent: [
       { board_id: '5433027071', item_id: '1', item_name: 'Face Cream | Meta | Absorbs Fast', discipline: 'video', rounds: 2, needs_person: false, url: '#', updated_at: ago(12), last: { from: 'For Approval', to: 'Approved', must_fix: 0, notes: 2, why: 'Review 2: every must-fix is fixed (2 “please check” notes left for the editor to judge)' } },
       { board_id: '8036329818', item_id: '2', item_name: 'NeoRoot | Proof-First Statics | Meta | Red Circles', discipline: 'design', rounds: 1, needs_person: false, url: '#', updated_at: ago(40), last: { from: 'Quality Check', to: 'Fixes Round', must_fix: 3, notes: 1, why: 'Review 1: 3 must-fixes — back to the editor (1 “please check” note left for the editor to judge)' } },

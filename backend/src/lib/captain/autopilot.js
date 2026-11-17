@@ -219,6 +219,59 @@ async function review(payload) {
   return { review: n, to: d.to, must_fix: mustFix, notes };
 }
 
+// ── catching up: what's already waiting when he's switched on ─────────────────
+/** In-scope tickets sitting in one of his review statuses right now (cached 2 min). */
+function waiting({ force = false } = {}) {
+  return mondayApi.cached('captain:autopilot:waiting', 2 * 60 * 1000, async () => {
+    const cfg = await getConfig();
+    const s = settingsOf(cfg);
+    const { inScope } = require('./scope');
+    const out = [];
+    for (const [discipline, b] of Object.entries(BOARDS)) {
+      const t = cfg.triggers?.[discipline] || {};
+      const labels = [...(t.first || []), ...(t.second || [])];
+      const meta = await mondayApi.boardMeta(b.board_id);
+      const sm = meta.statusMaps?.[b.columns.status];
+      const idx = labels.map(l => sm?.byLabel?.[mondayApi.normLabel(l)]).filter(x => x != null).map(Number);
+      if (!idx.length) continue;
+      const cols = [b.columns.status, b.columns.department, b.columns.type].filter(Boolean);
+      const { items } = await mondayApi.fetchAllItems(b.board_id, { cols, maxPages: 4, queryParams: { rules: [{ column_id: b.columns.status, compare_value: idx, operator: 'any_of' }] } });
+      for (const it of items) {
+        const by = Object.fromEntries((it.column_values || []).map(c => [c.id, c]));
+        const label = (col) => (col && by[col] ? (by[col].label ?? by[col].text ?? '') : '');
+        const row = { discipline, board_id: b.board_id, item_id: String(it.id), name: it.name, status: label(b.columns.status), department: label(b.columns.department), type: label(b.columns.type) };
+        if (!inScope({ discipline, department: row.department, type: row.type, title: row.name }, cfg).ok) continue;
+        if (s.mode === 'test' && !testIds(s).includes(row.item_id)) continue;
+        out.push(row);
+      }
+    }
+    return out;
+  }, { force });
+}
+
+/**
+ * Review everything already waiting (Tomer, 17 Nov 2026: "once I turn it on, start reviewing everything in review").
+ * Skips a ticket he already decided on in that same status in the last 12 hours. Staggered so the worker isn't flooded.
+ */
+async function backfill({ actor = null } = {}) {
+  const cfg = await getConfig();
+  if (settingsOf(cfg).mode === 'off') return { queued: 0, off: true };
+  await ensureTables();
+  const list = await waiting({ force: true });
+  const { rows } = await db.query(`SELECT item_id, last FROM captain_autopilot WHERE updated_at > NOW() - interval '12 hours'`);
+  const recent = new Map(rows.map(r => [String(r.item_id), r.last]));
+  let queued = 0;
+  for (const [i, w] of list.entries()) {
+    const last = recent.get(w.item_id);
+    if (last && inList([last.from, last.to].filter(Boolean), w.status)) continue;   // already decided in this status
+    const id = await enqueue('autopilot_review', { discipline: w.discipline, board_id: w.board_id, item_id: w.item_id, status: w.status, event_at: Date.now(), backfill: true },
+      { dedupeKey: `ap:backfill:${w.item_id}:${w.status}`, delaySec: 15 + i * 20, maxAttempts: 2, priority: 6 }).catch(() => null);
+    if (id) queued++;
+  }
+  await logEvent({ kind: 'settings', message: `Autopilot: catching up — ${queued} ticket${queued === 1 ? '' : 's'} already waiting in review${actor ? ` (started by ${actor})` : ''}`, actor: actor || 'Captain (autopilot)' });
+  return { queued, waiting: list.length };
+}
+
 /** For HQ: what he decided lately and what's waiting for a person. */
 async function overview(limit = 15) {
   await ensureTables();
@@ -227,7 +280,9 @@ async function overview(limit = 15) {
     db.query(`SELECT board_id, item_id, item_name, discipline, rounds, last, updated_at FROM captain_autopilot WHERE needs_person ORDER BY updated_at DESC LIMIT 20`),
   ]);
   const url = (r) => `https://particle-for-men.monday.com/boards/${r.board_id}/pulses/${r.item_id}`;
-  return { recent: recent.map(r => ({ ...r, url: url(r) })), needs_person: stuck.map(r => ({ ...r, url: url(r) })) };
+  const w = await waiting().catch(() => []);
+  return { recent: recent.map(r => ({ ...r, url: url(r) })), needs_person: stuck.map(r => ({ ...r, url: url(r) })), waiting: w.length,
+    waiting_by: w.reduce((a, x) => { a[x.status] = (a[x.status] || 0) + 1; return a; }, {}) };
 }
 
-module.exports = { decide, watch, review, overview, countsFor, DEFAULT };
+module.exports = { decide, watch, review, overview, countsFor, waiting, backfill, DEFAULT };

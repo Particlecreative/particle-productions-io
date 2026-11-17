@@ -67,6 +67,7 @@ export const captainApi = {
   brandSortApply: (changes) => call('/brain/brand-sort/apply', { method: 'POST', body: { changes } }),
   settings: () => call('/settings'),
   autopilot: () => call('/autopilot'),
+  autopilotBackfill: () => call('/autopilot/backfill', { method: 'POST' }),
   saveSettings: (patch) => call('/settings', { method: 'PUT', body: patch }),
   importStatus: () => call('/import'),
   importStart: (body = {}) => call('/import/start', { method: 'POST', body }),
