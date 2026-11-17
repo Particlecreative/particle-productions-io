@@ -129,7 +129,9 @@ async function pipeline(brandId, firstSeen, liveByCode) {
     `SELECT thread_id, from_name, from_email, sent_at, body_text, parsed FROM onair_tv_mail
       WHERE thread_id = ANY($1) AND kind = 'reply' ORDER BY sent_at`, [threads]);
   const { rows: libRows } = await db.query(
-    `SELECT id, title, product, code, url, market FROM library_items WHERE brand_id = $1 AND code IS NOT NULL`, [brandId]).catch(() => ({ rows: [] }));
+    `SELECT li.id, li.title, li.product, li.code, li.url, li.market, li.production_id, p.project_name AS production_name
+       FROM library_items li LEFT JOIN productions p ON p.id = li.production_id
+      WHERE li.brand_id = $1 AND li.code IS NOT NULL`, [brandId]).catch(() => ({ rows: [] }));
   const byUrl = new Map(libRows.map(r => [canonicalUrl(r.url) || r.url, r]));
   const out = [];
   const seenThread = new Set();
@@ -156,7 +158,7 @@ async function pipeline(brandId, firstSeen, liveByCode) {
       link: gmailLink(s.thread_id),
       agency: agency.map(r => ({ by: r.from_name || r.from_email, at: r.sent_at, text: String(r.body_text || '').slice(0, 400), networks: r.parsed?.networks || [] })),
       networks,
-      library: match ? { id: match.id, title: match.title, code } : null,
+      library: match ? { id: match.id, title: match.title, code, production_id: match.production_id || null, production_name: match.production_name || null } : null,
       on_air_since: airedSince && airedSince >= ymd(firstSent.sent_at) ? airedSince : (code && liveByCode.has(code) ? airedSince : null),
       status: code && liveByCode.has(code) ? 'on_air' : agency.length ? 'confirmed' : 'sent',
     });

@@ -31,12 +31,12 @@ const DEFAULT_NAV_ITEMS = [
   { to: '/ads-library',     icon: Smartphone,       label: 'Ads Library',     sub: 'powered by AfterLife', growth: true, growthOnly: true },
   { to: '/tv-productions',  icon: Clapperboard,     label: 'TV Productions',                              growth: true, growthOnly: true },
   { to: '/tv-library',      icon: Tv,               label: 'TV Library',                                  growth: true, growthOnly: true },
-  // On Air (17 Nov 2026): what's running now on TV (the agency's reports) and Meta (AfterLife) — Growth and everyone else
-  { to: '/on-air',          icon: Radio,            label: 'On Air',          sub: 'TV + Meta, live',     growth: true, accountingHide: true, studioHide: true, particleOnly: true },
   { to: '/',               icon: LayoutDashboard,  label: 'Productions', exact: true, accountingHide: true },
   { to: '/tracker',        icon: Radar,            label: 'Tracker',     accountingHide: true, studioHide: true, editorOnly: true },
   { to: '/tasks',          icon: CheckSquare,      label: 'Tasks',       accountingHide: true },
   { to: '/library',        icon: Library,          label: 'Library',     accountingHide: true },
+  // On Air (17 Nov 2026): what's running now — TV (the agency's reports) for everyone incl. Growth; Meta (AfterLife) not for Growth
+  { to: '/on-air',         icon: Radio,            label: 'On Air',      sub: 'live now', growth: true, accountingHide: true, studioHide: true, particleOnly: true },
   { to: '/contracts',      icon: FileSignature,    label: 'Contracts',   accountingHide: true, studioHide: true },
   { to: '/suppliers',      icon: Users2,           label: 'Suppliers',   accountingHide: true, studioHide: true },
   { to: '/studio',         icon: Clapperboard,     label: 'Studio',      accountingHide: true, studioHide: true, particleOnly: true, editorOnly: true },

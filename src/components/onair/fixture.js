@@ -17,7 +17,7 @@ function spot(code, name, length, spent, mer, opts = {}) {
     moved: opts.moved === false ? null : { spent: r2(spent * (0.08 + rnd() * 0.2)), orders: Math.round(orders * (0.05 + rnd() * 0.25)), revenue: r2(revenue * 0.15), mer: r2((rnd() - 0.5) * 0.1) },
     new_in_report: !!opts.fresh, first_seen: opts.fresh ? off(-2) : off(-30), is_new: !!opts.fresh,
     stations: opts.stations || [],
-    library: opts.lib === false ? null : { id: `lib-${code}`, title: `${name.replace(/ :\d+$/, '')} ${length}s`, product: opts.product, url: 'https://www.dropbox.com/', thumb_url: null, production_name: opts.production || null },
+    library: opts.lib === false ? null : { id: `lib-${code}`, title: opts.cpName || `${name.replace(/ :\d+$/, '')} ${length}s`, product: opts.product, url: 'https://www.dropbox.com/', thumb_url: null, production_id: opts.prd || null, production_name: opts.production || null },
   };
 }
 
@@ -57,17 +57,17 @@ function product(name, spots, base) {
 export function tvFixture() {
   seed = 7;
   const face = product('Face Cream', [
-    spot('FC1MORNH', 'Morning Routine :60', 60, 29400, 0.24, { product: 'Face Cream', stations: [{ station: 'OTT-WEATHER', spent: 210, orders: 2, mer: 0.42 }] }),
+    spot('FC1MORNH', 'Morning Routine :60', 60, 29400, 0.24, { product: 'Face Cream', prd: 'PRD26-02', production: 'Morning Routine 2026', cpName: 'Morning Routine 2026 60s', stations: [{ station: 'OTT-WEATHER', spent: 210, orders: 2, mer: 0.42 }] }),
     spot('FC1MIRRH', 'The Mirror', 60, 20100, 0.55, { product: 'Face Cream' }),
-    spot('FC1BDAYH', 'Turning 60', 60, 12600, 0.61, { product: 'Face Cream', production: 'Birthday Spot' }),
+    spot('FC1BDAYH', 'Turning 60', 60, 12600, 0.61, { product: 'Face Cream', prd: 'PRD26-11', production: 'Birthday Spot', cpName: 'Birthday Host 60s' }),
     spot('FC9LONGH', 'Long Form :90', 90, 12400, 0.53, { product: 'Face Cream' }),
     spot('FC1TRUH', 'Straight Talk', 60, 7700, 0.5, { product: 'Face Cream' }),
-    spot('FC3MIRV2H', 'The Mirror 30 dual CTA', 30, 5600, 0.52, { product: 'Face Cream', fresh: true, stations: [{ station: 'OTT-BUSINESS', spent: 2800, orders: 15, mer: 0.63 }, { station: 'OTT-NEWS', spent: 1800, orders: 9, mer: 0.47 }] }),
+    spot('FC3MIRV2H', 'The Mirror 30 dual CTA', 30, 5600, 0.52, { product: 'Face Cream', fresh: true, prd: 'PRD26-29', production: 'Mirror Cutdowns', cpName: 'The Mirror 30s with middle CTA', stations: [{ station: 'OTT-BUSINESS', spent: 2800, orders: 15, mer: 0.63 }, { station: 'OTT-NEWS', spent: 1800, orders: 9, mer: 0.47 }] }),
     spot('FC1SILVH', 'Silver Lining', 60, 4600, 0.56, { product: 'Face Cream' }),
     spot('FC1HUNTH', 'The Chase', 60, 2100, 0.49, { product: 'Face Cream', lib: false }),
   ], 15000);
   const grav = product('Gravité', [
-    spot('GR1PULSEH', 'Pulse', 60, 48100, 0.4, { product: 'Gravité', fresh: true }),
+    spot('GR1PULSEH', 'Pulse', 60, 48100, 0.4, { product: 'Gravité', fresh: true, prd: 'PRD26-33', production: 'The Pulse Test', cpName: 'The Pulse Test 60s' }),
     spot('GR1EXCH', 'Excited', 60, 11800, 0.33, { product: 'Gravité' }),
     spot('GR1PULDH', 'Pulse W/Disclaimer', 60, 3400, 0.3, { product: 'Gravité', fresh: true }),
     spot('GR1TALKH', 'The Talk', 60, 3100, 0.24, { product: 'Gravité' }),
@@ -80,9 +80,9 @@ export function tvFixture() {
     pipeline: [
       { title: 'Blindfold 30s 2026 Commercial', product: 'Gravité', sent_by: 'Growth teammate', sent_at: at(-1, 18), links: ['https://www.dropbox.com/'], note: 'A 30-second version of our top performer — please add for testing as soon as possible.', link: null,
         agency: [{ by: 'Agency rep', at: at(-1, 18), text: 'Love this, sending now.', networks: [] }, { by: 'Agency rep', at: at(-1, 19), text: 'Already sent to Fox News, CNN, MSNow, ABC, NBC, CBS and Fox Broadcast.', networks: ['Fox News', 'CNN', 'MSNow', 'ABC', 'NBC', 'CBS', 'Fox Broadcast'] }],
-        networks: ['Fox News', 'CNN', 'MSNow', 'ABC', 'NBC', 'CBS', 'Fox Broadcast'], library: { id: 'lib-x', title: 'Blindfold 30s', code: 'GR3BLINDH' }, on_air_since: null, status: 'confirmed' },
+        networks: ['Fox News', 'CNN', 'MSNow', 'ABC', 'NBC', 'CBS', 'Fox Broadcast'], library: { id: 'lib-x', title: 'Blindfold 30s', code: 'GR3BLINDH', production_id: 'PRD26-35', production_name: 'Blindfold 2026' }, on_air_since: null, status: 'confirmed' },
       { title: 'Pulse 60s Commercial', product: 'Gravité', sent_by: 'Growth teammate', sent_at: at(-9, 15), links: ['https://www.dropbox.com/'], note: 'Final 60s for the networks.', link: null,
-        agency: [{ by: 'Agency rep', at: at(-9, 16), text: 'Got it — trafficking to Fox News for Thursday.', networks: ['Fox News'] }], networks: ['Fox News'], library: { id: 'lib-y', title: 'Pulse 60s', code: 'GR1PULSEH' }, on_air_since: off(-4), status: 'on_air' },
+        agency: [{ by: 'Agency rep', at: at(-9, 16), text: 'Got it — trafficking to Fox News for Thursday.', networks: ['Fox News'] }], networks: ['Fox News'], library: { id: 'lib-y', title: 'The Pulse Test 60s', code: 'GR1PULSEH', production_id: 'PRD26-33', production_name: 'The Pulse Test' }, on_air_since: off(-4), status: 'on_air' },
       { title: 'Bending Light 60s Commercial', product: 'Gravité', sent_by: 'Growth teammate', sent_at: at(-3, 12), links: ['https://www.dropbox.com/'], note: '', link: null, agency: [], networks: [], library: null, on_air_since: null, status: 'sent' },
     ],
     notes: [
@@ -94,6 +94,24 @@ export function tvFixture() {
 }
 
 const MAKERS = ['Doron Levi', 'Yael Cohen', 'Omer Ben Simon', 'Kerry Bershtein', null];
+const TEAMS = { 'Doron Levi': 'video', 'Omer Ben Simon': 'video', 'Yael Cohen': 'design', 'Kerry Bershtein': 'design' };
+const BASE = {
+  video: { creatives: 212, spend: 1840000, revenue: 4230000, roas: 2.3, ctr: 0.0112, hook: 0.26, hold: 0.09, avg_watch: 4.2, p50: 0.21, aov: 96, cpa: 41, cpm: 18.5 },
+  static: { creatives: 486, spend: 1210000, revenue: 2540000, roas: 2.1, ctr: 0.0094, hook: null, hold: null, avg_watch: null, p50: null, aov: 92, cpa: 44, cpm: 14.2 },
+};
+function versus(format, seedish) {
+  const base = BASE[format === 'video' ? 'video' : 'static'];
+  const out = {};
+  for (const m of ['roas', 'ctr', 'hook', 'hold', 'avg_watch', 'p50', 'aov', 'cpa', 'cpm']) {
+    if (base[m] == null) continue;
+    const ratio = 0.55 + rnd() * 1.0 + (seedish % 3 === 0 && (m === 'hook' || m === 'ctr') ? 0.5 : 0);
+    const v = base[m] * ratio;
+    const good = m === 'cpa' || m === 'cpm' ? 1 / ratio : ratio;
+    const score = Math.max(2, Math.min(99, Math.round(50 + (good - 1) * 90)));
+    out[m] = { v, avg: base[m], ratio, pct: m === 'cpa' || m === 'cpm' ? 100 - score : score };   // the raw percentile, like the export
+  }
+  return out;
+}
 export function mediaFixture() {
   seed = 11;
   const days = 14;
@@ -120,7 +138,7 @@ export function mediaFixture() {
     const roas7 = r2(1.1 + rnd() * 2.2);
     const live = i !== 7 && i !== 10;
     return {
-      key: `k${i}`, label, format, lane: 'Particle', product: prod, campaign, maker: MAKERS[i % MAKERS.length], maker_source: 'monday',
+      key: `k${i}`, label, format, lane: 'Particle', product: prod, campaign, maker: MAKERS[i % MAKERS.length], maker_source: 'monday', team: TEAMS[MAKERS[i % MAKERS.length]] || null,
       thumb: null, thumb_url: null, live, new: startIdx >= 7, first_spend: startIdx >= 7 ? dates[startIdx] : off(-30 - i * 3), last_spend: live ? dates[days - 1] : dates[days - 3], ads: 1 + (i % 3),
       lifetime: { spend: Math.round(s7 * (startIdx >= 7 ? 1.1 : 4.5)), revenue: Math.round(s7 * 4 * roas7), roas: roas7 },
       d28: { spend: Math.round(s7 * 2.5), roas: roas7, ctr: r2(0.01 + rnd() * 0.012), hook: format === 'video' ? r2(0.2 + rnd() * 0.2) : null, hold: format === 'video' ? r2(0.08 + rnd() * 0.15) : null, avg_watch: format === 'video' ? r2(2.5 + rnd() * 6) : null, cpa: r2(30 + rnd() * 40), purchases: Math.round(s7 / 45), aov: r2(80 + rnd() * 40) },
@@ -128,10 +146,20 @@ export function mediaFixture() {
       prev7: { spend: sp, roas: sp ? r2(roas7 * (0.7 + rnd() * 0.6)) : null, ctr: sp ? r2(0.008 + rnd() * 0.016) : null },
       today: { day: dates[days - 1], spend: series[days - 1].spend, roas: series[days - 1].roas }, yesterday: { spend: series[days - 2].spend, roas: series[days - 2].roas },
       series,
+      vs: { basis: 'year', spend: Math.round(s7 * 3), impressions: Math.round(s7 * 60), judged: i !== 3, metrics: versus(format, i) },
     };
   }).sort((a, b) => Number(b.live) - Number(a.live) || b.d7.spend - a.d7.spend);
   return {
     connected: true, ready: true, last_day: dates[days - 1], since: dates[0], days, afterlife_url: 'https://afterlife.example',
+    benchmarks: {
+      since: '2026-01-01', until: dates[days - 1], min_peer_spend: 300,
+      teams: {
+        video: { ...BASE.video, creatives: 198 },
+        design: { creatives: 470, spend: 1150000, revenue: 2400000, roas: 2.09, ctr: 0.0093, hook: 0.22, hold: 0.07, avg_watch: 3.1, p50: 0.16, aov: 91, cpa: 45, cpm: 14 },
+        external: { creatives: 140, spend: 690000, revenue: 1290000, roas: 1.87, ctr: 0.021, hook: 0.31, hold: 0.11, avg_watch: 5.0, p50: 0.25, aov: 88, cpa: 52, cpm: 16 },
+      },
+      internal: BASE, peers: { video: 160, static: 380 },
+    },
     totals: { series: dates.map(d => ({ d, spend: Math.round(14000 + rnd() * 9000), roas: r2(1.4 + rnd() * 0.9) })) },
     creatives, fetched_at: new Date().toISOString(),
   };

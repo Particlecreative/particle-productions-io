@@ -1,7 +1,7 @@
 /**
  * /api/onair — On Air (17 Nov 2026): what's running now on TV (the agency's daily reports, read from Gmail) and on
- * Meta (AfterLife). Particle only. Everyone signed in with Particle access may read it (the Growth team too);
- * refreshing the TV mail now is Editor+.
+ * Meta (AfterLife). Particle only. Everyone signed in with Particle access may read it — the Growth team sees TV only
+ * (Meta ads aren't theirs; middleware/auth.js GROWTH_ALLOW); refreshing the TV mail now is Editor+.
  *   GET  /tv            → lib/onair/tv.js buildTv
  *   POST /tv/refresh    → read the mailbox now, then the same as GET /tv
  *   GET  /media         → lib/onair/media.js (AfterLife on-air export, cached 10 min; ?force=1 skips the cache)
@@ -48,6 +48,7 @@ router.post('/tv/refresh', async (req, res) => {
 });
 
 router.get('/media', async (req, res) => {
+  if (req.user?.role === 'Growth') return res.status(403).json({ error: 'Not part of the Growth Studio', code: 'growth_only' });
   try { res.set('Cache-Control', 'no-store').json(await Media.getMedia({ force: req.query.force === '1' })); } catch (err) { fail(res, err, 'media'); }
 });
 

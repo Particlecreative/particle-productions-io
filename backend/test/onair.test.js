@@ -130,9 +130,9 @@ test('TV view: what moved since the previous report of the same week, and which 
   assert.equal(v.last_day.vs.orders, 1);
 });
 
-test('On Air: Growth reads it, can not refresh it; thumbnails are signed', () => {
+test('On Air: Growth reads TV only, can not refresh it; thumbnails are signed', () => {
   assert.ok(growthMay('GET', '/api/onair/tv'));
-  assert.ok(growthMay('GET', '/api/onair/media'));
+  assert.ok(!growthMay('GET', '/api/onair/media'));
   assert.ok(!growthMay('POST', '/api/onair/tv/refresh'));
   const url = Media.thumbUrl('/media/ads/123-t.jpg');
   const q = new URLSearchParams(url.split('?')[1]);

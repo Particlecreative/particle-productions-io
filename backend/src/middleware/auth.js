@@ -35,7 +35,7 @@ const GROWTH_ALLOW = [
   [/^(GET|POST|DELETE)$/, /^\/api\/me\/monday(\/(token|connect))?$/],
   [/^POST$/, /^\/api\/me\/activity$/],
   [/^GET$/, /^\/api\/growth\/[a-z-]+$/],
-  [/^GET$/, /^\/api\/onair\/(tv|media)$/],             // On Air (TV + Meta), read-only
+  [/^GET$/, /^\/api\/onair\/tv$/],                      // On Air — TV only (Meta ads aren't for the growth team), read-only
 ];
 const growthMay = (method, path) => GROWTH_ALLOW.some(([m, p]) => m.test(method) && p.test(path));
 

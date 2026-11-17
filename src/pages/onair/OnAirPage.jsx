@@ -124,7 +124,7 @@ export default function OnAirPage() {
   const { isGrowth } = useAuth();
   const { brandId } = useBrand();
   const [params, setParams] = useSearchParams();
-  const tab = params.get('tab') === 'meta' ? 'meta' : 'tv';
+  const tab = !isGrowth && params.get('tab') === 'meta' ? 'meta' : 'tv';   // the growth team: TV only
   useEffect(() => { meApi.pageView(`On Air · ${tab === 'meta' ? 'Meta' : 'TV'}`); }, [tab]);
   if (brandId && brandId !== 'particle') return <div className="p-10 text-center text-sm text-gray-500">On Air works on Particle — switch to the Particle brand.</div>;
   return (
@@ -136,9 +136,9 @@ export default function OnAirPage() {
             On air now
           </div>
           <h1 className="font-black uppercase leading-none text-[38px] sm:text-[52px] mt-1" style={{ ...DISPLAY, color: NAVY }}>On Air</h1>
-          <p className="text-sm text-gray-500 mt-1.5 max-w-[760px]">What’s running right now — on TV from the media agency’s daily report, on Meta from AfterLife. {isGrowth ? '' : 'The TV Library’s on-air dots follow the TV report.'}</p>
+          <p className="text-sm text-gray-500 mt-1.5 max-w-[760px]">{isGrowth ? 'What’s running on TV right now — from the media agency’s daily report.' : 'What’s running right now — on TV from the media agency’s daily report, on Meta from AfterLife. The TV Library’s on-air dots follow the TV report.'}</p>
         </div>
-        <nav className="grid grid-cols-2 sm:flex gap-1 p-1 rounded-2xl bg-white border border-gray-200 w-full sm:w-auto" role="tablist" aria-label="On Air">
+        {!isGrowth && <nav className="grid grid-cols-2 sm:flex gap-1 p-1 rounded-2xl bg-white border border-gray-200 w-full sm:w-auto" role="tablist" aria-label="On Air">
           {[['tv', 'TV', Tv], ['meta', 'Meta ads', Smartphone]].map(([k, label, Icon]) => (
             <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setParams(k === 'tv' ? {} : { tab: k })}
               className={`flex items-center justify-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-xl whitespace-nowrap transition-colors ${tab === k ? 'text-white' : 'text-gray-600 hover:bg-gray-100'}`}
@@ -146,9 +146,9 @@ export default function OnAirPage() {
               <Icon size={15} /> {label}
             </button>
           ))}
-        </nav>
+        </nav>}
       </div>
-      {!LIVE && <div className="mb-3 text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">Local preview — made-up data (the live page reads the agency’s emails and AfterLife).</div>}
+      {!LIVE && <div className="mb-3 text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">Local preview — made-up data (the live page reads the agency’s emails{isGrowth ? '' : ' and AfterLife'}).</div>}
       {tab === 'tv' ? <TvTab /> : <MetaTab />}
     </div>
   );
@@ -276,7 +276,7 @@ function ProductBlock({ p }) {
       <div>
         <H2 aside={<span className="text-xs text-gray-400">{p.spots.length} spot{p.spots.length === 1 ? '' : 's'} this week · biggest spend first{p.previous_report ? ` · movement since the ${fmtDay(p.previous_report, { day: 'numeric', month: 'short' })} report` : ''}</span>}>On air now</H2>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {spots.map(s => <SpotCard key={s.code} s={s} weekMer={w.mer} onLibrary={() => nav(libPath)} />)}
+          {spots.map(s => <SpotCard key={s.code} s={s} weekMer={w.mer} onLibrary={() => nav(libPath)} onProduction={(id) => nav(isGrowth ? '/tv-productions' : `/production/${encodeURIComponent(id)}`)} />)}
         </div>
         {p.spots.length > 9 && <button type="button" onClick={() => setAll(!all)} className="mt-2 text-xs font-semibold text-[#0808f8] hover:underline">{all ? 'Show fewer' : `Show all ${p.spots.length}`}</button>}
       </div>
@@ -315,7 +315,17 @@ function ProductBlock({ p }) {
   );
 }
 
-function SpotCard({ s, weekMer, onLibrary }) {
+/** The production it came from: PRD + its name in the CP (click → the production; the growth team → TV Productions) */
+function PrdChip({ id, name, onOpen }) {
+  if (!id) return <span className="text-[11px] text-gray-400">No production linked (Before 2026)</span>;
+  return (
+    <button type="button" onClick={() => onOpen?.(id)} className="inline-flex items-center gap-1 max-w-full text-[11px] font-semibold px-1.5 py-0.5 rounded-md bg-[#eef0ff] text-[#0808f8] hover:bg-[#e2e5ff]" title={`${id} · ${name || ''}`}>
+      <span className="tabular-nums flex-none">{id}</span>{name && <span className="truncate font-medium text-[#3a4170]">· {name}</span>}
+    </button>
+  );
+}
+
+function SpotCard({ s, weekMer, onLibrary, onProduction }) {
   const lib = s.library;
   const title = lib?.title || s.name;
   const m = s.moved;
@@ -328,8 +338,9 @@ function SpotCard({ s, weekMer, onLibrary }) {
           {s.is_new && <span className="absolute top-1 left-1 text-[9.5px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded text-white" style={{ background: RED }}>New</span>}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-[14px] font-semibold leading-snug line-clamp-2" style={{ color: NAVY }} title={title}>{title}</div>
-          <div className="text-[11px] text-gray-400 truncate">{[s.code, s.length ? `:${s.length}` : null, lib?.production_name].filter(Boolean).join(' · ')}</div>
+          <div className="text-[14px] font-semibold leading-snug line-clamp-2" style={{ color: NAVY }} title={lib ? `Our name in the CP: ${title}` : title}>{title}</div>
+          {lib && <div className="mt-0.5 min-w-0"><PrdChip id={lib.production_id} name={lib.production_name} onOpen={onProduction} /></div>}
+          <div className="text-[11px] text-gray-400 truncate mt-0.5" title="What the agency calls it · its creative code · length">{[lib && s.name && s.name !== title ? `Agency: “${s.name}”` : null, s.code, s.length ? `:${s.length}` : null].filter(Boolean).join(' · ')}</div>
           <div className="flex items-baseline gap-2 mt-1">
             <span className="font-black tabular-nums text-[24px] leading-none" style={{ ...DISPLAY, color: NAVY }}>{money(s.spent)}</span>
             {s.share != null && <span className="text-[11px] text-gray-400">{pct(s.share, 0)} of the week</span>}
@@ -371,6 +382,7 @@ function Pipeline({ items }) {
               <div className="min-w-0">
                 <div className="text-[14px] font-semibold truncate" style={{ color: NAVY }}>{it.title}</div>
                 <div className="text-[11px] text-gray-400 truncate">{[it.product, `sent by ${first(it.sent_by)} · ${fmtTime(it.sent_at)}`, it.library?.code].filter(Boolean).join(' · ')}</div>
+                {it.library && <div className="text-[11px] mt-0.5 truncate"><span className="text-gray-400">In the CP: </span><span className="font-semibold text-[#3a4170]">{it.library.title}</span>{it.library.production_id && <span className="text-[#0808f8] font-semibold"> · {it.library.production_id}{it.library.production_name ? ` ${it.library.production_name}` : ''}</span>}</div>}
               </div>
               <div className="flex flex-wrap items-center gap-1.5 min-w-0">
                 {STEPS.map(([k, label, Icon, short], j) => (
@@ -424,15 +436,69 @@ function Notes({ notes }) {
 }
 
 // ═══════════════════════════════════════ META ═══════════════════════════════════════
+// Video and static apart. Every creative is set against OUR internal team's 2026 creatives of the same format
+// (video editors + designers; externals shown for reference only): ratio to the average + percentile → insights.
 
-const SORTS = [['spend', '7-day spend'], ['roas', 'ROAS'], ['newest', 'Newest'], ['movers', 'Biggest movers']];
+const MET = {
+  hook: { label: 'Thumb-stop', hint: '3-sec views ÷ impressions (the hook rate)', fmt: (v) => pct(v, 0), good: 'high', video: true },
+  hold: { label: 'Hold', hint: 'ThruPlays ÷ 3-sec views — of those who stopped, how many kept watching', fmt: (v) => pct(v, 0), good: 'high', video: true },
+  avg_watch: { label: 'Avg watch', hint: 'average seconds watched per play', fmt: (v) => `${Number(v).toFixed(1)}s`, good: 'high', video: true },
+  p50: { label: 'Watched half', hint: 'share of plays that reached 50%', fmt: (v) => pct(v, 0), good: 'high', video: true },
+  ctr: { label: 'CTR', hint: 'link clicks ÷ impressions', fmt: (v) => pct(v, 2), good: 'high' },
+  roas: { label: 'ROAS', hint: 'revenue ÷ spend (Meta)', fmt: (v) => `${x2(v)}×`, good: 'high' },
+  aov: { label: 'AOV', hint: 'revenue per purchase', fmt: (v) => money(v, { exact: true }), good: 'high' },
+  cpa: { label: 'CPA', hint: 'spend per purchase', fmt: (v) => money(v, { exact: true }), good: 'low' },
+  cpm: { label: 'CPM', hint: 'cost per 1,000 impressions', fmt: (v) => money(v, { exact: true }), good: 'low' },
+};
+const CARD_METRICS = { video: ['hook', 'hold', 'avg_watch', 'ctr', 'roas', 'aov'], static: ['ctr', 'roas', 'aov', 'cpa', 'cpm'] };
+const fmtOf = (c) => (c.format === 'video' ? 'video' : 'static');
+/** how good it is, 0–100, whatever the direction (CPA: lower is better) */
+const scoreOf = (m, x) => (x?.pct == null ? null : MET[m].good === 'low' ? 100 - x.pct : x.pct);
+const vsText = (m, x, compact = false) => {
+  if (!x?.ratio || !Number.isFinite(x.ratio)) return null;
+  const d = Math.round((x.ratio - 1) * 100);
+  if (d === 0) return compact ? '= avg' : 'same as avg';
+  return `${d > 0 ? '+' : '−'}${Math.abs(d)}%${compact ? '' : ' vs avg'}`;
+};
+const toneOf = (m, x) => { const sc = scoreOf(m, x); return sc == null ? '#8a90a6' : sc >= 75 ? GREEN : sc <= 25 ? RED : '#8a90a6'; };
+
+/** What makes this creative different from what we usually make — plain sentences, strongest first (max 3). */
+function insightsOf(c) {
+  const v = c.vs;
+  const kind = fmtOf(c) === 'video' ? 'videos' : 'statics';
+  if (!v || !v.metrics) return [];
+  if (!v.judged) return [{ tone: 'muted', text: `Early days — ${money(v.spend)} spent so far, too little to compare with our ${kind}.` }];
+  const M = v.metrics, sc = (m) => scoreOf(m, M[m]);
+  const out = [];
+  const both = (a, b) => sc(a) != null && sc(b) != null;
+  if (fmtOf(c) === 'video') {
+    if (both('hook', 'hold') && sc('hook') >= 75 && sc('hold') <= 30) out.push({ tone: 'warn', w: 3, text: `Stops the scroll, then loses them — a strong first 3 seconds (thumb-stop ${MET.hook.fmt(M.hook.v)}), a weak middle (hold ${MET.hold.fmt(M.hold.v)}).` });
+    if (both('hook', 'hold') && sc('hold') >= 75 && sc('hook') <= 30) out.push({ tone: 'warn', w: 3, text: `Whoever stays, watches (hold ${MET.hold.fmt(M.hold.v)}) — but the opening doesn’t stop the scroll. A new hook could unlock it.` });
+    if (both('hook', 'hold') && sc('hook') >= 85 && sc('hold') >= 85) out.push({ tone: 'good', w: 3, text: 'Hooks and holds — top of our videos on both the first 3 seconds and the watch-through.' });
+  }
+  if (both('ctr', 'roas') && sc('ctr') >= 75 && sc('roas') <= 30) out.push({ tone: 'warn', w: 3, text: `Gets the click, not the sale — CTR ${MET.ctr.fmt(M.ctr.v)} but ROAS ${MET.roas.fmt(M.roas.v)}. Check the landing page or the offer.` });
+  if (both('ctr', 'roas') && sc('ctr') <= 30 && sc('roas') >= 75) out.push({ tone: 'good', w: 3, text: `Few clicks, but they buy — ROAS ${MET.roas.fmt(M.roas.v)} on a low CTR. A qualified audience.` });
+  for (const m of Object.keys(MET)) {
+    const x = M[m]; const s2 = sc(m);
+    if (s2 == null || (MET[m].video && fmtOf(c) !== 'video')) continue;
+    const avg = x.avg != null ? ` vs our ${MET[m].fmt(x.avg)}` : '';
+    const name = MET[m].label === MET[m].label.toUpperCase() ? MET[m].label : MET[m].label.toLowerCase();
+    const low = MET[m].good === 'low';   // CPA / CPM: the best are the lowest
+    if (s2 >= 90) out.push({ tone: 'good', w: 2 + (s2 - 90) / 10, text: `${low ? 'Lowest' : 'Top'} ${Math.max(1, 100 - s2)}% ${name} of our ${kind} this year — ${MET[m].fmt(x.v)}${avg}.` });
+    else if (s2 <= 10) out.push({ tone: 'bad', w: 2 + (10 - s2) / 10, text: `${low ? 'Highest' : 'Bottom'} ${Math.max(1, s2)}% ${name} of our ${kind} — ${MET[m].fmt(x.v)}${avg}.` });
+  }
+  if (!out.length) return [{ tone: 'muted', text: `In line with our usual ${kind} — nothing stands out yet.` }];
+  return out.sort((a, b) => b.w - a.w).slice(0, 3);
+}
+
+const SORTS = [['spend', '7-day spend'], ['roas', 'ROAS'], ['standout', 'Stands out most'], ['newest', 'Newest'], ['movers', 'Biggest movers']];
 function MetaTab() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [format, setFormat] = useState('video');
   const [show, setShow] = useState('live');
   const [q, setQ] = useState('');
-  const [format, setFormat] = useState('');
   const [product, setProduct] = useState('');
   const [maker, setMaker] = useState('');
   const [lane, setLane] = useState('');
@@ -443,25 +509,28 @@ function MetaTab() {
   }, []);
   useEffect(() => load(false), [load]);
 
-  const cs = data?.creatives || [];
+  const all = data?.creatives || [];
+  const cs = useMemo(() => all.filter(c => fmtOf(c) === format), [all, format]);
   const options = useMemo(() => {
     const u = (xs) => [...new Set(xs.filter(Boolean))].sort((a, b) => a.localeCompare(b));
     return { products: u(cs.map(c => c.product)), makers: u(cs.map(c => c.maker)), lanes: u(cs.map(c => c.lane)) };
   }, [cs]);
   const growth = (c) => (c.prev7?.spend ? (c.d7.spend - c.prev7.spend) / c.prev7.spend : c.d7.spend ? 1 : 0);
+  const standout = (c) => Math.max(0, ...CARD_METRICS[fmtOf(c)].map(m => { const s2 = scoreOf(m, c.vs?.metrics?.[m]); return s2 == null || !c.vs?.judged ? 0 : Math.abs(s2 - 50); }));
   const list = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    const f = cs.filter(c => (show === 'all' || (show === 'live' ? c.live : c.new)) && (!format || c.format === format) && (!product || c.product === product)
+    const f = cs.filter(c => (show === 'all' || (show === 'live' ? c.live : c.new)) && (!product || c.product === product)
       && (!maker || c.maker === maker) && (!lane || c.lane === lane)
       && (!needle || [c.label, c.maker, c.product, c.campaign].filter(Boolean).some(v => v.toLowerCase().includes(needle))));
     const by = {
       spend: (a, b) => b.d7.spend - a.d7.spend,
       roas: (a, b) => (b.d7.roas ?? -1) - (a.d7.roas ?? -1),
+      standout: (a, b) => standout(b) - standout(a) || b.d7.spend - a.d7.spend,
       newest: (a, b) => String(b.first_spend || '').localeCompare(String(a.first_spend || '')),
       movers: (a, b) => Math.abs(growth(b)) * Math.log10(10 + b.d7.spend) - Math.abs(growth(a)) * Math.log10(10 + a.d7.spend),
     };
     return f.sort(by[sort]);
-  }, [cs, show, q, format, product, maker, lane, sort]);
+  }, [cs, show, q, product, maker, lane, sort]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (error && !data) return <div className="px-4 py-3 rounded-2xl bg-red-50 text-red-700 text-sm flex items-center gap-2"><AlertTriangle size={16} /> {error}</div>;
   if (!data) return <div className="py-20 text-center text-gray-400"><Loader2 className="inline animate-spin" /></div>;
@@ -470,13 +539,16 @@ function MetaTab() {
 
   const tot = data.totals?.series || [];
   const lastT = tot[tot.length - 1], prevT = tot[tot.length - 2];
-  const live = cs.filter(c => c.live);
-  const newWeek = cs.filter(c => c.first_spend && daysSince(c.first_spend) != null && daysSince(c.first_spend) <= 7);
+  const liveAll = all.filter(c => c.live);
+  const newWeek = all.filter(c => c.first_spend && daysSince(c.first_spend) != null && daysSince(c.first_spend) <= 7);
   const s7 = tot.slice(-7).reduce((a, t) => a + t.spend, 0), r7 = tot.slice(-7).reduce((a, t) => a + (t.roas || 0) * t.spend, 0);
   const sp = tot.slice(-14, -7).reduce((a, t) => a + t.spend, 0), rp = tot.slice(-14, -7).reduce((a, t) => a + (t.roas || 0) * t.spend, 0);
   const roas7 = s7 ? r7 / s7 : null, roasP = sp ? rp / sp : null;
-  const starts = [...newWeek].sort((a, b) => String(b.first_spend).localeCompare(String(a.first_spend))).slice(0, 12);
-  const filtered = !!(q || format || product || maker || lane);
+  const starts = cs.filter(c => c.first_spend && daysSince(c.first_spend) <= 7).sort((a, b) => String(b.first_spend).localeCompare(String(a.first_spend))).slice(0, 12);
+  const filtered = !!(q || product || maker || lane);
+  const count = (f) => all.filter(c => fmtOf(c) === f && (show === 'all' || (show === 'live' ? c.live : c.new))).length;
+  const bench = data.benchmarks;
+  const base = bench?.internal?.[format];
 
   return (
     <div className="flex flex-col gap-5">
@@ -487,7 +559,7 @@ function MetaTab() {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
-        <Tile label="Live now" value={int(live.length)} accent={RED} sub="creatives that spent on the last day" />
+        <Tile label="Live now" value={int(liveAll.length)} accent={RED} sub={`${liveAll.filter(c => fmtOf(c) === 'video').length} video · ${liveAll.filter(c => fmtOf(c) === 'static').length} static`} />
         <Tile label="New this week" value={int(newWeek.length)} sub="started spending in the last 7 days" />
         <Tile label={`Spend · ${fmtDay(lastT?.d, { weekday: 'short', day: 'numeric' })}`} value={money(lastT?.spend)} delta={<Delta v={lastT && prevT ? lastT.spend - prevT.spend : null} fmt={money} />} sub="all Meta, vs the day before" />
         <Tile label="ROAS · 7 days" value={x2(roas7)} delta={<Delta v={roas7 != null && roasP != null ? roas7 - roasP : null} fmt={x2} />} sub={`vs ${x2(roasP)} the 7 days before`} />
@@ -499,19 +571,47 @@ function MetaTab() {
         <div className="flex justify-between text-[10px] text-gray-400 mt-1"><span>{fmtDay(tot[0]?.d, { day: 'numeric', month: 'short' })}</span><span>{fmtDay(lastT?.d, { day: 'numeric', month: 'short' })}</span></div>
       </div>
 
+      {bench && <TeamAverages bench={bench} />}
+
+      {/* Video | Static — everything below follows it */}
+      <div className="sticky top-0 z-10 -mx-1 px-1 py-1 bg-[#f4f5fa]/90 backdrop-blur">
+        <div className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-white border border-gray-200 sm:w-fit">
+          {[['video', 'Video ads', Play], ['static', 'Static ads', Smartphone]].map(([k, label, Icon]) => (
+            <button key={k} type="button" onClick={() => setFormat(k)} aria-pressed={format === k}
+              className={`flex items-center justify-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-xl ${format === k ? 'text-white' : 'text-gray-600 hover:bg-gray-100'}`} style={format === k ? { background: NAVY } : undefined}>
+              <Icon size={14} /> {label} <span className="opacity-60 tabular-nums">{count(k)}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {base && (
+        <div className="rounded-2xl border border-[#0808f8]/15 bg-[#f6f7ff] px-4 py-3">
+          <div className="text-[10.5px] font-bold uppercase tracking-wider text-[#0808f8]">Our {format === 'video' ? 'video' : 'static'} average · {bench.since ? fmtDay(bench.since, { year: 'numeric' }) : 'this year'} · internal team</div>
+          <div className="flex flex-wrap gap-x-5 gap-y-1 mt-1">
+            {CARD_METRICS[format].filter(m => base[m] != null).map(m => (
+              <span key={m} className="text-[12.5px]" title={MET[m].hint}><span className="text-gray-500">{MET[m].label}</span> <b className="tabular-nums" style={{ color: NAVY }}>{MET[m].fmt(base[m])}</b></span>
+            ))}
+            <span className="text-[11px] text-gray-400 self-center">{int(base.creatives)} creatives · {money(base.spend)} · every ad below is measured against this</span>
+          </div>
+        </div>
+      )}
+
       {starts.length > 0 && (
         <section>
           <H2 aside={<span className="text-xs text-gray-400">first spend in the last 7 days, newest first</span>}>Just started</H2>
           <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 snap-x" style={{ scrollbarWidth: 'thin' }}>
             {starts.map(c => {
               const day = daysSince(c.first_spend);
+              const ins = insightsOf(c)[0];
               return (
-                <div key={c.key} className="snap-start flex-none w-[230px] rounded-2xl bg-white border border-gray-200 p-2.5 flex gap-2.5">
+                <div key={c.key} className="snap-start flex-none w-[250px] rounded-2xl bg-white border border-gray-200 p-2.5 flex gap-2.5">
                   <Thumb c={c} className="w-14 h-[70px] rounded-lg flex-none" />
                   <div className="min-w-0">
                     <div className="text-[10.5px] font-bold" style={{ color: RED }}>{day === 0 ? 'Started today' : `Day ${day + 1}`} · {fmtDay(c.first_spend, { day: 'numeric', month: 'short' })}</div>
                     <div className="text-[12.5px] font-semibold leading-snug line-clamp-2" style={{ color: NAVY }}>{c.label}</div>
                     <div className="text-[11px] text-gray-400 truncate">{c.maker ? first(c.maker) : 'Unknown maker'} · {money(c.d7.spend)}{c.d7.roas != null ? ` · ${x2(c.d7.roas)}×` : ''}</div>
+                    {ins && ins.tone !== 'muted' && <div className="text-[10.5px] leading-snug mt-0.5 line-clamp-2" style={{ color: ins.tone === 'good' ? GREEN : ins.tone === 'bad' ? RED : AMBER }}>{ins.text}</div>}
                   </div>
                 </div>
               );
@@ -523,20 +623,19 @@ function MetaTab() {
       <div className="flex flex-col gap-2 p-2 rounded-2xl bg-white border border-gray-200">
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex bg-gray-100 rounded-xl p-0.5">
-            {[['live', `Live ${live.length}`], ['new', `New ${cs.filter(c => c.new).length}`], ['all', `All ${cs.length}`]].map(([k, l]) => (
-              <button key={k} type="button" onClick={() => setShow(k)} className={`text-xs font-semibold px-3 py-1.5 rounded-lg ${show === k ? 'bg-white shadow-sm text-[#030b2e]' : 'text-gray-500'}`}>{l}</button>
+            {[['live', 'Live', cs.filter(c => c.live).length], ['new', 'New', cs.filter(c => c.new).length], ['all', 'All', cs.length]].map(([k, l, n]) => (
+              <button key={k} type="button" onClick={() => setShow(k)} className={`text-xs font-semibold px-3 py-1.5 rounded-lg ${show === k ? 'bg-white shadow-sm text-[#030b2e]' : 'text-gray-500'}`}>{l} {n}</button>
             ))}
           </div>
           <label className="relative flex-1 min-w-[160px]">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search creatives, makers, campaigns" className="w-full pl-9 pr-3 py-2 text-sm rounded-xl bg-gray-50 border border-transparent focus:bg-white focus:border-gray-300 outline-none" />
           </label>
-          <Pick value={format} onChange={setFormat} label="Format" options={[['video', 'Video'], ['static', 'Static']]} />
           <Pick value={product} onChange={setProduct} label="Product" options={options.products.map(o => [o, o])} />
           <Pick value={maker} onChange={setMaker} label="Maker" options={options.makers.map(o => [o, o])} />
           {options.lanes.length > 1 && <Pick value={lane} onChange={setLane} label="Brand" options={options.lanes.map(o => [o, o])} />}
           <Pick value={sort} onChange={setSort} label="Sort" options={SORTS} always />
-          {filtered && <button type="button" onClick={() => { setQ(''); setFormat(''); setProduct(''); setMaker(''); setLane(''); }} className="flex items-center gap-1 text-xs font-semibold text-gray-500 hover:text-gray-800 px-2 py-1.5 rounded-lg hover:bg-gray-100"><X size={13} /> Clear</button>}
+          {filtered && <button type="button" onClick={() => { setQ(''); setProduct(''); setMaker(''); setLane(''); }} className="flex items-center gap-1 text-xs font-semibold text-gray-500 hover:text-gray-800 px-2 py-1.5 rounded-lg hover:bg-gray-100"><X size={13} /> Clear</button>}
         </div>
       </div>
 
@@ -545,6 +644,51 @@ function MetaTab() {
         {list.map(c => <CreativeCard key={c.key} c={c} />)}
       </div>
     </div>
+  );
+}
+
+/** Our 2026 averages: video editors · designers · externals (externals are for reference — not in the comparisons). */
+function TeamAverages({ bench }) {
+  const [open, setOpen] = useState(true);
+  const cols = [['video', 'Video team', 'in-house editors'], ['design', 'Design team', 'in-house designers'], ['external', 'Externals', 'Grapevine & outside creators']];
+  const rows = [
+    ['creatives', 'Creatives that ran', (v) => int(v)], ['spend', 'Spend', (v) => money(v)],
+    ['roas', 'ROAS'], ['ctr', 'CTR'], ['hook', 'Thumb-stop'], ['hold', 'Hold'], ['avg_watch', 'Avg watch'], ['p50', 'Watched half'], ['aov', 'AOV'], ['cpa', 'CPA'], ['cpm', 'CPM'],
+  ];
+  const T = bench.teams || {};
+  return (
+    <section className="rounded-2xl bg-white border border-gray-200">
+      <button type="button" onClick={() => setOpen(!open)} className="w-full flex flex-wrap items-baseline gap-x-2 px-4 pt-3 pb-2 text-left">
+        <h2 className="font-black uppercase text-[22px] leading-none" style={{ ...DISPLAY, color: NAVY }}>Our {bench.since ? bench.since.slice(0, 4) : ''} averages</h2>
+        <span className="text-xs text-gray-400">{fmtDay(bench.since, { day: 'numeric', month: 'short' })} – {fmtDay(bench.until, { day: 'numeric', month: 'short' })} · every creative that ran on Meta</span>
+        <ChevronDown size={15} className={`ml-auto self-center text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="px-4 pb-4 overflow-x-auto">
+          <table className="w-full text-[12.5px] min-w-[420px]">
+            <thead>
+              <tr className="text-left">
+                <th className="py-1.5 pr-3" />
+                {cols.map(([k, l, sub]) => <th key={k} className="py-1.5 pr-3 align-bottom"><div className="text-[12px] font-bold" style={{ color: k === 'external' ? '#8a90a6' : NAVY }}>{l}</div><div className="text-[10.5px] font-normal text-gray-400">{sub}</div></th>)}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {rows.map(([m, label, f]) => {
+                const fmt = f || MET[m].fmt;
+                if (!cols.some(([k]) => T[k]?.[m] != null)) return null;
+                return (
+                  <tr key={m}>
+                    <td className="py-1.5 pr-3 text-gray-500 whitespace-nowrap" title={MET[m]?.hint}>{label}</td>
+                    {cols.map(([k]) => <td key={k} className="py-1.5 pr-3 tabular-nums font-semibold" style={{ color: k === 'external' ? '#8a90a6' : NAVY }}>{T[k]?.[m] != null ? fmt(T[k][m]) : '—'}</td>)}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <div className="text-[11px] text-gray-400 mt-2">Each live ad is compared with the <b>internal team</b> only (video editors + designers) — video with video, static with static. Externals are here for reference.</div>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -572,24 +716,14 @@ function Thumb({ c, className = '' }) {
   );
 }
 
+const TEAM_LABEL = { video: 'Video team', design: 'Design team', external: 'External' };
 function CreativeCard({ c }) {
   const d7 = c.d7, p7 = c.prev7 || {};
   const running = daysSince(c.first_spend);
   const spendChange = p7.spend ? (d7.spend - p7.spend) / p7.spend : null;
-  const metrics = [
-    ['ROAS', d7.roas != null ? `${x2(d7.roas)}×` : '—', d7.roas != null && p7.roas != null ? d7.roas - p7.roas : null, x2],
-    ['CTR', pct(d7.ctr, 2), d7.ctr != null && p7.ctr != null ? (d7.ctr - p7.ctr) * 100 : null, (v) => `${v.toFixed(2)}pt`],
-    ['AOV', d7.aov != null ? money(d7.aov, { exact: true }) : '—'],
-    ...(c.format === 'video' ? [
-      ['Thumb-stop', pct(d7.hook ?? c.d28?.hook, 0)],
-      ['Avg watch', c.d28?.avg_watch != null ? `${c.d28.avg_watch.toFixed(1)}s` : '—'],
-      ['Hold', pct(c.d28?.hold, 0)],
-    ] : [
-      ['Purchases', int(d7.purchases)],
-      ['CPA', money(c.d28?.cpa, { exact: true })],
-      ['28-day ROAS', c.d28?.roas != null ? `${x2(c.d28.roas)}×` : '—'],
-    ]),
-  ];
+  const M = c.vs?.metrics || {};
+  const insights = insightsOf(c);
+  const metrics = CARD_METRICS[fmtOf(c)];
   return (
     <div className="rounded-2xl bg-white border border-gray-200 overflow-hidden flex flex-col">
       <div className="flex gap-3 p-3">
@@ -604,11 +738,11 @@ function CreativeCard({ c }) {
           <div className="text-[13.5px] font-semibold leading-snug line-clamp-2" style={{ color: NAVY }} title={c.label}>{c.label}</div>
           <div className="flex items-center gap-1.5 mt-1 min-w-0">
             <span className="flex-none w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white" style={{ background: c.maker ? '#5a63a8' : '#c4c7d6' }}>{c.maker ? initials(c.maker) : '?'}</span>
-            <span className="text-[11.5px] text-gray-600 truncate">{c.maker || 'Unknown maker'}</span>
+            <span className="text-[11.5px] text-gray-600 truncate">{c.maker || 'Unknown maker'}{c.team ? <span className="text-gray-400"> · {TEAM_LABEL[c.team] || c.team}</span> : null}</span>
           </div>
-          <div className="text-[11px] text-gray-400 truncate mt-0.5">{[c.product, c.campaign, c.format === 'video' ? 'Video' : 'Static'].filter(Boolean).join(' · ')}</div>
+          <div className="text-[11px] text-gray-400 truncate mt-0.5">{[c.product, c.campaign].filter(Boolean).join(' · ') || '—'}</div>
           <div className="text-[11px] text-gray-500 mt-0.5">{c.first_spend ? <>Since {fmtDay(c.first_spend, { day: 'numeric', month: 'short' })}{running != null ? ` · day ${running + 1}` : ''}</> : '—'}{c.ads > 1 ? ` · ${c.ads} ads` : ''}</div>
-          <div className="mt-auto pt-1 flex items-baseline gap-2">
+          <div className="mt-auto pt-1 flex items-baseline gap-2 flex-wrap">
             <span className="font-black tabular-nums text-[24px] leading-none" style={{ ...DISPLAY, color: NAVY }}>{money(d7.spend)}</span>
             <span className="text-[10.5px] text-gray-400">7 days</span>
             <Delta v={spendChange != null ? spendChange * 100 : null} fmt={(v) => `${Math.round(v)}`} suffix="%" small />
@@ -616,17 +750,35 @@ function CreativeCard({ c }) {
         </div>
       </div>
       <div className="px-3 -mt-1">
-        <Bars values={(c.series || []).map(s => s.spend)} labels={(c.series || []).map(s => `${fmtDay(s.d)} · ROAS ${x2(s.roas)}`)} height={30} color={c.live ? BLUE : '#9aa1c7'} />
+        <Bars values={(c.series || []).map(s => s.spend)} labels={(c.series || []).map(s => `${fmtDay(s.d)} · ${money(s.spend)} · ROAS ${x2(s.roas)}`)} height={30} color={c.live ? BLUE : '#9aa1c7'} />
+        <div className="flex items-center gap-3 text-[11px] text-gray-500 mt-1">
+          <span>This week: ROAS <b className="text-[#030b2e] tabular-nums">{d7.roas != null ? `${x2(d7.roas)}×` : '—'}</b> <Delta v={d7.roas != null && p7.roas != null ? d7.roas - p7.roas : null} fmt={x2} small /></span>
+          <span>CTR <b className="text-[#030b2e] tabular-nums">{pct(d7.ctr, 2)}</b> <Delta v={d7.ctr != null && p7.ctr != null ? (d7.ctr - p7.ctr) * 100 : null} fmt={(v) => `${v.toFixed(2)}pt`} small /></span>
+        </div>
       </div>
-      <div className="grid grid-cols-3 border-t border-gray-100 mt-2">
-        {metrics.map(([k, v, delta, dfmt]) => (
-          <div key={k} className="px-2 py-1.5 text-center border-b border-gray-50 [&:nth-child(3n+2)]:border-x [&:nth-child(3n+2)]:border-gray-50">
-            <div className="text-[9.5px] font-bold uppercase tracking-wider text-gray-400 truncate">{k}</div>
-            <div className="text-[13px] font-semibold tabular-nums leading-tight" style={{ color: NAVY }}>{v}</div>
-            {delta != null && <Delta v={delta} fmt={dfmt} small />}
-          </div>
-        ))}
+      <div className="mx-3 mt-2 text-[9.5px] font-bold uppercase tracking-wider text-gray-400">{c.vs?.basis === 'year' ? 'Since it started' : 'Last 28 days'} · vs our {fmtOf(c)} average</div>
+      <div className={`grid ${metrics.length === 5 ? 'grid-cols-5' : 'grid-cols-3'} gap-px bg-gray-100 border-y border-gray-100 mt-1`}>
+        {metrics.map(m => {
+          const x = M[m];
+          const sc = scoreOf(m, x);
+          return (
+            <div key={m} className="bg-white px-2 py-1.5 text-center" title={`${MET[m].label}: ${MET[m].hint}${x?.avg != null ? ` · our average ${MET[m].fmt(x.avg)}` : ''}${x?.pct != null ? ` · better than ${sc}% of our ${fmtOf(c)}s` : ''}`}>
+              <div className="text-[9.5px] font-bold uppercase tracking-wider text-gray-400 truncate">{MET[m].label}</div>
+              <div className="text-[13px] font-semibold tabular-nums leading-tight" style={{ color: NAVY }}>{x ? MET[m].fmt(x.v) : '—'}</div>
+              {x && vsText(m, x) && <div className="text-[10px] font-semibold tabular-nums whitespace-nowrap" style={{ color: c.vs?.judged ? toneOf(m, x) : '#a0a5ba' }}>{vsText(m, x, metrics.length === 5)}</div>}
+            </div>
+          );
+        })}
       </div>
+      {insights.length > 0 && (
+        <ul className="px-3 pt-2 flex flex-col gap-1">
+          {insights.map((ins, i) => (
+            <li key={i} className="flex gap-1.5 text-[11.5px] leading-snug" style={{ color: ins.tone === 'good' ? '#0b7a45' : ins.tone === 'bad' ? '#b4233a' : ins.tone === 'warn' ? '#9a5b00' : '#7a8099' }}>
+              <Sparkles size={12} className="flex-none mt-0.5" />{ins.text}
+            </li>
+          ))}
+        </ul>
+      )}
       <div className="px-3 py-2 flex items-center gap-3 text-[11.5px] text-gray-500 mt-auto">
         <span className="inline-flex items-center gap-1" title="Comments, 7 days"><MessageCircle size={13} />{int(d7.comments)}</span>
         <span className="inline-flex items-center gap-1" title="Reactions, 7 days"><Heart size={13} />{int(d7.reactions)}</span>
