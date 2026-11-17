@@ -5,7 +5,7 @@ import {
   ListChecks, Star, MessageSquare, Newspaper, Film, Lock, Loader2,
 } from 'lucide-react';
 import {
-  stageList, stageColor, HEALTH, Face, Signal, BudgetBar, countdown, TONE, shortDate, relTime, money, addDays,
+  stageList, stageColor, HEALTH, Face, Signal, BudgetBar, countdown, TONE, shortDate, relTime, money, addDays, isWrap, PayPanel,
 } from './parts';
 
 const SOURCE = { cp: 'Producer', tasks: 'CP task', monday: 'Monday', budget: 'Budget', contract: 'Contract' };
@@ -47,7 +47,7 @@ export default function Drawer({ p, data, today, canEdit, isAdmin, onClose, onSa
   };
   const editable = !!canEdit;
   const stageEditable = editable && (!p.locked || isAdmin);
-  const cd = countdown(tr.deadline, today);
+  const cd = isWrap(p.stage) ? null : countdown(tr.deadline, today);   // Wrap-up: post is finished, the deadline is history
   const links = tr.links || [];
   const team = tr.team || [];
   const stages = stageList();
@@ -132,6 +132,30 @@ export default function Drawer({ p, data, today, canEdit, isAdmin, onClose, onSa
                 </button>
               ))}
             </div>
+            {isWrap(p.stage) && (
+              <div className="mt-3">
+                <PayPanel wrap={p.budget?.wrap} lines={p.budget?.lines} />
+                {p.budget?.wrap?.lines?.length > 0 && (
+                  <div className="mt-2 grid gap-1">
+                    {p.budget.wrap.lines.map((l, i) => (
+                      <div key={l.id || i} className="flex items-center gap-2 text-[12px] px-1">
+                        <span className="min-w-0 flex-1 truncate"><b className="font-semibold">{l.supplier || '—'}</b>{l.label ? <span className="trk-muted"> · {l.label}</span> : null}</span>
+                        <span className="tabular-nums">{l.kind === 'no_invoice' ? <span className="trk-muted">no invoice yet</span> : `${l.currency === 'ILS' ? '₪' : '$'}${Math.round(l.amount).toLocaleString('en-US')}`}</span>
+                        <span className="w-[74px] text-right" style={l.due && l.due < today ? { color: '#ff5c7a' } : undefined}>{l.due ? shortDate(l.due) : <span className="trk-dim">no date</span>}</span>
+                      </div>
+                    ))}
+                    {(p.budget.wrap.open || 0) > p.budget.wrap.lines.length && <div className="text-[11px] trk-dim px-1">+{p.budget.wrap.open - p.budget.wrap.lines.length} more in the Payments tab</div>}
+                  </div>
+                )}
+                <div className="mt-2 text-[11px] trk-dim leading-snug">Post is finished. When the last line is marked Paid — here in CP or in finance’s sheet — it moves to Completed by itself and finance is told.</div>
+              </div>
+            )}
+            {p.auto_completed && (
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px]" style={{ color: '#5eead4' }}>
+                ✓ CP completed it when the last supplier was paid.
+                {stageEditable && <button type="button" className="trk-btn !py-1 !px-2.5 text-[11px]" onClick={() => onStage(p, 'Wrap-up')}>Undo — back to Wrap-up</button>}
+              </div>
+            )}
           </div>
 
           {/* Health */}

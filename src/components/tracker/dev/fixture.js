@@ -63,7 +63,7 @@ export function trackerFixture() {
         internal: team([['internal', 'Tomer Wilf Lezmy', 'Producer', 'cp'], ['internal', 'Doron Levi', 'Studio', 'monday', { monday_id: '101' }], ['internal', 'Omer Ben Simon', 'Studio', 'monday', { monday_id: '103' }], ['internal', 'Yael Cohen', 'Studio', 'monday', { monday_id: '102' }]]),
         external: team([['external', 'Shai Mor', 'Colorist'], ['external', 'Noa Feld', 'Director', 'budget'], ['external', 'Ido Ben Ami', 'DOP', 'budget'], ['external', 'Studio Gefen', 'Sound', 'budget']]),
       },
-      budget: { planned: 180000, actual: 171500, unpaid: 3, lines: 22 }, contract: { status: 'signed', provider: 'Noa Feld' },
+      budget: { planned: 180000, actual: 171500, unpaid: 3, lines: 22, wrap: { open: 3, unpaid: 3, no_invoice: 0, owed: { USD: 12400 }, overdue: 0, next_due: off(9), lines: [{ id: 'h1', kind: 'unpaid', supplier: 'Ido Ben Ami', label: 'DOP', amount: 6400, currency: 'USD', due: off(9) }, { id: 'h2', kind: 'unpaid', supplier: 'Studio Gefen', label: 'Sound', amount: 4000, currency: 'USD', due: off(15) }, { id: 'h3', kind: 'unpaid', supplier: 'Shai Mor', label: 'Color', amount: 2000, currency: 'USD', due: off(20) }] } }, contract: { status: 'signed', provider: 'Noa Feld' },
       cp_links: [{ category: 'Drive', title: 'Treatment', url: 'https://drive.google.com/' }, { category: 'Dropbox', title: 'Rushes', url: 'https://www.dropbox.com/' }], cp_links_count: 6,
       latest_update: { author: 'Omer Barak', body: 'Client notes on v3 are in — mostly pacing in the first 8 seconds.', at: ago(0.8), count: 14 },
       tasks: { open: 3, overdue: 1, next: [{ title: 'Approve supers', due_date: off(-1), status: 'Working on it', assignee: 'Omer Barak' }, { title: 'Deliver to broadcaster', due_date: off(12), status: 'Not Started', assignee: 'Tomer Wilf Lezmy' }] },
@@ -94,8 +94,26 @@ export function trackerFixture() {
     base({ id: 'PRD26-13', name: 'Founders Podcast S2', stage: 'Pending', stage_since: ago(20), stage_days: 20, production_type: 'AI', product_type: ['Brand'], last_activity: ago(19), signals: [{ kind: 'no_deadline', level: 'gray', text: 'No deadline set' }] }),
     base({ id: 'PRD26-08', name: 'Ulta Launch Kit', stage: 'Post', stage_since: ago(15), stage_days: 15, production_type: 'AI', product_type: ['Face Wash', 'Moisturizer'], tracker: { deadline: off(16), deadline_label: 'Retail assets to Ulta', notes: '', links: [], team: [], health: 'on_track', updated_at: ago(3) }, budget: { planned: 25000, actual: 18000, unpaid: 0, lines: 4 }, last_activity: ago(16), signals: [{ kind: 'stale', level: 'gray', text: 'No updates for 16d' }] }),
     base({ id: 'PRD26-14', name: 'Spring UGC Sprint', stage: 'Pre Production', stage_since: ago(2), stage_days: 2, production_type: 'Remote Shoot', product_type: ['Face Cream'], tracker: { deadline: off(30), deadline_label: '20 creator videos', notes: '', links: [], team: [], health: null, updated_at: ago(2) } }),
+    base({
+      id: 'PRD26-37', name: 'Bending Time', stage: 'Wrap-up', stage_since: ago(3), stage_days: 3, product_type: ['Face Cream'],
+      tracker: { deadline: off(-12), deadline_label: 'TV master', notes: '', links: [], team: [], health: null, updated_at: ago(3) },
+      budget: {
+        planned: 48000, actual: 44500, unpaid: 3, lines: 8,
+        wrap: {
+          open: 4, unpaid: 3, no_invoice: 1, owed: { USD: 6200, ILS: 4800 }, overdue: 1, next_due: off(12),
+          lines: [
+            { id: 'w1', kind: 'unpaid', supplier: 'Noa Feld', label: 'Director', amount: 4200, currency: 'USD', due: off(-2) },
+            { id: 'w2', kind: 'unpaid', supplier: 'Shai Mor', label: 'Color grading', amount: 2000, currency: 'USD', due: off(12) },
+            { id: 'w3', kind: 'unpaid', supplier: 'Sound Lab TLV', label: 'Sound mix', amount: 4800, currency: 'ILS', due: off(26) },
+            { id: 'w4', kind: 'no_invoice', supplier: 'Maya Rosen', label: 'Stylist', amount: 1500, currency: 'USD', due: null },
+          ],
+        },
+      },
+      signals: [{ kind: 'payment_overdue', level: 'red', text: '1 payment overdue' }, { kind: 'no_invoice', level: 'gray', text: '1 waiting for an invoice' }],
+    }),
+    base({ id: 'PRD26-15', name: 'The Line-up', stage: 'Completed', stage_since: ago(20), stage_days: 20, product_type: ['Gravité'], budget: { planned: 30000, actual: 29000, unpaid: 1, lines: 7, wrap: { open: 1, unpaid: 1, no_invoice: 0, owed: { USD: 900 }, overdue: 1, next_due: null, lines: [{ id: 'l1', kind: 'unpaid', supplier: 'Grip Co', label: 'Equipment', amount: 900, currency: 'USD', due: off(-5) }] } } }),
     base({ id: 'PRD26-10', name: 'Anti-Gray Relaunch', stage: 'Paused', stage_since: ago(30), stage_days: 30, product_type: ['Anti-Gray'], tracker: { deadline: null, deadline_label: '', notes: 'Paused until Q1 budget sign-off.', links: [], team: [], health: null, updated_at: ago(30) } }),
-    base({ id: 'PRD26-05', name: 'Summer Hydration', stage: 'Completed', stage_since: ago(40), stage_days: 40, product_type: ['Moisturizer'], budget: { planned: 120000, actual: 116000, unpaid: 0, lines: 18 } }),
+    base({ id: 'PRD26-05', name: 'Summer Hydration', stage: 'Completed', stage_since: ago(40), stage_days: 40, product_type: ['Moisturizer'], budget: { planned: 120000, actual: 116000, unpaid: 0, lines: 18 }, auto_completed: true }),
     base({ id: 'PRD26-04', name: 'Father’s Day', stage: 'Completed', stage_since: ago(110), stage_days: 110, product_type: ['Gift Set'] }),
   ];
   const ask = [

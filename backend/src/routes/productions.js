@@ -4,6 +4,7 @@ const { verifyJWT, requireEditor, requireAdmin } = require('../middleware/auth')
 const { createFinanceSheet, triggerFinanceSync } = require('../lib/financeSheet');
 const B = require('../lib/finance/budget');
 const Events = require('../lib/finance/events');
+const Wrapup = require('../lib/finance/wrapup');
 const { parseFlow, decisionFields, evaluateDates } = require('../lib/finance/rules');
 
 const PROD_SELECT = 'SELECT *, planned_start::text AS planned_start, planned_end::text AS planned_end FROM productions';
@@ -208,6 +209,44 @@ router.patch('/:id', requireEditor, async (req, res) => {
   // Completing, pausing or reopening a production finance knows about asks why (and if work happened this month)
   const stageEdit = updates.find(([k]) => k === 'stage');
   if (stageEdit && stageEdit[1] !== B.normalizeStage(old.stage)) {
+    const from = B.normalizeStage(old.stage);
+    const today = require('../lib/creative/week').localDate(Date.now());
+    const loadLines = () => db.query('SELECT * FROM production_line_items WHERE production_id = $1', [old.id]).then(r => r.rows);
+    // Wrap-up (17 Nov 2026): Completed while suppliers are still owed → ask — Wrap-up until they're paid, or complete anyway
+    const choice = req.body?._finance?.open_payments;
+    if (stageEdit[1] === 'Completed' && choice === 'wrapup') stageEdit[1] = Wrapup.STAGE;
+    if (stageEdit[1] === 'Completed') {
+      let lines;
+      try { lines = await loadLines(); } catch (err) { console.error('PATCH /productions lines error:', err); return res.status(500).json({ error: 'Server error' }); }
+      const open = Wrapup.guard({ from, to: 'Completed', lines, answer: choice, today });
+      if (open) {
+        const what = [open.unpaid ? `${open.unpaid} unpaid invoice${open.unpaid === 1 ? '' : 's'}` : null, open.no_invoice ? `${open.no_invoice} line${open.no_invoice === 1 ? '' : 's'} with no invoice yet` : null].filter(Boolean).join(' and ');
+        return res.status(409).json({
+          error: `${old.project_name} still has ${what} — move it to Wrap-up until they're paid?`,
+          code: 'open_payments', production_id: old.id, production: old.project_name, from, open, owed_text: Wrapup.owedText(open.owed),
+        });
+      }
+    }
+  }
+  if (stageEdit && stageEdit[1] === Wrapup.STAGE && B.normalizeStage(old.stage) !== Wrapup.STAGE) {
+    // Post is finished — finance gets one email: no more work, here's what's left to pay (no "work this month?" question)
+    const from = B.normalizeStage(old.stage);
+    const today = require('../lib/creative/week').localDate(Date.now());
+    let lines = [];
+    try { lines = (await db.query('SELECT * FROM production_line_items WHERE production_id = $1', [old.id])).rows; } catch (err) { console.error('PATCH /productions wrap-up lines:', err.message); }
+    const s = Wrapup.summary(lines, today);
+    const flow = parseFlow(req.body);
+    events.push({
+      ...base, kind: 'wrapup', field: 'stage', old_value: from, new_value: Wrapup.STAGE, note: flow?.note || null,
+      notify: B.financeKnows(old) ? 'bundle' : null,
+      meta: { from, open: s.open, unpaid: s.unpaid, no_invoice: s.no_invoice, owed: s.owed, overdue: s.overdue, next_due: s.next_due, lines: s.lines.slice(0, 30), work_this_month: null },
+    });
+  } else if (stageEdit && stageEdit[1] === 'Completed' && B.normalizeStage(old.stage) === Wrapup.STAGE) {
+    // Out of Wrap-up: nothing left to pay (the guard checked) or "complete anyway" — no prompt, finance just hears it's done
+    const flow = parseFlow(req.body);
+    const anyway = req.body?._finance?.open_payments === 'complete';
+    events.push({ ...base, kind: 'completed', field: 'stage', old_value: Wrapup.STAGE, new_value: 'Completed', note: flow?.note || (anyway ? 'Completed while some payments are still open in CP.' : 'All suppliers paid.'), meta: { work_this_month: false, payments_open: anyway || undefined } });
+  } else if (stageEdit && stageEdit[1] !== B.normalizeStage(old.stage)) {
     const to = stageEdit[1], from = B.normalizeStage(old.stage);
     const kind = to === 'Completed' && !B.isDone(from) ? 'completed'
       : to === 'Paused' && from !== 'Paused' ? 'paused'
@@ -293,7 +332,12 @@ router.patch('/:id', requireEditor, async (req, res) => {
     }
 
     triggerFinanceSync(rows[0].id); // refresh sheet title/status if one is linked
-    res.json(rows[0]);
+    const out = { ...rows[0], previous_stage: old.stage };
+    // Into Wrap-up with nothing left to pay → it completes straight away (same rule as when the last line is paid)
+    if (stageEdit && Wrapup.isWrap(rows[0].stage) && !Wrapup.isWrap(old.stage)) {
+      try { if (await Wrapup.settle(rows[0].id, { actor: { name: req.user?.name || null } })) { out.stage = 'Completed'; out.auto_completed = true; } } catch (e) { console.error('[wrap-up] settle:', e.message); }
+    }
+    res.json(out);
   } catch (err) {
     console.error('PATCH /productions error:', err);
     res.status(500).json({ error: 'Server error' });

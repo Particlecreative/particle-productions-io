@@ -12,14 +12,16 @@ import Board from '../../components/tracker/Board';
 import Timeline from '../../components/tracker/Timeline';
 import Drawer from '../../components/tracker/Drawer';
 import {
-  stageList, stageColor, isDone, todayIL, daysUntil, countdown, TONE, shortDate, relTime, money, CountUp, StageDot,
-  HealthDot, FaceStack, TicketDots, Signal, BudgetBar,
+  stageList, stageColor, isDone, isWrap, todayIL, daysUntil, countdown, TONE, shortDate, relTime, money, CountUp, StageDot,
+  HealthDot, FaceStack, TicketDots, Signal, BudgetBar, owedText,
 } from '../../components/tracker/parts';
 import { nextMilestone } from '../../components/tracker/Board';
 import '../../components/tracker/tracker.css';
 
 const VIEWS = [['board', 'Board', LayoutGrid], ['timeline', 'Timeline', GanttChart], ['list', 'List', List]];
 const PREF = 'cp_tracker_view_v1';
+const WRAP_SEEN = 'cp_tracker_wrap_dismissed_v1';
+const readSeen = () => { try { return JSON.parse(localStorage.getItem(WRAP_SEEN) || '[]'); } catch { return []; } };
 const LEVEL = { red: 0, amber: 1, gray: 2 };
 const readPrefs = () => { try { return JSON.parse(localStorage.getItem(PREF) || '{}'); } catch { return {}; } };
 
@@ -84,9 +86,14 @@ export default function TrackerPage() {
     const prev = { stage: p.stage, stage_days: p.stage_days, stage_since: p.stage_since, stage_by: p.stage_by };
     patchProd(p.id, x => ({ ...x, stage: next, stage_days: 0, stage_since: new Date().toISOString(), stage_by: user?.name || null }));
     try {
-      await trackerApi.setStage(p.id, next, user);
-      addNotification('stage_change', `${user?.name || 'Someone'} changed stage of ${p.name} to "${next}"`, p.id);
-      setToast({ text: `${p.name} → ${next}`, undo: undo ? () => moveStage({ ...p, stage: next }, prev.stage, { undo: false }) : null });
+      const r = await trackerApi.setStage(p.id, next, user);
+      if (r === null) { patchProd(p.id, x => ({ ...x, ...prev })); return; }   // a finance question was closed — nothing saved
+      // The server may land it somewhere else: Wrap-up chosen instead of Completed, or completed straight away (nothing left to pay)
+      const saved = r?.stage || next;
+      if (saved !== next) patchProd(p.id, x => ({ ...x, stage: saved }));
+      addNotification('stage_change', `${user?.name || 'Someone'} changed stage of ${p.name} to "${saved}"`, p.id);
+      const text = r?.auto_completed ? `${p.name} → Completed — nothing left to pay` : `${p.name} → ${saved}`;
+      setToast({ text, undo: undo ? () => moveStage({ ...p, stage: saved }, prev.stage, { undo: false }) : null });
       load(false, true, true);
     } catch (e) {
       patchProd(p.id, x => ({ ...x, ...prev }));
@@ -165,15 +172,27 @@ export default function TrackerPage() {
 
   const kpi = useMemo(() => {
     const active = live.filter(p => p.stage !== 'Paused');
-    const dueWeek = active.filter(p => { const n = daysUntil(p.tracker?.deadline, today); return n != null && n >= 0 && n <= 7; });
-    const overdue = active.filter(p => p.tracker?.deadline && p.tracker.deadline < today);
-    const shooting = active.filter(p => { const n = daysUntil(p.shoot?.next, today); return n != null && n <= 14; });
+    const working = active.filter(p => !isWrap(p.stage));   // Wrap-up = post finished, only payments left — no deadlines or shoots
+    const wrapping = active.length - working.length;
+    const dueWeek = working.filter(p => { const n = daysUntil(p.tracker?.deadline, today); return n != null && n >= 0 && n <= 7; });
+    const overdue = working.filter(p => p.tracker?.deadline && p.tracker.deadline < today);
+    const shooting = working.filter(p => { const n = daysUntil(p.shoot?.next, today); return n != null && n <= 14; });
     const attention = live.filter(p => p.signals?.some(s => s.level !== 'gray'));
     const tickets = live.flatMap(p => p.tickets || []).filter(t => t.open);
     const planned = active.reduce((a, p) => a + (p.budget?.planned || 0), 0);
     const actual = active.reduce((a, p) => a + (p.budget?.actual || 0), 0);
-    return { active, paused: live.length - active.length, dueWeek, overdue, shooting, attention, tickets, planned, actual };
+    return { active, working, wrapping, paused: live.length - active.length, dueWeek, overdue, shooting, attention, tickets, planned, actual };
   }, [live, today]);
+
+  // Wrap-up candidates: Post with supplier invoices waiting, and Completed that still owe money — Tomer picks, nothing moves alone
+  const [wrapSeen, setWrapSeen] = useState(readSeen);
+  const wrapAsk = useMemo(() => all.filter(p => !p.locked && (p.budget?.wrap?.unpaid || 0) > 0
+    && (p.stage === 'Post' || /^completed/i.test(p.stage || '')) && !wrapSeen.includes(`${p.id}:${p.stage}`)), [all, wrapSeen]);
+  const dismissWrap = (p) => setWrapSeen(list => {
+    const next = [...list, `${p.id}:${p.stage}`].slice(-200);
+    try { localStorage.setItem(WRAP_SEEN, JSON.stringify(next)); } catch { /* ignore */ }
+    return next;
+  });
 
   const attention = useMemo(() => live
     .filter(p => p.signals?.some(s => s.level !== 'gray'))
@@ -200,11 +219,11 @@ export default function TrackerPage() {
           <div className="min-w-0">
             <div className="trk-eyebrow">Production Tracker · {brand?.name || brandId} · {longDate}</div>
             <h1 className="trk-title text-[46px] sm:text-[88px] md:text-[112px] mt-3 break-words">
-              {kpi.active.length} live production{kpi.active.length === 1 ? '' : 's'}
+              {kpi.working.length} live production{kpi.working.length === 1 ? '' : 's'}
             </h1>
             <div className="mt-3 text-[15px] trk-muted">
               {kpi.overdue.length ? <span style={{ color: '#ffb3c2' }}>{kpi.overdue.length} past deadline · </span> : null}
-              {kpi.dueWeek.length} due this week · {kpi.shooting.length} shooting in the next two weeks{kpi.paused ? ` · ${kpi.paused} paused` : ''}
+              {kpi.dueWeek.length} due this week · {kpi.shooting.length} shooting in the next two weeks{kpi.wrapping ? ` · ${kpi.wrapping} wrapping up` : ''}{kpi.paused ? ` · ${kpi.paused} paused` : ''}
             </div>
           </div>
           <div className="ml-auto flex items-center gap-2">
@@ -288,6 +307,35 @@ export default function TrackerPage() {
                         <span className="mt-2 flex flex-wrap gap-1.5">{s.slice(0, 3).map(x => <Signal key={x.kind} s={x} />)}</span>
                       </span>
                     </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Ready for Wrap-up? */}
+            {wrapAsk.length > 0 && (
+              <div className="mt-8 trk-glass p-4 md:p-5" style={{ borderColor: 'rgba(20,184,166,.40)' }}>
+                <div className="flex items-center gap-2">
+                  <StageDot stage="Wrap-up" size={8} />
+                  <span className="trk-label" style={{ color: '#99f6e4' }}>Ready for Wrap-up? · {wrapAsk.length}</span>
+                </div>
+                <div className="text-[12px] trk-muted mt-1.5 mb-3">These still owe suppliers money. If post is finished, move them to Wrap-up — they’ll complete by themselves when the last one is paid.</div>
+                <div className="flex flex-col gap-2">
+                  {wrapAsk.map(p => (
+                    <div key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl px-3 py-2" style={{ background: 'rgba(255,255,255,.04)', border: '1px solid var(--trk-line)' }}>
+                      <button type="button" onClick={() => openProd(p)} className="min-w-0 flex-1 text-left">
+                        <span className="flex items-center gap-2 text-[11px] trk-muted"><StageDot stage={p.stage} size={6} /> {p.stage} · {p.id}</span>
+                        <span className="block text-[15px] font-semibold truncate">{p.name}</span>
+                      </button>
+                      <span className="text-[12px] trk-muted">
+                        {p.budget.wrap.unpaid} unpaid invoice{p.budget.wrap.unpaid === 1 ? '' : 's'}{owedText(p.budget.wrap.owed) ? ` · ${owedText(p.budget.wrap.owed)}` : ''}
+                        {p.budget.wrap.overdue ? <span style={{ color: '#ff5c7a' }}> · {p.budget.wrap.overdue} overdue</span> : null}
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <button type="button" className="trk-btn !py-1.5 !px-3 text-[12px]" style={{ background: '#14b8a6', color: '#030b2e', borderColor: '#14b8a6' }} onClick={() => moveStage(p, 'Wrap-up')}>Move to Wrap-up</button>
+                        <button type="button" className="trk-btn !py-1.5 !px-3 text-[12px]" onClick={() => dismissWrap(p)}>Not yet</button>
+                      </span>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -416,8 +464,9 @@ function ListView({ productions, today, onOpen }) {
         </thead>
         <tbody>
           {rows.map(p => {
-            const cd = countdown(p.tracker?.deadline, today);
-            const ms = nextMilestone(p, today);
+            const wrap = isWrap(p.stage) ? p.budget?.wrap : null;   // post finished — show what's left to pay, not the deadline
+            const cd = wrap ? null : countdown(p.tracker?.deadline, today);
+            const ms = wrap ? null : nextMilestone(p, today);
             return (
               <tr key={p.id} onClick={() => onOpen(p)} className="cursor-pointer hover:bg-white/[.04]" style={{ borderTop: '1px solid var(--trk-line)' }}>
                 <td className="px-4 py-3 min-w-[240px]">
@@ -426,7 +475,11 @@ function ListView({ productions, today, onOpen }) {
                 </td>
                 <td className="px-4 py-3 whitespace-nowrap"><span className="flex items-center gap-2"><StageDot stage={p.stage} />{p.stage}</span>{p.stage_days != null && <span className="text-[11px] trk-dim">{p.stage_days}d</span>}</td>
                 <td className="px-4 py-3">
-                  {cd ? <><span className="font-bold" style={{ color: TONE[cd.tone] }}>{cd.text}</span><div className="text-[11px] trk-muted truncate max-w-[200px]">{p.tracker.deadline_label || shortDate(p.tracker.deadline)}</div></> : <span className="trk-dim">—</span>}
+                  {wrap ? (
+                    (wrap.unpaid || 0) + (wrap.no_invoice || 0)
+                      ? <><span className="font-bold" style={{ color: wrap.overdue ? '#ff5c7a' : '#5eead4' }}>{(wrap.unpaid || 0) + (wrap.no_invoice || 0)} left to pay</span><div className="text-[11px] trk-muted truncate max-w-[200px]">{[owedText(wrap.owed), wrap.overdue ? `${wrap.overdue} overdue` : wrap.next_due ? `next ${shortDate(wrap.next_due)}` : null].filter(Boolean).join(' · ')}</div></>
+                      : <span style={{ color: '#5eead4' }}>All paid</span>
+                  ) : cd ? <><span className="font-bold" style={{ color: TONE[cd.tone] }}>{cd.text}</span><div className="text-[11px] trk-muted truncate max-w-[200px]">{p.tracker.deadline_label || shortDate(p.tracker.deadline)}</div></> : <span className="trk-dim">—</span>}
                 </td>
                 <td className="px-4 py-3 text-[12px] trk-muted max-w-[220px] truncate">{ms?.text || '—'}</td>
                 <td className="px-4 py-3"><span className="flex items-center gap-2"><FaceStack list={p.team?.internal} tone="internal" max={3} size={22} /><FaceStack list={p.team?.external} tone="external" max={2} size={22} /></span></td>

@@ -7,7 +7,7 @@ const BASE = '/api';
 
 // Finance rules answer some writes with 409/423 + a `code` (e.g. "the budget is approved — why?").
 // The FinancePromptHost registers here; the change is sent again with the answers, so every screen gets it for free.
-const FINANCE_CODES = new Set(['reason_required', 'postpone_required', 'stage_prompt', 'unlock_reason', 'unapprove_reason', 'locked', 'dates_from_lines']);
+const FINANCE_CODES = new Set(['reason_required', 'postpone_required', 'stage_prompt', 'unlock_reason', 'unapprove_reason', 'locked', 'dates_from_lines', 'open_payments']);
 let financePrompt = null;
 export function setFinancePrompt(fn) { financePrompt = fn; }
 
@@ -47,7 +47,8 @@ export async function api(path, options = {}) {
     try { data = JSON.parse(text); } catch { /* not JSON */ }
     if (data?.code && FINANCE_CODES.has(data.code)) {
       const answer = await financePrompt(data, { path, method: options.method || 'GET' });
-      if (answer) return api(path, { ...options, body: { ...(options.body || {}), _finance: answer } });
+      // Answers add up: a second question (e.g. "Complete anyway" → "anything finance should know?") keeps the first answer
+      if (answer) return api(path, { ...options, body: { ...(options.body || {}), _finance: { ...(options.body?._finance || {}), ...answer } } });
       const err = new Error(data.error || 'Cancelled');
       err.cancelled = true;
       err.code = data.code;

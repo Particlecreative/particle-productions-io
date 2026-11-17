@@ -12,6 +12,7 @@ const { getCreativeConfig } = require('../creative/config');
 const { normalizeItem, knownProductsOf } = require('../creative/snapshot');
 const crypto = require('crypto');
 const { linkTvItems, tokens } = require('../studio/tvLinks');
+const Wrapup = require('../finance/wrapup');
 
 const norm = monday.normLabel;
 const DAY = 86400000;
@@ -161,6 +162,13 @@ const daysBetween = (a, b) => Math.round((W.zonedMidnightUtc(b) - W.zonedMidnigh
 function signalsFor(p, today) {
   const out = [];
   if (isDone(p.stage)) return out;
+  if (Wrapup.isWrap(p.stage)) {   // the work is over — only the payments matter
+    const w = p.budget?.wrap;
+    if (w?.overdue) out.push({ kind: 'payment_overdue', level: 'red', text: `${w.overdue} payment${w.overdue > 1 ? 's' : ''} overdue` });
+    if (w?.next_due && daysBetween(today, w.next_due) <= 7) out.push({ kind: 'payment_due', level: 'amber', text: daysBetween(today, w.next_due) === 0 ? 'Payment due today' : `Payment due in ${daysBetween(today, w.next_due)}d` });
+    if (w?.no_invoice) out.push({ kind: 'no_invoice', level: 'gray', text: `${w.no_invoice} waiting for an invoice` });
+    return out;
+  }
   const active = ACTIVE_STAGES.includes(p.stage);
   const dl = DATE_RE.test(p.tracker?.deadline || '') ? p.tracker.deadline : null;
   if (dl && dl < today) out.push({ kind: 'overdue', level: 'red', text: `Deadline passed ${daysBetween(dl, today)}d ago` });
@@ -209,7 +217,7 @@ async function buildTracker({ brandId, force = false, now = Date.now() }) {
   const [tracker, lines, contracts, links, comments, tasks, gantt, sheets, casting, stageRows, touched, weeklies, users, suppliers] = await Promise.all([
     rowsOf(`SELECT production_id, deadline::text AS deadline, deadline_label, notes, links, team, health, updated_by, updated_at
               FROM production_tracker WHERE production_id = ANY($1)`, [ids], warnings, 'Tracker fields'),
-    rowsOf(`SELECT production_id, item, full_name, supplier, type, payment_status, actual_spent
+    rowsOf(`SELECT id, production_id, item, full_name, supplier, type, payment_status, actual_spent, planned_budget, currency_code, payment_due
               FROM production_line_items WHERE production_id = ANY($1) ORDER BY created_at`, [ids], warnings, 'Line items'),
     rowsOf('SELECT production_id, status, provider_name, sent_at, signed_at FROM contracts WHERE production_id = ANY($1)', [ids], warnings, 'Contracts'),
     rowsOf('SELECT production_id, category, title, url FROM links WHERE production_id = ANY($1) ORDER BY "order", created_at', [ids], warnings, 'Links'),
@@ -341,7 +349,9 @@ async function buildTracker({ brandId, force = false, now = Date.now() }) {
         actual: num(p.actual_spent),
         unpaid: lineRows.filter(li => num(li.actual_spent) > 0 && !/^paid$/i.test(li.payment_status || '')).length,
         lines: lineRows.length,
+        wrap: (() => { const w = Wrapup.summary(lineRows, today); return { ...w, lines: w.lines.slice(0, 12) }; })(),
       },
+      auto_completed: isDone(p.stage) && /every supplier paid/i.test(by.stage[p.id]?.user_name || ''),
       contract: contract ? { status: contract.status || 'none', provider: contract.provider_name || null, sent_at: contract.sent_at, signed_at: contract.signed_at } : null,
       cp_links: (by.links[p.id] || []).slice(0, 8).map(l => ({ category: l.category, title: l.title, url: l.url })),
       cp_links_count: (by.links[p.id] || []).length,

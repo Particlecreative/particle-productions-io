@@ -436,6 +436,7 @@ h1, h2, h3 { letter-spacing: -0.025em; }
 .stage-paused         { background: #FFFDE7; color: #F57F17; }
 .stage-pending        { background: #ECEFF1; color: #37474F; }
 .stage-completed      { background: #E8F5E9; color: #2E7D32; }
+.stage-wrapup         { background: #E0F7F4; color: #0F766E; }
 /* Legacy class aliases */
 .stage-in-progress    { background: #E3F2FD; color: #1565C0; }
 .stage-upcoming       { background: #ECEFF1; color: #37474F; }
@@ -1271,6 +1272,7 @@ html.dark .stage-post           { background: rgba(191,54,12,0.2) !important; co
 html.dark .stage-paused         { background: rgba(245,127,23,0.2) !important; color: #ffcc80 !important; }
 html.dark .stage-pending        { background: rgba(55,71,79,0.3) !important; color: #b0bec5 !important; }
 html.dark .stage-completed      { background: rgba(46,125,50,0.2) !important; color: #a5d6a7 !important; }
+html.dark .stage-wrapup         { background: rgba(15,118,110,0.22) !important; color: #5eead4 !important; }
 
 /* Dark mode select dropdowns */
 html.dark select {

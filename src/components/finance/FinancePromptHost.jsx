@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Lock, Sparkles, Loader2, X, CalendarClock, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, Lock, Sparkles, Loader2, X, CalendarClock, CheckCircle2, Wallet } from 'lucide-react';
 import { setFinancePrompt, apiGet } from '../../lib/apiClient';
 import { financeApi, REASONS, usd, dayLabel } from '../../lib/financeService';
 
@@ -38,11 +38,12 @@ export default function FinancePromptHost() {
   const p = current.payload;
   if (p.code === 'locked' || p.code === 'dates_from_lines') return <InfoDialog payload={p} onClose={() => close(null)} />;
   if (p.code === 'reason_required') return <ReasonDialog key={current.sig} payload={p} onDone={close} />;
+  if (p.code === 'open_payments') return <OpenPaymentsDialog key={current.sig} payload={p} onDone={close} />;
   return <FlowDialog key={current.sig} payload={p} onDone={close} />;
 }
 
 function Shell({ icon: Icon, tone = 'blue', title, subtitle, children, onClose }) {
-  const tones = { blue: 'bg-blue-50 text-blue-600', amber: 'bg-amber-50 text-amber-600', red: 'bg-red-50 text-red-600', gray: 'bg-gray-100 text-gray-500' };
+  const tones = { blue: 'bg-blue-50 text-blue-600', amber: 'bg-amber-50 text-amber-600', red: 'bg-red-50 text-red-600', gray: 'bg-gray-100 text-gray-500', teal: 'bg-teal-50 text-teal-600' };
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" onMouseDown={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden" onMouseDown={e => e.stopPropagation()} role="dialog" aria-modal="true">
@@ -200,6 +201,41 @@ function ReasonDialog({ payload, onDone }) {
           <button type="button" onClick={submit} disabled={!valid} className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: over ? '#dc2626' : 'var(--brand-accent)' }}>
             {over ? 'Save & tell finance' : 'Save'}
           </button>
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+/** Completed while suppliers are still owed → Wrap-up until they're paid (it completes by itself), or complete anyway. */
+function OpenPaymentsDialog({ payload, onDone }) {
+  const o = payload.open || {};
+  const lines = Array.isArray(o.lines) ? o.lines : [];
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
+  const money = (l) => `${l.currency === 'ILS' ? '₪' : '$'}${Math.round(l.amount || 0).toLocaleString('en-US')}`;
+  const left = (o.unpaid || 0) + (o.no_invoice || 0);
+  return (
+    <Shell icon={Wallet} tone="teal" title={`${payload.production || 'This production'} still owes ${left} supplier${left === 1 ? '' : 's'}`}
+      subtitle={[payload.owed_text ? `${payload.owed_text} unpaid` : null, o.no_invoice ? `${o.no_invoice} waiting for an invoice` : null, o.overdue ? `${o.overdue} overdue` : null].filter(Boolean).join(' · ')}
+      onClose={() => onDone(null)}>
+      <div className="px-6 pb-5 space-y-3">
+        <div className="max-h-[220px] overflow-y-auto rounded-xl border border-gray-100 divide-y divide-gray-100">
+          {lines.slice(0, 20).map((l, i) => (
+            <div key={l.id || i} className="flex items-center gap-3 px-3 py-2 text-sm">
+              <span className="min-w-0 flex-1 truncate"><b className="font-semibold text-gray-800">{l.supplier || '—'}</b>{l.label ? <span className="text-gray-400"> · {l.label}</span> : null}</span>
+              <span className="tabular-nums text-gray-700">{l.kind === 'no_invoice' ? <span className="text-gray-400 text-xs">no invoice yet</span> : money(l)}</span>
+              <span className={`w-[64px] text-right text-xs ${l.due && l.due < today ? 'text-red-600 font-semibold' : 'text-gray-400'}`}>{l.due ? dayLabel(l.due) : '—'}</span>
+            </div>
+          ))}
+          {lines.length > 20 && <div className="px-3 py-2 text-xs text-gray-400">+{lines.length - 20} more in the Payments tab</div>}
+        </div>
+        <p className="text-[13px] text-gray-600 leading-relaxed">
+          <b>Wrap-up</b> means post is finished and only the payments are left. When the last line is marked Paid it moves to Completed by itself, and finance is told.
+        </p>
+        <div className="flex flex-wrap justify-end gap-2 pt-1">
+          <button type="button" onClick={() => onDone(null)} className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200">Cancel</button>
+          <button type="button" onClick={() => onDone({ open_payments: 'complete' })} className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-700 border border-gray-200 bg-white hover:bg-gray-50">Complete anyway</button>
+          <button type="button" autoFocus onClick={() => onDone({ open_payments: 'wrapup' })} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: '#0d9488' }}>Move to Wrap-up</button>
         </div>
       </div>
     </Shell>

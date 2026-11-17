@@ -21,7 +21,7 @@ const relTime = (iso) => {
   if (s < 86400) return `${Math.round(s / 3600)}h ago`;
   return `${Math.round(s / 86400)}d ago`;
 };
-const isDone = (stage) => /^completed/i.test(stage || '');
+const isDone = (stage) => /^(completed|wrap)/i.test(stage || '');   // Wrap-up = post finished (only payments left) — its finals exist
 
 /**
  * The Library — every TV commercial's final files in one list. Pick a product (or Sales), narrow by market,

@@ -44,7 +44,8 @@ export default function PastProductionDialog({ production, onClose }) {
     setLoading(true);
     let totalItems = 0;
     for (const prod of unCheckedProds) {
-      await Promise.resolve(updateProduction(prod.id, { stage: 'Completed', accounting_status: 'Completed' }, user?.id, user?.name));
+      // It marks every line Paid right after, so the "suppliers still owed → Wrap-up?" question doesn't apply
+      await Promise.resolve(updateProduction(prod.id, { stage: 'Completed', accounting_status: 'Completed', _finance: { open_payments: 'complete' } }, user?.id, user?.name));
       const rawItems = await Promise.resolve(getLineItems(prod.id));
       const items = Array.isArray(rawItems) ? rawItems : [];
       const unpaid = items.filter(li => li.payment_status !== 'Paid');

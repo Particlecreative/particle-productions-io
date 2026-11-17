@@ -15,7 +15,7 @@ const KIND = {
   budget_approved: 'instant', budget_unapproved: 'instant', budget_increase: 'bundle',
   line_added: null, line_removed: null, amount_changed: null, currency_changed: null, line_moved: null,
   actual_changed: null, paid: null, unpaid: null, invoice_received: null, invoice_read: null, invoice_flagged: null,
-  dates_changed: null, postponed: 'bundle', completed: 'bundle', paused: 'bundle', stage_changed: null,
+  dates_changed: null, postponed: 'bundle', completed: 'bundle', paused: 'bundle', wrapup: 'bundle', stage_changed: null,
   reopened: 'instant', locked: 'instant', unlocked: 'instant', historical_change: 'instant', rights_renewed: 'instant',
   sheet_edit: null, sync_conflict: null, sheet_row_deleted: null, finance_confirmed: null, sub_production: null,
   buffer_warning: null, note: null,

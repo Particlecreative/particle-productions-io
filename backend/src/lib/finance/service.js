@@ -179,6 +179,8 @@ async function changeLines({ productionId, ops, actor, decision = null, flow = n
 
     const saved = await E.record(client, events);
     await client.query('COMMIT');
+    // Wrap-up: the last supplier just got paid (here or from finance's sheet) → it completes by itself
+    if (B.normalizeStage(prod.stage) === 'Wrap-up') require('./wrapup').settleSoon(productionId, { actor });
     return { rows: results, events: saved, prod, sync };
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});

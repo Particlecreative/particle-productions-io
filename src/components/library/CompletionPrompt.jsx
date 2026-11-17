@@ -30,7 +30,7 @@ export default function CompletionPrompt({ productionId, remaining, onDone }) {
     <div className="fixed inset-0 z-[95] flex items-center justify-center p-4" style={{ background: 'rgba(3,11,46,.72)' }}>
       <div className="trk trk-canvas w-full max-w-[720px] max-h-[94vh] overflow-y-auto trk-scroll p-6 md:p-8" role="dialog" aria-label={`Add ${p.name} to the Library`}>
         <div className="flex items-center gap-2 trk-eyebrow"><Archive size={13} /> The Library{remaining > 0 ? ` · ${remaining} more after this` : ''}</div>
-        <h2 className="trk-title text-[44px] md:text-[56px] mt-2">{p.name} is completed</h2>
+        <h2 className="trk-title text-[44px] md:text-[56px] mt-2">{p.name} {/^wrap/i.test(p.stage || '') ? 'is finished' : 'is completed'}</h2>
         <p className="mt-2 text-[14px] trk-muted">Add its finals so everyone can pull them from the Library — paste the Dropbox links. A whole folder works too: the files are sorted by their names.</p>
         {saved ? (
           <div className="mt-6 flex flex-col gap-4">

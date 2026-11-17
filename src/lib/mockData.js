@@ -462,7 +462,7 @@ export const PRODUCT_TYPES = [
   "Body Wash", "Other",
 ];
 
-export const STAGES = ["Pre Production", "Production", "Post", "Paused", "Pending", "Completed"];
+export const STAGES = ["Pre Production", "Production", "Post", "Wrap-up", "Paused", "Pending", "Completed"];
 
 export const PRODUCTION_TYPES = ["Remote Shoot", "Shoot", "AI"];
 

@@ -109,19 +109,23 @@ export function createProduction(prod) {
   return apiPost('/productions', prod);
 }
 
-// Moving a production to Completed asks for its finals (The Library's prompt listens for this)
-function announceIfCompleted(id, updates) {
-  if (!/^completed/i.test(String(updates?.stage || ''))) return;
+// Post finished → ask for its finals (The Library's prompt listens for this): moving to Wrap-up, or straight to
+// Completed from an earlier stage. Wrap-up → Completed doesn't ask again. `row` = what the server saved.
+function announceIfCompleted(id, updates, row) {
+  if (!updates?.stage) return;
+  const now = String(row?.stage || updates.stage);
+  const prev = String(row?.previous_stage || '');
+  if (!(/^wrap/i.test(now) && !/^wrap/i.test(prev)) && !(/^completed/i.test(now) && !/^(wrap|completed)/i.test(prev))) return;
   try { window.dispatchEvent(new CustomEvent('cp:production-completed', { detail: { id } })); } catch { /* ignore */ }
 }
 
 export function updateProduction(id, updates, userId, userName) {
   if (IS_DEV) {
-    announceIfCompleted(id, updates);
     const all = read('cp_productions', PARTICLE_PRODUCTIONS);
     const idx = all.findIndex(p => p.id === id);
     if (idx === -1) return null;
     const old = { ...all[idx] };
+    announceIfCompleted(id, updates, { stage: updates.stage, previous_stage: old.stage });
     all[idx] = { ...all[idx], ...updates };
     write('cp_productions', all);
     Object.keys(updates).forEach(field => {
@@ -132,7 +136,7 @@ export function updateProduction(id, updates, userId, userName) {
     return all[idx];
   }
   return apiPatch(`/productions/${encodeURIComponent(id)}`, updates)
-    .then((r) => { announceIfCompleted(id, updates); return r; })
+    .then((r) => { announceIfCompleted(id, updates, r); return r; })
     .catch(ifCancelled);
 }
 

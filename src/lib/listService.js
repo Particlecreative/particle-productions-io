@@ -17,7 +17,7 @@ export const LIST_META = {
 };
 
 export const LIST_DEFAULTS = {
-  stages:           ['Pre Production', 'Production', 'Post', 'Paused', 'Pending', 'Completed'],
+  stages:           ['Pre Production', 'Production', 'Post', 'Wrap-up', 'Paused', 'Pending', 'Completed'],
   lineItemTypes:    ['Crew', 'Equipment', 'Catering & Transport', 'Post', 'Office', 'Cast'],
   lineItemStatuses: ['Working on it', 'Done', 'Stuck', 'Not Started'],
   crewRoles: [
@@ -39,9 +39,21 @@ export const LIST_DEFAULTS = {
 export function getList(key) {
   try {
     const raw = localStorage.getItem(PREFIX + key);
-    if (raw) return JSON.parse(raw);
+    if (raw) return withRequired(key, JSON.parse(raw));
   } catch { /* fall through */ }
   return [...(LIST_DEFAULTS[key] ?? [])];
+}
+
+// Stages the server's rules depend on — a list edited (and saved in this browser) before they existed still gets them.
+// Wrap-up (17 Nov 2026): post finished, suppliers being paid — sits right after Post.
+function withRequired(key, list) {
+  if (key !== 'stages' || !Array.isArray(list)) return list;
+  const labelOf = (i) => (typeof i === 'object' ? i?.label : i);
+  if (list.some(i => /^wrap/i.test(String(labelOf(i) || '')))) return list;
+  const out = [...list];
+  const at = out.findIndex(i => /^post/i.test(String(labelOf(i) || '')));
+  out.splice(at === -1 ? out.length : at + 1, 0, typeof out[0] === 'object' ? { label: 'Wrap-up', color: DEFAULT_COLORS['Wrap-up'] } : 'Wrap-up');
+  return out;
 }
 
 export function saveList(key, items) {
@@ -69,6 +81,7 @@ const DEFAULT_COLORS = {
   'Pre Production': '#6366f1',
   'Production': '#f59e0b',
   'Post': '#8b5cf6',
+  'Wrap-up': '#14b8a6',
   'Paused': '#9ca3af',
   'Pending': '#d1d5db',
   'Completed': '#22c55e',

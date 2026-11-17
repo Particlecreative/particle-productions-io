@@ -50,7 +50,7 @@ const withThumb = (it) => ({
   thumb_url: ['video', 'image'].includes(it.file_kind) && isDropbox(it.url) && !(Number(it.size_bytes) > POSTER_MAX_BYTES) ? lib.thumbUrl(it.id) : null,
 });
 
-/** Productions for the Library (everything finished, plus anything with files) and "Before 2026" (files with no production). */
+/** Productions for the Library (everything finished — Completed, or Wrap-up = post done, paying suppliers — plus anything with files) and "Before 2026" (files with no production). */
 async function libraryFor(brandId, productionId = null) {
   const vals = [brandId];
   const one = productionId ? `AND p.id = $${vals.push(productionId)}` : '';
@@ -58,10 +58,10 @@ async function libraryFor(brandId, productionId = null) {
     `SELECT p.id, p.project_name AS name, p.stage, p.product_type, p.production_type, p.producer,
             p.planned_start::text AS planned_start, p.planned_end::text AS planned_end,
             p.delivery_date::text AS delivery_date, p.air_date::text AS air_date,
-            (SELECT MAX(h.created_at) FROM change_history h WHERE h.production_id = p.id AND h.field = 'stage' AND h.new_value ILIKE 'completed%') AS completed_at
+            (SELECT MAX(h.created_at) FROM change_history h WHERE h.production_id = p.id AND h.field = 'stage' AND (h.new_value ILIKE 'completed%' OR h.new_value ILIKE 'wrap%')) AS completed_at
        FROM productions p
       WHERE p.brand_id = $1 ${one}
-        AND (${productionId ? 'TRUE' : `p.stage ILIKE 'completed%' OR EXISTS (SELECT 1 FROM library_items li WHERE li.production_id = p.id)`})
+        AND (${productionId ? 'TRUE' : `p.stage ILIKE 'completed%' OR p.stage ILIKE 'wrap%' OR EXISTS (SELECT 1 FROM library_items li WHERE li.production_id = p.id)`})
       ORDER BY COALESCE(p.air_date, p.delivery_date, p.planned_end, p.planned_start) DESC NULLS LAST, p.id DESC`,
     vals
   );

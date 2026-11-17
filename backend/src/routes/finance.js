@@ -423,11 +423,11 @@ router.get('/cleanup', requireAdmin, async (req, res) => {
     const { rows: prods } = await db.query(`${ctx.PROD_SELECT} ORDER BY id`);
     const { rows: counts } = await db.query(`SELECT production_id, COUNT(*)::int AS n FROM production_line_items GROUP BY 1`);
     const lineCount = Object.fromEntries(counts.map(c => [c.production_id, c.n]));
-    const stale = prods.filter(p => !p.locked && p.planned_end && p.planned_end < today && !B.isDone(B.normalizeStage(p.stage)) && B.normalizeStage(p.stage) !== 'Paused');
+    const stale = prods.filter(p => !p.locked && p.planned_end && p.planned_end < today && !B.isDone(B.normalizeStage(p.stage)) && !['Paused', 'Wrap-up'].includes(B.normalizeStage(p.stage)));
     const noSheet = prods.filter(p => !p.finance_sheet_url && (lineCount[p.id] || 0) > 0);
     const legacy = prods.filter(p => p.finance_sheet_mode === 'linked' && !p.locked);
     const all = await ctx.allocationAll();
-    const unapproved = all.filter(a => !B.isApproved(a.prod) && !a.prod.locked && ['Pre Production', 'Production', 'Post'].includes(B.normalizeStage(a.prod.stage)) && a.lines.length)
+    const unapproved = all.filter(a => !B.isApproved(a.prod) && !a.prod.locked && ['Pre Production', 'Production', 'Post', 'Wrap-up'].includes(B.normalizeStage(a.prod.stage)) && a.lines.length)
       .map(a => ({ id: a.prod.id, name: a.prod.project_name, stage: B.normalizeStage(a.prod.stage), planned_stored: B.num(a.prod.planned_budget_2026), planned_now: B.autoPlanned(a.lines, rate), lines: a.lines.length }));
     const { rows: unread } = await db.query(`SELECT COUNT(*)::int AS n FROM production_line_items WHERE invoice_url IS NOT NULL AND invoice_read_at IS NULL`);
     const drift = all.filter(a => a.lines.length && Math.abs(B.num(a.prod.estimated_budget) - B.sums(a.lines, rate).est) > 1).length;

@@ -37,7 +37,7 @@ async function build(month, { by = null } = {}) {
   const all = await ctx.allocationAll();
   const { rows: evs } = await db.query(
     `SELECT * FROM finance_events WHERE created_at > $1 AND kind = ANY($2) ORDER BY created_at`,
-    [since, ['line_added', 'line_removed', 'amount_changed', 'currency_changed', 'budget_increase', 'historical_change', 'postponed', 'completed', 'paused', 'reopened', 'unlocked', 'rights_renewed', 'actual_changed']]);
+    [since, ['line_added', 'line_removed', 'amount_changed', 'currency_changed', 'budget_increase', 'historical_change', 'postponed', 'completed', 'wrapup', 'paused', 'reopened', 'unlocked', 'rights_renewed', 'actual_changed']]);
   const evByProd = new Map();
   for (const e of evs) { if (!evByProd.has(e.production_id)) evByProd.set(e.production_id, []); evByProd.get(e.production_id).push(e); }
 
@@ -50,7 +50,7 @@ async function build(month, { by = null } = {}) {
     const reasons = (evByProd.get(prod.id) || [])
       .filter(e => e.reason || e.note || e.kind === 'postponed' || e.kind === 'historical_change')
       .map(e => {
-        const what = e.kind === 'budget_increase' ? 'Planned Budget raised' : e.reason ? REASON_LABEL[e.reason] : { postponed: 'Postponed', historical_change: 'Past-month change', completed: 'Completed', paused: 'Paused', reopened: 'Reopened', unlocked: 'Reopened', rights_renewed: 'Rights renewal' }[e.kind] || e.kind;
+        const what = e.kind === 'budget_increase' ? 'Planned Budget raised' : e.reason ? REASON_LABEL[e.reason] : { postponed: 'Postponed', historical_change: 'Past-month change', completed: 'Completed', wrapup: 'Wrap-up (post finished, paying suppliers)', paused: 'Paused', reopened: 'Reopened', unlocked: 'Reopened', rights_renewed: 'Rights renewal' }[e.kind] || e.kind;
         const amt = e.delta_usd != null && Math.abs(B.num(e.delta_usd)) >= 1 ? ` ${B.num(e.delta_usd) >= 0 ? '+' : '−'}$${Math.round(Math.abs(B.num(e.delta_usd))).toLocaleString('en-US')}` : '';
         return `${what}${amt}${e.approved_by ? ` (approved by ${e.approved_by})` : ''}${e.note ? ` — ${e.note}` : ''}`;
       });

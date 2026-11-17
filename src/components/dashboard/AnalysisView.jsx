@@ -7,7 +7,7 @@ import { getAllCasting } from '../../lib/dataService';
 import { useCurrency } from '../../context/CurrencyContext';
 import clsx from 'clsx';
 
-const STAGES = ['Pre Production', 'Production', 'Post', 'Paused', 'Pending', 'Completed'];
+const STAGES = ['Pre Production', 'Production', 'Post', 'Wrap-up', 'Paused', 'Pending', 'Completed'];
 const PRODUCTION_TYPES = ['Shoot', 'Remote Shoot', 'AI'];
 
 const PROD_TYPE_COLORS = {
@@ -21,6 +21,7 @@ const STAGE_COLORS = {
   'Production':     '#2563eb',
   'Pre Production': '#d97706',
   'Post':           '#7c3aed',
+  'Wrap-up':        '#0d9488',
   'Paused':         '#ea580c',
   'Pending':        '#9ca3af',
 };

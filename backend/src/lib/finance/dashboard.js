@@ -11,7 +11,7 @@ const W = require('../creative/week');
 const { companyOf, companyLine } = require('./company');
 
 const MONEY_KINDS = ['budget_approved', 'budget_unapproved', 'budget_increase', 'line_added', 'line_removed', 'amount_changed', 'currency_changed',
-  'historical_change', 'postponed', 'completed', 'paused', 'reopened', 'locked', 'unlocked', 'rights_renewed', 'finance_confirmed', 'invoice_flagged'];
+  'historical_change', 'postponed', 'completed', 'wrapup', 'paused', 'reopened', 'locked', 'unlocked', 'rights_renewed', 'finance_confirmed', 'invoice_flagged'];
 
 const addMonths = (m, n) => { const d = new Date(Date.UTC(+m.slice(0, 4), +m.slice(5, 7) - 1 + n, 1)); return d.toISOString().slice(0, 10); };
 const daysIn = (m) => new Date(Date.UTC(+m.slice(0, 4), +m.slice(5, 7), 0)).getUTCDate();
@@ -91,7 +91,7 @@ async function build({ brandId = null } = {}) {
     const totals = ctx.totalsOf(lines);
     const open = !prod.locked;
     const stage = B.normalizeStage(prod.stage);
-    const hasActivity = lines.length || B.isApproved(prod) || ['Pre Production', 'Production', 'Post'].includes(stage);
+    const hasActivity = lines.length || B.isApproved(prod) || ['Pre Production', 'Production', 'Post', 'Wrap-up'].includes(stage);
     if (!hasActivity) continue;
     for (const [m, v] of Object.entries(months)) {
       const t = monthTotals[m] || (monthTotals[m] = { usd: 0, invoiced_usd: 0, not_invoiced_usd: 0 });

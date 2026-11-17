@@ -173,12 +173,13 @@ const STAGE_ALIASES = {
   'in production': 'Production', 'production': 'Production',
   'delivered': 'Completed', 'completed': 'Completed', 'done': 'Completed',
   'pending': 'Pending', 'paused': 'Paused', 'on hold': 'Paused',
+  'wrap-up': 'Wrap-up', 'wrap up': 'Wrap-up', 'wrapup': 'Wrap-up', 'wrap': 'Wrap-up', 'final payments': 'Wrap-up',
 };
 function normalizeStage(s) {
   if (s == null) return s;
   return STAGE_ALIASES[String(s).trim().toLowerCase()] || String(s).trim();
 }
-const ACTIVE_STAGES = new Set(['Production', 'Post', 'Completed', 'Paused']);
+const ACTIVE_STAGES = new Set(['Production', 'Post', 'Wrap-up', 'Completed', 'Paused']);
 const isDone = (stage) => DONE_STAGE_RE.test(String(stage || ''));
 
 /** Finance already knows this production: approved, closed, or past planning. */

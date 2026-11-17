@@ -106,7 +106,7 @@ function eventRow(e) {
     line_added: 'Line added', line_removed: 'Line removed', amount_changed: 'Amount changed', currency_changed: 'Currency changed',
     budget_increase: 'Planned Budget raised', budget_approved: 'Budget approved', budget_unapproved: 'Approval removed',
     historical_change: 'Cost changed in a past month', reopened: 'Reopened', unlocked: 'Reopened (unlocked)', locked: 'Closed',
-    postponed: 'Postponed', completed: 'Marked Completed', paused: 'Paused', actual_changed: 'Actual changed',
+    postponed: 'Postponed', completed: 'Marked Completed', paused: 'Paused', wrapup: 'Moved to Wrap-up', actual_changed: 'Actual changed',
     rights_renewed: 'Rights renewed', paid: 'Paid', unpaid: 'Marked unpaid', sheet_edit: 'Edited in the finance sheet',
     sync_conflict: 'Sheet / CP conflict', invoice_flagged: 'Invoice flagged', dates_changed: 'Dates changed',
   }[e.kind] || e.kind.replace(/_/g, ' ');
@@ -140,19 +140,23 @@ function eventRow(e) {
 function changes({ prod, events, state, sheetUrl }) {
   const inc = events.filter(e => e.kind === 'budget_increase');
   const post = events.find(e => e.kind === 'postponed');
-  const done = events.find(e => e.kind === 'completed');
+  const done = [...events].reverse().find(e => e.kind === 'completed');
   const paused = events.find(e => e.kind === 'paused');
+  const wrap = [...events].reverse().find(e => e.kind === 'wrapup');
   let headline;
   if (inc.length) headline = `budget raised to ${usd(inc[inc.length - 1].new_value)} (${signedUsd(inc.reduce((s, e) => s + B.num(e.delta_usd), 0))})`;
   else if (post) headline = `postponed to ${monthName(post.meta?.to_month)}`;
-  else if (done) headline = 'marked Completed';
+  else if (done) headline = done.meta?.auto ? 'every supplier paid — Completed' : 'marked Completed';
+  else if (wrap) headline = 'post finished — paying the suppliers (Wrap-up)';
   else if (paused) headline = 'paused';
   else headline = `${events.length} change${events.length === 1 ? '' : 's'}`;
   const notes = [];
   if (post) notes.push(post.meta?.work_this_month === false
     ? `No work or cost happened in ${monthName(post.meta?.from_month)} — <b>no accrual is needed for ${monthName(post.meta?.from_month)}</b>; the production now starts in ${monthName(post.meta?.to_month)}.`
     : post.meta?.work_this_month === true ? `Some work or cost <b>did</b> happen in ${monthName(post.meta?.from_month)} before the move.` : '');
-  if (done) notes.push(done.meta?.work_this_month === true ? 'Work or cost happened this month.' : done.meta?.work_this_month === false ? 'No work or cost this month.' : '');
+  if (done) notes.push(done.meta?.auto ? 'The last supplier was paid, so CP marked it <b>Completed</b> by itself. Nothing is left to pay.'
+    : done.meta?.work_this_month === true ? 'Work or cost happened this month.' : done.meta?.work_this_month === false ? 'No work or cost this month.' : '');
+  if (wrap && !done) notes.push(wrapupNote(wrap));
   const body = `${notes.filter(Boolean).map(n => `<p style="font-size:14px;margin:0 0 10px">${n}</p>`).join('')}
     ${table(['What', 'Change', 'Why'], events.map(eventRow))}
     ${state ? kv([
@@ -169,6 +173,22 @@ function changes({ prod, events, state, sheetUrl }) {
       links: [{ label: 'Open in CP', url: prodUrl(prod) }, sheetUrl ? { label: 'Finance sheet', url: sheetUrl, color: '#0f9d58' } : null, { label: 'Finance dashboard', url: dashUrl(prod), color: NAVY }].filter(Boolean),
     }),
   };
+}
+
+/** Wrap-up: post is finished, no more work — this is what's still to pay (from the event, at the moment it moved). */
+function wrapupNote(e) {
+  const m = e.meta || {};
+  const lines = Array.isArray(m.lines) ? m.lines : [];
+  const owed = Object.entries(m.owed || {}).filter(([, v]) => B.num(v) > 0).map(([c, v]) => native(v, c)).join(' + ');
+  let html = `Post is finished — <b>no more work is coming</b> on this production, so nothing new to accrue. What's left is paying the suppliers. CP marks it <b>Completed</b> by itself when the last one is paid.`;
+  if (!lines.length) return `${html}<br><span style="color:#6b7280">No open payments in CP right now.</span>`;
+  html += `<br><b>Still to pay${owed ? `: ${owed}` : ''}</b>${m.overdue ? ` · <span style="color:#b91c1c">${m.overdue} overdue</span>` : ''}${m.no_invoice ? ` · ${m.no_invoice} waiting for an invoice` : ''}`;
+  html += `</p>${table(['Supplier', 'Line', 'Amount', 'Due'], lines.map(r => [
+    esc(r.supplier || '—'), esc(r.label || '—'),
+    r.kind === 'no_invoice' ? `<span style="color:#6b7280">no invoice yet · budget ${native(r.amount, r.currency)}</span>` : native(r.amount, r.currency),
+    r.due ? day(r.due) : '—',
+  ]), { align: ['left', 'left', 'right', 'left'] })}<p style="margin:0">`;
+  return html;
 }
 
 // ── 3. Reopen / past-month change (instant) ──

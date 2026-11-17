@@ -2,21 +2,22 @@ import { useEffect, useState } from 'react';
 import { animate, useReducedMotion } from 'motion/react';
 import { getList, getListItemColor } from '../../lib/listService';
 
-export const STAGE_FLOW = ['Pending', 'Pre Production', 'Production', 'Post', 'Completed'];
-const FALLBACK_STAGES = ['Pending', 'Pre Production', 'Production', 'Post', 'Paused', 'Completed'];
+export const STAGE_FLOW = ['Pending', 'Pre Production', 'Production', 'Post', 'Wrap-up', 'Completed'];
+const FALLBACK_STAGES = ['Pending', 'Pre Production', 'Production', 'Post', 'Wrap-up', 'Paused', 'Completed'];
 
-/** Stages from the CP's Lists (admins can rename / add), in pipeline order; Paused sits before Completed. */
+/** Stages from the CP's Lists (admins can rename / add), in pipeline order; Wrap-up follows Post, Paused sits before Completed. */
 export function stageList() {
   const raw = (getList('stages') || FALLBACK_STAGES).map(s => (typeof s === 'object' ? s.label : s)).filter(Boolean);
   const rank = (s) => {
     const i = STAGE_FLOW.indexOf(s);
-    if (s === 'Paused') return 3.5;
-    return i === -1 ? 3.6 : i;
+    if (s === 'Paused') return 4.5;
+    return i === -1 ? 4.6 : i;
   };
   return [...new Set(raw)].sort((a, b) => rank(a) - rank(b));
 }
 export const stageColor = (s) => getListItemColor('stages', s) || '#8b93c7';
 export const isDone = (s) => /^(completed|cancel)/i.test(s || '');
+export const isWrap = (s) => /^wrap/i.test(s || '');
 export const HEALTH = {
   on_track: { label: 'On track', color: '#2fd38a' },
   at_risk: { label: 'At risk', color: '#ffb547' },
@@ -144,6 +145,39 @@ export function BudgetBar({ budget, compact }) {
       <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,.08)' }}>
         <div className="h-full rounded-full" style={{ width: `${Math.min(100, Math.round(pct * 100))}%`, background: color }} />
       </div>
+    </div>
+  );
+}
+
+/** "$4,200 + ₪1,300" from { USD: 4200, ILS: 1300 }. */
+export function owedText(owed) {
+  return Object.entries(owed || {}).filter(([, v]) => v > 0)
+    .map(([c, v]) => `${c === 'ILS' ? '₪' : '$'}${Math.round(v).toLocaleString('en-US')}`).join(' + ');
+}
+
+/** Wrap-up: post is finished — what's still to pay, at a glance (the board card and the drawer). */
+export function PayPanel({ wrap, lines = 0 }) {
+  if (!wrap) return null;
+  const left = (wrap.unpaid || 0) + (wrap.no_invoice || 0);
+  const tone = wrap.overdue ? '#ff5c7a' : '#5eead4';
+  return (
+    <div className="rounded-xl px-3 py-2.5 text-left" style={{ background: 'rgba(20,184,166,0.10)', border: '1px solid rgba(20,184,166,0.30)' }}>
+      {left ? (
+        <>
+          <div className="flex items-baseline gap-2">
+            <span className="trk-title text-[30px] leading-none" style={{ color: tone }}>{left}</span>
+            <span className="text-[10px] font-bold uppercase tracking-[0.14em] whitespace-nowrap" style={{ color: tone }}>left to pay</span>
+          </div>
+          {owedText(wrap.owed) && <div className="text-[14px] font-semibold tabular-nums mt-1">{owedText(wrap.owed)}</div>}
+          <div className="text-[11.5px] trk-muted mt-1 leading-snug">
+            {wrap.overdue ? <span style={{ color: '#ff5c7a' }}>{wrap.overdue} overdue · </span> : null}
+            {wrap.next_due ? `next due ${shortDate(wrap.next_due)}` : wrap.overdue ? '' : 'no due dates set'}
+            {wrap.no_invoice ? ` · ${wrap.no_invoice} waiting for an invoice` : ''}
+          </div>
+        </>
+      ) : (
+        <div className="text-[12px]" style={{ color: '#5eead4' }}>{lines ? '✓ Nothing left to pay — it moves to Completed with the next payment update' : 'No budget lines in CP — mark it Completed when everyone’s paid'}</div>
+      )}
     </div>
   );
 }

@@ -119,7 +119,7 @@ export const EVENT_LABEL = {
   budget_approved: 'Budget approved', budget_unapproved: 'Approval removed', budget_increase: 'Planned Budget raised',
   line_added: 'Line added', line_removed: 'Line removed', amount_changed: 'Amount changed', currency_changed: 'Currency changed', line_moved: 'Line moved',
   actual_changed: 'Actual changed', paid: 'Paid', unpaid: 'Marked unpaid', invoice_received: 'Invoice received', invoice_read: 'Invoice read', invoice_flagged: 'Invoice flagged',
-  dates_changed: 'Dates changed', postponed: 'Postponed', completed: 'Marked Completed', paused: 'Paused', stage_changed: 'Stage changed',
+  dates_changed: 'Dates changed', postponed: 'Postponed', completed: 'Marked Completed', wrapup: 'Moved to Wrap-up', paused: 'Paused', stage_changed: 'Stage changed',
   reopened: 'Reopened', locked: 'Closed', unlocked: 'Reopened (unlocked)', historical_change: 'Past-month cost changed', rights_renewed: 'Rights renewed',
   sheet_edit: 'Edited in the sheet', sync_conflict: 'Sheet / CP conflict', sheet_row_deleted: 'Row deleted in the sheet', finance_confirmed: 'Finance confirmed',
   sub_production: 'Re-edit created', buffer_warning: 'Unexpected running low', note: 'Note',

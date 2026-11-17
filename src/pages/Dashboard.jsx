@@ -552,7 +552,7 @@ export default function Dashboard() {
                     {/* Stacked bar */}
                     <div className="flex h-3 rounded-full overflow-hidden mb-2 cursor-pointer">
                       {(() => {
-                        const stageColors = { 'Pending': '#8b5cf6', 'Pre-Production': '#6366f1', 'Production': '#3b82f6', 'Post Production': '#f97316', 'Completed': '#22c55e', 'Paused': '#eab308' };
+                        const stageColors = { 'Pending': '#8b5cf6', 'Pre-Production': '#6366f1', 'Production': '#3b82f6', 'Post Production': '#f97316', 'Wrap-up': '#14b8a6', 'Completed': '#22c55e', 'Paused': '#eab308' };
                         const total = productions.length || 1;
                         return Object.entries(stageBreakdown).map(([stage, count]) => (
                           <div
@@ -572,7 +572,7 @@ export default function Dashboard() {
                     {/* Legend */}
                     <div className="flex flex-wrap gap-x-3 gap-y-0.5">
                       {(() => {
-                        const stageColors = { 'Pending': '#8b5cf6', 'Pre-Production': '#6366f1', 'Production': '#3b82f6', 'Post Production': '#f97316', 'Completed': '#22c55e', 'Paused': '#eab308' };
+                        const stageColors = { 'Pending': '#8b5cf6', 'Pre-Production': '#6366f1', 'Production': '#3b82f6', 'Post Production': '#f97316', 'Wrap-up': '#14b8a6', 'Completed': '#22c55e', 'Paused': '#eab308' };
                         return Object.entries(stageBreakdown).map(([stage, count]) => (
                           <button key={stage}
                             onClick={() => {
@@ -900,7 +900,7 @@ export default function Dashboard() {
         });
         const stageColors = {
           'Pending': 'border-gray-300', 'Pre-Production': 'border-blue-400', 'Production': 'border-green-400',
-          'Post Production': 'border-purple-400', 'Completed': 'border-emerald-500', 'Paused': 'border-amber-400',
+          'Post Production': 'border-purple-400', 'Wrap-up': 'border-teal-400', 'Completed': 'border-emerald-500', 'Paused': 'border-amber-400',
         };
         return (
           <div className="flex gap-4 overflow-x-auto pb-4" style={{ minHeight: 400 }}>

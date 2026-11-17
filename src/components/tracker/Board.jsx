@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Film, Sparkles, Video, CalendarClock, Clapperboard, StickyNote } from 'lucide-react';
 import {
-  StageDot, HealthDot, FaceStack, TicketDots, BudgetBar, Signal, countdown, TONE, shortDate, relTime, isDone,
+  StageDot, HealthDot, FaceStack, TicketDots, BudgetBar, Signal, countdown, TONE, shortDate, relTime, isDone, isWrap, PayPanel,
 } from './parts';
 
 const TYPE_ICON = { Shoot: Film, 'Remote Shoot': Video, AI: Sparkles };
@@ -24,6 +24,7 @@ export function ProductionCard({ p, today, onOpen, draggable, onDragStart, onDra
   const internal = p.team?.internal || [];
   const external = p.team?.external || [];
   const done = isDone(p.stage);
+  const wrap = isWrap(p.stage);   // post finished — the deadline and next phase don't matter any more, the payments do
   return (
     <button type="button" onClick={() => onOpen(p)} draggable={draggable}
       onDragStart={(e) => { e.dataTransfer.setData('text/plain', p.id); e.dataTransfer.effectAllowed = 'move'; onDragStart?.(p); }}
@@ -43,7 +44,10 @@ export function ProductionCard({ p, today, onOpen, draggable, onDragStart, onDra
         {p.product_type?.length > 0 && <div className="mt-1 text-[11px] trk-muted truncate">{p.product_type.join(' · ')}</div>}
       </div>
 
-      {(cd || ms) && (
+      {wrap && <PayPanel wrap={p.budget?.wrap} lines={p.budget?.lines} />}
+      {done && p.auto_completed && <div className="text-[11px]" style={{ color: '#5eead4' }}>✓ Every supplier paid — completed by CP</div>}
+
+      {!wrap && (cd || ms) && (
         <div className="flex items-end gap-3">
           {cd && (
             <div className="flex-none">
@@ -78,7 +82,7 @@ export function ProductionCard({ p, today, onOpen, draggable, onDragStart, onDra
         </div>
       )}
 
-      {!done && <BudgetBar budget={p.budget} />}
+      {!done && !wrap && <BudgetBar budget={p.budget} />}
 
       {p.signals?.length > 0 && !done && (
         <div className="flex flex-wrap gap-1.5">{p.signals.slice(0, 2).map(s => <Signal key={s.kind} s={s} />)}{p.signals.length > 2 && <span className="trk-chip gray">+{p.signals.length - 2}</span>}</div>

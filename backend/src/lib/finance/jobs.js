@@ -59,7 +59,7 @@ async function staleDateNudges({ force = false } = {}) {
   if (!force && (dow === 5 || dow === 6)) return { skipped: 'weekend' };
   const { rows } = await db.query(
     `${ctx.PROD_SELECT} WHERE locked IS NOT TRUE AND planned_end IS NOT NULL AND planned_end < $1::date ORDER BY planned_end`, [today()]);
-  const stale = rows.filter(p => { const s = B.normalizeStage(p.stage); return !B.isDone(s) && s !== 'Paused'; });
+  const stale = rows.filter(p => { const s = B.normalizeStage(p.stage); return !B.isDone(s) && s !== 'Paused' && s !== 'Wrap-up'; });   // Wrap-up = the work is over, only payments left
   if (!stale.length) return { sent: 0 };
   const byProducer = new Map();
   for (const p of stale) {
@@ -80,7 +80,7 @@ async function weeklyDigest({ force = false } = {}) {
   if (!cfg.weekly_digest && !force) return { skipped: 'off' };
   const to = today(), from = W.addDays(to, -7);   // [from 00:00, today 00:00) Israel time — 7 days, no overlap
   const kinds = ['budget_approved', 'budget_unapproved', 'budget_increase', 'line_added', 'line_removed', 'amount_changed', 'currency_changed',
-    'historical_change', 'postponed', 'completed', 'paused', 'reopened', 'locked', 'unlocked', 'rights_renewed', 'invoice_flagged', 'sync_conflict', 'buffer_warning'];
+    'historical_change', 'postponed', 'completed', 'wrapup', 'paused', 'reopened', 'locked', 'unlocked', 'rights_renewed', 'invoice_flagged', 'sync_conflict', 'buffer_warning'];
   const { rows: evs } = await db.query(
     `SELECT * FROM finance_events WHERE created_at >= $1 AND created_at < $2 AND kind = ANY($3) ORDER BY production_id, created_at`,
     [new Date(W.zonedMidnightUtc(from)).toISOString(), new Date(W.zonedMidnightUtc(to)).toISOString(), kinds]);
