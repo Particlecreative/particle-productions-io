@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight } from 'lucide-react';
 import { readiness, READY_ORDER, niceDate } from './util';
 import { BriefCard, WritingRow } from './BriefItems';
+import { useAuth } from '../../context/AuthContext';
 
 export const START = [
   { mode: 'idea', emoji: '💡', title: 'I have an idea', line: 'Say it the way you’d say it in the hallway. Medium shapes it into a brief — and writes a sharper version next to yours.' },
@@ -25,6 +26,7 @@ function nextRun(weekday, hour) {
 
 /** The home: start something, what's waiting for you, what's coming up. No dashboards. */
 export default function Today({ overview, briefs, onOpen, go }) {
+  const { isGrowth } = useAuth();   // Growth team: no mass production (17 Nov 2026)
   const waiting = useMemo(() => (briefs || []).filter(b => b.status === 'PENDING_REVIEW')
     .map(b => ({ b, r: readiness(b) })).sort((x, y) => (READY_ORDER[x.r.key] ?? 9) - (READY_ORDER[y.r.key] ?? 9) || new Date(y.b.created_at) - new Date(x.b.created_at)), [briefs]);
   // being written: the one in progress first, then the line in order
@@ -44,7 +46,7 @@ export default function Today({ overview, briefs, onOpen, go }) {
       <section>
         <h2 className="md-h2">What do you want to make?</h2>
         <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
-          {START.map(s => (
+          {START.filter(s => !isGrowth || s.mode !== 'mass').map(s => (
             <button key={s.mode} type="button" className="md-action" onClick={() => go('create', s.mode)}>
               <span className="md-emoji" aria-hidden>{s.emoji}</span>
               <span className="md-action-title">{s.title}</span>

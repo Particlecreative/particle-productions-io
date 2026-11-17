@@ -80,6 +80,14 @@ router.get('/campaigns', async (req, res) => {
   } catch (err) { errorJson(res, err); }
 });
 
+/** Creative Studio → My requests: the tickets the signed-in person asked for (their Monday user is the requester). */
+router.get('/my-requests', async (req, res) => {
+  try {
+    const data = await require('../lib/studio/myRequests').getMyRequests({ brandId: req.brandId, user: req.user, force: req.query.force === '1' });
+    res.json({ ...data, today: W.localDate(Date.now()) });
+  } catch (err) { errorJson(res, err); }
+});
+
 /** Every campaign label on both boards → its group (cheap: board settings only, no tickets) — the Workload's stats. */
 router.get('/campaign-groups', async (req, res) => {
   try {

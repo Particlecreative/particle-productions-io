@@ -34,18 +34,18 @@ function hello(name) {
  * MEDIUM 🔮 — the creative strategy room. It studies what won and drafts the next briefs in the team's house style;
  * Captain Caption proofreads them; a person approves before anything is made.
  */
-// Growth Studio (17 Nov 2026): they write their own briefs — Create + their briefs only; nothing written for them automatically
-const GROWTH_TABS = [['create', 'Create', PenLine], ['briefs', 'My briefs', Inbox]];
-
-export default function MediumPage({ growth = false }) {
-  const { isAdmin, user } = useAuth();
+// Growth team (17 Nov 2026): the full Medium — "Briefs Creator" in their menu — with their limits: their own briefs only
+// (nothing written for them automatically), no batch production, no settings / sources / keys (the server enforces it)
+export default function MediumPage() {
+  const { isAdmin, isGrowth, user } = useAuth();
+  const growth = isGrowth;
   const { brandId } = useBrand();
   const [params, setParams] = useSearchParams();
-  const TK = growth ? 'mtab' : 'tab';   // inside the Growth Studio, ?tab= is the Studio's own tab
-  const tabs = growth ? GROWTH_TABS : TABS;
+  const TK = 'tab';
+  const tabs = TABS;
   const raw = params.get(TK);
-  const legacy = growth ? null : LEGACY[raw];
-  const tab = legacy ? legacy[0] : tabs.some(t => t[0] === raw) ? raw : (growth ? 'create' : 'today');
+  const legacy = LEGACY[raw];
+  const tab = legacy ? legacy[0] : tabs.some(t => t[0] === raw) ? raw : 'today';
   const sub = (legacy && legacy[1]) || params.get('mode') || '';
   const open = params.get('brief');
   const [overview, setOverview] = useState(null);
@@ -83,9 +83,9 @@ export default function MediumPage({ growth = false }) {
   const waiting = briefs.filter(b => b.status === 'PENDING_REVIEW').length;
   const mondayOn = !!(overview?.monday_submit ?? overview?.sources?.monday?.submit);
   return (
-    <div className={`trk cc md mx-auto ${growth ? '' : 'max-w-[2400px] pb-16'}`}>
-      <div className={`trk-canvas ${growth ? 'p-5 sm:p-7' : 'p-5 sm:p-8 md:p-10'}`}>
-        <div className="trk-eyebrow">🔮 Medium · creative strategy</div>
+    <div className="trk cc md max-w-[2400px] mx-auto pb-16">
+      <div className="trk-canvas p-5 sm:p-8 md:p-10">
+        <div className="trk-eyebrow">{growth ? '🔮 Medium · Briefs Creator' : '🔮 Medium · creative strategy'}</div>
         <h1 className="md-hello mt-3">{hello(user?.name)}</h1>
         <p className="md-lead mt-3">{growth
           ? 'Write your briefs with Medium — it knows what won and writes in the team’s style. Captain Caption proofreads every line, you approve, and it goes to Monday with your name on it.'

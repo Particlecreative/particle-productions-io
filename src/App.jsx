@@ -62,7 +62,12 @@ const FinancePage = lazyPage(() => import('./pages/finance/FinancePage'));
 const CaptainPage = lazyPage(() => import('./pages/captain/CaptainPage'));
 const MediumPage = lazyPage(() => import('./pages/medium/MediumPage'));
 const FinanceViewPage = lazyPage(() => import('./pages/finance/FinanceViewPage'));
-const GrowthStudio = lazyPage(() => import('./pages/growth/GrowthStudio'));
+const CreativeStudioPage = lazyPage(() => import('./pages/growth/CreativeStudio'));
+const NewTicketPage = lazyPage(() => import('./pages/growth/NewTicketPage'));
+const CampaignTrackerPage = lazyPage(() => import('./pages/growth/CampaignTrackerPage'));
+const AdsLibraryPage = lazyPage(() => import('./pages/growth/AdsLibraryPage'));
+const TvProductionsPage = lazyPage(() => import('./pages/growth/TvProductionsPage'));
+const TvLibraryPage = lazyPage(() => import('./pages/growth/TvLibraryPage'));
 const GrowthWelcome = lazyPage(() => import('./pages/growth/Welcome'));
 const TeamActivityPage = lazyPage(() => import('./pages/growth/TeamActivity'));
 
@@ -86,14 +91,14 @@ if (typeof window !== 'undefined') {
 }
 
 // Growth team (17 Nov 2026): one place — every other page sends them to the Growth Studio (the API refuses the rest anyway)
-const GROWTH_PATHS = ['/growth', '/welcome', '/manual'];
+const GROWTH_PATHS = ['/creative-studio', '/medium', '/new-ticket', '/campaigns', '/ads-library', '/tv-productions', '/tv-library', '/growth', '/welcome', '/manual'];
 
 function ProtectedRoute({ children, adminOnly = false, blockForAccounting = false, blockForStudio = false }) {
   const { user, loading, isAdmin, isAccounting, isStudio, isGrowth } = useAuth();
   const location = useLocation();
   if (loading) return null;
   if (!user) return <Navigate to="/login" replace />;
-  if (isGrowth && !GROWTH_PATHS.some(p => location.pathname === p || location.pathname.startsWith(`${p}/`))) return <Navigate to="/growth" replace />;
+  if (isGrowth && !GROWTH_PATHS.some(p => location.pathname === p || location.pathname.startsWith(`${p}/`))) return <Navigate to="/creative-studio" replace />;
   if (adminOnly && !isAdmin) return <Navigate to="/" replace />;
   if (blockForAccounting && isAccounting) return <Navigate to="/financial" replace />;
   if (blockForStudio && isStudio) return <Navigate to="/" replace />;
@@ -166,7 +171,14 @@ function AppRoutes() {
         <Route path="/suppliers" element={<ProtectedRoute blockForStudio><AppShell><ErrorBoundary><Suppliers /></ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="/studio-tickets" element={<ProtectedRoute><AppShell><ErrorBoundary><StudioTickets /></ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="/library" element={<ProtectedRoute blockForAccounting><AppShell><ErrorBoundary>{lazyEl(<LibraryPage />)}</ErrorBoundary></AppShell></ProtectedRoute>} />
-        <Route path="/growth" element={<ProtectedRoute blockForAccounting><AppShell><ErrorBoundary>{lazyEl(<GrowthStudio />)}</ErrorBoundary></AppShell></ProtectedRoute>} />
+        {/* Growth team (17 Nov 2026): each page is its own entry in the left panel */}
+        <Route path="/growth" element={<Navigate to="/creative-studio" replace />} />
+        <Route path="/creative-studio" element={<ProtectedRoute blockForAccounting><AppShell><ErrorBoundary>{lazyEl(<CreativeStudioPage />)}</ErrorBoundary></AppShell></ProtectedRoute>} />
+        <Route path="/new-ticket" element={<ProtectedRoute blockForAccounting><AppShell><ErrorBoundary>{lazyEl(<NewTicketPage />)}</ErrorBoundary></AppShell></ProtectedRoute>} />
+        <Route path="/campaigns" element={<ProtectedRoute blockForAccounting><AppShell><ErrorBoundary>{lazyEl(<CampaignTrackerPage />)}</ErrorBoundary></AppShell></ProtectedRoute>} />
+        <Route path="/ads-library" element={<ProtectedRoute blockForAccounting><AppShell><ErrorBoundary>{lazyEl(<AdsLibraryPage />)}</ErrorBoundary></AppShell></ProtectedRoute>} />
+        <Route path="/tv-productions" element={<ProtectedRoute blockForAccounting><AppShell><ErrorBoundary>{lazyEl(<TvProductionsPage />)}</ErrorBoundary></AppShell></ProtectedRoute>} />
+        <Route path="/tv-library" element={<ProtectedRoute blockForAccounting><AppShell><ErrorBoundary>{lazyEl(<TvLibraryPage />)}</ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="/welcome" element={<ProtectedRoute><AppShell><ErrorBoundary>{lazyEl(<GrowthWelcome />)}</ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="/activity" element={<ProtectedRoute adminOnly><AppShell><ErrorBoundary>{lazyEl(<TeamActivityPage />)}</ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="/tracker" element={<ProtectedRoute blockForAccounting blockForStudio><AppShell><ErrorBoundary>{lazyEl(<TrackerPage />)}</ErrorBoundary></AppShell></ProtectedRoute>} />

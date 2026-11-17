@@ -63,6 +63,8 @@ export default function Workload({ f }) {
   const keyRef = useRef('');
   const hoverTimer = useRef(null);
   const [width, setWidth] = useState(1100);
+  const narrow = width < 640;                      // phones: a slim person column, days scroll sideways
+  const nameW = narrow ? 118 : NAME_W;
   const setRole = (v) => { setRoleState(v); setPref(ROLE_KEY, v); };
   const setWeeks = (v) => { setWeeksState(v); setPref(WEEKS_KEY, v); };
   const setPanel = (v) => { setPanelState(v); setPref(PANEL_KEY, v ? '1' : '0'); };
@@ -121,14 +123,14 @@ export default function Workload({ f }) {
   // ── Columns: workdays wide, Fri/Sat narrow ──
   const days = useMemo(() => { const o = []; for (let d = start; d <= end; d = addDays(d, 1)) o.push(d); return o; }, [start, end]);
   const cols = useMemo(() => {
-    const avail = Math.max(320, width - NAME_W);
+    const avail = Math.max(320, width - nameW);
     const wk = days.filter(d => dow(d) > 4).length;
-    const unit = Math.max(34, avail / (days.length - wk + wk * WEEKEND));
+    const unit = Math.max(narrow ? 46 : 34, avail / (days.length - wk + wk * WEEKEND));
     const w = days.map(d => (dow(d) > 4 ? Math.max(14, Math.floor(unit * WEEKEND)) : Math.floor(unit)));
     const x = [];
     w.reduce((acc, cw, i) => { x[i] = acc; return acc + cw; }, 0);
     return { w, x, total: w.reduce((a, b) => a + b, 0), idx: new Map(days.map((d, i) => [d, i])) };
-  }, [days, width]);
+  }, [days, width, nameW, narrow]);
   const xOf = (d) => cols.x[cols.idx.get(d)] ?? 0;
   const spanW = (a, b) => xOf(b) + cols.w[cols.idx.get(b)] - xOf(a);
 
@@ -172,7 +174,7 @@ export default function Workload({ f }) {
   const dayIdxAt = (clientX, clamp = false) => {
     const g = gridRef.current;
     if (!g) return null;
-    const lx = clientX - g.getBoundingClientRect().left + g.scrollLeft - NAME_W;
+    const lx = clientX - g.getBoundingClientRect().left + g.scrollLeft - nameW;
     if (lx < 0) return clamp ? 0 : null;
     for (let i = 0; i < days.length; i++) if (lx < cols.x[i] + cols.w[i]) return i;
     return clamp ? days.length - 1 : null;
@@ -303,8 +305,8 @@ export default function Workload({ f }) {
           <div className={`flex-1 min-w-0 bg-white rounded-2xl border border-gray-200 overflow-hidden transition-opacity ${loading ? 'opacity-60' : ''}`}>
             <div ref={gridRef} className="relative overflow-x-auto">
               {/* Header */}
-              <div className="flex sticky top-0 z-10 bg-white border-b border-gray-200" style={{ width: NAME_W + cols.total }}>
-                <div className="flex-none px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-gray-400" style={{ width: NAME_W }}>{people.length} {role === 'video' ? 'video editors' : role === 'design' ? 'designers' : 'people'}</div>
+              <div className="flex sticky top-0 z-10 bg-white border-b border-gray-200" style={{ width: nameW + cols.total }}>
+                <div className={`flex-none ${narrow ? 'px-2' : 'px-4'} py-2 text-[11px] font-bold uppercase tracking-wider text-gray-400 sticky left-0 z-[11] bg-white`} style={{ width: nameW }}>{people.length} {role === 'video' ? 'video editors' : role === 'design' ? 'designers' : 'people'}</div>
                 {days.map((d, i) => {
                   const hol = (data.holidays || []).find(h => h.start <= d && h.end >= d);
                   const we = dow(d) > 4;
@@ -328,24 +330,24 @@ export default function Workload({ f }) {
                 return (
                   <Fragment key={p.id}>
                     {header && (
-                      <div className="flex items-center px-4 py-1.5 bg-gray-50 border-b border-gray-100 text-[10px] font-bold uppercase tracking-wider text-gray-500" style={{ width: NAME_W + cols.total }}>
+                      <div className="flex items-center px-4 py-1.5 bg-gray-50 border-b border-gray-100 text-[10px] font-bold uppercase tracking-wider text-gray-500" style={{ width: nameW + cols.total }}>
                         {p.role === 'video' ? 'Video editors' : 'Designers'}
                       </div>
                     )}
-                    <div ref={el => rowRefs.current.set(p.id, el)} className={`flex border-b border-gray-100 transition-colors ${isTarget ? (ghost.blocked ? 'bg-red-50/60' : 'bg-[#0808f8]/[0.04]') : ''}`} style={{ width: NAME_W + cols.total, minHeight: h }}>
-                      <div className="flex-none px-4 py-2.5 flex flex-col gap-1.5 border-r border-gray-100" style={{ width: NAME_W }}>
-                        <div className="flex items-center gap-2.5">
-                          <Avatar person={p} size={30} />
+                    <div ref={el => rowRefs.current.set(p.id, el)} className={`flex border-b border-gray-100 transition-colors ${isTarget ? (ghost.blocked ? 'bg-red-50/60' : 'bg-[#0808f8]/[0.04]') : ''}`} style={{ width: nameW + cols.total, minHeight: h }}>
+                      <div className={`flex-none ${narrow ? 'px-2' : 'px-4'} py-2.5 flex flex-col gap-1.5 border-r border-gray-100 sticky left-0 z-[5] bg-white`} style={{ width: nameW }}>
+                        <div className={`flex items-center ${narrow ? 'gap-1.5' : 'gap-2.5'}`}>
+                          <Avatar person={p} size={narrow ? 24 : 30} />
                           <div className="min-w-0 flex-1">
-                            <div className="text-sm font-semibold text-gray-900 truncate flex items-center gap-1.5">
-                              {p.name}{outNow && <span title={outNow.name || 'Out today'}><Plane size={11} className="text-gray-400" /></span>}
+                            <div className={`${narrow ? 'text-[12.5px]' : 'text-sm'} font-semibold text-gray-900 truncate flex items-center gap-1.5`}>
+                              {narrow ? first(p.name) : p.name}{outNow && <span title={outNow.name || 'Out today'}><Plane size={11} className="text-gray-400" /></span>}
                             </div>
                             <div className="text-[11px] text-gray-400 truncate">{open} open{unscheduled.length ? ' · ' : ''}
                               {unscheduled.length > 0 && <button type="button" onClick={() => { setPanel(true); setPanelWho(p.id); }} className="text-[#0808f8] hover:underline">{unscheduled.length} to schedule</button>}
                             </div>
                           </div>
                         </div>
-                        <div title={`${Math.round(booked * 100)}% of ${first(p.name)}’s capacity in these weeks (${perWeek(data, p.role)} tasks a week · a TV production is a full day · carry-overs from an earlier week don’t count)`}>
+                        <div className={narrow ? 'hidden' : ''} title={`${Math.round(booked * 100)}% of ${first(p.name)}’s capacity in these weeks (${perWeek(data, p.role)} tasks a week · a TV production is a full day · carry-overs from an earlier week don’t count)`}>
                           <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
                             <div className="h-full rounded-full" style={{ width: `${Math.min(100, booked * 100)}%`, background: booked > 1 ? '#e2445c' : booked > 0.85 ? '#fdab3d' : '#0808f8' }} />
                           </div>

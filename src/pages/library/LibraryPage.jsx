@@ -184,7 +184,7 @@ export function TvLibrary() {
             ) : canEdit && data && (
               <button type="button" className="trk-btn" onClick={() => setConnect(true)}><Sheet size={14} /> Sync from a Google Sheet</button>
             )}
-            {missing.length > 0 && (
+            {missing.length > 0 && canEdit && (
               <button type="button" onClick={() => setMissingOpen(true)} className="trk-btn !py-1.5" style={{ borderColor: 'rgba(255,181,71,.5)', background: 'rgba(255,181,71,.1)', color: '#ffd699' }}>
                 <Clock size={13} /> {missing.length} completed production{missing.length > 1 ? 's' : ''} missing their finals
               </button>

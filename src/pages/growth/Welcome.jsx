@@ -38,14 +38,14 @@ export default function Welcome() {
     setBusy('off');
     try { await meApi.disconnect(); setSt(s => ({ ...s, connected: false, name: null })); } catch (e) { setErr(e.message); } finally { setBusy(null); }
   };
-  const go = () => nav('/growth');
+  const go = () => nav('/creative-studio');
   const skip = () => { try { localStorage.setItem(SKIP_KEY, '1'); } catch { /* ignore */ } go(); };
 
   return (
     <div className="min-h-[calc(100vh-120px)] flex items-center justify-center p-4">
       <div className="w-full max-w-[640px] rounded-[28px] overflow-hidden shadow-xl border border-gray-200 bg-white">
         <div className="px-8 pt-8 pb-7 text-white" style={{ background: 'radial-gradient(120% 140% at 100% 0%, #0808f8 0%, #0b1a6b 45%, #030b2e 100%)' }}>
-          <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">Growth Studio · welcome{user?.name ? `, ${first(user.name)}` : ''}</div>
+          <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">Welcome{user?.name ? `, ${first(user.name)}` : ''}</div>
           <h1 className="mt-3 font-black uppercase leading-[0.92] text-[44px] sm:text-[54px]" style={{ fontFamily: '"Sofia Sans Extra Condensed", sans-serif' }}>
             Let’s start by connecting your Monday
           </h1>
@@ -66,7 +66,7 @@ export default function Welcome() {
                 <button type="button" onClick={disconnect} disabled={busy === 'off'} className="ml-auto text-xs font-semibold text-emerald-800/70 hover:text-red-600 flex items-center gap-1"><Unplug size={13} /> Disconnect</button>
               </div>
               <button type="button" onClick={go} className="flex items-center justify-center gap-2 rounded-2xl px-5 py-3.5 text-white font-semibold" style={{ background: '#0808f8' }}>
-                Go to your Growth Studio <ArrowRight size={17} />
+                Go to the Creative Studio <ArrowRight size={17} />
               </button>
             </div>
           ) : (

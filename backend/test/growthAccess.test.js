@@ -16,7 +16,7 @@ test('Growth gate: the Growth Studio is open', () => {
     ['GET', '/api/medium/briefs'], ['GET', `/api/medium/briefs/${ID}`], ['POST', '/api/medium/generate'], ['POST', '/api/medium/freeform'],
     ['PUT', `/api/medium/briefs/${ID}`], ['POST', `/api/medium/briefs/${ID}/approve`], ['POST', `/api/medium/briefs/${ID}/submit`],
     ['GET', '/api/me/monday'], ['POST', '/api/me/monday/token'], ['GET', '/api/me/monday/connect'], ['DELETE', '/api/me/monday'], ['POST', '/api/me/activity'],
-    ['GET', '/api/growth/afterlife-pass'],
+    ['GET', '/api/growth/afterlife-pass'], ['GET', '/api/studio/my-requests'], ['GET', '/api/medium/market'], ['GET', '/api/medium/config'], ['GET', '/api/medium/corpus'],
   ];
   for (const [m, p] of ok) assert.ok(growthMay(m, p), `${m} ${p} should be allowed`);
 });
@@ -28,7 +28,7 @@ test('Growth gate: money, admin, moving work and Medium settings are closed', ()
     ['PATCH', '/api/productions/PRD26-20'], ['POST', '/api/productions'], ['GET', '/api/productions/PRD26-20/history'], ['GET', '/api/tracker'],
     ['PATCH', '/api/studio/items/123'], ['POST', '/api/studio/items/123/archive'], ['PUT', '/api/studio/autoplan'], ['POST', '/api/studio/fit'], ['PUT', '/api/studio/campaign-groups'],
     ['POST', '/api/studio/ticket-link'], ['GET', '/api/studio/connections'],
-    ['PUT', '/api/medium/config'], ['GET', '/api/medium/config'], ['POST', '/api/medium/corpus/ingest'], ['PUT', '/api/medium/surveys/key'], ['POST', '/api/medium/autopilot/run'],
+    ['PUT', '/api/medium/config'], ['POST', '/api/medium/buyer-signal'], ['POST', '/api/medium/market/refresh'], ['POST', '/api/medium/corpus/ingest'], ['PUT', '/api/medium/surveys/key'], ['POST', '/api/medium/autopilot/run'],
     ['POST', '/api/medium/campaigns/backfill'], ['POST', '/api/medium/mass/produce'], ['GET', '/api/activity'], ['POST', '/api/library/items'],
   ];
   for (const [m, p] of no) assert.equal(growthMay(m, p), false, `${m} ${p} should be refused`);

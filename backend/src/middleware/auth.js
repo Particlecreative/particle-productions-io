@@ -21,13 +21,14 @@ const GROWTH_ALLOW = [
   [/^GET$/, /^\/api\/library(\/.*)?$/],
   // Studio — the live dashboard data, campaigns, the ticket creator; nothing that moves or schedules
   [/^GET$/, /^\/api\/studio\/?$/],
-  [/^GET$/, /^\/api\/studio\/(campaigns|campaign-groups)$/],
+  [/^GET$/, /^\/api\/studio\/(campaigns|campaign-groups|my-requests)$/],
   [/^GET$/, /^\/api\/studio\/(ticket-form|ticket-link)$/],
   [/^GET$/, /^\/api\/studio\/items\/\d+\/updates$/],               // read a task's brief & updates (posting stays closed)
   [/^POST$/, /^\/api\/studio\/ticket\/(draft|files|submit)$/],
   // Medium — their own briefs: write, edit, approve, reject, submit. No settings, sources, keys, corpus, autopilot
-  [/^GET$/, /^\/api\/medium\/(overview|briefs|briefs\/[0-9a-f-]{36}|holiday\/campaigns|holiday\/[0-9a-f-]{36}|holiday\/preflight\/[0-9a-f-]{36}|static-hooks|affinity|beliefs|higgsfield|scorecard)$/],
-  [/^POST$/, /^\/api\/medium\/(generate|freeform|static-hooks\/generate|static-hooks\/read|higgsfield\/briefs|holiday\/plan|holiday\/generate|holiday\/[0-9a-f-]{36}\/(preflight|approve))$/],
+  // the full Medium to read (Today, Market Watch, Behind the scenes — nothing secret in these: keys are sealed elsewhere)
+  [/^GET$/, /^\/api\/medium\/(overview|briefs|briefs\/[0-9a-f-]{36}|holiday\/campaigns|holiday\/[0-9a-f-]{36}|holiday\/preflight\/[0-9a-f-]{36}|static-hooks|affinity|beliefs|higgsfield|scorecard|market|corpus|corpus\/exemplars|config|surveys|buyer-signal|upspring|brand-sites)$/],
+  [/^POST$/, /^\/api\/medium\/(generate|freeform|static-hooks\/generate|static-hooks\/read|higgsfield\/briefs|holiday\/plan|holiday\/generate|holiday\/[0-9a-f-]{36}\/(preflight|approve|derivatives))$/],
   [/^PUT$/, /^\/api\/medium\/briefs\/[0-9a-f-]{36}$/],
   [/^POST$/, /^\/api\/medium\/briefs\/[0-9a-f-]{36}\/(approve|reject|submit|regenerate|improve|static-version)$/],
   // Their own Monday connection, and the Growth Studio's own endpoints

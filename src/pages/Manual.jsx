@@ -6,7 +6,156 @@ import clsx from 'clsx';
 
 // ─── Manual Content Data ──────────────────────────────────────────────────────
 
+// ─── Growth team (17 Nov 2026) ─────────────────────────────────────────────────
+// RULE (Tomer): every change to the growth team's panel updates this section AND adds a dated line to "What's new".
+const GROWTH_WHATS_NEW = [
+  { date: '17 Nov 2026', items: [
+    '🎉 Welcome to CP! The growth team has its own panel: Creative Studio, Briefs Creator, New ticket, Campaign Tracker, Ads Library, TV Productions and TV Library.',
+    '🔗 Connect your Monday — the briefs and tickets you send from CP land on Monday as you.',
+    '📥 Creative Studio → My requests — every ticket you asked for, where it is now.',
+    '📊 Creative Studio → Overview — the studio right now: Working, Pending, In review, Fixes, Stuck, by campaign type and by product.',
+    '📱 Ads Library — AfterLife’s Fresh to test, live inside CP, plus an “Open AfterLife” button.',
+    '📱 Works on your phone — bottom bar with Studio, Briefs, Ticket, Campaigns and More.',
+  ] },
+];
+
+const GROWTH_CATEGORY = {
+  id: 'growth',
+  label: 'Growth team',
+  color: 'from-teal-400 to-blue-600',
+  growthOnly: true,
+  sections: [
+    {
+      id: 'growth-whats-new', icon: '✨', label: 'What’s new / updated',
+      summary: `Latest: ${GROWTH_WHATS_NEW[0].date} — what changed in your panel, newest first.`,
+      keywords: ['new', 'updated', 'changes', 'release', 'whats new', 'growth'],
+      content: GROWTH_WHATS_NEW.map(w => ({ type: 'guide', title: w.date, steps: w.items })),
+    },
+    {
+      id: 'growth-start', icon: '🚀', label: 'Start here',
+      summary: 'What you have in CP, and the first thing to do.',
+      keywords: ['growth', 'start', 'welcome', 'menu', 'panel', 'access'],
+      content: [
+        { type: 'guide', title: 'Your menu (left panel — on your phone, the bottom bar + More)', steps: [
+          'Creative Studio — the studio right now, the workload, and your own requests.',
+          'Briefs Creator — Medium, the AI creative strategist: write briefs, approve them, send them to Monday.',
+          'New ticket — ask the studio for Video or Design work in plain words.',
+          'Campaign Tracker — every campaign, grouped by type, with its tickets.',
+          'Ads Library — AfterLife’s Fresh to test: finished creative that never ran on Meta.',
+          'TV Productions — what’s being made and when (no budgets).',
+          'TV Library — every TV commercial’s final files.',
+        ]},
+        { type: 'guide', title: 'First thing: connect your Monday', steps: [
+          'The first time you sign in, CP asks you to connect your Monday — click “Connect Monday” (or paste your personal token: Monday → your picture → Developers → My access tokens).',
+          'After that, every brief and ticket you send is created on Monday as you — your name, your notifications.',
+          'Skipped it? Click “Connect Monday” at the top of any page (or More → My Monday on your phone).',
+        ]},
+        { type: 'tips', items: [
+          'You see timelines and stages, never budgets or payments.',
+          'The workload is view-only: the studio schedules and moves the work. Click any task to see it.',
+        ]},
+      ],
+    },
+    {
+      id: 'growth-studio', icon: '🎬', label: 'Creative Studio',
+      summary: 'Overview, Workload and My requests.',
+      keywords: ['studio', 'overview', 'workload', 'requests', 'my requests', 'tickets', 'status'],
+      content: [
+        { type: 'guide', title: 'Overview', steps: [
+          'The studio right now: how many tasks are Working, Pending, In review, Fixes and Stuck — video and design.',
+          'By campaign type and by product: where the studio’s time is going.',
+          'Your briefs from the Briefs Creator, with their status.',
+        ]},
+        { type: 'guide', title: 'Workload', steps: [
+          'Who’s on what, day by day — designers and video editors, 1, 2 or 4 weeks.',
+          'Click a bar to open the task: status, dates, files, the brief and the updates.',
+          'View only — nothing here moves or reschedules work.',
+        ]},
+        { type: 'guide', title: 'My requests', steps: [
+          'Every Video and Design ticket where you are “Requested by” on Monday — open ones first, finished ones from the last 60 days.',
+          'Filter Open / Finished, Video / Design, or search. “Late” means past its deadline.',
+          'It follows your Monday user — connect your Monday so it’s exactly you.',
+        ]},
+      ],
+    },
+    {
+      id: 'growth-briefs', icon: '🔮', label: 'Briefs Creator (Medium)',
+      summary: 'Write, approve and send briefs — in the team’s style, with your name on them.',
+      keywords: ['medium', 'brief', 'briefs', 'approve', 'submit', 'monday', 'hook', 'script', 'holiday', 'higgsfield'],
+      content: [
+        { type: 'guide', title: 'Write a brief', steps: [
+          'Today → “What do you want to make?”, or Create: I have an idea · Build on a winner · Headline → video hook · Plan a holiday · Higgsfield story film.',
+          'Medium writes it in the team’s house style from what won; Captain Caption proofreads every on-screen line.',
+          'Open the brief to read it, edit it, change its campaign, or ask Medium to improve it.',
+        ]},
+        { type: 'guide', title: 'Approve and send', steps: [
+          'Approve → it becomes a Monday ticket with the brief as its update, in the right campaign.',
+          'The brief says “Brief by Medium for you · approved by you”. With your Monday connected, Monday shows you as its creator.',
+          'Briefs tab: your briefs only. Medium never writes briefs for you on its own.',
+        ]},
+        { type: 'tips', items: [
+          'Market Watch and Behind the scenes are there to read — what Medium believes, its tests and its sources.',
+          'If Captain Caption flags a must-fix, fix the line (or ask an admin to override).',
+        ]},
+      ],
+    },
+    {
+      id: 'growth-ticket', icon: '✨', label: 'New ticket',
+      summary: 'Ask the studio for work in plain words.',
+      keywords: ['ticket', 'new ticket', 'request', 'design', 'video', 'monday'],
+      content: [
+        { type: 'guide', title: 'How', steps: [
+          'Write what you need like you’d tell the team — paste links, add files or screenshots.',
+          'The assistant picks Video or Design, fills the Monday form and asks only what’s missing.',
+          'Submit → the ticket is on Monday (as you, when your Monday is connected), with a Dropbox folder for the finished files.',
+        ]},
+      ],
+    },
+    {
+      id: 'growth-campaigns', icon: '📣', label: 'Campaign Tracker',
+      summary: 'Every campaign, grouped by type, with its tickets.',
+      keywords: ['campaign', 'campaigns', 'group', 'higgsfield', 'holiday', 'launch', 'concept'],
+      content: [
+        { type: 'guide', title: 'Reading it', steps: [
+          'Groups: Higgsfield Cinematic, Images into Videos, Holidays & Sales, Launches & Retail, Faces & Partners, Tests & Other Brands, Concept Families, Evergreen.',
+          'Open a campaign to see its tickets, who’s on them and their dates; click a ticket for the details.',
+          'Filter by Active / All / Finished, Video / Design, product, or who requested it.',
+        ]},
+      ],
+    },
+    {
+      id: 'growth-ads', icon: '📱', label: 'Ads Library',
+      summary: 'AfterLife’s Fresh to test, live in CP.',
+      keywords: ['ads', 'library', 'afterlife', 'fresh to test', 'download', 'never ran'],
+      content: [
+        { type: 'guide', title: 'Using it', steps: [
+          'Fresh to test = finished creative that never ran on Meta — filter by page, product, size and format, open a quick view, download.',
+          '“Open AfterLife” opens it full screen in its own tab.',
+          'Downloads are logged in AfterLife under your name.',
+        ]},
+        { type: 'tips', items: ['If it says “This link expired”, click Reload — it opens a fresh session.'] },
+      ],
+    },
+    {
+      id: 'growth-productions', icon: '🎞️', label: 'TV Productions & TV Library',
+      summary: 'What’s being made and when · every commercial’s final files.',
+      keywords: ['productions', 'tv', 'timeline', 'shoot', 'delivery', 'on air', 'library', 'commercials', 'masters'],
+      content: [
+        { type: 'guide', title: 'TV Productions', steps: [
+          'Every production: stage, product, type, producer, planned dates, shoot days, delivery and on-air.',
+          'Timeline (months) or List — on your phone it opens as a list.',
+          'No budgets or payments are shown to the growth team.',
+        ]},
+        { type: 'guide', title: 'TV Library', steps: [
+          'Every TV commercial’s final files — pick a product, narrow by market, length or what’s on air, then click a market to download.',
+        ]},
+      ],
+    },
+  ],
+};
+
 const CATEGORIES = [
+  GROWTH_CATEGORY,
   {
     id: 'getting-started',
     label: 'Getting Started',
@@ -556,13 +705,18 @@ export default function Manual() {
   const [query, setQuery] = useState('');
   const [expandedSection, setExpandedSection] = useState(null);
 
-  const isAdmin = user?.role === 'admin';
+  const role = String(user?.role || '').toLowerCase();
+  const isAdmin = role === 'admin';
   const isParticle = brand?.id === 'particle' || brand?.name?.toLowerCase().includes('particle');
-  const isAccounting = user?.role === 'accounting';
+  const isAccounting = role === 'accounting';
+  const isGrowth = role === 'growth';
 
   const visibleCategories = useMemo(() => {
     return CATEGORIES
       .filter(cat => {
+        // Growth team: their own section only; admins see it too (to know what the team reads)
+        if (isGrowth) return !!cat.growthOnly;
+        if (cat.growthOnly && !isAdmin) return false;
         if (cat.adminOnly && !isAdmin) return false;
         if (cat.hideFor?.includes('accounting') && isAccounting) return false;
         return true;
@@ -572,7 +726,7 @@ export default function Manual() {
         sections: cat.sections.filter(sec => !sec.particleOnly || isParticle),
       }))
       .filter(cat => cat.sections.length > 0);
-  }, [isAdmin, isParticle, isAccounting]);
+  }, [isAdmin, isParticle, isAccounting, isGrowth]);
 
   const filteredCategories = useMemo(() => {
     if (!query.trim()) return visibleCategories;
@@ -598,23 +752,23 @@ export default function Manual() {
 
   return (
     <div className="flex flex-col h-full" style={{ minHeight: 0 }}>
-      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 shrink-0">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-700 shrink-0">
         <div className="flex items-center gap-2.5">
           <BookOpen size={20} style={{ color: 'var(--brand-primary)' }} />
           <h1 className="text-lg font-black" style={{ color: 'var(--brand-primary)' }}>CP Panel Manual</h1>
           <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-500">v2.1</span>
         </div>
-        <div className="relative w-72">
+        <div className="relative w-full sm:w-72">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input type="text" placeholder="Search docs..." value={query}
             onChange={e => { setQuery(e.target.value); setExpandedSection(null); }}
-            className="brand-input pl-9 pr-8 py-1.5 text-sm w-full" />
+            className="brand-input pl-9 pr-8 py-1.5 text-sm w-full" style={{ paddingLeft: 34 }} />
           {query && <button onClick={() => { setQuery(''); setExpandedSection(null); }} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={14} /></button>}
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-4xl mx-auto px-6 py-6 space-y-8">
+        <div className="max-w-4xl mx-auto px-3 sm:px-6 py-6 space-y-8">
           {!query && !expandedSection && (
             <div className="text-center py-2">
               <p className="text-sm text-gray-400 dark:text-gray-500">{totalSections} topics across {filteredCategories.length} categories</p>

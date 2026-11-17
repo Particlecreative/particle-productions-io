@@ -84,3 +84,9 @@ html:not(.dark) .md .md-verdict.amber { background: rgba(217, 119, 6, 0.06); bor
 html:not(.dark) .md .md-verdict.red { background: rgba(225, 29, 72, 0.05); border-color: rgba(225, 29, 72, 0.3); }
 html:not(.dark) .md .md-actionbar { background: rgba(255, 255, 255, 0.94); }
 html:not(.dark) .md .md-action .md-action-foot { color: #2b35e0; }
+
+/* phones (17 Nov 2026): tighter tabs, and a fade so it's clear the row scrolls */
+@media (max-width: 640px) {
+  .md .md-tabs { -webkit-mask-image: linear-gradient(90deg, #000 82%, transparent); mask-image: linear-gradient(90deg, #000 82%, transparent); }
+  .md .md-tabs button { padding: 10px 10px 11px; font-size: 13.5px; gap: 6px; }
+}

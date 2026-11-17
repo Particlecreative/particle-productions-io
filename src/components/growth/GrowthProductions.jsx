@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Search, Loader2, AlertTriangle, ChevronLeft, ChevronRight, Film, Clapperboard, Tv } from 'lucide-react';
 import { apiGet } from '../../lib/apiClient';
+import { getProductions } from '../../lib/dataService';
 import { useBrand } from '../../context/BrandContext';
 import { getListItemColor } from '../../lib/listService';
 
@@ -23,7 +24,8 @@ export default function GrowthProductions() {
   const [q, setQ] = useState('');
   const [stage, setStage] = useState('');
   const [showDone, setShowDone] = useState(false);
-  const [view, setView] = useState('timeline');
+  // phones open as a list of cards; the month timeline scrolls sideways there
+  const [view, setView] = useState(() => (typeof window !== 'undefined' && window.innerWidth < 640 ? 'list' : 'timeline'));
   const today = todayIL();
   const [from, setFrom] = useState(() => monthStart(today, -1));
   const months = 6;
@@ -32,7 +34,9 @@ export default function GrowthProductions() {
   useEffect(() => {
     let on = true;
     setRows(null); setError(null);
-    apiGet(`/productions?brand_id=${encodeURIComponent(brandId)}`).then(r => on && setRows(Array.isArray(r) ? r : [])).catch(e => on && setError(e.message));
+    // local dev has no API — the dataService fixtures stand in (the server sends Growth these fields only)
+    const load = import.meta.env.DEV ? Promise.resolve(getProductions(brandId)) : apiGet(`/productions?brand_id=${encodeURIComponent(brandId)}`);
+    load.then(r => on && setRows(Array.isArray(r) ? r : [])).catch(e => on && setError(e.message));
     return () => { on = false; };
   }, [brandId]);
 
@@ -81,7 +85,8 @@ export default function GrowthProductions() {
       {!rows && !error && <div className="py-20 text-center text-gray-400"><Loader2 className="inline animate-spin" /></div>}
 
       {rows && view === 'timeline' && (
-        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-2xl border border-gray-200 overflow-x-auto">
+         <div className="min-w-[760px]">
           <div className="grid border-b border-gray-100" style={{ gridTemplateColumns: 'minmax(180px, 280px) 1fr' }}>
             <div className="px-4 py-2 flex items-center gap-1">
               <button type="button" onClick={() => setFrom(monthStart(from, -1))} className="p-1 rounded-lg hover:bg-gray-100 text-gray-500" aria-label="Earlier"><ChevronLeft size={16} /></button>
@@ -128,11 +133,34 @@ export default function GrowthProductions() {
             <span className="flex items-center gap-1.5"><span className="w-0 h-0" style={{ borderLeft: '5px solid transparent', borderRight: '5px solid transparent', borderBottom: '8px solid #e2445c' }} /> On air</span>
             <span className="flex items-center gap-1.5"><span className="w-px h-3 bg-[#0808f8]/60" /> Today</span>
           </div>
+         </div>
         </div>
       )}
 
       {rows && view === 'list' && (
-        <div className="bg-white rounded-2xl border border-gray-200 overflow-x-auto">
+        <div className="sm:hidden flex flex-col gap-2">
+          {!list.length && <div className="py-10 text-center text-sm text-gray-400 bg-white rounded-2xl border border-gray-200">No productions match.</div>}
+          {list.map(p => (
+            <div key={p.id} className="bg-white rounded-2xl border border-gray-200 px-4 py-3">
+              <div className="flex items-start gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="font-semibold leading-snug" style={{ color: NAVY }}>{p.project_name}</div>
+                  <div className="text-[11px] text-gray-400 mt-0.5">{p.id}{p.production_type ? ` · ${p.production_type}` : ''}{p.producer ? ` · ${p.producer}` : ''}</div>
+                </div>
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold whitespace-nowrap px-2 py-0.5 rounded-full" style={{ color: stageColor(p.stage), background: `${stageColor(p.stage)}1f` }}><span className="w-1.5 h-1.5 rounded-full" style={{ background: stageColor(p.stage) }} />{p.stage}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1 mt-2 text-[12px] text-gray-600">
+                <span><span className="text-gray-400">Product</span> {(Array.isArray(p.product_type) ? p.product_type : [p.product_type]).filter(Boolean).join(', ') || '—'}</span>
+                <span><span className="text-gray-400">Planned</span> {fmt(day(p.planned_start))} → {fmt(day(p.planned_end))}</span>
+                <span><span className="text-gray-400">Shoot</span> {shootDays(p).map(fmt).join(', ') || '—'}</span>
+                <span><span className="text-gray-400">Delivery</span> {fmt(day(p.delivery_date))} · <span className="text-gray-400">Air</span> {fmt(day(p.air_date))}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {rows && view === 'list' && (
+        <div className="hidden sm:block bg-white rounded-2xl border border-gray-200 overflow-x-auto">
           <table className="w-full text-sm">
             <thead><tr className="text-left text-[11px] font-semibold uppercase tracking-wider text-gray-400 border-b border-gray-100">
               {['Production', 'Stage', 'Product', 'Type', 'Producer', 'Planned', 'Shoot', 'Delivery / on air'].map(h => <th key={h} className="px-4 py-2.5 font-semibold whitespace-nowrap">{h}</th>)}

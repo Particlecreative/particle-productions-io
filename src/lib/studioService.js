@@ -46,6 +46,12 @@ export const studioApi = {
   dashboard: async ({ from, to, force = false, lite = false }) => (LIVE ? call(`/dashboard?from=${from}&to=${to}${force ? '&force=1' : ''}${lite ? '&lite=1' : ''}`) : (await fx()).studioFixture({ from, to })),
   /** Every Video + Design ticket that has a Campaign (Campaign Tracker) */
   campaigns: async ({ force = false } = {}) => (LIVE ? call(`/campaigns${force ? '?force=1' : ''}`) : (await fx()).fixtureCampaigns()),
+  /** Creative Studio → My requests: the tickets the signed-in person asked for */
+  myRequests: async ({ force = false } = {}) => (LIVE ? call(`/my-requests${force ? '?force=1' : ''}`) : (async () => {
+    const d = (await fx()).fixtureCampaigns();
+    const me = d.items[0]?.requested_by?.[0] || null;
+    return { me: me ? { id: me, source: 'email', name: d.requesters?.[me]?.name || 'You' } : null, items: d.items.filter(it => it.requested_by.includes(me)), people: d.people, boards: d.boards, warnings: [], generated_at: d.generated_at, today: d.today };
+  })()),
   /** Every campaign label → its group (for the Workload stats) */
   campaignGroupMap: async () => (LIVE ? call('/campaign-groups') : (await fx()).fixtureCampaigns().campaign_groups),
   /** Campaign groups: { campaign, group|null } · { add: { name } } · { rename: { key, name } } */

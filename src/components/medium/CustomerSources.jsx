@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Loader2, RefreshCw, KeyRound, ChevronDown, ClipboardPaste, TrendingUp, TrendingDown } from 'lucide-react';
 import { mediumApi } from '../../lib/mediumService';
+import { useAuth } from '../../context/AuthContext';
 import { relTime } from './util';
 
 export function SurveysCard({ isAdmin, notify }) {
+  const { isGrowth } = useAuth();   // Growth team: reads it, doesn't trigger syncs
   const [st, setSt] = useState(null);
   const [key, setKey] = useState('');
   const [busy, setBusy] = useState(null);
@@ -30,7 +32,7 @@ export function SurveysCard({ isAdmin, notify }) {
           <h3 className="md-h2">📊 What customers tell us — on-site surveys</h3>
           <p className="md-sub mt-1 max-w-[700px]">The answers from PFM Surveys, read every morning. Medium uses them to pick the pain point, the angle and the customers’ own words — and a brief that leans on a survey shows the numbers (“34% of 1,240 Face Cream visitors said…”), in Medium and on the Monday ticket.</p>
         </div>
-        {st?.connected && <button type="button" className="trk-btn !py-1.5" onClick={sync} disabled={busy === 'sync'}>{busy === 'sync' ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Read now</button>}
+        {st?.connected && !isGrowth && <button type="button" className="trk-btn !py-1.5" onClick={sync} disabled={busy === 'sync'}>{busy === 'sync' ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Read now</button>}
       </div>
       {!st ? <div className="py-6 text-center trk-muted"><Loader2 className="inline animate-spin" size={16} /></div> : (
         <>
@@ -91,6 +93,7 @@ export function SurveysCard({ isAdmin, notify }) {
 }
 
 export function BuyerSignalCard({ notify }) {
+  const { isGrowth } = useAuth();   // Growth team: sees who's buying, the studio pastes the email
   const [weeks, setWeeks] = useState(null);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
@@ -129,10 +132,10 @@ export function BuyerSignalCard({ notify }) {
           {d.notable_total ? <div className="mt-2 text-[12.5px] trk-muted">{d.notable_total} notable buyers{d.types?.length ? ` — ${d.types.map(x => `${x.type} ${x.count}`).join(' · ')}` : ''}</div> : null}
         </div>
       )}
-      <form className="mt-4 grid gap-2" onSubmit={add}>
+      {!isGrowth && <form className="mt-4 grid gap-2" onSubmit={add}>
         <textarea className="trk-input min-h-[90px] text-[12.5px]" value={text} onChange={(e) => setText(e.target.value)} placeholder="Open the email in Gmail → select all (⌘A) → copy → paste here" aria-label="OuterSignal email" />
         <button type="submit" className="trk-btn primary !py-1.5 justify-self-start" disabled={busy || text.trim().length < 200}>{busy ? <Loader2 size={13} className="animate-spin" /> : <ClipboardPaste size={13} />} Read this week’s email</button>
-      </form>
+      </form>}
       {weeks?.length > 1 && <div className="mt-3 text-[12px] trk-dim">{weeks.length} weeks kept · Medium uses the newest one (up to 3 weeks old)</div>}
     </div>
   );

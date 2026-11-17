@@ -16,7 +16,7 @@ export default function AppShell({ children }) {
         style={{ marginLeft: 0 }}
       >
         <Header onMenuToggle={() => setSidebarOpen(o => !o)} sidebarOpen={sidebarOpen} />
-        <main className="flex-1 overflow-auto p-6">
+        <main className="flex-1 overflow-auto p-1 sm:p-6">
           {children}
         </main>
       </div>

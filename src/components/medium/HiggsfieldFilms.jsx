@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2, RefreshCw, Clapperboard, Minus, Plus, Sparkles, CalendarClock } from 'lucide-react';
 import { mediumApi } from '../../lib/mediumService';
+import { useAuth } from '../../context/AuthContext';
 import { money, relTime } from './util';
 import { BriefRow } from './BriefItems';
 
@@ -34,6 +35,7 @@ function CardTile({ card, on, fresh, onPick }) {
  * writes the day's brief(s) on its own (the switch at the bottom).
  */
 export default function HiggsfieldFilms({ notify, onOpen, onQueued, isAdmin }) {
+  const { isGrowth } = useAuth();   // Growth team writes dramas; re-reading Ads Studio is the studio's
   const [ov, setOv] = useState(null);
   const [busy, setBusy] = useState(null);
   const [form, setForm] = useState({ brand: 'Particle', product_key: '', look: 'realistic', card_id: '', length: 60, count: 1, note: '' });
@@ -105,9 +107,9 @@ export default function HiggsfieldFilms({ notify, onOpen, onQueued, isAdmin }) {
           </div>
           <div className="text-right">
             <div className="text-[12.5px] trk-muted">{catalog ? `Ads Studio read ${relTime(ov.read_at)} · ${catalog.cards.length} story cards · ${products.length} products` : 'Ads Studio not read yet'}</div>
-            <button type="button" className="trk-btn mt-2" onClick={refresh} disabled={busy === 'refresh' || !ov.connected}>
+            {!isGrowth && <button type="button" className="trk-btn mt-2" onClick={refresh} disabled={busy === 'refresh' || !ov.connected}>
               {busy === 'refresh' ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Read Ads Studio now
-            </button>
+            </button>}
           </div>
         </div>
         {!ov.connected && <p className="mt-3 text-[14px]" style={{ color: 'var(--trk-amber)' }}>Higgsfield isn’t connected — an admin connects it in Settings → Integrations → Higgsfield.</p>}

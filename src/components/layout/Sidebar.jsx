@@ -4,7 +4,7 @@ import {
   LayoutDashboard, DollarSign, BookOpen, Settings, Users, ChevronLeft, ChevronRight,
   History, FileText, FileSignature, Clapperboard, Users2, GripVertical,
   GanttChartSquare, Check, Star, Sun, Moon, Grid3x3, X as XIcon, Scroll, CheckSquare, Presentation, Radar, Library, Landmark, SpellCheck, Sparkles,
-  EyeOff, Plus, Rocket, Activity,
+  EyeOff, Plus, Rocket, Activity, Megaphone, Smartphone, Tv,
 } from 'lucide-react';
 import {
   DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors,
@@ -23,7 +23,14 @@ import { useNotifications } from '../../context/NotificationsContext';
 import clsx from 'clsx';
 
 const DEFAULT_NAV_ITEMS = [
-  { to: '/growth',         icon: Rocket,           label: 'Growth Studio', growth: true, growthOnly: true, accountingHide: true, studioHide: true },
+  // Growth team (17 Nov 2026): each page its own entry — only they see these (growthOnly)
+  { to: '/creative-studio', icon: Rocket,           label: 'Creative Studio', growth: true, growthOnly: true },
+  { to: '/medium',          icon: Sparkles,         label: 'Briefs Creator',  sub: 'Medium',              growth: true, growthOnly: true },
+  { to: '/new-ticket',      icon: Plus,             label: 'New ticket',                                  growth: true, growthOnly: true },
+  { to: '/campaigns',       icon: Megaphone,        label: 'Campaign Tracker',                            growth: true, growthOnly: true },
+  { to: '/ads-library',     icon: Smartphone,       label: 'Ads Library',     sub: 'powered by AfterLife', growth: true, growthOnly: true },
+  { to: '/tv-productions',  icon: Clapperboard,     label: 'TV Productions',                              growth: true, growthOnly: true },
+  { to: '/tv-library',      icon: Tv,               label: 'TV Library',                                  growth: true, growthOnly: true },
   { to: '/',               icon: LayoutDashboard,  label: 'Productions', exact: true, accountingHide: true },
   { to: '/tracker',        icon: Radar,            label: 'Tracker',     accountingHide: true, studioHide: true, editorOnly: true },
   { to: '/tasks',          icon: CheckSquare,      label: 'Tasks',       accountingHide: true },
@@ -163,8 +170,8 @@ export default function Sidebar({ open, onToggle }) {
   const isGrowth = user?.role === 'Growth';
   // Pages this person is allowed to see (role, brand, group access)…
   const allowedItems = navItems
-    // Growth team: one place — the Growth Studio (+ Manual). Admins see it too, to check what the team sees.
-    .filter(i => (isGrowth ? (i.growth || i.to === '/manual') : (!i.growthOnly || isAdmin)))
+    // Growth team: their own entries (+ Manual); nobody else sees those entries
+    .filter(i => (isGrowth ? (i.growth || i.to === '/manual') : !i.growthOnly))
     .filter(i => !isAccounting || !i.accountingHide)
     .filter(i => !isStudio || !i.studioHide)
     .filter(i => !i.particleOnly || brand.id === 'particle')
@@ -384,7 +391,21 @@ export default function Sidebar({ open, onToggle }) {
         )}
       </div>
 
-      {/* Mobile Bottom Nav */}
+      {/* Mobile Bottom Nav — the Growth team gets their own pages (17 Nov 2026) */}
+      {isGrowth ? (
+        <div className="mobile-nav">
+          {[['/creative-studio', Rocket, 'Studio'], ['/medium', Sparkles, 'Briefs'], ['/new-ticket', Plus, 'Ticket'], ['/campaigns', Megaphone, 'Campaigns']].map(([to, Icon, label]) => (
+            <NavLink key={to} to={to} className={({ isActive }) => clsx('sidebar-link flex-col', isActive && 'active')}>
+              <Icon size={18} />
+              <span>{label}</span>
+            </NavLink>
+          ))}
+          <button onClick={() => setShowMoreMenu(true)} className="sidebar-link flex-col">
+            <Grid3x3 size={18} />
+            <span>More</span>
+          </button>
+        </div>
+      ) : (
       <div className="mobile-nav">
         {!isAccounting && (
           <button onClick={() => navigate('/')} className="sidebar-link flex-col">
@@ -410,6 +431,7 @@ export default function Sidebar({ open, onToggle }) {
           <span>More</span>
         </button>
       </div>
+      )}
 
       {/* Mobile "More" overlay */}
       {showMoreMenu && (
@@ -428,7 +450,13 @@ export default function Sidebar({ open, onToggle }) {
               </button>
             </div>
             <div className="grid grid-cols-3 gap-3">
-              {[
+              {(isGrowth ? [
+                { to: '/ads-library',    icon: Smartphone,   label: 'Ads Library' },
+                { to: '/tv-productions', icon: Clapperboard, label: 'TV Productions' },
+                { to: '/tv-library',     icon: Tv,           label: 'TV Library' },
+                { to: '/welcome',        icon: CheckSquare,  label: 'My Monday' },
+                { to: '/manual',         icon: BookOpen,     label: 'Manual' },
+              ] : [
                 ...(isEditor && !isAccounting ? [{ to: '/tracker', icon: Radar, label: 'Tracker' }] : []),
                 { to: '/tasks',          icon: CheckSquare,      label: 'Tasks' },
                 { to: '/library',        icon: Library,          label: 'Library' },
@@ -443,8 +471,9 @@ export default function Sidebar({ open, onToggle }) {
                 ...(isAdmin ? [
                   { to: '/settings', icon: Settings, label: 'Settings' },
                   { to: '/users',    icon: Users,    label: 'Users' },
+                  { to: '/activity', icon: Activity, label: 'Activity' },
                 ] : []),
-              ].filter(({ to }) => !hidden.includes(to)).map(({ to, icon: Icon, label }) => (
+              ]).filter(({ to }) => !hidden.includes(to)).map(({ to, icon: Icon, label }) => (
                 <button
                   key={to}
                   onClick={() => { navigate(to); setShowMoreMenu(false); }}
@@ -474,7 +503,7 @@ export default function Sidebar({ open, onToggle }) {
   );
 }
 
-function SortableNavItem({ to, icon: Icon, label, badge, badgeColor, onHide }) {
+function SortableNavItem({ to, icon: Icon, label, sub, badge, badgeColor, onHide }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: to });
 
   return (
@@ -508,7 +537,9 @@ function SortableNavItem({ to, icon: Icon, label, badge, badgeColor, onHide }) {
             </span>
           )}
         </div>
-        <span className="truncate">{label}</span>
+        {sub
+          ? <span className="min-w-0 flex flex-col leading-tight"><span className="truncate">{label}</span><span className="truncate text-[10px] font-normal opacity-55">{sub}</span></span>
+          : <span className="truncate">{label}</span>}
       </NavLink>
       {onHide && (
         <button
