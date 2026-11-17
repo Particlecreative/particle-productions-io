@@ -54,7 +54,8 @@ function retryDelayFromError(err) {
  * Run a GraphQL query against Monday.
  * @returns {Promise<object>} data
  */
-async function mondayQuery(query, variables = {}, { retries = 3, timeoutMs = 30000, deadline = null, token: tokenOverride = null } = {}) {
+// apiVersion: one call on a newer Monday API than the rest (e.g. create_update's mentions_list exists from 2025-07 only)
+async function mondayQuery(query, variables = {}, { retries = 3, timeoutMs = 30000, deadline = null, token: tokenOverride = null, apiVersion = null } = {}) {
   // tokenOverride: Captain Caption posts as its own Monday user (CAPTAIN_MONDAY_TOKEN); everything else uses the CP token
   const token = tokenOverride || process.env.MONDAY_API_TOKEN;
   if (!token) throw new MondayError('Monday.com API token not configured (MONDAY_API_TOKEN)', { code: 'NO_TOKEN' });
@@ -67,7 +68,7 @@ async function mondayQuery(query, variables = {}, { retries = 3, timeoutMs = 300
     try {
       res = await fetch(MONDAY_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: token, 'API-Version': API_VERSION() },
+        headers: { 'Content-Type': 'application/json', Authorization: token, 'API-Version': apiVersion || API_VERSION() },
         body: JSON.stringify({ query, variables }),
         signal: AbortSignal.timeout(timeoutMs),
       });

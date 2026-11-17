@@ -22,8 +22,25 @@ function ago(iso) {
 /** Text with clickable links. */
 function Linked({ text }) {
   return text.split(URL_RE).map((part, i) => (i % 2
-    ? <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-[#0808f8] hover:underline break-all">{part.length > 60 ? `${part.slice(0, 57)}…` : part}</a>
+    ? <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-[#0808f8] underline underline-offset-2 decoration-[#0808f8]/40 hover:decoration-[#0808f8] break-all">{part.length > 60 ? `${part.slice(0, 57)}…` : part}</a>
     : <Fragment key={i}>{part}</Fragment>));
+}
+
+/** An update as Monday wrote it: its links (a word like "Dropbox" that IS the link) and @mentions, visible as such. */
+function Rich({ u }) {
+  if (!u.rich?.length) return <Linked text={u.text} />;
+  return u.rich.map((seg, i) => {
+    if (seg.t === 'link') {
+      return (
+        <a key={i} href={seg.href} target="_blank" rel="noopener noreferrer" title={seg.href}
+          className="inline-flex items-baseline gap-0.5 font-semibold text-[#0808f8] underline underline-offset-2 decoration-[#0808f8]/40 hover:decoration-[#0808f8] break-all">
+          {seg.v.length > 60 ? `${seg.v.slice(0, 57)}…` : seg.v}<ExternalLink size={11} className="self-center flex-none" aria-hidden="true" />
+        </a>
+      );
+    }
+    if (seg.t === 'mention') return <span key={i} className="font-semibold text-[#0808f8] bg-[#0808f8]/[0.08] rounded px-1">{seg.v}</span>;
+    return <Linked key={i} text={seg.v} />;
+  });
 }
 
 function Update({ u, data, small }) {
@@ -36,7 +53,7 @@ function Update({ u, data, small }) {
       <div className="min-w-0 flex-1">
         <div className="text-xs"><b className="text-gray-900">{u.by?.name || person.name}</b> <span className="text-gray-400">{ago(u.at)}</span></div>
         <div className={`text-[13px] text-gray-700 whitespace-pre-wrap break-words mt-0.5 ${long && !open ? 'max-h-[9.5em] overflow-hidden relative' : ''}`}>
-          <Linked text={u.text} />
+          <Rich u={u} />
           {long && !open && <span className="absolute bottom-0 inset-x-0 h-8 bg-gradient-to-t from-white" />}
         </div>
         {long && <button type="button" onClick={() => setOpen(v => !v)} className="text-[11px] font-semibold text-[#0808f8] mt-0.5">{open ? 'Show less' : 'Show more'}</button>}

@@ -86,14 +86,56 @@ async function archiveTask(config, itemId) {
 
 const esc = (t) => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
+const ENT = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', rsquo: '’', lsquo: '‘', rdquo: '”', ldquo: '“', ndash: '–', mdash: '—', hellip: '…' };
+const decodeHtml = (t) => String(t || '')
+  .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+  .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+  .replace(/&([a-z]+);/gi, (m, n) => (ENT[n.toLowerCase()] ?? m));
+const htmlText = (h) => decodeHtml(String(h || '')
+  .replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|li|h[1-6]|blockquote|tr)>/gi, '\n').replace(/<li\b[^>]*>/gi, '• ').replace(/<[^>]+>/g, ''));
+
+/**
+ * An update's HTML → what the panel shows: text, real links (text_body drops the address — "Uploaded on Dropbox folder"
+ * lost its link) and @mention chips. [{ t: 'text', v } | { t: 'link', v, href } | { t: 'mention', v }]. Pure — tested.
+ */
+function richOf(html) {
+  const src = String(html || '');
+  if (!src.trim()) return null;
+  const out = [];
+  const push = (seg) => {
+    const last = out[out.length - 1];
+    if (seg.t === 'text' && last?.t === 'text') last.v += seg.v; else out.push(seg);
+  };
+  const re = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
+  let at = 0, m;
+  while ((m = re.exec(src))) {
+    if (m.index > at) push({ t: 'text', v: htmlText(src.slice(at, m.index)) });
+    const attrs = m[1];
+    const label = htmlText(m[2]).trim();
+    const href = decodeHtml((attrs.match(/\bhref\s*=\s*"([^"]*)"/i) || attrs.match(/\bhref\s*=\s*'([^']*)'/i) || [])[1] || '');
+    if (/user_mention|data-mention-type/i.test(attrs) || /^@/.test(label)) push({ t: 'mention', v: label.startsWith('@') ? label : `@${label}` });
+    else if (/^https?:\/\//i.test(href)) push({ t: 'link', v: label || href, href });
+    else if (label) push({ t: 'text', v: label });
+    at = re.lastIndex;
+  }
+  if (at < src.length) push({ t: 'text', v: htmlText(src.slice(at)) });
+  // tidy the line breaks Monday's <p> blocks leave behind
+  for (const seg of out) if (seg.t === 'text') seg.v = seg.v.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n');
+  while (out.length && out[0].t === 'text' && !out[0].v.trim()) out.shift();
+  if (out[0]?.t === 'text') out[0].v = out[0].v.replace(/^\s+/, '');
+  const last = out[out.length - 1];
+  if (last?.t === 'text') last.v = last.v.replace(/\s+$/, '');
+  return out.some(seg => seg.t !== 'text') ? out : null;   // plain text needs no segments
+}
+
 /** A task's latest updates (comments), newest first. */
 async function getUpdates(config, itemId, { limit = 10 } = {}) {
   await boardOf(config, itemId);
   const d = await mondayQuery(
-    `query ($ids: [ID!], $limit: Int!) { items(ids: $ids) { updates(limit: $limit) { id text_body created_at creator { id name } replies { id text_body created_at creator { id name } } } } }`,
+    `query ($ids: [ID!], $limit: Int!) { items(ids: $ids) { updates(limit: $limit) { id body text_body created_at creator { id name } replies { id body text_body created_at creator { id name } } } } }`,
     { ids: [String(itemId)], limit }
   );
-  const one = (u) => ({ id: String(u.id), text: u.text_body || '', at: u.created_at, by: u.creator ? { id: String(u.creator.id), name: u.creator.name } : null });
+  const one = (u) => ({ id: String(u.id), text: u.text_body || '', rich: richOf(u.body), at: u.created_at, by: u.creator ? { id: String(u.creator.id), name: u.creator.name } : null });
   return (d?.items?.[0]?.updates || []).map(u => ({ ...one(u), replies: (u.replies || []).map(one) }));
 }
 
@@ -126,6 +168,8 @@ function updateHtml(body, author, mentions = []) {
   return { html, tags };
 }
 
+const MENTIONS_API_VERSION = '2025-10';
+
 async function postUpdate(config, itemId, text, author, mentions = []) {
   const body = String(text || '').trim();
   if (!body) throw bad('Write something first');
@@ -135,7 +179,8 @@ async function postUpdate(config, itemId, text, author, mentions = []) {
   const vars = { item: String(itemId), body: html };
   if (tags.length) {
     vars.mentions = tags.map(t => ({ id: t.id, type: 'User' }));
-    const r = await mondayQuery('mutation ($item: ID!, $body: String!, $mentions: [UpdateMention]) { create_update(item_id: $item, body: $body, mentions_list: $mentions) { id } }', vars, { retries: 0 });
+    // mentions_list only exists from API 2025-07 (CP runs on 2024-10, where tagging failed: "Unknown argument") — 17 Nov 2026
+    const r = await mondayQuery('mutation ($item: ID!, $body: String!, $mentions: [UpdateMention]) { create_update(item_id: $item, body: $body, mentions_list: $mentions) { id } }', vars, { retries: 0, apiVersion: MENTIONS_API_VERSION });
     return { id: String(r?.create_update?.id || ''), mentioned: tags.map(t => t.id) };
   }
   const r = await mondayQuery('mutation ($item: ID!, $body: String!) { create_update(item_id: $item, body: $body) { id } }', vars, { retries: 0 });
@@ -163,4 +208,4 @@ async function addUpdate(itemId, body, { token = null } = {}) {
 
 const updateSchedule = updateTask; // older name
 
-module.exports = { updateHtml, updateTask, updateSchedule, createItem, addUpdate, getUpdates, postUpdate, archiveTask, boardsFor, boardOf };
+module.exports = { updateHtml, richOf, updateTask, updateSchedule, createItem, addUpdate, getUpdates, postUpdate, archiveTask, boardsFor, boardOf };
