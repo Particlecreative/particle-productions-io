@@ -275,16 +275,30 @@ async function planView(product, airedCodes = {}) {
       creatives[k].cost += (l.cost || 0) / l.creatives.length; creatives[k].spots += (l.spots || 0) / l.creatives.length;
     }
   }
-  // which booked creatives already aired (by name, against the RBD's creative names) — the rest are coming up
-  const airedNames = Object.values(airedCodes).map(c => ({ code: c.code, n: norm(c.name), last: c.week || c.day ? true : false }));
+  // which booked creatives already aired (by name, against the RBD's creative names) — the rest are coming up.
+  // The plan says 'Phil Simms "Turning 70"', the RBD says 'Turning 70': the shorter name's words inside the longer one
+  // count (plurals folded); the best overlap wins.
+  const words = (x) => norm(x).replace(/\b(w|with|the|a|an|and|of|for|to|v\d+|\d{2,3})\b/g, ' ').split(' ').filter(w => w.length > 1).map(w => w.replace(/s$/, ''));
+  const aired = Object.values(airedCodes).map(c => ({ code: c.code, w: new Set(words(c.name)) })).filter(c => c.w.size);
+  const matchOf = (name) => {
+    const pw = new Set(words(name));
+    let best = null;
+    for (const a of aired) {
+      const common = [...pw].filter(w => a.w.has(w)).length;
+      const small = Math.min(pw.size, a.w.size);
+      if (!small || common < small) continue;                  // every word of the shorter name must be in the other
+      const score = common * 10 - Math.abs(pw.size - a.w.size);
+      if (!best || score > best.score) best = { code: a.code, score };
+    }
+    return best?.code || null;
+  };
   const total = lines.reduce((a, l) => ({ spots: a.spots + (l.spots || 0), cost: a.cost + (l.cost || 0) }), { spots: 0, cost: 0 });
   return {
     week: p.week, received_at: p.received_at, lines: lines.length, unassigned, total,
     markets: Object.values(markets).sort((a, b) => b.cost - a.cost),
     creatives: Object.values(creatives).map(c => {
-      const words = norm(c.name).split(' ').filter(w => w.length > 2);
-      const hit = airedNames.find(a => words.length && words.every(w => a.n.includes(w)));
-      return { name: c.name, lines: c.lines, stations: c.stations.size, cost: Math.round(c.cost), spots: Math.round(c.spots), share: total.cost ? c.cost / total.cost : null, code: hit?.code || null, aired: !!hit };
+      const code = matchOf(c.name);
+      return { name: c.name, lines: c.lines, stations: c.stations.size, cost: Math.round(c.cost), spots: Math.round(c.spots), share: total.cost ? c.cost / total.cost : null, code, aired: !!code };
     }).sort((a, b) => b.cost - a.cost),
   };
 }

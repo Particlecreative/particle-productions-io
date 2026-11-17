@@ -27,7 +27,8 @@ const { enqueue } = require('./queue');
 const { logEvent } = require('./log');
 const captainMonday = require('./monday');
 
-const DEFAULT = { mode: 'off', first_clean_to: 'Approved', fixes_status: 'Fixes Round', approved_status: 'Approved', max_rounds: 3, start_delay_min: 3, wait_new_version_min: 60, test_items: [] };
+// comment_only_brands (Tomer, 17 Nov 2026): these brands get the review and the comments, never a status move
+const DEFAULT = { mode: 'off', first_clean_to: 'Approved', fixes_status: 'Fixes Round', approved_status: 'Approved', max_rounds: 3, start_delay_min: 3, wait_new_version_min: 60, test_items: [], comment_only_brands: ['Ashford', 'Clearstep'] };
 const settingsOf = (cfg) => ({ ...DEFAULT, ...(cfg.autopilot || {}) });
 
 let ready = null;
@@ -207,6 +208,14 @@ async function review(payload) {
   const { mustFix, notes, counted } = await countsFor(results);
   const d = decide({ review: n, mustFix, notes, settings: s });
   const why = nothingNew && wasFixes && n > 1 ? `${d.why} — no new version was uploaded` : d.why;
+  // a comment-only brand: the comments are posted (by the check above); the status stays for a person to move
+  const brand = require('./brand').brandOf({ brand: item.brand, itemName: item.name, product: item.product }, cfg);
+  if ((s.comment_only_brands || []).some(b => String(b).toLowerCase() === String(brand?.name || '').toLowerCase())) {
+    const last = { at: new Date().toISOString(), from: item.status, to: null, would_move_to: d.to, must_fix: mustFix, notes, checks: counted, why, comment_only: brand.name };
+    await remember(item, discipline, { rounds: n, needs_person: true, last });
+    await logEvent({ ...base, kind: 'skip', message: `${item.name}: ${why} — comments posted; status left for a person (${brand.name} is comment-only)`, data: last, actor: 'Captain (autopilot)' });
+    return { review: n, to: null, would_move_to: d.to, comment_only: brand.name, must_fix: mustFix, notes };
+  }
   const last = { at: new Date().toISOString(), from: item.status, to: d.to, must_fix: mustFix, notes, checks: counted, why };
   if (d.to && !inList([d.to], item.status)) {
     try {

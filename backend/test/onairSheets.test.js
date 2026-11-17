@@ -80,3 +80,25 @@ test('Day / Week / Month ranges: the agency week starts on Monday', () => {
   assert.deepEqual(r.month, ['2026-11-01', '2026-11-15']);
   assert.deepEqual(r.month_prev, ['2026-10-01', '2026-10-31']);
 });
+
+test('Booked plan: plan names find their aired creative (longer names, plurals) — the rest are coming up', async () => {
+  // planView reads the DB; exercise its matching through a tiny stand-in plan
+  const db = require('../src/db');
+  const orig = db.query;
+  db.query = async (sql) => (/onair_tv_plan/.test(sql) && /SELECT/.test(sql)
+    ? { rows: [{ week: '2026-11-16', received_at: null, lines: [
+      { market: 'National Cable', station_name: 'FOX', cost: 100, spots: 2, creatives: [{ name: 'Phil Simms "Turning 70"' }, { name: 'Dermatologist "The Truth"' }] },
+      { market: 'National Cable', station_name: 'CNN', cost: 100, spots: 2, creatives: [{ name: 'Most Men Testimonial' }, { name: 'Brand New Spot' }] },
+    ] }] } : { rows: [] });
+  try {
+    const p = await S.planView('Face Cream', {
+      A: { code: 'PM1PS70H', name: 'Turning 70' }, B: { code: 'PM1TRUH', name: 'Truth' },
+      C: { code: 'PM1MMH', name: 'Most Men :60' }, D: { code: 'PM1MMTH', name: 'Most Men + Testimonials' },
+    });
+    const by = Object.fromEntries(p.creatives.map(c => [c.name, c.code]));
+    assert.equal(by['Phil Simms "Turning 70"'], 'PM1PS70H');
+    assert.equal(by['Dermatologist "The Truth"'], 'PM1TRUH');
+    assert.equal(by['Most Men Testimonial'], 'PM1MMTH');
+    assert.equal(by['Brand New Spot'], null);
+  } finally { db.query = orig; }
+});
