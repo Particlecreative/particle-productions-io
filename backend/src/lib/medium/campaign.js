@@ -109,16 +109,20 @@ async function backfill({ dry = false, only = null } = {}) {
     const { board_id: boardId, columns } = BOARDS[format];
     const labels = (await boardLabels(boardId))[columns.campaign] || [];
     const c = campaignFor(b, { labels });
-    const d = await monday.mondayQuery('query ($i: [ID!]) { items(ids: $i) { id name column_values(ids: ["' + columns.campaign + '"]) { text } } }', { i: [String(b.monday_item_id)] });
+    const d = await monday.mondayQuery('query ($i: [ID!]) { items(ids: $i) { id name state column_values(ids: ["' + columns.campaign + '"]) { text } } }', { i: [String(b.monday_item_id)] });
     const item = d?.items?.[0];
     const now = item?.column_values?.[0]?.text || '';
     const row = { brief: b.id, item: b.monday_item_id, name: item?.name || b.ticket_name, campaign: c.name, why: c.why, had: now || null, created_label: !labels.some(l => same(l, c.name)) };
     if (!item) { out.push({ ...row, result: 'ticket not found on Monday' }); continue; }
+    if (item.state && item.state !== 'active') { out.push({ ...row, result: `ticket is ${item.state} on Monday — skipped` }); continue; }
     if (now) { out.push({ ...row, result: 'already has a campaign — left alone' }); continue; }
     if (!dry) {
-      await monday.mondayQuery(`mutation ($i: ID!, $b: ID!, $c: String!, $v: String!) { change_simple_column_value(item_id: $i, board_id: $b, column_id: $c, value: $v, create_labels_if_missing: true) { id } }`,
-        { i: String(b.monday_item_id), b: String(boardId), c: columns.campaign, v: c.name });
-      await db.query(`UPDATE medium_briefs SET request = COALESCE(request, '{}'::jsonb) || jsonb_build_object('campaign', $2::text, 'campaign_by', 'Medium (filled in later)'), updated_at = NOW() WHERE id = $1`, [b.id, c.name]);
+      try {
+        await monday.mondayQuery(`mutation ($i: ID!, $b: ID!, $c: String!, $v: String!) { change_simple_column_value(item_id: $i, board_id: $b, column_id: $c, value: $v, create_labels_if_missing: true) { id } }`,
+          { i: String(b.monday_item_id), b: String(boardId), c: columns.campaign, v: c.name });
+        await db.query(`UPDATE medium_briefs SET request = COALESCE(request, '{}'::jsonb) || jsonb_build_object('campaign', $2::text, 'campaign_by', 'Medium (filled in later)'), updated_at = NOW() WHERE id = $1`, [b.id, c.name]);
+      } catch (e) { out.push({ ...row, result: `failed: ${e.message}` }); continue; }
+      labels.push(c.name);   // the label exists now — the next ticket doesn't create it again
     }
     out.push({ ...row, result: dry ? 'would set' : 'set' });
   }
