@@ -7,7 +7,7 @@ const PRODUCTS = [['Face Cream', '#579bfc'], ['Gravité', '#037f4c'], ['NeoRoot'
 const BRANDS = [['Particle', '#579bfc'], ['Particle', '#579bfc'], ['Particle', '#579bfc'], ['Ashford', '#fdab3d'], ['Clearstep', '#00c875'], ['Biomella', '#037f4c'], ['Levitas', '#9d50dd'], ['Blurr', '#a1e3f6']];
 const PEOPLE = [['101', 'Noa Peretz', 'video'], ['102', 'Itai Cohen', 'video'], ['103', 'Dana Mizrahi', 'video'], ['201', 'Tal Ben-Ami', 'design'], ['202', 'Lior Katz', 'design'], ['203', 'Shira Golan', 'design']];
 const REQ = [['301', 'Avi Levi'], ['302', 'Maya Ron'], ['303', 'Gil Adar'], ['304', 'Rina Sol']];
-const CAMPAIGNS = ['The Line Up', 'Heart Rate Test', 'The Hunt', 'Black Friday 2026', 'Creators Oct', 'Amazon UK'];
+const CAMPAIGNS = ['The Line Up', 'Heart Rate Test', 'Higgsfield Micro Dramas', 'Black Friday 2026', 'Creators Oct', 'Amazon UK', 'Skeptic Videos'];
 const PRODUCTIONS = [['PRD26-09', 'Particle Gravité The Heart Rate Test Campaign', 'Post'], ['PRD26-20', 'The Hunt', 'Production'], ['PRD26-18', 'The Math', 'Production'], ['PRD26-73', 'The Triple Threat', 'Production']];
 
 function sundayOf(s) { const d = new Date(`${s}T12:00:00Z`); return add(s, -d.getUTCDay()); }
@@ -106,6 +106,20 @@ export function fixtureCampaigns() {
     generated_at: d.generated_at, today, boards: { video: d.boards.video, design: d.boards.design }, people: d.people, requesters: d.requesters,
     // Own ids: the dashboard fixture reuses ids with different content per period
     items: d.items.map(it => ({ ...it, id: `9${it.id}`, campaigns: [it.campaign] })), warnings: [],
+    // what the server's campaign groups send (lib/studio/campaignGroups.js)
+    campaign_groups: {
+      groups: [
+        { key: 'higgsfield', name: 'Higgsfield Cinematic', icon: '🎬', color: '#7c3aed', about: 'AI story films the editor makes in Higgsfield' },
+        { key: 'img2video', name: 'Images into Videos', icon: '🖼️', color: '#0891b2', about: 'Stills brought to life, statics turned into videos' },
+        { key: 'holidays', name: 'Holidays & Sales', icon: '🎄', color: '#e2445c', about: 'Seasonal moments, sales and promos' },
+        { key: 'launches', name: 'Launches & Retail', icon: '🚀', color: '#ff7a1a', about: 'New products, new markets and retailers' },
+        { key: 'faces', name: 'Faces & Partners', icon: '🗣️', color: '#00a36c', about: 'Talent, experts, creators and partnerships' },
+        { key: 'tests', name: 'Tests & Other Brands', icon: '🧯', color: '#6b7280', about: 'Smoke tests and the sister brands' },
+        { key: 'concepts', name: 'Concept Families', icon: '🧪', color: '#0808f8', about: 'One idea across products' },
+        { key: 'evergreen', name: 'Evergreen', icon: '🌿', color: '#9aa1c7', about: 'Everything else' },
+      ],
+      of: { 'The Line Up': 'evergreen', 'Heart Rate Test': 'evergreen', 'Higgsfield Micro Dramas': 'higgsfield', 'Black Friday 2026': 'holidays', 'Creators Oct': 'faces', 'Amazon UK': 'launches', 'Skeptic Videos': 'concepts' },
+    },
   };
 }
 

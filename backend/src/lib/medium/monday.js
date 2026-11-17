@@ -15,6 +15,7 @@ const R = require('./references');
 const { BOARDS } = require('./config');
 const { composeBrief } = require('./style');
 const { productValues } = require('../studio/product');
+const C = require('./campaign');
 
 const VIDEO_TYPE = [[/higgsfield|drama/i, 'AI Project'], [/creator edit|footage|iteration|cut/i, 'Iterations/Cuts/Edits'], [/ai creator/i, 'AI Creator'], [/cgi|motion/i, 'Motion Design'], [/ugc|creator/i, 'UGC/Creator'], [/script/i, 'Script (<1 min)']];
 const LANE_NAME = { SFY: 'Science For You', GT: 'GT', WAC: 'WAC' };
@@ -47,21 +48,26 @@ async function boardLabels(boardId) {
   return v;
 }
 
-/** The ticket name, with the lane in it for magazine lanes (that's how the team filters — no Lane column). */
-function ticketName(b) {
-  const name = String(b.ticket_name || `${b.product} | Meta | Medium | ${b.fields?.hook || 'Brief'}`).slice(0, 255);
+/**
+ * The ticket name, with the lane in it for magazine lanes (that's how the team filters — no Lane column), and the
+ * campaign second when there is one — Lilian's "Product | Campaign | Meta | Name" (17 Nov 2026).
+ */
+function ticketName(b, campaign = null) {
+  let name = String(b.ticket_name || `${b.product} | Meta | Medium | ${b.fields?.hook || 'Brief'}`).slice(0, 255);
   const ln = LANE_NAME[b.lane];
-  if (!ln || name.toLowerCase().includes(ln.toLowerCase()) || name.toLowerCase().includes(String(b.lane).toLowerCase())) return name;
-  const parts = name.split('|').map(s => s.trim());
-  parts.splice(1, 0, ln);
-  return parts.join(' | ').slice(0, 255);
+  if (ln && !name.toLowerCase().includes(ln.toLowerCase()) && !name.toLowerCase().includes(String(b.lane).toLowerCase())) {
+    const parts = name.split('|').map(s => s.trim());
+    parts.splice(1, 0, ln);
+    name = parts.join(' | ').slice(0, 255);
+  }
+  return campaign ? C.withCampaign(name, campaign) : name;
 }
 
 /**
  * Column values for create_item (pure — tested). labels = boardLabels(); unknown labels are left out.
  * Returns { values, skipped: [what couldn't be set] }.
  */
-function columnValues(b, { labels = {}, requesterId = null } = {}) {
+function columnValues(b, { labels = {}, requesterId = null, campaign = null } = {}) {
   const f = b.fields || {};
   const format = b.format === 'design' ? 'design' : 'video';
   const cols = BOARDS[format].columns;
@@ -78,6 +84,13 @@ function columnValues(b, { labels = {}, requesterId = null } = {}) {
   status(cols.department, DEPARTMENT[format]);
   status(cols.brand, b.request?.brand || 'Particle');   // Brands — both boards (a film can be for Clearstep, Blurr…)
   status(cols.platform, 'Meta');
+  // Campaign (one label): Monday's spelling when the board has it; a new one is added right after the create
+  let campaignNew = null;
+  if (campaign && cols.campaign) {
+    const have = (labels[cols.campaign] || []).find(l => C.same(l, campaign));
+    if (have) values[cols.campaign] = { labels: [have] };
+    else campaignNew = campaign;
+  }
   const sizes = (f.sizes || []).filter(s => !labels[cols.ratio] || labels[cols.ratio].includes(s));
   if (sizes.length) values[cols.ratio] = { labels: sizes };
   if (requesterId) values[cols.requester] = { personsAndTeams: [{ id: Number(requesterId), kind: 'person' }] };
@@ -96,7 +109,7 @@ function columnValues(b, { labels = {}, requesterId = null } = {}) {
     const idx = val && typeof val === 'object' && 'label' in val ? labels.__index?.[col]?.[normLabel(val.label)] : undefined;
     if (idx != null) values[col] = { index: idx };
   }
-  return { values, skipped };
+  return { values, skipped, campaignNew };
 }
 
 /**
@@ -220,12 +233,21 @@ async function submitBrief(b, { approver, approverEmail = null, cfg = {} } = {})
   const boardId = BOARDS[format].board_id;
   const group = cfg.monday_groups?.[format] || 'new_group__1';   // "Form Requests" on both boards
   const [labels, requesterId] = await Promise.all([boardLabels(boardId), mondayUserId(approverEmail)]);
-  const { values, skipped } = columnValues(b, { labels, requesterId });
+  const campaign = C.campaignFor(b, { labels: labels[BOARDS[format].columns.campaign] || [] });
+  const { values, skipped, campaignNew } = columnValues(b, { labels, requesterId, campaign: campaign.name });
   const d = await mondayQuery(
     `mutation ($b: ID!, $g: String, $n: String!, $v: JSON) { create_item(board_id: $b, group_id: $g, item_name: $n, column_values: $v, create_labels_if_missing: false) { id } }`,
-    { b: boardId, g: group, n: ticketName(b), v: JSON.stringify(values) }, { timeoutMs: 60000 });
+    { b: boardId, g: group, n: ticketName(b, campaign.name), v: JSON.stringify(values) }, { timeoutMs: 60000 });
   const itemId = d?.create_item?.id;
   if (!itemId) throw new Error('Monday did not return the new item');
+  // A campaign the board doesn't have yet: added on this column only (every other column stays strict)
+  if (campaignNew) {
+    await mondayQuery(`mutation ($i: ID!, $b: ID!, $c: String!, $v: String!) { change_simple_column_value(item_id: $i, board_id: $b, column_id: $c, value: $v, create_labels_if_missing: true) { id } }`,
+      { i: String(itemId), b: String(boardId), c: BOARDS[format].columns.campaign, v: campaignNew })
+      .then(() => labelCache.delete(boardId))
+      .catch(e => skipped.push(`campaign “${campaignNew}”: ${e.message}`));
+  }
+  monday.clearCache('studio:');   // the Campaign Tracker shows it straight away
   // the reference first, so the update can say where it is
   const refs = await require('./templateRef').withTemplate(b, { upspringLink: cfg.upspring_link });
   const up = R.attachable(refs).length ? await attachReferences(itemId, format, refs) : null;
@@ -236,7 +258,9 @@ async function submitBrief(b, { approver, approverEmail = null, cfg = {} } = {})
     .catch(e => { skipped.push(`brief update: ${e.message}`); return null; });
   const references = up ? await up.finish(u?.create_update?.id || null) : { attached: [], failed: [] };
   if (references.failed.length) skipped.push(`reference: ${references.failed.join('; ')}`);
-  return { item_id: String(itemId), board_id: boardId, skipped, references };
+  return { item_id: String(itemId), board_id: boardId, skipped, references, campaign: campaign.name };
 }
 
-module.exports = { briefHtml, submitBrief, columnValues, ticketName, evidenceHtml, boardLabels, attachReferences };
+const forgetLabels = () => labelCache.clear();
+
+module.exports = { briefHtml, submitBrief, columnValues, ticketName, evidenceHtml, boardLabels, attachReferences, forgetLabels };

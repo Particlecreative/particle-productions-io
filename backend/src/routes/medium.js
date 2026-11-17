@@ -437,9 +437,26 @@ router.get('/briefs/:id', async (req, res) => {
     const examples = b.exemplar_ids?.length ? (await db.query('SELECT id, board_id, item_id, name, kind, lane, product FROM medium_exemplars WHERE id = ANY($1::int[])', [b.exemplar_ids])).rows : [];
     // the reference it was written from — shown full size in the brief, uploaded to Monday on approval
     const references = await require('../lib/medium/templateRef').withTemplate(b, { upspringLink: (await getConfig().catch(() => ({}))).upspring_link });
-    res.json({ brief: { ...b, brief_text: require('../lib/medium/style').composeBrief(b.fields || {}) }, examples, references });
+    // the campaign it goes into on Monday (and the board's campaigns to pick another) — never fails the brief
+    const campaign = await campaignInfo(b).catch(() => null);
+    res.json({ brief: { ...b, brief_text: require('../lib/medium/style').composeBrief(b.fields || {}) }, examples, references, campaign });
   } catch (err) { errorJson(res, err); }
 });
+
+/** { name, why, exists, group, options: the board's campaigns } for a brief. */
+async function campaignInfo(b) {
+  const { BOARDS } = require('../lib/medium/config');
+  const C = require('../lib/medium/campaign');
+  const G = require('../lib/studio/campaignGroups');
+  const format = b.format === 'design' ? 'design' : 'video';
+  const labels = (await require('../lib/medium/monday').boardLabels(BOARDS[format].board_id))[BOARDS[format].columns.campaign] || [];
+  const c = C.campaignFor(b, { labels });
+  const gcfg = await G.getConfig().catch(() => ({}));
+  const groups = G.groupsOf(gcfg);
+  const groupOf = (n) => groups.find(g => g.key === G.groupOf(n, gcfg)) || null;
+  return { ...c, exists: labels.some(l => C.same(l, c.name)), group: groupOf(c.name), options: labels.map(l => ({ name: l, group: G.groupOf(l, gcfg) })), groups,
+    ticket: require('../lib/medium/monday').ticketName(b, c.name), set_by_person: !!String(b.request?.campaign || '').trim() };
+}
 
 function diffFields(before = {}, after = {}) {
   const out = {};
@@ -454,6 +471,16 @@ router.put('/briefs/:id', async (req, res) => {
     if (!UUID_RE.test(req.params.id)) return res.status(404).json({ error: 'Not found' });
     const b = (await db.query('SELECT * FROM medium_briefs WHERE id = $1', [req.params.id])).rows[0];
     if (!b) return res.status(404).json({ error: 'Not found' });
+    // The campaign (which Campaign Tracker group it lands in) can change until it's on Monday — no re-check needed
+    if (req.body?.campaign !== undefined && !req.body.fields && !req.body.version && !req.body.recheck && !req.body.ticket_name) {
+      if (!['PENDING_REVIEW', 'DROPPED', 'APPROVED'].includes(b.status)) throw bad('It’s on Monday already — change the campaign there', 409);
+      const name = String(req.body.campaign || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+      await db.query(`UPDATE medium_briefs SET request = (COALESCE(request, '{}'::jsonb) - 'campaign' - 'campaign_by') || CASE WHEN $2::text = '' THEN '{}'::jsonb ELSE jsonb_build_object('campaign', $2::text, 'campaign_by', $3::text) END,
+        edits = COALESCE(edits, '[]'::jsonb) || jsonb_build_array(jsonb_build_object('at', NOW(), 'by', $3::text, 'diff', jsonb_build_object('campaign', jsonb_build_object('from', request->>'campaign', 'to', NULLIF($2::text, ''))))), updated_at = NOW() WHERE id = $1`,
+      [b.id, name, actorOf(req)]);
+      const fresh = (await db.query('SELECT * FROM medium_briefs WHERE id = $1', [b.id])).rows[0];
+      return res.json({ ok: true, campaign: await campaignInfo(fresh).catch(() => null) });
+    }
     if (!['PENDING_REVIEW', 'DROPPED'].includes(b.status)) throw bad(`A ${b.status.toLowerCase()} brief can't be edited`, 409);
     const actor = actorOf(req);
     const W = require('../lib/medium/writer');
@@ -532,11 +559,13 @@ async function submitToMonday(b, req, cfg) {
         .then(x => ` · approved text locked (Captain update ${x.monday_update})`).catch(e => ` · approved text not locked: ${e.message}`);
     }
     await db.query(`UPDATE medium_briefs SET status = 'SUBMITTED', monday_item_id = $2, error = NULL, updated_at = NOW(),
-      evidence = COALESCE(evidence, '{}'::jsonb) || jsonb_build_object('monday_refs', $3::jsonb) WHERE id = $1`,
-    [b.id, r.item_id, JSON.stringify({ attached: r.references?.attached || [], failed: r.references?.failed || [], at: new Date().toISOString() })]);
+      evidence = COALESCE(evidence, '{}'::jsonb) || jsonb_build_object('monday_refs', $3::jsonb),
+      request = COALESCE(request, '{}'::jsonb) || CASE WHEN $4::text IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('campaign', $4::text) END WHERE id = $1`,
+    [b.id, r.item_id, JSON.stringify({ attached: r.references?.attached || [], failed: r.references?.failed || [], at: new Date().toISOString() }), r.campaign || null]);
     const n = r.references?.attached?.length || 0;
     const refNote = n ? ` · reference attached (${n} file${n === 1 ? '' : 's'} in Relevant Files)` : '';
-    return { ok: true, item_id: r.item_id, message: `Created on Monday (item ${r.item_id})${refNote}${captain}${r.skipped.length ? ` · not set: ${r.skipped.join('; ')}` : ''}` };
+    const campNote = r.campaign ? ` · campaign “${r.campaign}”` : '';
+    return { ok: true, item_id: r.item_id, message: `Created on Monday (item ${r.item_id})${campNote}${refNote}${captain}${r.skipped.length ? ` · not set: ${r.skipped.join('; ')}` : ''}` };
   } catch (e) {
     await db.query(`UPDATE medium_briefs SET error = $2, updated_at = NOW() WHERE id = $1`, [b.id, `Monday: ${String(e.message).slice(0, 500)}`]).catch(() => null);
     return { ok: false, message: `Approved, but Monday creation failed: ${e.message} — use "Create on Monday" to try again` };
@@ -555,6 +584,11 @@ router.post('/briefs/:id/submit', async (req, res) => {
     if (!r.ok) return res.status(502).json({ error: r.message });
     res.json({ ok: true, status: 'SUBMITTED', monday: r.message, item_id: r.item_id });
   } catch (err) { errorJson(res, err); }
+});
+
+/** (admin) Put the tickets Medium created before campaigns existed into their campaign. { dry: true } only shows what it would do. */
+router.post('/campaigns/backfill', requireAdmin, async (req, res) => {
+  try { res.json({ results: await require('../lib/medium/campaign').backfill({ dry: !!req.body?.dry }) }); } catch (err) { errorJson(res, err); }
 });
 
 router.post('/briefs/:id/reject', async (req, res) => {

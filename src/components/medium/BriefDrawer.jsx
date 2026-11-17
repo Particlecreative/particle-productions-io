@@ -5,6 +5,44 @@ import References from './References';
 import CustomerData from './CustomerData';
 import { BAND, SUB_LABEL, SUB_WEIGHT, MOVE_LABEL, KIND_LABEL, FINDING, LANE_LABEL, Chip, money, readiness, origin, headline, progressInfo } from './util';
 
+/** Which campaign (and Campaign Tracker group) the ticket goes into on Monday — automatic, or picked here. */
+function CampaignRow({ c, editable, busy, onSet }) {
+  const [picking, setPicking] = useState(false);
+  const [custom, setCustom] = useState('');
+  const g = c.group;
+  const byGroup = (c.groups || []).map(gr => ({ ...gr, opts: (c.options || []).filter(o => o.group === gr.key) })).filter(gr => gr.opts.length);
+  const pick = (name) => { setPicking(false); setCustom(''); onSet(name); };
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[12.5px]">
+      <span className="trk-dim">Campaign</span>
+      <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1" style={{ background: `${g?.color || '#4a55ff'}26`, boxShadow: `inset 0 0 0 1px ${g?.color || '#4a55ff'}66` }}>
+        {g?.icon && <span aria-hidden="true">{g.icon}</span>}<b className="font-semibold">{c.name}</b>{g && <span className="trk-dim">· {g.name}</span>}
+      </span>
+      <span className="trk-dim">{c.exists ? '' : 'new on Monday · '}{c.why}</span>
+      {busy && <Loader2 size={12} className="animate-spin" />}
+      {editable && !picking && !busy && <button type="button" className="font-semibold underline underline-offset-2 trk-muted hover:text-white" onClick={() => setPicking(true)}>Change</button>}
+      {editable && !picking && !busy && c.set_by_person && <button type="button" className="font-semibold underline underline-offset-2 trk-muted hover:text-white" onClick={() => pick('')}>Automatic</button>}
+      {picking && (
+        <span className="basis-full flex flex-wrap items-center gap-2 mt-1">
+          <select className="trk-input !py-1.5 !text-[12.5px] max-w-[300px]" value="" onChange={(e) => e.target.value && pick(e.target.value)} autoFocus>
+            <option value="">Pick a campaign…</option>
+            {byGroup.map(gr => (
+              <optgroup key={gr.key} label={`${gr.icon || ''} ${gr.name}`}>
+                {gr.opts.map(o => <option key={o.name} value={o.name}>{o.name}</option>)}
+              </optgroup>
+            ))}
+          </select>
+          <span className="trk-dim">or a new one</span>
+          <input className="trk-input !py-1.5 !text-[12.5px] w-[200px]" placeholder="New campaign name" value={custom} onChange={(e) => setCustom(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && custom.trim()) pick(custom.trim()); }} />
+          <button type="button" className="trk-btn !py-1.5 !px-3 text-[12px]" disabled={!custom.trim()} onClick={() => pick(custom.trim())}>Use it</button>
+          <button type="button" className="trk-btn !py-1.5 !px-3 text-[12px]" onClick={() => { setPicking(false); setCustom(''); }}>Cancel</button>
+        </span>
+      )}
+    </div>
+  );
+}
+
 const ISSUE_SEV = { must_fix: ['Must fix', 'red'], should_fix: ['Please check', 'amber'], info: ['Note', 'gray'] };
 const EDITABLE = [['hook', 'Hook', 2], ['brief', 'Brief', 8], ['script', 'Script', 14], ['copy', 'Copy', 12], ['why', 'Why it should work', 2], ['test', 'How we’ll know', 2]];
 
@@ -69,7 +107,11 @@ export default function BriefDrawer({ id, onClose, notify, onChanged, isAdmin, m
             <div className="min-w-0 flex-1">
               <div className="text-[13px] trk-muted">{b ? [b.format === 'design' ? '🎨 Static' : '🎬 Video', b.product, b.lane && b.lane !== 'Particle' ? LANE_LABEL[b.lane] || b.lane : null, MOVE_LABEL[b.move], origin(b)].filter(Boolean).join(' · ') : '🔮 Medium'}</div>
               <h2 className="md-hookline mt-2 break-words">{b ? headline({ hook: f.hook, ticket_name: view.ticket_name }) || 'Writing…' : 'Loading…'}</h2>
-              {b && view.ticket_name && <div className="mt-1.5 text-[12.5px] trk-dim break-words">Monday ticket: {view.ticket_name}</div>}
+              {b && view.ticket_name && <div className="mt-1.5 text-[12.5px] trk-dim break-words">Monday ticket: {tab === 'medium' && data.campaign?.ticket ? data.campaign.ticket : view.ticket_name}</div>}
+              {b && data.campaign && (
+                <CampaignRow c={data.campaign} busy={busy === 'campaign'} editable={['PENDING_REVIEW', 'DROPPED', 'APPROVED'].includes(b.status)}
+                  onSet={(name) => act('campaign', () => mediumApi.edit(b.id, { campaign: name }), name ? `Campaign: ${name}` : 'Back to the automatic campaign')} />
+              )}
             </div>
             <button type="button" className="trk-btn !p-2" onClick={onClose} aria-label="Close"><X size={16} /></button>
           </div>

@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, Search, RefreshCw, Loader2, AlertTriangle, ExternalLink, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Search, RefreshCw, Loader2, AlertTriangle, ExternalLink, X, Plus } from 'lucide-react';
 import { studioApi } from '../../lib/studioService';
+import { useAuth } from '../../context/AuthContext';
 import { useStudio } from './writes';
 import { Avatar, StatusPill, ProductTag, BrandTag, brandsOf, Seg, StackBar, TimelinePill, Empty, DIVISION, CATEGORY, CATEGORY_ORDER, NAVY, useWidth } from './Bits';
 import { BrandPicker } from './Filters';
 
-// Campaign Tracker — every Video + Design ticket that has a Campaign, grouped by campaign (Lilian's Monday dashboard).
+// Campaign Tracker — every Video + Design ticket that has a Campaign, grouped by campaign (Lilian's Monday dashboard),
+// and the campaigns grouped by type (17 Nov 2026): Higgsfield Cinematic, Images into Videos, Holidays & Sales… — the
+// groups are kept in CP (lib/studio/campaignGroups.js); an editor can move a campaign to another group here.
 const PREF_KEY = 'cp_studio_campaigns_v1';
 const STALE_MS = 3 * 60 * 1000;
 const GROUP_COLORS = ['#0808f8', '#00c875', '#fdab3d', '#a25ddc', '#ff7a1a', '#579bfc', '#e2445c', '#037f4c', '#ff158a', '#784bd1'];
@@ -92,6 +95,9 @@ const SORTS = {
 
 export default function Campaigns({ f = {}, setF }) {
   const { writes, openTask } = useStudio();
+  const { isEditor } = useAuth();
+  const [moved, setMoved] = useState({});            // campaign → group, just moved here (before the next load)
+  const [groupList, setGroupList] = useState(null);  // after a group was added
   const [raw, setRaw] = useState(() => cache?.data || null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -148,6 +154,40 @@ export default function Campaigns({ f = {}, setF }) {
     return gs.sort(SORTS[prefs.sort] || SORTS.recent);
   }, [data, prefs, q, today, f.brands, byBrand]);
 
+  // ── Campaign groups ──
+  const cg = data?.campaign_groups || null;
+  const allGroups = groupList || cg?.groups || [];
+  const grouped = !!cg && prefs.view !== 'flat';
+  const keyOf = useCallback((label) => moved[label] ?? cg?.of?.[label] ?? 'evergreen', [moved, cg]);
+  const sections = useMemo(() => {
+    if (!grouped) return null;
+    return allGroups.map((gr) => {
+      const camps = groups.filter(g => keyOf(g.label) === gr.key);
+      const uniq = new Map();
+      for (const c of camps) for (const it of c.items) uniq.set(it.id, it);
+      const open = [...uniq.values()].filter(i => i.open);
+      return { ...gr, camps, open: open.length, review: open.filter(i => i.status.category === 'review').length, overdue: open.filter(i => dueOf(i) && dueOf(i) < today).length };
+    }).filter(sec => sec.camps.length);
+  }, [grouped, allGroups, groups, keyOf, today]);
+  const closedSecs = useMemo(() => new Set(prefs.closed || []), [prefs.closed]);
+  const toggleSec = (key) => setPrefs({ closed: closedSecs.has(key) ? [...closedSecs].filter(k => k !== key) : [...closedSecs, key] });
+  const moveCampaign = async (label, key) => {
+    const before = moved[label];
+    setMoved(m => ({ ...m, [label]: key }));
+    try {
+      await studioApi.campaignGroups({ campaign: label, group: key });
+      if (cache?.data?.campaign_groups) cache.data.campaign_groups.of[label] = key;
+    } catch (e) {
+      setMoved((m) => { const n = { ...m }; if (before === undefined) delete n[label]; else n[label] = before; return n; });
+      setError(e.message);
+    }
+  };
+  const addGroup = async () => {
+    const name = window.prompt('Name of the new campaign group');
+    if (!name?.trim()) return;
+    try { const r = await studioApi.campaignGroups({ add: { name: name.trim() } }); if (r?.groups) setGroupList(r.groups); } catch (e) { setError(e.message); }
+  };
+
   const totals = useMemo(() => {
     const open = groups.flatMap(g => g.items.filter(i => i.open));
     const uniq = new Map(open.map(i => [i.id, i]));
@@ -182,6 +222,7 @@ export default function Campaigns({ f = {}, setF }) {
             className="w-full pl-9 pr-8 py-2 text-sm rounded-xl bg-gray-50 border border-transparent focus:bg-white focus:border-gray-300 outline-none" />
           {q && <button type="button" onClick={() => setQ('')} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-700" aria-label="Clear search"><X size={14} /></button>}
         </label>
+        {cg && <Seg value={grouped ? 'groups' : 'flat'} onChange={(v) => setPrefs({ view: v })} options={[['groups', 'By group'], ['flat', 'All campaigns']]} />}
         <Seg value={prefs.show} onChange={(v) => setPrefs({ show: v })} options={[['active', 'Active'], ['all', 'All'], ['done', 'Finished']]} />
         <Seg value={prefs.board} onChange={(v) => setPrefs({ board: v })} options={[['all', 'Video + Design'], ['video', 'Video'], ['design', 'Design']]} />
         <select id="campaign-product" value={prefs.product} onChange={(e) => setPrefs({ product: e.target.value })}
@@ -239,7 +280,7 @@ export default function Campaigns({ f = {}, setF }) {
           </div>
 
           <div className="flex items-center gap-3 text-xs text-gray-500 px-1">
-            <span>{groups.length} {groups.length === 1 ? 'campaign' : 'campaigns'}{anyFilter ? ' match' : ''}</span>
+            <span>{groups.length} {groups.length === 1 ? 'campaign' : 'campaigns'}{anyFilter ? ' match' : ''}{sections ? ` · ${sections.length} ${sections.length === 1 ? 'group' : 'groups'}` : ''}</span>
             {groups.length > 1 && (
               <>
                 <button type="button" className="font-semibold text-gray-600 hover:text-gray-900" onClick={() => setExpanded(new Set(groups.map(g => g.key)))}>Expand all</button>
@@ -252,12 +293,33 @@ export default function Campaigns({ f = {}, setF }) {
             <Empty>{anyFilter ? 'No campaigns match these filters.' : prefs.show === 'active' ? 'No campaign has open tickets right now.' : 'No campaign tickets on Monday yet.'}</Empty>
           )}
 
-          {groups.map((g, i) => (
-            <CampaignGroup key={g.key} g={g} today={today} data={data} width={width} open={isOpen(g, i)} onToggle={() => toggle(g, i)} byBrand={byBrand}
-              showDone={showDone.has(g.key) || g.open === 0}
-              onShowDone={() => setShowDone(s => new Set(s).add(g.key))}
-              onTask={(it) => openTask(it, data)} />
-          ))}
+          {(() => {
+            const card = (g) => {
+              const i = groups.indexOf(g);
+              return (
+                <CampaignGroup key={g.key} g={g} today={today} data={data} width={width} open={isOpen(g, i)} onToggle={() => toggle(g, i)} byBrand={byBrand}
+                  showDone={showDone.has(g.key) || g.open === 0}
+                  onShowDone={() => setShowDone(s => new Set(s).add(g.key))}
+                  onTask={(it) => openTask(it, data)}
+                  groupKey={cg ? keyOf(g.label) : null} groups={allGroups} onMove={isEditor && cg ? (key) => moveCampaign(g.label, key) : null} />
+              );
+            };
+            if (!sections) return groups.map(card);
+            return (
+              <>
+                {sections.map(sec => (
+                  <GroupSection key={sec.key} sec={sec} open={!closedSecs.has(sec.key) || !!q.trim()} onToggle={() => toggleSec(sec.key)}>
+                    {sec.camps.map(card)}
+                  </GroupSection>
+                ))}
+                {isEditor && (
+                  <button type="button" onClick={addGroup} className="self-start flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl text-gray-500 hover:bg-gray-100">
+                    <Plus size={13} /> New group
+                  </button>
+                )}
+              </>
+            );
+          })()}
         </div>
       )}
     </div>
@@ -273,7 +335,34 @@ function Stat({ label, value, color }) {
   );
 }
 
-function CampaignGroup({ g, today, data, width, open, onToggle, showDone, onShowDone, onTask, byBrand }) {
+/** One campaign group (Higgsfield Cinematic, Holidays & Sales…): its campaigns, folded or open. */
+function GroupSection({ sec, open, onToggle, children }) {
+  return (
+    <section className="flex flex-col gap-2.5">
+      <button type="button" onClick={onToggle} aria-expanded={open} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-1 pt-3 text-left">
+        <span className="flex items-center gap-3 min-w-0 flex-1 basis-[260px]">
+          <span className="w-10 h-10 rounded-2xl flex items-center justify-center text-[19px] flex-none" style={{ background: `${sec.color}1a`, boxShadow: `inset 0 0 0 1px ${sec.color}55` }} aria-hidden="true">{sec.icon}</span>
+          <span className="min-w-0">
+            <span className="flex items-center gap-1.5">
+              <span className="font-black text-[24px] leading-none uppercase" style={{ fontFamily: '"Sofia Sans Extra Condensed", sans-serif', color: NAVY }}>{sec.name}</span>
+              {open ? <ChevronDown size={16} className="text-gray-400" /> : <ChevronRight size={16} className="text-gray-400" />}
+            </span>
+            {sec.about && <span className="block text-xs text-gray-500 truncate mt-0.5">{sec.about}</span>}
+          </span>
+        </span>
+        <span className="flex items-center gap-4 text-xs text-gray-500 tabular-nums">
+          <span><b style={{ color: NAVY }}>{sec.camps.length}</b> {sec.camps.length === 1 ? 'campaign' : 'campaigns'}</span>
+          <span><b style={{ color: NAVY }}>{sec.open}</b> open</span>
+          {sec.review > 0 && <span className="font-semibold" style={{ color: CATEGORY.review.color }}>{sec.review} in review</span>}
+          {sec.overdue > 0 && <span className="font-semibold text-red-600">{sec.overdue} overdue</span>}
+        </span>
+      </button>
+      {open && <div className="flex flex-col gap-3 sm:pl-4 sm:ml-5 sm:border-l-2" style={{ borderColor: `${sec.color}40` }}>{children}</div>}
+    </section>
+  );
+}
+
+function CampaignGroup({ g, today, data, width, open, onToggle, showDone, onShowDone, onTask, byBrand, groupKey = null, groups = [], onMove = null }) {
   const wide = width >= WIDE;
   const parts = CATEGORY_ORDER.map(k => ({ key: k, value: g.cats[k] || 0, color: CATEGORY[k].color, label: CATEGORY[k].label }));
   const rows = [...g.items].sort((a, b) => (ROW_ORDER.indexOf(a.status.category) - ROW_ORDER.indexOf(b.status.category))
@@ -325,6 +414,15 @@ function CampaignGroup({ g, today, data, width, open, onToggle, showDone, onShow
 
       {open && (
         <div className="border-t border-gray-100">
+          {onMove && groups.length > 0 && (
+            <div className="flex items-center gap-2 px-4 py-2 text-xs text-gray-500 bg-gray-50/40 border-b border-gray-100">
+              <span>Group</span>
+              <select value={groupKey || ''} onChange={(e) => onMove(e.target.value)} aria-label={`Group for ${g.label}`}
+                className="text-xs font-semibold px-2 py-1 rounded-lg bg-white border border-gray-200 text-gray-700 outline-none">
+                {groups.map(gr => <option key={gr.key} value={gr.key}>{gr.icon} {gr.name}</option>)}
+              </select>
+            </div>
+          )}
           {wide && (
             <div className="grid gap-3 px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400 bg-gray-50/60" style={{ gridTemplateColumns: COLS }}>
               <span className="pl-3.5">Ticket</span><span>Board</span><span>Status</span><span>People</span><span>Requested by</span><span>Timeline</span><span />

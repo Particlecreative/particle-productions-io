@@ -71,7 +71,21 @@ router.get('/dashboard', async (req, res) => {
 router.get('/campaigns', async (req, res) => {
   try {
     const data = await getCampaigns({ brandId: req.brandId, force: req.query.force === '1' });
-    res.json({ ...data, today: W.localDate(Date.now()) });
+    // Campaign groups (17 Nov 2026): which group each campaign is in — rules + hand-placed, kept in CP
+    const G = require('../lib/studio/campaignGroups');
+    const labels = [...new Set(data.items.flatMap(it => it.campaigns || []))];
+    const groups = G.classify(labels, await G.getConfig(req.brandId));
+    res.json({ ...data, campaign_groups: groups, today: W.localDate(Date.now()) });
+  } catch (err) { errorJson(res, err); }
+});
+
+/** Put a campaign in a group ({ campaign, group|null }), add a group ({ add: { name } }) or rename one ({ rename: { key, name } }). Editors. */
+router.put('/campaign-groups', async (req, res) => {
+  try {
+    if ((RANK[req.user?.role] ?? -1) < RANK.Editor && !req.user?.super_admin) return res.status(403).json({ error: 'Editors can arrange campaign groups' });
+    const G = require('../lib/studio/campaignGroups');
+    const cfg = await G.saveConfig(req.body || {}, req.brandId);
+    res.json({ ok: true, groups: G.groupsOf(cfg), config: cfg });
   } catch (err) { errorJson(res, err); }
 });
 

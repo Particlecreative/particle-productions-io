@@ -46,6 +46,8 @@ export const studioApi = {
   dashboard: async ({ from, to, force = false, lite = false }) => (LIVE ? call(`/dashboard?from=${from}&to=${to}${force ? '&force=1' : ''}${lite ? '&lite=1' : ''}`) : (await fx()).studioFixture({ from, to })),
   /** Every Video + Design ticket that has a Campaign (Campaign Tracker) */
   campaigns: async ({ force = false } = {}) => (LIVE ? call(`/campaigns${force ? '?force=1' : ''}`) : (await fx()).fixtureCampaigns()),
+  /** Campaign groups: { campaign, group|null } · { add: { name } } · { rename: { key, name } } */
+  campaignGroups: async (body) => (LIVE ? call('/campaign-groups', { method: 'PUT', body }) : { ok: true, groups: null }),
   /** Hot Projects: pinned big projects with their Monday analytics */
   hotProjects: async ({ force = false } = {}) => (LIVE ? call(`/hot-projects${force ? '?force=1' : ''}`) : (await hfx()).fixtureHot()),
   hotSuggestions: async ({ q = '', requester = '' } = {}) => (LIVE
