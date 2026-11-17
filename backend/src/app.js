@@ -174,7 +174,7 @@ cron.schedule('0 8 * * *', async () => {
 // ── On Air: read the TV agency's daily reports at 17:00 Israel (they land ~16:00–16:45); catch-ups at 18:30 and 21:00
 //    only when a product's report for today is still missing ───
 const onAirSync = (why) => require('./lib/onair/tvMail').sync()
-  .then((r) => { require('./lib/onair/tv').clearLive(); console.log(`[CRON] On Air TV mail (${why}):`, JSON.stringify(r)); })
+  .then((r) => { require('./lib/onair/tv').clearLive(); console.log(`[CRON] On Air TV mail (${why}):`, JSON.stringify(r)); if (r?.ok) require('./lib/onair/tvMail').backfillOnce(); })
   .catch(err => console.error('[CRON] On Air TV mail failed:', err.message));
 cron.schedule('0 17 * * *', () => onAirSync('17:00'), { timezone: 'Asia/Jerusalem' });
 cron.schedule('30 18 * * *', async () => { if (!(await require('./lib/onair/tvMail').todaysReportsIn().catch(() => false))) onAirSync('18:30 catch-up'); }, { timezone: 'Asia/Jerusalem' });

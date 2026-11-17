@@ -18,6 +18,25 @@ function thumbUrl(path, now = Date.now()) {
   const e = Math.floor((now + THUMB_TTL) / 1000);
   return `/api/onair/t?p=${encodeURIComponent(path)}&e=${e}&s=${sig(path, e)}`;
 }
+/** A running ad's real video: a signed CP link (12 h) → AfterLife asks Meta for a fresh playable URL → 302. */
+const vsig = (ad, e) => crypto.createHmac('sha256', secret()).update(`onair-video|${ad}|${e}`).digest('base64url').slice(0, 32);
+function videoUrl(adId, now = Date.now()) {
+  if (!/^\d{5,25}$/.test(String(adId || ''))) return null;
+  const e = Math.floor((now + THUMB_TTL) / 1000);
+  return `/api/onair/v?ad=${adId}&e=${e}&s=${vsig(adId, e)}`;
+}
+function verifyVideo(ad, e, s) {
+  if (!/^\d{5,25}$/.test(String(ad || '')) || !e || !s || Number(e) * 1000 < Date.now()) return false;
+  const a = Buffer.from(String(s)), b = Buffer.from(vsig(ad, e));
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+async function playableUrl(ad) {
+  const base = process.env.AFTERLIFE_URL.replace(/\/$/, '');
+  const r = await fetch(`${base}/api/export/ad-video?ad=${encodeURIComponent(ad)}`, { headers: { 'X-Export-Token': process.env.AFTERLIFE_EXPORT_TOKEN }, signal: AbortSignal.timeout(20000) });
+  if (!r.ok) return null;
+  return (await r.json()).url || null;
+}
+
 function verifyThumb(path, e, s) {
   if (!PATH_RE.test(path || '') || path.includes('..') || !e || !s || Number(e) * 1000 < Date.now()) return false;
   const a = Buffer.from(String(s)), b = Buffer.from(sig(path, e));
@@ -41,7 +60,13 @@ async function getMedia({ force = false } = {}) {
     const data = {
       connected: true, ready: true, last_day: raw.last_day, since: raw.since, days: raw.days, totals: raw.totals, benchmarks: raw.benchmarks || null,
       afterlife_url: base,
-      creatives: (raw.creatives || []).map(c => ({ ...c, thumb: c.thumb ? thumbUrl(c.thumb) : null })),
+      creatives: (raw.creatives || []).map(c => ({
+        ...c,
+        thumb: c.thumb ? thumbUrl(c.thumb) : null,
+        video_url: c.format === 'video' && c.ad_id ? videoUrl(c.ad_id) : null,
+        afterlife: c.asset_id ? `${base}/asset/${encodeURIComponent(c.asset_id)}` : null,
+        ads_manager: c.ad_id && c.ad_account ? `https://adsmanager.facebook.com/adsmanager/manage/ads?act=${String(c.ad_account).replace(/^act_/, '')}&selected_ad_ids=${c.ad_id}` : null,
+      })),
       fetched_at: new Date().toISOString(),
     };
     cache = { at: Date.now(), data };
@@ -61,4 +86,4 @@ async function thumbnail(path) {
   return v;
 }
 
-module.exports = { getMedia, thumbUrl, verifyThumb, thumbnail };
+module.exports = { getMedia, thumbUrl, verifyThumb, thumbnail, videoUrl, verifyVideo, playableUrl };

@@ -117,13 +117,16 @@ async function gmailClient() {
   return getGmailClient();
 }
 
-/** Read what's new (default: the last 21 days) and store it. → { added, reports, checked } */
-async function sync({ days = 21 } = {}) {
+/** Read what's new (default: the last 21 days) and store it. → { added, reports, checked }
+ *  reportsOnly: just the daily report emails (the backfill — months of history without every reply). */
+async function sync({ days = 21, reportsOnly = false, stateKey = 'tv_sync' } = {}) {
   await ensureTables();
   const st = await googleStatus();
-  if (!st.connected) { await setState('tv_sync', { ok: false, error: 'Google is not connected', at: new Date().toISOString() }); return { ok: false, error: 'Google is not connected' }; }
+  if (!st.connected) { await setState(stateKey, { ok: false, error: 'Google is not connected', at: new Date().toISOString() }); return { ok: false, error: 'Google is not connected' }; }
   const gmail = await gmailClient();
-  const queries = [`from:${AGENCY} newer_than:${days}d`, `from:${TEAM} to:${AGENCY} newer_than:${days}d`, `from:${TEAM} cc:${AGENCY} newer_than:${days}d`];
+  const queries = reportsOnly
+    ? [`from:${AGENCY} subject:campaign newer_than:${days}d`]
+    : [`from:${AGENCY} newer_than:${days}d`, `from:${TEAM} to:${AGENCY} newer_than:${days}d`, `from:${TEAM} cc:${AGENCY} newer_than:${days}d`];
   const ids = new Map();
   try {
     for (const q of queries) {
@@ -138,7 +141,7 @@ async function sync({ days = 21 } = {}) {
   } catch (e) {
     const scope = /insufficient|scope|permission/i.test(e.message || '') || e.code === 403;
     const error = scope ? 'Gmail reading isn’t allowed yet — reconnect Google in Settings' : `Gmail: ${e.message}`;
-    await setState('tv_sync', { ok: false, error, needs_reconnect: scope, at: new Date().toISOString() });
+    await setState(stateKey, { ok: false, error, needs_reconnect: scope, at: new Date().toISOString() });
     return { ok: false, error, needs_reconnect: scope };
   }
   const known = new Set((await db.query('SELECT gmail_id FROM onair_tv_mail WHERE gmail_id = ANY($1)', [[...ids.keys()]])).rows.map(r => r.gmail_id));
@@ -157,8 +160,22 @@ async function sync({ days = 21 } = {}) {
     } catch (e) { console.warn('[onair] message', id, e.message); }
   }
   const out = { ok: true, checked: ids.size, added, reports, at: new Date().toISOString() };
-  await setState('tv_sync', out);
+  await setState(stateKey, out);
   return out;
+}
+
+let backfilling = null;
+/** Once: the last ~4 months of daily reports, so Month has history (runs in the background after a good read). */
+function backfillOnce() {
+  if (backfilling) return backfilling;
+  backfilling = (async () => {
+    const done = await getState('tv_backfill');
+    if (done?.ok) return done;
+    const r = await sync({ days: 130, reportsOnly: true, stateKey: 'tv_backfill' });
+    console.log('[onair] backfill', JSON.stringify(r));
+    return r;
+  })().catch((e) => { console.warn('[onair] backfill', e.message); return null; }).finally(() => { backfilling = null; });
+  return backfilling;
 }
 
 /** Did today's report (Israel date) arrive for every product we've had reports for in the last week? */
@@ -170,4 +187,4 @@ async function todaysReportsIn() {
   return rows.length > 0 && rows.every(r => r.last >= today);
 }
 
-module.exports = { ensureTables, sync, classify, googleStatus, getState, setState, todaysReportsIn, AGENCY, TEAM };
+module.exports = { ensureTables, sync, backfillOnce, classify, googleStatus, getState, setState, todaysReportsIn, AGENCY, TEAM };

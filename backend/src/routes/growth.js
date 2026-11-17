@@ -20,11 +20,14 @@ function makePass({ email, name, role }, { secret, now = Date.now(), ttlSec = 12
   return `${body}.${crypto.createHmac('sha256', key).update(body).digest('base64url')}`;
 }
 
+// ?to=/embed/asset/<id> → a creative's AfterLife page (On Air viewer); default → Fresh to test (Ads Library)
+const EMBED_TO = /^\/embed\/(fresh|asset\/[A-Za-z0-9_-]{1,64})$/;
 router.get('/afterlife-pass', (req, res) => {
   const base = (process.env.AFTERLIFE_URL || '').replace(/\/$/, '');
+  const to = EMBED_TO.test(String(req.query.to || '')) ? String(req.query.to) : '/embed/fresh';
   const pass = makePass({ email: req.user?.email, name: req.user?.name, role: req.user?.role }, { secret: process.env.AFTERLIFE_EXPORT_TOKEN });
   if (!base || !pass) return res.status(503).json({ error: 'The Ads Library isn’t connected to AfterLife yet' });
-  res.set('Cache-Control', 'no-store').json({ url: `${base}/embed/fresh?pass=${encodeURIComponent(pass)}`, base });
+  res.set('Cache-Control', 'no-store').json({ url: `${base}${to}?pass=${encodeURIComponent(pass)}`, base });
 });
 
 // GET /productions?brand_id= → TV Productions for the Growth team: the tracker without money (lib/growth/productions.js)

@@ -9,6 +9,11 @@ import clsx from 'clsx';
 // ─── Growth team (17 Nov 2026) ─────────────────────────────────────────────────
 // RULE (Tomer): every change to the growth team's panel updates this section AND adds a dated line to "What's new".
 const GROWTH_WHATS_NEW = [
+  { date: '18 Nov 2026', items: [
+    '📅 On Air → Day / Week / Month: every number, chart and spot follows the period — yesterday vs the day before, this week vs last week, this month vs last month.',
+    '✍️ On Air opens with a short summary of what happened (spend, orders, MER, the strongest and weakest spot, what’s new), and spots show a plain verdict: Strong, Fine or Weak.',
+    '🏷️ Task updates: tagging people works (they get a real Monday mention), and links inside updates (“Uploaded on Dropbox folder”) are blue and clickable.',
+  ] },
   { date: '17 Nov 2026 · evening', items: [
     '📡 New: On Air — what’s running on TV right now, from the agency’s daily report: every spot on air with its spend, orders, MER, CPO and AOV, what moved since the last report, what’s new on air, and the agency’s note.',
     '🏷️ Each spot shows our name for it in the CP and its production (PRD number + name) — and what the agency calls it.',
@@ -136,9 +141,10 @@ const GROWTH_CATEGORY = {
       keywords: ['on air', 'onair', 'tv', 'live', 'spots', 'agency', 'report', 'mer', 'aov', 'cpo', 'networks', 'prd', 'production'],
       content: [
         { type: 'guide', title: 'TV', steps: [
-          'Every product the agency runs (Face Cream, Gravité…): this week’s spend, orders, MER, AOV and CPO, with yesterday next to each.',
-          'Spend per day, MER per day and the last weeks — so you see the movement, not just a number.',
-          'On air now: every spot that aired this week, biggest spend first — its share of the week, orders, MER (green above the week’s average, red below), CPO, AOV, the stations, and what moved since the last report. NEW = first seen on air in the last 7 days.',
+          'Pick Day, Week or Month at the top — everything follows it: yesterday vs the day before, this week vs last week, this month vs last month.',
+          'The blue card says what happened in one breath: spend, orders, MER, the strongest and weakest spot, what’s new on air.',
+          'Every product the agency runs (Face Cream, Gravité…): spend, orders, MER, AOV and CPO against the period before, and a chart per day, week or month (Spend / Orders / MER).',
+          'On air now (Month: everything that aired this month): each spot’s poster with a verdict — Strong / Fine / Weak against the product’s MER — its share of spend, orders, CPO, and how it moved (since the last report · vs last week · vs last month). NEW = first seen on air recently. Sort by Spend, MER or New.',
           'Each spot carries our name for it in the CP, its production (PRD number + name — click it to open TV Productions) and, underneath, what the agency calls it and its code.',
           'Play opens the commercial’s file from the TV Library; “Not in the TV Library” means no commercial there has that code yet.',
           'From us to the networks: every new creative the team emailed the agency — Sent → Agency confirmed → On air — with the networks it was sent to.',
@@ -584,6 +590,7 @@ const CATEGORIES = [
             'Syncs with Monday.com Video and Design boards. Filter by type (All/Video/Design/TV), requester, production.',
             'Generate AI Brief from item data. Copy brief. Sync to Gantt. View updates. Open in Monday.',
             'Completed/Archived groups auto-collapse.',
+            'Task panel → Brief & updates: type @ (or the @ button) to tag someone — they get a real Monday mention. Links inside updates (e.g. “Uploaded on Dropbox folder”) are blue and open in a new tab.',
           ]},
           { type: 'tips', items: ['Available for the Particle brand only.'] },
         ],
@@ -602,8 +609,14 @@ const CATEGORIES = [
             'From us to the networks: creatives emailed to the agency → the agency confirmed (and to which networks) → first seen on air.',
             'Editors and admins can press “Read now” to read the mailbox immediately.',
           ]},
+          { type: 'guide', title: 'Day / Week / Month', steps: [
+            'One switch at the top for both tabs. TV: yesterday vs the day before, this week vs last week, this month vs last month (months group the agency’s weeks by the week they start). Meta: the newest day, the last 7 days and the last 4 weeks, each against the period before.',
+            'Each tab opens with a short written summary of what happened; charts toggle between Spend / Orders / MER (TV) or Spend / ROAS (Meta). Striped bars = a period still running.',
+          ]},
           { type: 'guide', title: 'Meta — from AfterLife', steps: [
-            'Live now (video · static), New this week, yesterday’s spend and the 7-day ROAS, against the period before; all Meta spend per day for 14 days.',
+            'Spend and ROAS for the period, ads live now (video · static) and ads that started, with a chart per day, week or month.',
+            'What’s working / Needs a look: the live ads furthest above and below our usual, with the reason in one line.',
+            'Click any ad to open it: the real video plays (or the static shows), its ad copy, its numbers for Day / Week / Month, what makes it different, and where it sits against our videos or statics on every measure. “AfterLife view” shows its AfterLife page right inside CP; “AfterLife” and “Ads Manager” open them in a new tab.',
             'Our averages this year — Video team, Design team and Externals side by side: ROAS, CTR, thumb-stop, hold, average watch, watched-half, AOV, CPA, CPM.',
             'Video ads | Static ads: the list is split by format, each with our internal average for that format on top.',
             'Every live creative: maker and team, product, campaign, start day, 7-day spend with daily bars, this week’s ROAS and CTR against last week, and its numbers since it started against our average (+38% / −20%).',

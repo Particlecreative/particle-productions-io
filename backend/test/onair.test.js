@@ -141,3 +141,20 @@ test('On Air: Growth reads TV only, can not refresh it; thumbnails are signed', 
   assert.equal(Media.thumbUrl('/etc/passwd'), null);
   assert.equal(Media.thumbUrl('/media/../x.jpg'), null);
 });
+
+test('TV history: last week per spot, weeks and months from all reports', () => {
+  const at = (d) => `${d}T14:00:00Z`;
+  const r = (date, html) => ({ product: 'Face Cream', report_date: date, sent_at: at(date), thread_id: 'x', body_text: 'note', parsed: L.parseReport({ html, subject: `Particle Face Cream Campaign ${date.slice(5, 7)}/${date.slice(8)}`, sentAt: at(date) }) });
+  const lastWeek = r('2026-11-09', faceHtml('$4,000.00', '15').replace(/11\/9\/2026/g, '11/2/2026'));
+  const cur = r('2026-11-16', faceHtml('$5,000.00', '20'));
+  const rs = [cur, lastWeek];
+  const v = productView(rs, firstSeenOf(rs), {}, '2026-11-17');
+  assert.equal(v.spots.find(s => s.code === 'PM1MMH').week_prev.spent, 4000);
+  assert.deepEqual(v.history.weekly.map(w => [w.date, w.partial]), [['2026-11-02', false], ['2026-11-09', true]]);
+  assert.equal(v.periods.week.prev.date, '2026-11-02');
+  assert.equal(v.month.month, '2026-11');
+  const mm = v.month.spots.find(s => s.code === 'PM1MMH');
+  assert.equal(mm.spent, 9000);
+  assert.equal(mm.weeks, 2);
+  assert.equal(v.history.monthly.find(m => m.month === '2026-11').spend, 56000);
+});

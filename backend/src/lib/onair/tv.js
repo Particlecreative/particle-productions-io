@@ -71,6 +71,44 @@ function moved(s, prev) {
   return { spent: d('spent'), orders: d('orders'), revenue: d('revenue'), mer: d('mer') };
 }
 
+// ── Day / Week / Month (18 Nov 2026): every stored report adds its days and weeks to the history
+const totalsOf = (rows) => {
+  const t = rows.reduce((a, r) => ({ spend: a.spend + (r.spend || 0), orders: a.orders + (r.orders || 0), revenue: a.revenue + (r.revenue || 0), visits: a.visits + (r.visits || 0) }), { spend: 0, orders: 0, revenue: 0, visits: 0 });
+  return { ...t, spend: Math.round(t.spend * 100) / 100, revenue: Math.round(t.revenue * 100) / 100, mer: t.spend ? t.revenue / t.spend : null, aov: t.orders ? t.revenue / t.orders : null, cpo: t.orders ? t.spend / t.orders : null };
+};
+const spotTotals = (list) => {
+  const t = list.reduce((a, s) => ({ spent: a.spent + (s.spent || 0), orders: a.orders + (s.orders || 0), revenue: a.revenue + (s.revenue || 0) }), { spent: 0, orders: 0, revenue: 0 });
+  return { ...t, mer: t.spent ? t.revenue / t.spent : null, cpo: t.orders ? t.spent / t.orders : null, aov: t.orders ? t.revenue / t.orders : null };
+};
+const ym = (d) => String(d || '').slice(0, 7);
+const prevYm = (m) => { const [y, mo] = m.split('-').map(Number); return mo === 1 ? `${y - 1}-12` : `${y}-${String(mo - 1).padStart(2, '0')}`; };
+
+/** The product's history from all its reports (newest report wins a day / week it shares with an older one). Pure. */
+function historyOf(rs) {
+  const days = new Map(), weeks = new Map(), spotWeeks = new Map();
+  for (const r of [...rs].reverse()) {                       // oldest → newest, so newer overwrite
+    const p = r.parsed || {};
+    for (const d of p.daily || []) if (d.date) days.set(d.date, d);
+    for (const w of p.weekly || []) if (w.date) weeks.set(w.date, w);
+    const wk = p.spots?.[0]?.week_of;
+    if (wk) spotWeeks.set(wk, p.spots);                      // the week's spots as of its newest report
+  }
+  const cur = rs[0]?.parsed || {};
+  const curWeek = cur.spots?.[0]?.week_of || cur.daily?.[0]?.date || null;
+  if (curWeek && cur.daily_totals) weeks.set(curWeek, { ...cur.daily_totals, date: curWeek, partial: true });   // the totals row carries date: null
+  const daily = [...days.values()].sort((a, b) => a.date.localeCompare(b.date)).slice(-42);
+  const weekly = [...weeks.values()].sort((a, b) => a.date.localeCompare(b.date)).slice(-16).map(w => ({ ...w, partial: w.date === curWeek }));
+  const byMonth = new Map();
+  for (const w of weeks.values()) { const m = ym(w.date); byMonth.set(m, [...(byMonth.get(m) || []), w]); }
+  const curMonth = ym(curWeek || daily[daily.length - 1]?.date);
+  let monthly = [...byMonth.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([m, ws]) => ({ month: m, weeks: ws.length, first_week: ws.map(w => w.date).sort()[0], partial: m === curMonth, ...totalsOf(ws) }));
+  // the oldest month is only partly in the history (its first weeks came before the reports we have) — leave it out
+  if (monthly.length > 1 && monthly[0].first_week > `${monthly[0].month}-07`) monthly = monthly.slice(1);
+  monthly = monthly.slice(-6);
+  return { daily, weekly, monthly, spotWeeks, curWeek, curMonth };
+}
+
 function productView(rs, firstSeen, libBy, today) {
   const cur = rs[0];
   const p = cur.parsed || {};
@@ -94,7 +132,51 @@ function productView(rs, firstSeen, libBy, today) {
   }).sort((a, b) => (b.spent || 0) - (a.spent || 0));
   const daily = p.daily || [];
   const last = daily[daily.length - 1] || null, before = daily[daily.length - 2] || null;
+
+  // Week: each spot against its own last week · Month: every spot that aired this month (weeks by their start)
+  const H = historyOf(rs);
+  const weekKeys = [...H.spotWeeks.keys()].sort();
+  const prevWeek = weekKeys.filter(k => k < (weekOf || '')).pop() || null;
+  const prevWeekBy = Object.fromEntries((H.spotWeeks.get(prevWeek) || []).map(s => [s.code, s]));
+  for (const s of spots) {
+    const pw = prevWeekBy[s.code];
+    s.week_prev = pw ? { spent: pw.spent, orders: pw.orders, revenue: pw.revenue, mer: pw.mer, cpo: pw.cpo, aov: pw.aov } : null;
+  }
+  const monthSpots = (m) => {
+    const by = {};
+    for (const k of weekKeys.filter(k => ym(k) === m)) for (const sp of H.spotWeeks.get(k) || []) (by[sp.code] = by[sp.code] || []).push(sp);
+    return by;
+  };
+  const curM = monthSpots(H.curMonth), prevM = monthSpots(prevYm(H.curMonth || '2000-01'));
+  const curMonthTotal = spotTotals(Object.values(curM).flat());
+  const month = {
+    month: H.curMonth, prev_month: prevYm(H.curMonth || '2000-01'),
+    spots: Object.entries(curM).map(([code, list]) => {
+      const t = spotTotals(list);
+      const latest = list[list.length - 1];
+      const fs = firstSeen.first[code] || null;
+      return {
+        code, name: latest.name, length: latest.length, ...t, weeks: list.length,
+        share: curMonthTotal.spent ? t.spent / curMonthTotal.spent : null,
+        prev: prevM[code] ? spotTotals(prevM[code]) : null,
+        first_seen: fs, is_new: !!fs && fs > (firstSeen.oldest || '') && fs >= addDays(today, -30),
+        on_air_now: spots.some(x => x.code === code),
+        library: libBy[code] || null,
+      };
+    }).sort((a, b) => (b.spent || 0) - (a.spent || 0)),
+  };
+  const wk = (d) => H.weekly.find(w => w.date === d) || null;
+  const mo = (m) => H.monthly.find(x => x.month === m) || null;
+  const periods = {
+    day: last ? { label: last.date, ...last, prev: before } : null,
+    week: { label: weekOf, ...(wk(weekOf) || {}), prev: prevWeek ? wk(prevWeek) : (H.weekly.filter(w => w.date < (weekOf || '')).pop() || null) },
+    month: { label: H.curMonth, ...(mo(H.curMonth) || {}), prev: mo(prevYm(H.curMonth || '2000-01')) },
+  };
   return {
+    history: { daily: H.daily, weekly: H.weekly, monthly: H.monthly },
+    periods,
+    month,
+    previous_week: prevWeek,
     product: cur.product,
     report_date: cur.report_date,
     received_at: cur.sent_at,
@@ -173,7 +255,7 @@ async function buildTv(brandId = 'particle') {
   const byProduct = {};
   for (const r of reports) (byProduct[r.product || 'Other'] = byProduct[r.product || 'Other'] || []).push(r);
   const firstSeen = firstSeenOf(reports);
-  const codes = [...new Set(Object.values(byProduct).flatMap(rs => (rs[0].parsed?.spots || []).map(s => s.code)))];
+  const codes = [...new Set(Object.values(byProduct).flatMap(rs => rs.flatMap(r => (r.parsed?.spots || []).map(s => s.code))))];
   const libBy = await libraryByCode(brandId, codes);
   const products = Object.values(byProduct).map(rs => productView(rs, firstSeen, libBy, today))
     .sort((a, b) => (b.week.spent || 0) - (a.week.spent || 0));
@@ -220,4 +302,4 @@ async function liveCodes(brandId = 'particle', { reports = null } = {}) {
 }
 const clearLive = () => { liveCache = null; };
 
-module.exports = { buildTv, liveCodes, clearLive, productView, firstSeenOf };
+module.exports = { buildTv, liveCodes, clearLive, productView, firstSeenOf, historyOf };

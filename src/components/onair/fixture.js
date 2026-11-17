@@ -16,6 +16,7 @@ function spot(code, name, length, spent, mer, opts = {}) {
     week_of: sundayOf(0), code, name, length, orders, revenue, mer, cpo: r2(spent / orders), aov, spent,
     moved: opts.moved === false ? null : { spent: r2(spent * (0.08 + rnd() * 0.2)), orders: Math.round(orders * (0.05 + rnd() * 0.25)), revenue: r2(revenue * 0.15), mer: r2((rnd() - 0.5) * 0.1) },
     new_in_report: !!opts.fresh, first_seen: opts.fresh ? off(-2) : off(-30), is_new: !!opts.fresh,
+    week_prev: opts.fresh ? null : { spent: r2(spent * (0.7 + rnd() * 0.6)), orders: Math.round(orders * (0.7 + rnd() * 0.6)), revenue: r2(revenue * 0.9), mer: r2(mer * (0.8 + rnd() * 0.4)) },
     stations: opts.stations || [],
     library: opts.lib === false ? null : { id: `lib-${code}`, title: opts.cpName || `${name.replace(/ :\d+$/, '')} ${length}s`, product: opts.product, url: 'https://www.dropbox.com/', thumb_url: null, production_id: opts.prd || null, production_name: opts.production || null },
   };
@@ -36,6 +37,8 @@ function product(name, spots, base) {
     return { date: sundayOf(-7 * (7 - i)), spend, orders: Math.round((spend * mer) / 93), cpo: 190, revenue: r2(spend * mer), mer, aov: 93, visits: 2500, cpv: 45, conv: 0.22 };
   });
   const last = daily[6], before = daily[5];
+  const months = ['-3', '-2', '-1', '0'].map((k, i) => { const d = new Date(); d.setMonth(d.getMonth() + Number(k)); const m = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; const spend = r2(base * 30 * (0.7 + rnd() * 0.5) * (i === 3 ? 0.55 : 1)); const mer = r2(0.38 + rnd() * 0.25); return { month: m, weeks: 4, partial: i === 3, spend, orders: Math.round(spend * mer / 93), revenue: r2(spend * mer), mer, aov: 93, cpo: r2(93 / mer) }; });
+  const weekly12 = Array.from({ length: 12 }, (_, i) => { const spend = r2(base * 7 * (0.7 + rnd() * 0.6) * (i === 11 ? 0.45 : 1)); const mer = r2(0.35 + rnd() * 0.3); return { date: sundayOf(-7 * (11 - i)), spend, orders: Math.round(spend * mer / 93), revenue: r2(spend * mer), mer, aov: 93, cpo: r2(93 / mer), partial: i === 11 }; });
   const week = { spent: r2(total), orders: spots.reduce((a, s) => a + s.orders, 0), revenue: r2(spots.reduce((a, s) => a + s.revenue, 0)) };
   week.mer = r2(week.revenue / week.spent); week.aov = r2(week.revenue / week.orders); week.cpo = r2(week.spent / week.orders); week.visits = week.orders * 5;
   return {
@@ -51,6 +54,13 @@ function product(name, spots, base) {
       : [{ network: 'Evening Newsmagazine', period: '9pm-10pm', creative: 'Pulse', cost: 3100, orders: 26, revenue: 2050, mer: 0.66, visits: 210, cpv: 14.8, date: null }],
     dayparts: name === 'Gravité' ? [{ daypart: 'Mon-Sun 5am-6am', creative: 'Pulse', cost: 4200, orders: 31, revenue: 2500, mer: 0.6, aov: 80.6, cpo: 135 }, { daypart: 'Sat-Sun 9am-12pm', creative: 'Pulse', cost: 11800, orders: 40, revenue: 3100, mer: 0.26, aov: 77.5, cpo: 295 }] : [],
     reports: Array.from({ length: 7 }, (_, i) => ({ date: off(-1 - i), at: at(-1 - i), spent: base * (7 - i), mer: r2(0.4 + rnd() * 0.2) })),
+    history: { daily: [...Array.from({ length: 14 }, (_, i) => { const spend = r2(base * (0.6 + rnd() * 0.8)); const mer = r2(0.3 + rnd() * 0.45); return { date: off(-21 + i), spend, orders: Math.round(spend * mer / 93), revenue: r2(spend * mer), mer, aov: 93, cpo: r2(93 / mer) }; }), ...daily], weekly: weekly12, monthly: months },
+    periods: {
+      day: { label: last.date, ...last, prev: before },
+      week: { label: sundayOf(0), ...weekly12[11], prev: weekly12[10] },
+      month: { label: months[3].month, ...months[3], prev: months[2] },
+    },
+    month: { month: months[3].month, prev_month: months[2].month, spots: spots.map(sp => ({ code: sp.code, name: sp.name, length: sp.length, spent: r2(sp.spent * 2.6), orders: sp.orders * 3, revenue: r2(sp.revenue * 2.6), mer: sp.mer, cpo: sp.cpo, aov: sp.aov, weeks: sp.is_new ? 1 : 3, share: sp.spent / total, prev: sp.is_new ? null : { spent: r2(sp.spent * 3.4), orders: sp.orders * 4, revenue: r2(sp.revenue * 3), mer: r2(sp.mer * (0.8 + rnd() * 0.4)) }, first_seen: sp.first_seen, is_new: sp.is_new, on_air_now: true, library: sp.library })).sort((a, b) => b.spent - a.spent) },
   };
 }
 
@@ -147,6 +157,14 @@ export function mediaFixture() {
       today: { day: dates[days - 1], spend: series[days - 1].spend, roas: series[days - 1].roas }, yesterday: { spend: series[days - 2].spend, roas: series[days - 2].roas },
       series,
       vs: { basis: 'year', spend: Math.round(s7 * 3), impressions: Math.round(s7 * 60), judged: i !== 3, metrics: versus(format, i) },
+      periods: (() => {
+        const P = (spend, f = 1) => ({ spend, revenue: Math.round(spend * roas7 * f), roas: spend ? r2(roas7 * f) : null, impressions: spend * 55, ctr: r2((0.008 + rnd() * 0.016)), hook: format === 'video' ? r2(0.18 + rnd() * 0.22) : null, hold: format === 'video' ? r2(0.08 + rnd() * 0.2) : null, avg_watch: format === 'video' ? r2(2.5 + rnd() * 5) : null, purchases: Math.round(spend / 45), aov: r2(80 + rnd() * 40), cpa: r2(35 + rnd() * 30), comments: Math.round(rnd() * spend / 60), reactions: Math.round(rnd() * spend / 4), shares: Math.round(rnd() * spend / 90), saves: Math.round(rnd() * spend / 120) });
+        return { day: P(series[days - 1].spend), day_prev: P(series[days - 2].spend, 0.9 + rnd() * 0.3), week: P(s7), week_prev: P(sp, 0.8 + rnd() * 0.4), month: P(Math.round(s7 * 3.6)), month_prev: P(startIdx >= 7 ? 0 : Math.round(s7 * 3.1), 0.85 + rnd() * 0.3) };
+      })(),
+      wseries: Array.from({ length: 8 }, (_, w) => ({ end: off(-7 * (7 - w)), spend: startIdx >= 7 && w < 7 ? 0 : Math.round(level * 6 * (0.6 + rnd() * 0.7)), roas: r2(1 + rnd() * 2) })),
+      asset_id: i % 4 === 3 ? null : `asset${i}`, ad_id: `12021${100000 + i}`, ad_account: 'act_1', afterlife: i % 4 === 3 ? null : 'https://afterlife.example/asset/x', ads_manager: 'https://adsmanager.facebook.com/',
+      video_url: null,
+      body: i % 2 ? 'Most men use the wrong face cream. Here’s what 1 million men switched to — and why their wives noticed first. 👉 Try it risk-free.' : 'Black Friday: 25% off everything. Our best sellers, our lowest price of the year.',
     };
   }).sort((a, b) => Number(b.live) - Number(a.live) || b.d7.spend - a.d7.spend);
   return {
@@ -160,7 +178,13 @@ export function mediaFixture() {
       },
       internal: BASE, peers: { video: 160, static: 380 },
     },
-    totals: { series: dates.map(d => ({ d, spend: Math.round(14000 + rnd() * 9000), roas: r2(1.4 + rnd() * 0.9) })) },
+    totals: (() => {
+      const daily = Array.from({ length: 28 }, (_, i) => ({ d: off(-28 + i), spend: Math.round(14000 + rnd() * 9000), roas: r2(1.4 + rnd() * 0.9) }));
+      const weekly = Array.from({ length: 12 }, (_, i) => ({ end: off(-1 - 7 * (11 - i)), start: off(-7 - 7 * (11 - i)), spend: Math.round(110000 + rnd() * 50000), roas: r2(1.4 + rnd() * 0.8) }));
+      const now = new Date();
+      const monthly = Array.from({ length: now.getMonth() + 1 }, (_, i) => ({ m: `${now.getFullYear()}-${pad(i + 1)}`, spend: Math.round((420000 + rnd() * 220000) * (i === now.getMonth() ? 0.55 : 1)), roas: r2(1.3 + rnd() * 0.8), partial: i === now.getMonth() }));
+      return { series: daily.slice(-14), daily, weekly, monthly };
+    })(),
     creatives, fetched_at: new Date().toISOString(),
   };
 }
