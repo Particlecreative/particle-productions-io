@@ -170,3 +170,12 @@ test('On Air viewer: file links are signed over both ids (AfterLife asset ids ca
   assert.equal(Media.videoUrl('not-an-ad', ''), null);
   assert.equal(Media.videoUrl('', '../etc'), null);
 });
+
+test('A reply in a report thread is a reply, not the day’s report; only real creatives count as sent', () => {
+  const r = classify(msg({ id: '9', from: AGENCY, to: 'team@particleformen.com', subject: 'Re: Particle Gravite Campaign 11/17', html: `<div>About $2,500 sourced back.</div><blockquote>${faceHtml()}</blockquote>` }));
+  assert.equal(r.kind, 'reply');
+  assert.equal(L.isCreativeMail('Meeting with a partner', ['https://drive.google.com/x']), false);
+  assert.equal(L.isCreativeMail('Bus Shelter Opportunistic Buy', ['https://www.dropbox.com/x.pdf']), false);
+  assert.equal(L.isCreativeMail('Heart Rate Test 30s Commercial', []), true);
+  assert.equal(L.isCreativeMail('New edit', ['https://www.dropbox.com/s/x/cut.mov?dl=0']), true);
+});

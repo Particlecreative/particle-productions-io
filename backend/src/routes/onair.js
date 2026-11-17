@@ -53,9 +53,11 @@ router.post('/tv/refresh', async (req, res) => {
   if ((RANK[req.user?.role] ?? -1) < RANK.Editor && !req.user?.super_admin) return res.status(403).json({ error: 'Editor access required' });
   try {
     const sync = await Mail.sync({ days: 21 });
+    // the newest Excel files (every airing + this week's plan) — only when a newer email has them
+    const sheets = sync.ok ? await require('../lib/onair/sheets').ingest().catch((e) => ({ error: e.message })) : null;
     TV.clearLive();
     if (sync.ok) Mail.backfillOnce().then(() => TV.clearLive());   // months of history, once, in the background
-    res.json({ ...(await TV.buildTv('particle')), refreshed: sync });
+    res.json({ ...(await TV.buildTv('particle')), refreshed: sync, sheets });
   } catch (err) { fail(res, err, 'tv refresh'); }
 });
 

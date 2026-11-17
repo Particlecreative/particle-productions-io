@@ -155,7 +155,7 @@ function TrendChart({ points, fmt, color = BLUE, height = 132 }) {
 
 function ChartCard({ title, metrics, metric, onMetric, points, fmt, note, color }) {
   return (
-    <div className="rounded-2xl bg-white border border-gray-200 p-4">
+    <div className="rounded-2xl bg-white border border-gray-200 p-4 min-w-0 overflow-hidden">
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <div className="text-[10.5px] font-bold uppercase tracking-wider text-gray-400">{title}</div>
         <div className="ml-auto flex gap-1">
@@ -266,8 +266,26 @@ function TvTab({ period }) {
   );
 }
 
+/** The agency's RBD sheet: every creative that aired in the period with its real numbers vs the period before. */
+function airSpots(p, period, prevLabel) {
+  const list = p.air?.spots?.[period];
+  if (!list?.length) return null;
+  const pv = (x) => x?.spend ?? x?.spent;
+  return {
+    spots: list,
+    move: (s) => (s.prev && (pv(s.prev) || s.prev.orders)
+      ? { text: `${prevLabel.charAt(0).toUpperCase()}${prevLabel.slice(1)}: ${money(pv(s.prev))} · MER ${x2(s.prev.mer)}`, mer: s.prev.mer }
+      : s.is_new ? { text: period === 'day' ? 'First day on air' : `New — first aired ${fmtDay(s.first_seen, { day: 'numeric', month: 'short' })}`, fresh: true } : null),
+  };
+}
+
 /** One product's period: totals now and before, the chart, the spots and how each moved. */
 function tvPeriod(p, period) {
+  const base = tvPeriodBase(p, period);
+  const air = airSpots(p, period, period === 'month' ? base.prevLabel : period === 'day' ? 'the day before' : 'last week');
+  return air ? { ...base, ...air, fromSheet: true } : base;
+}
+function tvPeriodBase(p, period) {
   const per = p.periods || {};
   if (period === 'day') {
     const cur = per.day || null;
@@ -356,8 +374,10 @@ function ProductBlock({ p, period }) {
         )}
       </div>
 
+      {p.plan && <PlanCard plan={p.plan} />}
+
       <div>
-        <H2 aside={`${P.spots.length} spot${P.spots.length === 1 ? '' : 's'} · ${period === 'month' ? 'everything that aired this month' : 'aired this week'}`}
+        <H2 aside={`${P.spots.length} spot${P.spots.length === 1 ? '' : 's'} · ${period === 'day' ? `aired ${P.fromSheet ? fmtDay(p.air?.last) : 'on the last day'}` : period === 'month' ? 'everything that aired this month' : 'aired this week'}${P.fromSheet ? ' · from the agency’s day-by-day sheet' : ''}`}
           right={<Segmented size="sm" value={sort} onChange={setSort} options={[['spend', 'Spend'], ['mer', 'MER'], ['new', 'New']]} label="Sort spots" />}>
           {period === 'month' ? `On air in ${fmtMonth(p.month?.month)}` : 'On air now'}
         </H2>
@@ -368,8 +388,123 @@ function ProductBlock({ p, period }) {
         {P.spots.length > 9 && <button type="button" onClick={() => setAll(!all)} className="mt-3 text-sm font-semibold px-4 py-2 rounded-xl bg-white border border-gray-200 hover:border-gray-300" style={{ color: NAVY }}>{all ? 'Show fewer' : `Show all ${P.spots.length}`}</button>}
       </div>
 
+      {p.air && (p.air.stations?.[period]?.length > 0 || p.air.dayparts?.[period]?.length > 0) && (
+        <div className="grid gap-3 lg:grid-cols-[1.35fr_1fr]">
+          <StationsCard rows={p.air.stations[period] || []} refMer={cur.mer} label={P.label} />
+          <DaypartsCard rows={p.air.dayparts[period] || []} hours={p.air.daypart_hours || {}} refMer={cur.mer} label={P.label} />
+        </div>
+      )}
+
       {(p.placements.length > 0 || p.dayparts.length > 0) && <Placements p={p} refMer={cur.mer} />}
     </section>
+  );
+}
+
+/** This week's booked plan (the agency's Future sheet): what's booked, where, and which creatives rotate — the ones not aired yet are coming up. */
+function PlanCard({ plan }) {
+  const [all, setAll] = useState(false);
+  const list = all ? plan.creatives : plan.creatives.slice(0, 8);
+  const coming = plan.creatives.filter(c => !c.aired);
+  const mtotal = plan.markets.reduce((a, m) => a + (m.cost || 0), 0) || 1;
+  const COLORS = ['#0808f8', '#3d47ff', '#7e5bef', '#a78bfa', '#c4b5fd', '#ddd6fe'];
+  return (
+    <section className="rounded-2xl bg-white border border-gray-200 p-4">
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        <h3 className="font-black uppercase text-[22px] leading-none" style={{ ...DISPLAY, color: NAVY }}>Booked this week</h3>
+        <span className="text-xs text-gray-400">week of {fmtDay(plan.week, { day: 'numeric', month: 'short' })} · the agency’s plan</span>
+      </div>
+      <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1 mt-2">
+        <span className="font-black tabular-nums text-[30px] leading-none" style={{ ...DISPLAY, color: NAVY }}>{money(plan.total.cost)}</span>
+        <span className="text-[13px] text-gray-600"><b className="tabular-nums" style={{ color: NAVY }}>{int(plan.total.spots)}</b> spots · <b className="tabular-nums" style={{ color: NAVY }}>{int(plan.lines)}</b> lines</span>
+        {coming.length > 0 && <span className="text-[12px] font-semibold" style={{ color: RED }}>{coming.length} booked creative{coming.length === 1 ? '' : 's'} not aired yet</span>}
+      </div>
+      <div className="flex h-2.5 rounded-full overflow-hidden mt-3 bg-gray-100">
+        {plan.markets.map((m, i) => <span key={m.market} title={`${m.market}: ${money(m.cost)} · ${int(m.spots)} spots`} style={{ width: `${(m.cost / mtotal) * 100}%`, background: COLORS[i % COLORS.length] }} />)}
+      </div>
+      <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5 text-[11px] text-gray-500">
+        {plan.markets.map((m, i) => <span key={m.market} className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />{m.market} {money(m.cost)}</span>)}
+      </div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {list.map(c => (
+          <div key={c.name} className="flex items-center gap-2.5 rounded-xl border border-gray-100 p-2">
+            <div className="relative w-16 aspect-video rounded-lg overflow-hidden bg-gradient-to-br from-[#0b1550] to-[#2a35b8] flex-none">
+              {c.library?.thumb_url ? <img src={c.library.thumb_url} alt="" className="absolute inset-0 w-full h-full object-cover" loading="lazy" /> : <Film size={14} className="absolute inset-0 m-auto text-white/50" />}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="text-[13px] font-semibold truncate" style={{ color: NAVY }}>{c.library?.title || c.name}</span>
+                {!c.aired && <span className="flex-none text-[9.5px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded text-white" style={{ background: RED }}>Coming up</span>}
+              </div>
+              <div className="text-[11px] text-gray-400 truncate">{c.lines} line{c.lines === 1 ? '' : 's'} · {c.stations} station{c.stations === 1 ? '' : 's'} · ~{money(c.cost)}{c.code ? ` · ${c.code}` : ''}</div>
+              <div className="h-1 rounded-full bg-gray-100 mt-1 overflow-hidden"><div className="h-full rounded-full" style={{ width: `${Math.max(3, (c.share || 0) * 100)}%`, background: BLUE }} /></div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-3 mt-2 text-[11px] text-gray-400">
+        {plan.creatives.length > 8 && <button type="button" onClick={() => setAll(!all)} className="font-semibold text-[#0808f8] hover:underline">{all ? 'Show fewer' : `Show all ${plan.creatives.length}`}</button>}
+        {plan.unassigned > 0 && <span>{plan.unassigned} line{plan.unassigned === 1 ? '' : 's'} without a creative assigned yet</span>}
+        <span>Cost per creative is split evenly between the creatives rotating on a line.</span>
+      </div>
+    </section>
+  );
+}
+
+/** Where it works: stations for the period, by spend, MER coloured against the product's MER. */
+function StationsCard({ rows, refMer, label }) {
+  const [all, setAll] = useState(false);
+  const max = Math.max(1, ...rows.map(r => r.spend || 0));
+  const list = all ? rows : rows.slice(0, 8);
+  return (
+    <div className="rounded-2xl bg-white border border-gray-200 p-4">
+      <div className="flex items-baseline gap-2 mb-2"><h3 className="text-[14px] font-bold" style={{ color: NAVY }}>Where it works</h3><span className="text-xs text-gray-400">stations · {label}</span></div>
+      {!rows.length && <div className="text-sm text-gray-400 py-4">No airings in this period.</div>}
+      <div className="flex flex-col gap-1.5">
+        {list.map(r => {
+          const v = verdictTv(r.mer, refMer);
+          return (
+            <div key={r.station} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 items-center">
+              <div className="min-w-0">
+                <div className="flex items-baseline gap-1.5 min-w-0"><span className="text-[12.5px] font-semibold truncate" style={{ color: NAVY }}>{r.station}</span><span className="text-[10.5px] text-gray-400 truncate">{r.market}</span></div>
+                <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden mt-0.5"><div className="h-full rounded-full" style={{ width: `${((r.spend || 0) / max) * 100}%`, background: v ? v[1] : BLUE, opacity: 0.75 }} /></div>
+              </div>
+              <div className="text-right tabular-nums leading-tight">
+                <div className="text-[12.5px] font-semibold" style={{ color: NAVY }}>{money(r.spend)} <span className="text-gray-400 font-normal">· {int(r.orders)} orders</span></div>
+                <div className="text-[11px] font-bold" style={{ color: v ? v[1] : '#5b6280' }}>MER {x2(r.mer)}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {rows.length > 8 && <button type="button" onClick={() => setAll(!all)} className="mt-2 text-xs font-semibold text-[#0808f8] hover:underline">{all ? 'Show fewer' : `Show all ${rows.length}`}</button>}
+    </div>
+  );
+}
+
+/** When it works: time of day for the period — spend and MER per daypart. */
+function DaypartsCard({ rows, hours, refMer, label }) {
+  const max = Math.max(1, ...rows.map(r => r.spend || 0));
+  return (
+    <div className="rounded-2xl bg-white border border-gray-200 p-4">
+      <div className="flex items-baseline gap-2 mb-2"><h3 className="text-[14px] font-bold" style={{ color: NAVY }}>When it works</h3><span className="text-xs text-gray-400">time of day · {label}</span></div>
+      {!rows.length && <div className="text-sm text-gray-400 py-4">No airings in this period.</div>}
+      <div className="flex flex-col gap-2">
+        {rows.map(r => {
+          const v = verdictTv(r.mer, refMer);
+          return (
+            <div key={r.daypart}>
+              <div className="flex items-baseline gap-2 text-[12px]">
+                <span className="font-semibold" style={{ color: NAVY }}>{r.daypart}</span><span className="text-[10.5px] text-gray-400">{hours[r.daypart] || ''}</span>
+                <span className="ml-auto tabular-nums text-gray-600">{money(r.spend)} · {int(r.spots)} spots</span>
+                <span className="tabular-nums font-bold w-[64px] text-right" style={{ color: v ? v[1] : '#5b6280' }}>MER {x2(r.mer)}</span>
+              </div>
+              <div className="h-2 rounded-full bg-gray-100 overflow-hidden mt-0.5"><div className="h-full rounded-full" style={{ width: `${((r.spend || 0) / max) * 100}%`, background: v ? v[1] : BLUE, opacity: 0.75 }} /></div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="text-[10.5px] text-gray-400 mt-2">Green = above the product’s MER for the period, red = below.</div>
+    </div>
   );
 }
 
@@ -405,6 +540,7 @@ function SpotCard({ s, refMer, move, onLibrary, onProduction }) {
         <div className="text-[15px] font-semibold leading-snug line-clamp-2" style={{ color: NAVY }} title={lib ? `Our name in the CP: ${title}` : title}>{title}</div>
         {lib && <div className="min-w-0"><PrdChip id={lib.production_id} name={lib.production_name} onOpen={onProduction} /></div>}
         <div className="text-[11px] text-gray-400 truncate" title="What the agency calls it · its creative code">{[lib && s.name && s.name !== title ? `Agency: “${s.name}”` : null, s.code].filter(Boolean).join(' · ')}</div>
+        {s.first?.date && <div className="text-[11px] text-gray-500 truncate" title="The first time it aired, from the agency’s day-by-day sheet">First aired {fmtDay(s.first.date)}{s.first.time ? ` · ${s.first.time}` : ''}{s.first.station ? ` · ${s.first.station}` : ''}</div>}
         <div className="grid grid-cols-3 gap-2 mt-1">
           {[['Spent', money(s.spent)], ['Orders', int(s.orders)], ['CPO', money(s.cpo)]].map(([k, val]) => (
             <div key={k}><div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">{k}</div><div className="text-[16px] font-bold tabular-nums leading-tight" style={{ color: NAVY }}>{val}</div></div>

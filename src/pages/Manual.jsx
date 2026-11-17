@@ -9,6 +9,10 @@ import clsx from 'clsx';
 // ─── Growth team (17 Nov 2026) ─────────────────────────────────────────────────
 // RULE (Tomer): every change to the growth team's panel updates this section AND adds a dated line to "What's new".
 const GROWTH_WHATS_NEW = [
+  { date: '18 Nov 2026 · later', items: [
+    '📊 On Air reads the agency’s Excel files too: every spot’s real numbers per day, when and where it first aired, which stations and times of day work best, and what’s booked this week (with the creatives coming up).',
+    '🛠️ Gravité shows all its spots again (a reply in the report thread was being read as the day’s report).',
+  ] },
   { date: '18 Nov 2026', items: [
     '📅 On Air → Day / Week / Month: every number, chart and spot follows the period — yesterday vs the day before, this week vs last week, this month vs last month.',
     '✍️ On Air opens with a short summary of what happened (spend, orders, MER, the strongest and weakest spot, what’s new), and spots show a plain verdict: Strong, Fine or Weak.',
@@ -145,7 +149,9 @@ const GROWTH_CATEGORY = {
           'The blue card says what happened in one breath: spend, orders, MER, the strongest and weakest spot, what’s new on air.',
           'Every product the agency runs (Face Cream, Gravité…): spend, orders, MER, AOV and CPO against the period before, and a chart per day, week or month (Spend / Orders / MER).',
           'On air now (Month: everything that aired this month): each spot’s poster with a verdict — Strong / Fine / Weak against the product’s MER — its share of spend, orders, CPO, and how it moved (since the last report · vs last week · vs last month). NEW = first seen on air recently. Sort by Spend, MER or New.',
-          'Each spot carries our name for it in the CP, its production (PRD number + name — click it to open TV Productions) and, underneath, what the agency calls it and its code.',
+          'Each spot carries our name for it in the CP, its production (PRD number + name — click it to open TV Productions) and, underneath, what the agency calls it, its code and when it first aired (date · time · station).',
+          'Booked this week: the agency’s plan — what’s booked, in which markets, and which creatives rotate (“Coming up” = booked but not aired yet).',
+          'Where it works / When it works: the stations and times of day for the period, green above the product’s MER and red below.',
           'Play opens the commercial’s file from the TV Library; “Not in the TV Library” means no commercial there has that code yet.',
           'From us to the networks: every new creative the team emailed the agency — Sent → Agency confirmed → On air — with the networks it was sent to.',
           'What the agency says: the daily notes and replies, newest first.',
@@ -607,6 +613,8 @@ const CATEGORIES = [
             'On air now: every spot by its creative code — spend, share of the week, orders, MER, CPO, AOV, stations, what moved since the previous report, and NEW for spots first seen in the last 7 days.',
             'Each code is matched to the TV Library commercial with the same code: our name for it in the CP, its production (PRD number + name, click to open it), its poster and play button — with the agency’s own name and code underneath. The Library’s green “On air” dot follows the report.',
             'From us to the networks: creatives emailed to the agency → the agency confirmed (and to which networks) → first seen on air.',
+            'The agency’s Excel files (with most daily reports): the RBD sheet — every aired spot since January — gives each creative’s real numbers per day / week / month, when and where it first aired, and the stations and times of day that work; the Future sheet gives what’s booked this week and which creatives rotate (“Coming up” = booked, not aired yet). CP keeps the newest of each per product.',
+            'Replies in a report’s thread are read as replies, never as the day’s report.',
             'Editors and admins can press “Read now” to read the mailbox immediately.',
           ]},
           { type: 'guide', title: 'Day / Week / Month', steps: [

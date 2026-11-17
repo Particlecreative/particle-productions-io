@@ -34,6 +34,8 @@ function ensureTables() {
     );
     CREATE INDEX IF NOT EXISTS onair_tv_mail_kind_idx ON onair_tv_mail (kind, sent_at DESC);
     CREATE INDEX IF NOT EXISTS onair_tv_mail_thread_idx ON onair_tv_mail (thread_id);
+    -- replies stored as reports before 18 Nov (they quote the report's tables) → replies
+    UPDATE onair_tv_mail SET kind = 'reply' WHERE kind = 'report' AND subject ~* '^\s*(re|fwd?|fw)\s*:';
     CREATE TABLE IF NOT EXISTS onair_state (
       key        TEXT PRIMARY KEY,
       value      JSONB,
@@ -97,7 +99,10 @@ function classify(msg) {
   const fromAgency = from.email.endsWith(`@${AGENCY}`);
   const fromTeam = from.email.endsWith(`@${TEAM}`);
   const toAgency = to.some(e => e.endsWith(`@${AGENCY}`));
-  if (fromAgency && L.reportSubject(subject) && html) {
+  // a reply in a report's thread ("Re: Particle Gravite Campaign 11/17") quotes the report's tables but isn't the report —
+  // reading it as one hid Gravité's spots on 17 Nov
+  const isReply = /^\s*((re|fwd?|fw)\s*:\s*)+/i.test(subject);
+  if (fromAgency && !isReply && L.reportSubject(subject) && html) {
     const parsed = L.parseReport({ html, subject, sentAt });
     if (parsed.spots.length || parsed.daily.length) {
       return { ...row, kind: 'report', product: parsed.product, report_date: parsed.report_date, body_text: parsed.note, parsed };
@@ -106,7 +111,7 @@ function classify(msg) {
   const own = L.cleanReply(plain || L.plainOf(html));
   if (fromTeam && toAgency) {
     const links = L.creativeLinks(plain || html);
-    return { ...row, kind: links.length ? 'creative_sent' : 'reply', product: L.productOf(subject) || L.productOf(own), body_text: own.slice(0, 4000), links: links.length ? links : null };
+    return { ...row, kind: links.length && L.isCreativeMail(subject, links) ? 'creative_sent' : 'reply', product: L.productOf(subject) || L.productOf(own), body_text: own.slice(0, 4000), links: links.length ? links : null };
   }
   if (fromAgency) return { ...row, kind: 'reply', product: L.productOf(subject), body_text: own.slice(0, 4000), parsed: { networks: L.networksIn(own) } };
   return row;
@@ -187,4 +192,4 @@ async function todaysReportsIn() {
   return rows.length > 0 && rows.every(r => r.last >= today);
 }
 
-module.exports = { ensureTables, sync, backfillOnce, classify, googleStatus, getState, setState, todaysReportsIn, AGENCY, TEAM };
+module.exports = { ensureTables, sync, backfillOnce, classify, googleStatus, getState, setState, todaysReportsIn, gmailClient, AGENCY, TEAM };

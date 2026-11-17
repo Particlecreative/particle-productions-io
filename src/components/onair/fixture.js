@@ -60,6 +60,19 @@ function product(name, spots, base) {
       week: { label: sundayOf(0), ...weekly12[11], prev: weekly12[10] },
       month: { label: months[3].month, ...months[3], prev: months[2] },
     },
+    air: (() => {
+      const mk = (f, pf) => spots.map(sp => ({ code: sp.code, name: sp.name, spent: r2(sp.spent * f), orders: Math.round(sp.orders * f), revenue: r2(sp.revenue * f), mer: sp.mer, cpo: sp.cpo, aov: sp.aov, spots: Math.max(1, Math.round(sp.spent * f / 600)),
+        share: sp.spent / total, prev: sp.is_new ? null : { spend: r2(sp.spent * pf), orders: Math.round(sp.orders * pf), mer: r2(sp.mer * (0.8 + rnd() * 0.4)) },
+        first: { date: sp.is_new ? off(-2) : off(-60), time: ['10:42P', '6:05A', '8:30P', '9:15A'][Math.floor(rnd() * 4)], station: ['FOX NEWS', 'CNN', 'WPHL', 'ACCUWEATHER'][Math.floor(rnd() * 4)] },
+        first_seen: sp.is_new ? off(-2) : off(-60), is_new: sp.is_new, library: sp.library })).sort((a2, b2) => b2.spent - a2.spent);
+      const st = (f) => ['FOX NEWS', 'CNN', 'WPHL', 'ACCUWEATHER', 'AMC', 'HISTORY', 'NBC NEWS OTT', 'NEWSMAX'].map((n, i) => ({ station: n, market: i === 2 ? 'Philadelphia' : i === 6 ? 'National OTT' : 'National Cable', spend: Math.round(base * f * (1.6 - i * 0.18)), orders: Math.round(base * f * (1.6 - i * 0.18) * 0.004), spots: Math.round(20 * f), mer: r2(0.25 + rnd() * 0.5) }));
+      const dp = (f) => [['Morning', 0.28], ['Daytime', 0.18], ['Early evening', 0.14], ['Prime', 0.3], ['Late night', 0.1]].map(([n, w]) => ({ daypart: n, spend: Math.round(base * f * w * 5), spots: Math.round(60 * f * w), mer: r2(0.25 + rnd() * 0.5) }));
+      return { last: off(-1), spots: { day: mk(0.14, 0.13), week: mk(1, 0.9), month: mk(2.6, 3.1) }, stations: { day: st(0.2), week: st(1), month: st(3) }, dayparts: { day: dp(0.2), week: dp(1), month: dp(3) },
+        daypart_hours: { Morning: '6a–12p', Daytime: '12p–5p', 'Early evening': '5p–8p', Prime: '8p–11p', 'Late night': '11p–6a' } };
+    })(),
+    plan: { week: sundayOf(0), lines: 91, unassigned: 48, total: { spots: 852, cost: Math.round(base * 10.5) },
+      markets: [{ market: 'National Cable', cost: Math.round(base * 6), spots: 520 }, { market: 'National OTT', cost: Math.round(base * 2.5), spots: 260 }, { market: 'Philadelphia', cost: Math.round(base * 1.2), spots: 50 }, { market: 'National Network', cost: Math.round(base * 0.8), spots: 22 }],
+      creatives: spots.slice(0, 6).map((sp, i) => ({ name: sp.name.replace(/ :\d+$/, ''), lines: 19 - i * 3, stations: 12 - i, cost: Math.round(base * (3 - i * 0.4)), share: 0.28 - i * 0.04, code: i === 4 ? null : sp.code, aired: i !== 4, library: i === 4 ? null : sp.library })) },
     month: { month: months[3].month, prev_month: months[2].month, spots: spots.map(sp => ({ code: sp.code, name: sp.name, length: sp.length, spent: r2(sp.spent * 2.6), orders: sp.orders * 3, revenue: r2(sp.revenue * 2.6), mer: sp.mer, cpo: sp.cpo, aov: sp.aov, weeks: sp.is_new ? 1 : 3, share: sp.spent / total, prev: sp.is_new ? null : { spent: r2(sp.spent * 3.4), orders: sp.orders * 4, revenue: r2(sp.revenue * 3), mer: r2(sp.mer * (0.8 + rnd() * 0.4)) }, first_seen: sp.first_seen, is_new: sp.is_new, on_air_now: true, library: sp.library })).sort((a, b) => b.spent - a.spent) },
   };
 }

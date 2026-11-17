@@ -214,7 +214,15 @@ function creativeLinks(s) {
   return [...new Set(urls.map(u => u.replace(/[.,;]+$/, '')))].filter(u => /dropbox\.com|frame\.io|f\.io\/|drive\.google|vimeo\.com|youtu\.?be/i.test(u)).slice(0, 8);
 }
 
+/** A new creative for the agency (not a meeting, a bus shelter or a contract): its subject or file says commercial / spot /
+ *  a length / a cut — or a link is a video file. */
+function isCreativeMail(subject, links = []) {
+  const s = String(subject || '');
+  if (/commercial|\bspot\b|\btv\b|\b\d{2}\s?s\b|:\d{2}\b|\b(cut|master|version|edit|pdp|teaser|bumper)\b/i.test(s)) return true;
+  return links.some(u => /\.(mov|mp4|m4v|mxf)(\?|$)/i.test(u));
+}
+
 /** "Re: Fwd: Blindfolded 30s 2026 Commercial" → "Blindfolded 30s 2026 Commercial" */
 const cleanSubject = (s) => String(s || '').replace(/^\s*((re|fwd?|fw)\s*:\s*)+/i, '').trim();
 
-module.exports = { plainOf, parseReport, reportSubject, cleanReply, networksIn, creativeLinks, cleanSubject, productOf, tablesOf, num, ymd };
+module.exports = { plainOf, isCreativeMail, parseReport, reportSubject, cleanReply, networksIn, creativeLinks, cleanSubject, productOf, tablesOf, num, ymd };

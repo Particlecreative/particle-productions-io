@@ -11,6 +11,7 @@ const db = require('../../db');
 const lib = require('../library');
 const M = require('./tvMail');
 const L = require('./agencyReport');
+const Sheets = require('./sheets');
 const { canonicalUrl, linkKind } = require('../creative/snapshot');
 
 const DAY = 86400000;
@@ -25,7 +26,7 @@ async function reportRows() {
   await M.ensureTables();
   const { rows } = await db.query(
     `SELECT gmail_id, thread_id, product, subject, sent_at, report_date::text AS report_date, body_text, parsed
-       FROM onair_tv_mail WHERE kind = 'report' AND sent_at > NOW() - INTERVAL '75 days' ORDER BY sent_at DESC`);
+       FROM onair_tv_mail WHERE kind = 'report' AND subject !~* '^\s*(re|fwd?|fw)\s*:' AND sent_at > NOW() - INTERVAL '75 days' ORDER BY sent_at DESC`);
   // one report per product per day (a resend replaces the first)
   const seen = new Set();
   return rows.filter(r => { const k = `${r.product}|${r.report_date}`; if (seen.has(k)) return false; seen.add(k); return true; });
@@ -205,6 +206,8 @@ async function pipeline(brandId, firstSeen, liveByCode) {
   const { rows: sent } = await db.query(
     `SELECT gmail_id, thread_id, product, subject, from_name, from_email, sent_at, body_text, links
        FROM onair_tv_mail WHERE kind = 'creative_sent' AND sent_at > NOW() - INTERVAL '60 days' ORDER BY sent_at DESC`);
+  // only real creatives (older rows could be a meeting or a bus-shelter buy with a Drive link)
+  for (let i = sent.length - 1; i >= 0; i--) if (!L.isCreativeMail(sent[i].subject, Array.isArray(sent[i].links) ? sent[i].links : [])) sent.splice(i, 1);
   if (!sent.length) return [];
   const threads = [...new Set(sent.map(s => s.thread_id))];
   const { rows: replies } = await db.query(
@@ -255,9 +258,16 @@ async function buildTv(brandId = 'particle') {
   const byProduct = {};
   for (const r of reports) (byProduct[r.product || 'Other'] = byProduct[r.product || 'Other'] || []).push(r);
   const firstSeen = firstSeenOf(reports);
-  const codes = [...new Set(Object.values(byProduct).flatMap(rs => rs.flatMap(r => (r.parsed?.spots || []).map(s => s.code))))];
+  // the agency's Excel files: every airing (RBD) and this week's booked plan (Future), per product
+  const names = Object.keys(byProduct);
+  const air = Object.fromEntries(await Promise.all(names.map(async (n) => [n, await Sheets.airingsView(n).catch((e) => { console.warn('[onair] airings', e.message); return null; })])));
+  const codes = [...new Set([
+    ...Object.values(byProduct).flatMap(rs => rs.flatMap(r => (r.parsed?.spots || []).map(s => s.code))),
+    ...Object.values(air).flatMap(a => Object.keys(a?.codes || {})),
+  ])];
   const libBy = await libraryByCode(brandId, codes);
-  const products = Object.values(byProduct).map(rs => productView(rs, firstSeen, libBy, today))
+  const plans = Object.fromEntries(await Promise.all(names.map(async (n) => [n, await Sheets.planView(n, air[n]?.codes || {}).catch(() => null)])));
+  const products = Object.values(byProduct).map(rs => withSheets(productView(rs, firstSeen, libBy, today), air[rs[0].product || 'Other'], plans[rs[0].product || 'Other'], libBy, today))
     .sort((a, b) => (b.week.spent || 0) - (a.week.spent || 0));
   const live = await liveCodes(brandId, { reports });
   const [pipe, notes] = await Promise.all([
@@ -278,6 +288,39 @@ async function buildTv(brandId = 'particle') {
   };
 }
 
+/**
+ * The Excel side on a product: per period (day / week / month) every creative that aired with its real numbers and the
+ * period before, its first airing (date · time · station), plus where (stations) and when (dayparts) it works and the
+ * booked plan. Lisa's tables stay the source of the totals; the airings give the per-creative detail.
+ */
+function withSheets(v, air, plan, libBy, today) {
+  if (plan) {
+    for (const c of plan.creatives) c.library = c.code ? libBy[c.code] || null : null;
+    v.plan = plan;
+  }
+  if (!air) return v;
+  const list = (k) => {
+    const rows = Object.values(air.codes).filter(c => c[k] && (c[k].spots || c[k].spend));
+    const total = rows.reduce((a, c) => a + (c[k].spend || 0), 0);
+    return rows.map(c => ({
+      code: c.code, name: c.name, length: null,
+      spent: c[k].spend, orders: c[k].orders, revenue: c[k].revenue, mer: c[k].mer, cpo: c[k].cpo, aov: c[k].aov, spots: c[k].spots,
+      share: total ? c[k].spend / total : null, prev: c[`${k}_prev`] || null,
+      first: c.first, first_seen: c.first?.date || null,
+      is_new: !!c.first?.date && c.first.date >= addDays(air.last, -6),
+      series: c.series, library: libBy[c.code] || null,
+    })).sort((a, b) => (b.spent || 0) - (a.spent || 0));
+  };
+  v.air = {
+    last: air.last, first: air.first, ranges: air.ranges,
+    spots: { day: list('day'), week: list('week'), month: list('month') },
+    stations: air.stations, dayparts: air.dayparts, daypart_hours: air.daypart_hours,
+  };
+  // the report's spot cards get their first airing too
+  for (const s of v.spots) { const c = air.codes[s.code]; if (c) { s.first = c.first; s.air = { day: c.day, day_prev: c.day_prev }; } }
+  return v;
+}
+
 let liveCache = null; // { at, map }
 /** code → { product, report_date, spent, orders, mer, first_seen } for the spots in each product's latest report (≤ 9 days old). */
 async function liveCodes(brandId = 'particle', { reports = null } = {}) {
@@ -296,10 +339,16 @@ async function liveCodes(brandId = 'particle', { reports = null } = {}) {
         map.set(s.code, { product: r.product, report_date: r.report_date, spent: s.spent, orders: s.orders, mer: s.mer, first_seen: firstSeen.first[s.code] || null });
       }
     }
+    // and anything the RBD shows airing in the last 8 days
+    await Sheets.ensureTables();
+    const { rows: recent } = await db.query(
+      `SELECT code, product, MAX(aired_on)::text AS last, MIN(aired_on)::text AS first, SUM(spend) spend, SUM(orders) orders, SUM(revenue) rev
+         FROM onair_tv_airings WHERE aired_on > (CURRENT_DATE - 8) GROUP BY code, product`);
+    for (const r of recent) if (!map.has(r.code)) map.set(r.code, { product: r.product, report_date: r.last, spent: Number(r.spend), orders: Number(r.orders), mer: Number(r.spend) ? Number(r.rev) / Number(r.spend) : null, first_seen: r.first });
   } catch (e) { console.warn('[onair] liveCodes', e.message); }
   liveCache = { at: Date.now(), map };
   return map;
 }
 const clearLive = () => { liveCache = null; };
 
-module.exports = { buildTv, liveCodes, clearLive, productView, firstSeenOf, historyOf };
+module.exports = { buildTv, liveCodes, clearLive, productView, firstSeenOf, historyOf, withSheets };
