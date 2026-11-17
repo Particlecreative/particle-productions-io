@@ -55,6 +55,7 @@ router.post('/login', async (req, res) => {
     // Audit log
     const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || 'unknown';
     console.log(`[AUTH] Login: ${user.email} (${user.role}) from ${ip}`);
+    if (user.role !== 'Admin' && !user.super_admin) require('../lib/activity').record(payload, { kind: 'signin', label: 'Signed in' });   // Team activity
 
     res.json({ token, user: payload });
   } catch (err) {

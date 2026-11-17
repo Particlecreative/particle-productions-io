@@ -7,12 +7,14 @@ import HiggsfieldFilms from './HiggsfieldFilms';
 import { START } from './Today';
 
 /** One place to start a brief: pick how, then the form for it. */
-export default function Create({ mode, setMode, overview, notify, onOpen, onQueued, isAdmin }) {
-  const m = START.some(s => s.mode === mode) ? mode : 'idea';
+export default function Create({ mode, setMode, overview, notify, onOpen, onQueued, isAdmin, growth = false }) {
+  // Growth team: they write their own briefs — no mass production (Tomer, 17 Nov 2026)
+  const starts = growth ? START.filter(s => s.mode !== 'mass') : START;
+  const m = starts.some(s => s.mode === mode) ? mode : 'idea';
   return (
     <div className="space-y-6">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6" role="tablist" aria-label="How do you want to start?">
-        {START.map(s => (
+        {starts.map(s => (
           <button key={s.mode} type="button" role="tab" aria-selected={m === s.mode} className={`md-action compact ${m === s.mode ? 'on' : ''}`} onClick={() => setMode(s.mode)}>
             <span className="md-emoji" aria-hidden>{s.emoji}</span>
             <span className="md-action-title">{s.title}</span>
@@ -23,7 +25,7 @@ export default function Create({ mode, setMode, overview, notify, onOpen, onQueu
       {m === 'winner' && <Generator overview={overview} notify={notify} onOpen={onOpen} onQueued={onQueued} />}
       {m === 'hooks' && <HeadlineHooks overview={overview} notify={notify} onOpen={onOpen} onQueued={onQueued} />}
       {m === 'holiday' && <Holiday overview={overview} notify={notify} onOpen={onOpen} />}
-      {m === 'mass' && <MassProduction notify={notify} onOpen={onOpen} onQueued={onQueued} />}
+      {m === 'mass' && !growth && <MassProduction notify={notify} onOpen={onOpen} onQueued={onQueued} />}
       {m === 'higgsfield' && <HiggsfieldFilms notify={notify} onOpen={onOpen} onQueued={onQueued} isAdmin={isAdmin} />}
     </div>
   );

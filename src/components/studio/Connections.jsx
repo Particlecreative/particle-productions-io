@@ -45,6 +45,10 @@ export default function Connections({ onChanged }) {
         <p className="text-sm text-gray-500">Video Projects and Design Projects 2.0 are read live. Changes you make in the Studio (drag &amp; drop, new tickets) are written back to Monday.</p>
       </Card>
 
+      <MondayAppCard d={c.monday_app || {}} isAdmin={isAdmin} busy={busy}
+        save={(id, secret) => run('mapp', () => studioApi.connectMondayApp(id, secret), 'Saved — everyone can now connect their Monday in one click (Growth Studio → welcome page).')}
+        remove={() => window.confirm('Remove the Monday app? People already connected stay connected; new people paste a token instead.') && run('mapp', studioApi.disconnectMondayApp, 'Monday app removed.')} />
+
       <DropboxCard d={c.dropbox || {}} isAdmin={isAdmin} busy={busy} dbx={dbx} setDbx={setDbx}
         connect={() => run('dbx', async () => { const r = await studioApi.connectDropbox(dbx.key, dbx.base || c.dropbox?.base); window.location.href = r.url; }, 'Opening Dropbox…')}
         disconnect={() => window.confirm('Disconnect Dropbox? New tickets will be made without a Dropbox folder.') && run('dbx', studioApi.disconnectDropbox, 'Dropbox disconnected.')} />
@@ -94,6 +98,49 @@ export default function Connections({ onChanged }) {
         <p className="text-[11px] text-gray-400 mt-3">This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
       </Card>
     </div>
+  );
+}
+
+/**
+ * Each person's own Monday, in one click (Tomer, 17 Nov 2026): the company's Monday app (OAuth). Without it people paste
+ * a personal token on the welcome page. Briefs and tickets they send are then created as them.
+ */
+function MondayAppCard({ d, isAdmin, busy, save, remove }) {
+  const [id, setId] = useState('');
+  const [secret, setSecret] = useState('');
+  const [copied, setCopied] = useState(false);
+  const copy = () => { navigator.clipboard?.writeText(d.redirect_uri || '').then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }).catch(() => {}); };
+  const people = d.people || [];
+  return (
+    <Card title={<span className="flex items-center gap-2"><CalendarCheck size={15} className="text-[#0808f8]" /> Monday — everyone’s own account</span>}
+      right={<Status ok={d.connected}>{d.connected ? 'One-click connect on' : null}</Status>}>
+      <p className="text-sm text-gray-500 mb-3">
+        People connect their own Monday once (the Growth Studio asks first thing). Then the briefs and tickets they send from CP are created <b>as them</b>.
+        With this app it’s one click; without it they paste a personal token.
+      </p>
+      {people.length > 0 && <p className="text-xs text-gray-500 mb-3">Connected: {people.map(p => p.name).join(', ')}</p>}
+      {!d.connected && (
+        <ol className="text-sm text-gray-600 mb-3 list-decimal pl-5 space-y-1">
+          <li>In Monday: your picture → <b>Developers</b> → <b>Create app</b> → name it “CP”.</li>
+          <li><b>OAuth</b> → Scopes: tick <code className="text-xs">me:read</code>, <code className="text-xs">users:read</code>, <code className="text-xs">boards:read</code>, <code className="text-xs">boards:write</code>, <code className="text-xs">updates:write</code>.</li>
+          <li><b>OAuth</b> → Redirect URLs → add
+            <button type="button" onClick={copy} className="ml-1 inline-flex items-center gap-1 text-xs font-mono px-2 py-0.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 break-all text-left">{d.redirect_uri}<Copy size={11} className="flex-none" /></button>
+            {copied && <span className="text-xs text-emerald-700 ml-1">copied</span>}</li>
+          <li><b>Basic information</b> → copy the <b>Client ID</b> and <b>Client Secret</b> → paste them below.</li>
+        </ol>
+      )}
+      {d.connected && d.set_at && <p className="text-xs text-gray-400 mb-3">Set {when(d.set_at)}{d.set_by ? ` by ${d.set_by}` : ''}{d.meta?.client_id_end ? ` · app …${d.meta.client_id_end}` : ''}</p>}
+      {isAdmin ? (
+        <form className="flex flex-wrap items-center gap-2" onSubmit={(e) => { e.preventDefault(); save(id.trim(), secret.trim()); setSecret(''); }}>
+          <input autoComplete="off" value={id} onChange={e => setId(e.target.value)} placeholder="Client ID" className="w-48 text-sm px-3 py-2 rounded-xl border border-gray-200 outline-none focus:border-[#4a55ff]" />
+          <input type="password" autoComplete="off" value={secret} onChange={e => setSecret(e.target.value)} placeholder="Client Secret" className="flex-1 min-w-[200px] text-sm px-3 py-2 rounded-xl border border-gray-200 outline-none focus:border-[#4a55ff]" />
+          <button type="submit" disabled={busy === 'mapp' || !id.trim() || !secret.trim()} className="text-sm font-semibold px-4 py-2 rounded-xl text-white disabled:opacity-40 flex items-center gap-2" style={{ background: '#0808f8' }}>
+            {busy === 'mapp' && <Loader2 size={14} className="animate-spin" />} {d.connected ? 'Replace' : 'Save'}
+          </button>
+          {d.connected && <button type="button" disabled={busy === 'mapp'} onClick={remove} className="text-sm font-semibold px-3 py-2 rounded-xl text-gray-500 hover:text-red-600">Remove</button>}
+        </form>
+      ) : <p className="text-xs text-gray-400">Only admins can set this up.</p>}
+    </Card>
   );
 }
 

@@ -34,13 +34,18 @@ function hello(name) {
  * MEDIUM 🔮 — the creative strategy room. It studies what won and drafts the next briefs in the team's house style;
  * Captain Caption proofreads them; a person approves before anything is made.
  */
-export default function MediumPage() {
+// Growth Studio (17 Nov 2026): they write their own briefs — Create + their briefs only; nothing written for them automatically
+const GROWTH_TABS = [['create', 'Create', PenLine], ['briefs', 'My briefs', Inbox]];
+
+export default function MediumPage({ growth = false }) {
   const { isAdmin, user } = useAuth();
   const { brandId } = useBrand();
   const [params, setParams] = useSearchParams();
-  const raw = params.get('tab');
-  const legacy = LEGACY[raw];
-  const tab = legacy ? legacy[0] : TABS.some(t => t[0] === raw) ? raw : 'today';
+  const TK = growth ? 'mtab' : 'tab';   // inside the Growth Studio, ?tab= is the Studio's own tab
+  const tabs = growth ? GROWTH_TABS : TABS;
+  const raw = params.get(TK);
+  const legacy = growth ? null : LEGACY[raw];
+  const tab = legacy ? legacy[0] : tabs.some(t => t[0] === raw) ? raw : (growth ? 'create' : 'today');
   const sub = (legacy && legacy[1]) || params.get('mode') || '';
   const open = params.get('brief');
   const [overview, setOverview] = useState(null);
@@ -50,10 +55,10 @@ export default function MediumPage() {
   const notify = useCallback((text, error = false) => setToast({ text, error }), []);
   const load = useCallback(async () => {
     try {
-      const [o, b] = await Promise.all([mediumApi.overview(), mediumApi.briefs({})]);
+      const [o, b] = await Promise.all([mediumApi.overview(), mediumApi.briefs(growth ? { mine: 1 } : {})]);
       setOverview(o); setBriefs(b.briefs);
     } catch (e) { notify(e.message, true); }
-  }, [notify]);
+  }, [notify, growth]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
     const ok = params.get('upspring'), err = params.get('upspring_error');
@@ -68,7 +73,7 @@ export default function MediumPage() {
   useEffect(() => { if (!toast) return undefined; const t = setTimeout(() => setToast(null), 5000); return () => clearTimeout(t); }, [toast]);
 
   const setParam = useCallback((key, value) => setParams(prev => { const n = new URLSearchParams(prev); if (value) n.set(key, value); else n.delete(key); return n; }), [setParams]);
-  const go = useCallback((t, mode) => setParams(prev => { const n = new URLSearchParams(prev); n.set('tab', t); if (mode) n.set('mode', mode); else n.delete('mode'); return n; }), [setParams]);
+  const go = useCallback((t, mode) => setParams(prev => { const n = new URLSearchParams(prev); n.set(TK, t); if (mode) n.set('mode', mode); else n.delete('mode'); return n; }), [setParams, TK]);
   const setSub = useCallback((mode) => go(tab, mode), [go, tab]);
   const openBrief = useCallback((id) => setParam('brief', id), [setParam]);
   const closeBrief = useCallback(() => setParam('brief', ''), [setParam]);
@@ -78,14 +83,16 @@ export default function MediumPage() {
   const waiting = briefs.filter(b => b.status === 'PENDING_REVIEW').length;
   const mondayOn = !!(overview?.monday_submit ?? overview?.sources?.monday?.submit);
   return (
-    <div className="trk cc md max-w-[2400px] mx-auto pb-16">
-      <div className="trk-canvas p-5 sm:p-8 md:p-10">
+    <div className={`trk cc md mx-auto ${growth ? '' : 'max-w-[2400px] pb-16'}`}>
+      <div className={`trk-canvas ${growth ? 'p-5 sm:p-7' : 'p-5 sm:p-8 md:p-10'}`}>
         <div className="trk-eyebrow">🔮 Medium · creative strategy</div>
         <h1 className="md-hello mt-3">{hello(user?.name)}</h1>
-        <p className="md-lead mt-3">Medium studies what won and drafts your next briefs in the team’s style. Captain Caption proofreads every line — and nothing gets made until you approve it.</p>
+        <p className="md-lead mt-3">{growth
+          ? 'Write your briefs with Medium — it knows what won and writes in the team’s style. Captain Caption proofreads every line, you approve, and it goes to Monday with your name on it.'
+          : 'Medium studies what won and drafts your next briefs in the team’s style. Captain Caption proofreads every line — and nothing gets made until you approve it.'}</p>
 
         <nav className="md-tabs mt-8" role="tablist" aria-label="Medium">
-          {TABS.map(([key, label, Icon]) => (
+          {tabs.map(([key, label, Icon]) => (
             <button key={key} type="button" role="tab" aria-selected={tab === key} className={tab === key ? 'on' : ''} onClick={() => go(key)}>
               <Icon size={16} /> {label}{key === 'briefs' && waiting > 0 && <span className="md-count">{waiting}</span>}
             </button>
@@ -94,7 +101,7 @@ export default function MediumPage() {
 
         <div className="mt-8">
           {tab === 'today' && <Today overview={overview} briefs={briefs} onOpen={openBrief} go={go} />}
-          {tab === 'create' && <Create mode={sub} setMode={setSub} overview={overview} notify={notify} onOpen={openBrief} onQueued={load} isAdmin={isAdmin} />}
+          {tab === 'create' && <Create mode={sub} setMode={setSub} overview={overview} notify={notify} onOpen={openBrief} onQueued={load} isAdmin={isAdmin} growth={growth} />}
           {tab === 'briefs' && <Briefs briefs={briefs} overview={overview} onOpen={openBrief} />}
           {tab === 'market' && <Market notify={notify} isAdmin={isAdmin} go={go} />}
           {tab === 'behind' && <Behind part={sub} setPart={setSub} overview={overview} notify={notify} isAdmin={isAdmin} reload={load} onOpen={openBrief} />}

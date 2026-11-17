@@ -365,10 +365,12 @@ async function submitTicket({ config, form, board, fields, people, user, convers
     else values[f.col] = v;
   }
   const name = itemName(clean);
-  const item = await createItem({ boardId: config.boards[board].board_id, groupId: FORM_GROUP, name, columnValues: values, createLabels: newLabel });
+  // Their own Monday when they connected it (Tomer, 17 Nov 2026) — the ticket and its brief show as theirs
+  const mine = await require('../mondayUser').tokenFor(user?.id).catch(() => null);
+  const item = await createItem({ boardId: config.boards[board].board_id, groupId: FORM_GROUP, name, columnValues: values, createLabels: newLabel, token: mine?.token || null });
   if (!item?.id) throw new Error('Monday did not return the new item');
   const dropbox = await makeFolder({ config, board, clean, name, itemId: item.id, brandId });
-  const { attached, failed, inColumn } = await attachFiles({ itemId: item.id, column: config.boards[board].columns?.files, fileIds: files, clean, board, user, dropbox });
+  const { attached, failed, inColumn } = await attachFiles({ itemId: item.id, column: config.boards[board].columns?.files, fileIds: files, clean, board, user, dropbox, token: mine?.token || null });
 
   try {
     await db.query(
@@ -409,7 +411,7 @@ async function makeFolder({ config, board, clean, name, itemId, brandId }) {
  * Every file goes in the item's "Relevant Files" column — where the team looks; one that won't go there is attached to
  * the brief update instead. Then the item is read back, and only files Monday really has count as attached.
  */
-async function attachFiles({ itemId, column, fileIds, clean, board, user, dropbox = null }) {
+async function attachFiles({ itemId, column, fileIds, clean, board, user, dropbox = null, token = null }) {
   const wanted = [...new Set((fileIds || []).map(String))];
   const failed = [];
   let attach = [];
@@ -432,7 +434,7 @@ async function attachFiles({ itemId, column, fileIds, clean, board, user, dropbo
     + (dropbox?.url ? `<br><br>📁 Dropbox folder for the finished files: <a href="${esc(dropbox.url)}">${esc(dropbox.path || 'open')}</a>` : '');
   let updateId = null;
   try {
-    const u = await addUpdate(itemId, `${html}<br><br><em>— brief from CP Studio, by ${esc(user?.name || 'the studio')}</em>`);
+    const u = await addUpdate(itemId, `${html}<br><br><em>— brief from CP Studio, by ${esc(user?.name || 'the studio')}</em>`, { token });
     updateId = u?.create_update?.id || null;
   } catch { /* the item exists; the update is a nicety */ }
   for (const { f, why } of toUpdate) {

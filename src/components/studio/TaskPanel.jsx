@@ -55,7 +55,7 @@ function mentionQuery(text, caret) {
 }
 
 /** The brief and the conversation from Monday, plus a reply box. Type @ to tag someone (a real Monday mention). */
-function Updates({ it, data }) {
+function Updates({ it, data, readOnly = false }) {
   const [list, setList] = useState(null);
   const [err, setErr] = useState(null);
   const [text, setText] = useState('');
@@ -138,7 +138,7 @@ function Updates({ it, data }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5"><MessageSquare size={12} /> Brief & updates</div>
-      <div className="relative rounded-xl border border-gray-200 focus-within:border-[#0808f8]/50 bg-white">
+      <div className={`relative rounded-xl border border-gray-200 focus-within:border-[#0808f8]/50 bg-white ${readOnly ? 'hidden' : ''}`}>
         <textarea ref={box} value={text} onChange={onType} onKeyDown={onKey} rows={2} placeholder="Write an update — it’s posted on the Monday task. Type @ to tag someone"
           onBlur={() => setTimeout(() => setQuery(null), 150)}
           onClick={(e) => setQuery(mentionQuery(text, e.target.selectionStart))}
@@ -186,7 +186,7 @@ function Updates({ it, data }) {
  * Every change is saved to Monday straight away (with Undo).
  */
 export default function TaskPanel({ it: base, data, onClose }) {
-  const { writes } = useStudio();
+  const { writes, readOnly = false } = useStudio();   // readOnly: the Growth Studio sees the task, never changes it
   const it = writes.merge(base, data.generated_at);
   const today = data.today || ymd(new Date());
   const [from, setFrom] = useState('');
@@ -239,9 +239,11 @@ export default function TaskPanel({ it: base, data, onClose }) {
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-5">
+          {readOnly && <div className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">View only — the studio schedules and moves tasks. Open it in Monday to comment.</div>}
+          <fieldset disabled={readOnly} className="contents">
           {statuses.length > 0 && (
             <div>
-              <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Status · click to change</div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Status{readOnly ? '' : ' · click to change'}</div>
               <div className="flex flex-wrap gap-1.5">
                 {statuses.map(s => {
                   const on = s.label === it.status.label;
@@ -293,7 +295,7 @@ export default function TaskPanel({ it: base, data, onClose }) {
             </div>
             {invalid && <div className="text-xs text-red-600">The end is before the start.</div>}
             {!invalid && b && deadline && b > deadline && <div className="text-xs text-amber-700">The timeline ends after the deadline ({fmtDay(deadline)}).</div>}
-            {dirty && (
+            {dirty && !readOnly && (
               <div className="flex gap-2">
                 <button type="button" disabled={invalid} onClick={() => writes.save(it, next, data)}
                   className="flex-1 text-sm font-semibold px-4 py-2 rounded-xl text-white disabled:opacity-40" style={{ background: '#0808f8' }}>Save to Monday</button>
@@ -302,6 +304,7 @@ export default function TaskPanel({ it: base, data, onClose }) {
               </div>
             )}
           </div>
+          </fieldset>
 
           {(life?.submitted || it.effort_total_s > 0 || links.length > 0) && (
             <div className="flex flex-col gap-2">
@@ -326,7 +329,7 @@ export default function TaskPanel({ it: base, data, onClose }) {
             </div>
           )}
 
-          <Updates it={it} data={data} />
+          <Updates it={it} data={data} readOnly={readOnly} />
         </div>
 
         <div className="px-6 py-3 border-t border-gray-100">
@@ -346,7 +349,7 @@ export default function TaskPanel({ it: base, data, onClose }) {
           ) : (
             <div className="flex items-center">
               {it.monday_url && <a href={it.monday_url} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-gray-500 hover:text-[#0808f8] flex items-center gap-1.5">Open in Monday <ExternalLink size={12} /></a>}
-              <button type="button" onClick={() => setAskArchive(true)} className="ml-auto text-xs font-semibold text-gray-500 hover:text-red-600 flex items-center gap-1.5"><Archive size={13} /> Archive</button>
+              {!readOnly && <button type="button" onClick={() => setAskArchive(true)} className="ml-auto text-xs font-semibold text-gray-500 hover:text-red-600 flex items-center gap-1.5"><Archive size={13} /> Archive</button>}
             </div>
           )}
         </div>

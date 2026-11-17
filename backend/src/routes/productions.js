@@ -1,6 +1,12 @@
 const router = require('express').Router();
 const db     = require('../db');
-const { verifyJWT, requireEditor, requireAdmin } = require('../middleware/auth');
+const { verifyJWT, requireEditor, requireAdmin, isGrowth } = require('../middleware/auth');
+
+// Growth team: timelines only — never money. A whitelist, so a new money column can't slip through.
+const GROWTH_FIELDS = ['id', 'brand_id', 'project_name', 'product_type', 'producer', 'planned_start', 'planned_end', 'stage', 'production_type',
+  'production_category', 'shoot_dates', 'delivery_date', 'air_date', 'production_year', 'parent_id', 'created_at', 'updated_at'];
+const forGrowth = (p) => Object.fromEntries(GROWTH_FIELDS.filter(k => k in p).map(k => [k, p[k]]));
+const growthBrands = (req) => [...new Set([req.user?.brand_id, ...(req.user?.brand_ids || [])].filter(Boolean))];
 const { createFinanceSheet, triggerFinanceSync } = require('../lib/financeSheet');
 const B = require('../lib/finance/budget');
 const Events = require('../lib/finance/events');
@@ -24,12 +30,13 @@ router.get('/', async (req, res) => {
       // Match by production_year column, OR planned_start year, OR ID prefix (PRD26- → 2026)
       where.push(`(production_year = $${vals.push(y)} OR EXTRACT(YEAR FROM planned_start) = $${vals.push(y)} OR id LIKE $${vals.push(`PRD${String(y).slice(2)}-%`)})`);
     }
+    if (isGrowth(req)) where.push(`brand_id = ANY($${vals.push(growthBrands(req))}::text[])`);   // only their brands
     const clause = where.length ? ` WHERE ${where.join(' AND ')}` : '';
     const { rows } = await db.query(
       `SELECT * FROM productions${clause} ORDER BY planned_start ASC NULLS LAST, id ASC`,
       vals
     );
-    res.json(rows);
+    res.json(isGrowth(req) ? rows.map(forGrowth) : rows);
   } catch (err) {
     console.error('GET /productions error:', err);
     res.status(500).json({ error: 'Server error' });
@@ -41,6 +48,7 @@ router.get('/:id', async (req, res) => {
   try {
     const { rows } = await db.query('SELECT * FROM productions WHERE id = $1', [req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+    if (isGrowth(req)) return growthBrands(req).includes(rows[0].brand_id) ? res.json(forGrowth(rows[0])) : res.status(404).json({ error: 'Not found' });
     res.json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: 'Server error' });

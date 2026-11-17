@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { Search, X, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useBrand } from '../../context/BrandContext';
+import { useAuth } from '../../context/AuthContext';
 import {
   getProductions, getAllLineItems, getAllCasting, getSuppliers,
 } from '../../lib/dataService';
@@ -32,7 +33,14 @@ function Highlight({ text = '', query }) {
   );
 }
 
-export default function GlobalSearch({ open, onClose }) {
+export default function GlobalSearch(props) {
+  // The Growth team searches inside the Growth Studio — this one reads budgets and suppliers (17 Nov 2026)
+  const { isGrowth } = useAuth();
+  if (isGrowth) return null;
+  return <GlobalSearchInner {...props} />;
+}
+
+function GlobalSearchInner({ open, onClose }) {
   const { brandId } = useBrand();
   const navigate = useNavigate();
   const [query, setQuery] = useState('');

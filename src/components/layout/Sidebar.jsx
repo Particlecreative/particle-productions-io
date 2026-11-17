@@ -4,7 +4,7 @@ import {
   LayoutDashboard, DollarSign, BookOpen, Settings, Users, ChevronLeft, ChevronRight,
   History, FileText, FileSignature, Clapperboard, Users2, GripVertical,
   GanttChartSquare, Check, Star, Sun, Moon, Grid3x3, X as XIcon, Scroll, CheckSquare, Presentation, Radar, Library, Landmark, SpellCheck, Sparkles,
-  EyeOff, Plus,
+  EyeOff, Plus, Rocket, Activity,
 } from 'lucide-react';
 import {
   DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors,
@@ -23,6 +23,7 @@ import { useNotifications } from '../../context/NotificationsContext';
 import clsx from 'clsx';
 
 const DEFAULT_NAV_ITEMS = [
+  { to: '/growth',         icon: Rocket,           label: 'Growth Studio', growth: true, growthOnly: true, accountingHide: true, studioHide: true },
   { to: '/',               icon: LayoutDashboard,  label: 'Productions', exact: true, accountingHide: true },
   { to: '/tracker',        icon: Radar,            label: 'Tracker',     accountingHide: true, studioHide: true, editorOnly: true },
   { to: '/tasks',          icon: CheckSquare,      label: 'Tasks',       accountingHide: true },
@@ -49,6 +50,7 @@ const ADMIN_ITEMS = [
   { to: '/finance',  icon: Landmark, label: 'Finance' },
   { to: '/settings', icon: Settings, label: 'Settings' },
   { to: '/users',    icon: Users,    label: 'Users' },
+  { to: '/activity', icon: Activity, label: 'Team activity' },
 ];
 
 function applySavedOrder(items, order) {
@@ -158,15 +160,18 @@ export default function Sidebar({ open, onToggle }) {
   const pageAccess = user?.page_access ?? null;
 
   const isStudio = user?.role === 'Studio';
+  const isGrowth = user?.role === 'Growth';
   // Pages this person is allowed to see (role, brand, group access)…
   const allowedItems = navItems
+    // Growth team: one place — the Growth Studio (+ Manual). Admins see it too, to check what the team sees.
+    .filter(i => (isGrowth ? (i.growth || i.to === '/manual') : (!i.growthOnly || isAdmin)))
     .filter(i => !isAccounting || !i.accountingHide)
     .filter(i => !isStudio || !i.studioHide)
     .filter(i => !i.particleOnly || brand.id === 'particle')
     .filter(i => !i.editorOnly || isEditor)
     .filter(i => !i.nonEditorOnly || !isEditor)
     // The Library replaced Links: groups that had Links get the Library
-    .filter(i => !pageAccess || isAdmin || pageAccess.includes(i.to) || (i.to === '/library' && pageAccess.includes('/links')));
+    .filter(i => !pageAccess || isAdmin || (isGrowth && i.growth) || pageAccess.includes(i.to) || (i.to === '/library' && pageAccess.includes('/links')));
   // …minus the ones they hid from their own menu
   const visibleItems = allowedItems.filter(i => !hidden.includes(i.to));
   const hiddenItems = allowedItems.filter(i => hidden.includes(i.to));

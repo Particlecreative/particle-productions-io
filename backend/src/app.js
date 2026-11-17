@@ -108,6 +108,9 @@ app.use('/api/library', require('./routes/library'));
 app.use('/api/finance', require('./routes/finance'));
 app.use('/api/captain', require('./routes/captain'));   // Captain Caption 🧑‍✈️ (checks run in the separate captain-worker)
 app.use('/api/medium', require('./routes/medium'));     // MEDIUM 🔮 creative strategist (writing runs in the captain-worker)
+app.use('/api/me', require('./routes/me'));             // your own Monday connection, page views (Team activity)
+app.use('/api/growth', require('./routes/growth'));     // Growth Studio: the Ads Library hand-off to AfterLife
+app.use('/api/activity', require('./routes/activity')); // (admins) Team activity
 
 // Google OAuth callback redirect — the callback URL registered with Google
 // points to /api/auth/google/callback, so we redirect to the drive router

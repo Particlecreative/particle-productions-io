@@ -8,6 +8,7 @@ import { useStudio, lastWriteAt, outOn, checkSchedule, workdays } from './writes
 import { ideasFor, reasonText, whenText } from './suggest';
 import { perDay, perWeek, loadByDay, tvDays } from './capacity';
 import AutoPlan from './AutoPlan';
+import WorkStats from './WorkStats';
 import { SORTS, QUICK, groupFor, poolFor, urgencyOf, matches, forLine } from './scheduleOrder';
 
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -50,7 +51,7 @@ export default function Workload({ f }) {
   const [data, setData] = useState(() => cache.get(`${sundayOf(today)}:${addDays(sundayOf(today), (Number(pref(WEEKS_KEY, 2)) || 2) * 7 - 1)}`)?.data || null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const { writes, openTask } = useStudio();
+  const { writes, openTask, readOnly = false } = useStudio();   // readOnly: Growth Studio — see who's on what, never move it
   const [drag, setDrag] = useState(null);
   const [hover, setHover] = useState(null);
   const [showEmails, setShowEmails] = useState(true);
@@ -179,6 +180,7 @@ export default function Workload({ f }) {
   const dragRef = useRef(null);
   const onPointerDown = (e, it, mode, ownerId) => {
     if (e.button !== 0) return;
+    if (readOnly) { e.stopPropagation(); openTask?.(it, data); return; }   // view only: a click opens the task, nothing drags
     e.preventDefault();
     e.stopPropagation();
     clearTimeout(hoverTimer.current);
@@ -258,6 +260,7 @@ export default function Workload({ f }) {
   let lastRole = null;
   return (
     <div className="flex flex-col gap-3 select-none">
+      {data && <WorkStats items={data.items || []} />}
       <div className="flex flex-wrap items-center gap-2">
         <Seg value={role} onChange={setRole} options={[['all', 'Everyone'], ['design', 'Designers'], ['video', 'Video editors']]} size="md" />
         <div className="flex items-center gap-0.5 ml-1 bg-white rounded-xl border border-gray-200 p-0.5">
@@ -275,15 +278,15 @@ export default function Workload({ f }) {
             <input type="checkbox" checked={showEmails} onChange={e => setShowEmails(e.target.checked)} /> <Mail size={13} className="text-[#00a9a5]" /> Email tasks
           </label>
         )}
-        <div className="ml-auto"><AutoPlan onChanged={() => load(true)} /></div>
-        <button type="button" onClick={() => setPanel(!panel)}
+        {readOnly ? <span className="ml-auto text-[11px] font-semibold text-gray-400">View only — the studio schedules the work</span> : <div className="ml-auto"><AutoPlan onChanged={() => load(true)} /></div>}
+        {!readOnly && <button type="button" onClick={() => setPanel(!panel)}
           className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border ${panel ? 'bg-[#030b2e] text-white border-[#030b2e]' : 'bg-white text-gray-700 border-gray-200 hover:border-[#0808f8]/50'}`}>
           {panel ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />} To schedule
           {toSchedule > 0 && <span className={`tabular-nums rounded-full px-1.5 text-[10px] ${panel ? 'bg-white/20' : 'bg-[#0808f8] text-white'}`}>{toSchedule}</span>}
-        </button>
+        </button>}
       </div>
       <div className="text-[11px] text-gray-400 -mt-1">
-        Drag a bar to move it · drag its edges to change dates · drop it on someone else to reassign · click for details · ← → weeks, T today · every change goes straight to Monday, with Undo
+        {readOnly ? 'Who’s on what, day by day · click a bar for the task · ← → weeks, T today' : 'Drag a bar to move it · drag its edges to change dates · drop it on someone else to reassign · click for details · ← → weeks, T today · every change goes straight to Monday, with Undo'}
       </div>
       {legend.length > 0 && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 -mt-1 text-[11px] text-gray-600" aria-label="Brand colours">
@@ -429,7 +432,7 @@ export default function Workload({ f }) {
             </div>
           </div>
 
-          {panel && (
+          {panel && !readOnly && (
             <SchedulePanel rows={rows} unassigned={unassigned} data={data} q={panelQ} setQ={setPanelQ} who={panelWho} setWho={setPanelWho}
               onClose={() => setPanel(false)} onGrab={onPointerDown} today={today} byBrand={byBrand} all={all}
               onSchedule={(it, idea) => {

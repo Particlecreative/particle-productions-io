@@ -9,7 +9,7 @@ import NotificationsPanel from '../notifications/NotificationsPanel';
 import clsx from 'clsx';
 
 export default function Header({ onMenuToggle }) {
-  const { user, logout } = useAuth();
+  const { user, logout, isGrowth } = useAuth();
   const { brand } = useBrand();
   const { unreadCount } = useNotifications();
   const { currency, toggleCurrency } = useCurrency();
@@ -68,8 +68,8 @@ export default function Header({ onMenuToggle }) {
           </span>
         </div>
 
-        {/* Global Search */}
-        <button
+        {/* Global Search (not for the Growth team — it reads budgets) */}
+        {!isGrowth && <button
           onClick={() => window.dispatchEvent(new CustomEvent('open-global-search'))}
           className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-400 hover:text-gray-600 border border-gray-200 hover:border-gray-300 transition-all"
           style={{ minWidth: 200 }}
@@ -77,7 +77,7 @@ export default function Header({ onMenuToggle }) {
           <Search size={14} />
           <span>Search everything...</span>
           <kbd className="ml-auto text-xs bg-gray-100 px-1.5 py-0.5 rounded text-gray-400">⌘K</kbd>
-        </button>
+        </button>}
 
         {/* Currency Toggle */}
         <div className="currency-toggle" title="Switch currency (USD / ILS)">

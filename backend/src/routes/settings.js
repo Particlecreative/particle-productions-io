@@ -5,9 +5,13 @@ const { verifyJWT, requireAdmin } = require('../middleware/auth');
 router.use(verifyJWT);
 
 // GET /api/settings/:brand_id
+// Non-admins get the brand look only — the row also holds Google / Dropbox / Frame.io / Higgsfield tokens and the
+// integration configs, which used to go to any signed-in user (fixed 17 Nov 2026, before the Growth team joined)
+const PUBLIC_SETTINGS = 'brand_id, logo_url, colors, fonts, updated_at';
 router.get('/:brand_id', async (req, res) => {
   try {
-    const { rows } = await db.query('SELECT * FROM settings WHERE brand_id = $1', [req.params.brand_id]);
+    const admin = req.user?.role === 'Admin' || req.user?.super_admin;
+    const { rows } = await db.query(`SELECT ${admin ? '*' : PUBLIC_SETTINGS} FROM settings WHERE brand_id = $1`, [req.params.brand_id]);
     res.json(rows[0] ?? { brand_id: req.params.brand_id, logo_url: null, colors: {}, fonts: {} });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });

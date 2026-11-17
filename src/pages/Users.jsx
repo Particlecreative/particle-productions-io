@@ -9,9 +9,11 @@ import clsx from 'clsx';
 
 const IS_DEV = import.meta.env.DEV;
 
-const ROLES = ['Viewer', 'Studio', 'Editor', 'Admin', 'Accounting'];
+// Growth (17 Nov 2026): the growth team — the Growth Studio only (productions without money, libraries, Medium, tickets)
+const ROLES = ['Viewer', 'Growth', 'Studio', 'Editor', 'Admin', 'Accounting'];
 
 const ROLE_STYLES = {
+  Growth:     'bg-teal-50 border-teal-200 text-teal-700',
   Admin:      'bg-blue-50 border-blue-200 text-blue-700',
   Editor:     'bg-green-50 border-green-200 text-green-700',
   Studio:     'bg-pink-50 border-pink-200 text-pink-700',

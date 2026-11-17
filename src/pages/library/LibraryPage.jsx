@@ -7,6 +7,7 @@ import { buildCatalog, CatalogRow, onAir, lengthBucket } from '../../components/
 import ProductionDrawer from '../../components/library/ProductionDrawer';
 import AddFiles from '../../components/library/AddFiles';
 import { CountUp } from '../../components/tracker/parts';
+import AdsLibrary from '../../components/growth/AdsLibrary';
 import '../../components/tracker/tracker.css';
 
 const ERAS = [['all', 'All commercials'], ['cp', '2026 productions'], ['before', 'Before 2026']];
@@ -24,11 +25,38 @@ const relTime = (iso) => {
 const isDone = (stage) => /^(completed|wrap)/i.test(stage || '');   // Wrap-up = post finished (only payments left) — its finals exist
 
 /**
- * The Library — every TV commercial's final files in one list. Pick a product (or Sales), narrow by market,
+ * The Library, split in two (Tomer, 17 Nov 2026): the TV Library (below) and the Ads Library — AfterLife's
+ * "Fresh to test", live (components/growth/AdsLibrary.jsx). ?lib=ads opens the Ads Library.
+ */
+export default function LibraryPage() {
+  const [params, setParams] = useSearchParams();
+  const lib = params.get('lib') === 'ads' ? 'ads' : 'tv';
+  const pick = (v) => setParams((prev) => { const n = new URLSearchParams(prev); if (v === 'ads') n.set('lib', 'ads'); else n.delete('lib'); n.delete('p'); return n; });
+  return (
+    <div className="max-w-[2400px] mx-auto">
+      <LibrarySwitch lib={lib} onPick={pick} />
+      {lib === 'ads' ? <div className="pb-16"><AdsLibrary /></div> : <TvLibrary />}
+    </div>
+  );
+}
+
+export function LibrarySwitch({ lib, onPick }) {
+  return (
+    <div className="flex items-center gap-1 p-1 mb-3 rounded-2xl w-fit" style={{ background: '#030b2e' }} role="tablist" aria-label="Library">
+      {[['tv', '📺 TV Library'], ['ads', '📱 Ads Library']].map(([k, label]) => (
+        <button key={k} type="button" role="tab" aria-selected={lib === k} onClick={() => onPick(k)}
+          className={`text-sm font-semibold px-4 py-2 rounded-xl transition-colors ${lib === k ? 'bg-white text-[#030b2e]' : 'text-white/70 hover:text-white'}`}>{label}</button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * The TV Library — every TV commercial's final files in one list. Pick a product (or Sales), narrow by market,
  * length or what's on air, then click a market to download its file. A production's digital versions and
  * sound stems are one click away.
  */
-export default function LibraryPage() {
+export function TvLibrary() {
   const { brandId, brand } = useBrand();
   const [params, setParams] = useSearchParams();
   const [data, setData] = useState(null);
@@ -138,7 +166,7 @@ export default function LibraryPage() {
         {/* Hero */}
         <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
           <div className="min-w-0">
-            <div className="trk-eyebrow">The Library · {brand?.name || brandId}</div>
+            <div className="trk-eyebrow">TV Library · {brand?.name || brandId}</div>
             <h1 className="trk-title text-[48px] sm:text-[72px] md:text-[88px] mt-2">
               {data ? <><CountUp value={catalog.filter(e => !e.productionOnly).length} /> commercials</> : 'The Library'}
             </h1>

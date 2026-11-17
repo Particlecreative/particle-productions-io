@@ -46,6 +46,8 @@ export const studioApi = {
   dashboard: async ({ from, to, force = false, lite = false }) => (LIVE ? call(`/dashboard?from=${from}&to=${to}${force ? '&force=1' : ''}${lite ? '&lite=1' : ''}`) : (await fx()).studioFixture({ from, to })),
   /** Every Video + Design ticket that has a Campaign (Campaign Tracker) */
   campaigns: async ({ force = false } = {}) => (LIVE ? call(`/campaigns${force ? '?force=1' : ''}`) : (await fx()).fixtureCampaigns()),
+  /** Every campaign label → its group (for the Workload stats) */
+  campaignGroupMap: async () => (LIVE ? call('/campaign-groups') : (await fx()).fixtureCampaigns().campaign_groups),
   /** Campaign groups: { campaign, group|null } · { add: { name } } · { rename: { key, name } } */
   campaignGroups: async (body) => (LIVE ? call('/campaign-groups', { method: 'PUT', body }) : { ok: true, groups: null }),
   /** Hot Projects: pinned big projects with their Monday analytics */
@@ -104,4 +106,7 @@ export const studioApi = {
   // Dropbox for ticket folders: returns Dropbox's sign-in URL (the browser goes there, then comes back to Connections)
   connectDropbox: (appKey, base) => call('/connections/dropbox', { method: 'POST', body: { app_key: appKey, base } }),
   disconnectDropbox: () => call('/connections/dropbox', { method: 'DELETE' }),
+  /** The company's Monday app (OAuth) — one-click "Connect Monday" for everyone */
+  connectMondayApp: (clientId, clientSecret) => call('/connections/monday-app', { method: 'PUT', body: { client_id: clientId, client_secret: clientSecret } }),
+  disconnectMondayApp: () => call('/connections/monday-app', { method: 'DELETE' }),
 };

@@ -65,7 +65,7 @@ export const useStudio = () => useContext(StudioCtx);
  * Optimistic Monday writes with Undo, shared by every Studio tab — a change made in the Workload shows on the
  * dashboard straight away. Overrides apply until data newer than the edit arrives.
  */
-export function useMondayWrites() {
+export function useMondayWrites({ readOnly = false } = {}) {
   const [local, setLocal] = useState({}); // id → { fields, at }
   const [toast, setToast] = useState(null);
   const [toastHover, setToastHover] = useState(false);
@@ -100,6 +100,7 @@ export function useMondayWrites() {
 
   /** Archive on Monday (after the user confirmed). Hidden in every tab at once; Monday's API has no un-archive. */
   const archive = useCallback(async (it) => {
+    if (readOnly) { setToast({ error: true, text: 'View only — the studio manages tasks' }); return false; }
     put(it.id, { archived: true });
     try {
       await studioApi.archiveItem(it.id);
@@ -111,10 +112,11 @@ export function useMondayWrites() {
       setToast({ error: true, text: e.message });
       return false;
     }
-  }, []);
+  }, [readOnly]);
 
   /** Save a change to Monday. next: { timeline?, people?, status? (board status object), deadline? }. Returns false if blocked. */
   const save = useCallback((it, next, data) => {
+    if (readOnly) { setToast({ error: true, text: 'View only — the studio schedules and moves tasks' }); return false; }
     const title = it.title || it.name.slice(0, 40);
     const parts = [];
     if (next.timeline) {
@@ -127,7 +129,7 @@ export function useMondayWrites() {
     if ('deadline' in next) parts.push(next.deadline ? `deadline ${fmtDay(next.deadline)}` : 'deadline cleared');
     apply(it, next, `${title}: ${parts.join(' · ') || 'updated'}`);
     return true;
-  }, [apply]);
+  }, [apply, readOnly]);
 
   useEffect(() => {
     if (!toast || toastHover) return undefined;

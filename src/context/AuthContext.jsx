@@ -95,6 +95,7 @@ export function AuthProvider({ children }) {
   const isViewer      = !!user;
   const isAccounting  = effectiveRole === 'Accounting';
   const isStudio      = effectiveRole === 'Studio';
+  const isGrowth      = effectiveRole === 'Growth';   // Growth team: the Growth Studio only (17 Nov 2026)
 
   return (
     <AuthContext.Provider value={{
@@ -108,6 +109,7 @@ export function AuthProvider({ children }) {
       isViewer,
       isAccounting,
       isStudio,
+      isGrowth,
     }}>
       {children}
     </AuthContext.Provider>

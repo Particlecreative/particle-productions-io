@@ -143,21 +143,22 @@ async function postUpdate(config, itemId, text, author, mentions = []) {
 }
 
 /** Create a Monday item. columnValues is already in Monday's JSON shape. No retries (create isn't idempotent). */
-async function createItem({ boardId, groupId, name, columnValues, createLabels = false }) {
+// token: the person's own Monday (lib/mondayUser.js) so the ticket and its brief show as theirs; null → CP's account
+async function createItem({ boardId, groupId, name, columnValues, createLabels = false, token = null }) {
   // createLabels: only for a new Brands label (Blurr / Biomella) — every other value is checked against Monday's options first
   const data = await mondayQuery(
     `mutation ($board: ID!, $group: String, $name: String!, $vals: JSON, $create: Boolean) {
        create_item(board_id: $board, group_id: $group, item_name: $name, column_values: $vals, create_labels_if_missing: $create) { id url }
      }`,
     { board: String(boardId), group: groupId || null, name, vals: JSON.stringify(columnValues), create: !!createLabels },
-    { retries: 0 }
+    { retries: 0, token }
   );
   clearCache('studio:');
   return data?.create_item;
 }
 
-async function addUpdate(itemId, body) {
-  return mondayQuery('mutation ($item: ID!, $body: String!) { create_update(item_id: $item, body: $body) { id } }', { item: String(itemId), body }, { retries: 0 });
+async function addUpdate(itemId, body, { token = null } = {}) {
+  return mondayQuery('mutation ($item: ID!, $body: String!) { create_update(item_id: $item, body: $body) { id } }', { item: String(itemId), body }, { retries: 0, token });
 }
 
 const updateSchedule = updateTask; // older name

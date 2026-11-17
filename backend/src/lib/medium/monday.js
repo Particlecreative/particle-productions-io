@@ -117,7 +117,7 @@ function columnValues(b, { labels = {}, requesterId = null, campaign = null } = 
  * Concept, Don'ts, Hook (or hook variations), Script / Message laid out by beat (or Supporting Text), Test, and a
  * one-line Why at the end. Monday updates take simple HTML.
  */
-function briefHtml(b, approver, refs = []) {
+function briefHtml(b, approver, refs = [], { asUser = false, author = null } = {}) {
   const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const br = (s) => esc(s).replace(/\n/g, '<br>');
   const f = b.fields || {};
@@ -166,8 +166,19 @@ function briefHtml(b, approver, refs = []) {
     video ? section('Script / Message', script) : section('Supporting Text', f.copy ? `<p>${br(f.copy)}</p>` : ''),
     f.test ? section('What we\u2019re testing', `<p>${esc(String(f.test).replace(/^test:\s*/i, ''))}</p>`) : '',
     f.why ? `<p><em>Why: ${esc(String(f.why).replace(/^why:\s*/i, ''))}</em></p>` : '',
-    `<p><em>Brief written by Medium · approved by ${esc(approver)}</em></p>`,
+    // who it's from (Tomer, 17 Nov 2026): the person who asked for it and who approved it, by name. Created with their
+    // own Monday it already shows as theirs; created with CP's account it says who sent it.
+    `<p><em>${briefSignature({ approver, author: author || b.author, asUser })}</em></p>`,
   ].filter(Boolean).join('');
+}
+
+/** "Brief by Medium for Dana · approved by Dana" (+ "· sent from CP by Dana" when CP's account created it). Pure — tested. */
+function briefSignature({ approver, author, asUser = false }) {
+  const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const auto = !author || /^(medium|autopilot|system)/i.test(String(author));
+  const parts = [auto ? 'Brief written by Medium' : `Brief by Medium for ${esc(author)}`, `approved by ${esc(approver)}`];
+  if (!asUser) parts.push(`sent from CP by ${esc(approver)}`);
+  return parts.join(' · ');
 }
 
 /** The older evidence update (kept for reference; no longer posted). */
@@ -228,22 +239,24 @@ async function attachReferences(itemId, format, refs) {
 }
 
 /** Create the ticket + the brief update (+ the reference files); returns { item_id, board_id, skipped, references }. */
-async function submitBrief(b, { approver, approverEmail = null, cfg = {} } = {}) {
+async function submitBrief(b, { approver, approverEmail = null, cfg = {}, user = null } = {}) {
   const format = b.format === 'design' ? 'design' : 'video';
   const boardId = BOARDS[format].board_id;
   const group = cfg.monday_groups?.[format] || 'new_group__1';   // "Form Requests" on both boards
-  const [labels, requesterId] = await Promise.all([boardLabels(boardId), mondayUserId(approverEmail)]);
+  // user = { token, monday_user_id } when the approver connected their own Monday: the ticket and the brief are theirs
+  const as = user?.token ? { token: user.token } : {};
+  const [labels, requesterId] = await Promise.all([boardLabels(boardId), user?.monday_user_id || mondayUserId(approverEmail)]);
   const campaign = C.campaignFor(b, { labels: labels[BOARDS[format].columns.campaign] || [] });
   const { values, skipped, campaignNew } = columnValues(b, { labels, requesterId, campaign: campaign.name });
   const d = await mondayQuery(
     `mutation ($b: ID!, $g: String, $n: String!, $v: JSON) { create_item(board_id: $b, group_id: $g, item_name: $n, column_values: $v, create_labels_if_missing: false) { id } }`,
-    { b: boardId, g: group, n: ticketName(b, campaign.name), v: JSON.stringify(values) }, { timeoutMs: 60000 });
+    { b: boardId, g: group, n: ticketName(b, campaign.name), v: JSON.stringify(values) }, { timeoutMs: 60000, ...as });
   const itemId = d?.create_item?.id;
   if (!itemId) throw new Error('Monday did not return the new item');
   // A campaign the board doesn't have yet: added on this column only (every other column stays strict)
   if (campaignNew) {
     await mondayQuery(`mutation ($i: ID!, $b: ID!, $c: String!, $v: String!) { change_simple_column_value(item_id: $i, board_id: $b, column_id: $c, value: $v, create_labels_if_missing: true) { id } }`,
-      { i: String(itemId), b: String(boardId), c: BOARDS[format].columns.campaign, v: campaignNew })
+      { i: String(itemId), b: String(boardId), c: BOARDS[format].columns.campaign, v: campaignNew }, as)
       .then(() => labelCache.delete(boardId))
       .catch(e => skipped.push(`campaign “${campaignNew}”: ${e.message}`));
   }
@@ -254,13 +267,14 @@ async function submitBrief(b, { approver, approverEmail = null, cfg = {} } = {})
   const inColumn = new Set((up?.done || []).map(d => d.f.ref));
   const inUpdate = new Set((up?.later || []).map(l => l.f.ref));
   const shown = refs.map(r => ({ ...r, attached: inColumn.has(r) ? 'column' : inUpdate.has(r) ? 'update' : null }));
-  const u = await mondayQuery('mutation ($i: ID!, $body: String!) { create_update(item_id: $i, body: $body) { id } }', { i: itemId, body: briefHtml(b, approver, shown) })
+  const u = await mondayQuery('mutation ($i: ID!, $body: String!) { create_update(item_id: $i, body: $body) { id } }',
+    { i: itemId, body: briefHtml(b, approver, shown, { asUser: !!user?.token }) }, as)
     .catch(e => { skipped.push(`brief update: ${e.message}`); return null; });
   const references = up ? await up.finish(u?.create_update?.id || null) : { attached: [], failed: [] };
   if (references.failed.length) skipped.push(`reference: ${references.failed.join('; ')}`);
-  return { item_id: String(itemId), board_id: boardId, skipped, references, campaign: campaign.name };
+  return { item_id: String(itemId), board_id: boardId, skipped, references, campaign: campaign.name, as_user: !!user?.token };
 }
 
 const forgetLabels = () => labelCache.clear();
 
-module.exports = { briefHtml, submitBrief, columnValues, ticketName, evidenceHtml, boardLabels, attachReferences, forgetLabels };
+module.exports = { briefHtml, briefSignature, submitBrief, columnValues, ticketName, evidenceHtml, boardLabels, attachReferences, forgetLabels };

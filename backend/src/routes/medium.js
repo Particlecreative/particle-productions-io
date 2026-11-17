@@ -94,8 +94,18 @@ router.use((req, res, next) => {
 });
 
 router.use((req, res, next) => (req.service ? next() : verifyJWT(req, res, next)));
-router.use((req, res, next) => ((RANK[req.user?.role] ?? -1) >= RANK.Editor || req.user?.super_admin ? next() : res.status(403).json({ error: 'Editor access required' })));
+// Growth: only the routes middleware/auth.js lists (their own briefs — no settings, sources, keys, corpus, autopilot)
+router.use((req, res, next) => ((RANK[req.user?.role] ?? -1) >= RANK.Editor || req.user?.super_admin || req.user?.role === 'Growth' ? next() : res.status(403).json({ error: 'Editor access required' })));
 const requireAdmin = (req, res, next) => (isAdmin(req) ? next() : res.status(403).json({ error: 'Admin access required' }));
+// Growth sees and acts on its own briefs only (Tomer, 17 Nov 2026: "their medium shouldn't create automatically")
+router.use('/briefs/:id', async (req, res, next) => {
+  if (req.user?.role !== 'Growth' || !UUID_RE.test(req.params.id)) return next();
+  try {
+    const { rows } = await db.query('SELECT author FROM medium_briefs WHERE id = $1', [req.params.id]);
+    if (rows[0] && rows[0].author !== actorOf(req)) return res.status(404).json({ error: 'Not found' });
+    next();
+  } catch (e) { next(e); }
+});
 
 // ── Strategy Room ────────────────────────────────────────────────────────────
 router.get('/overview', async (req, res) => {
@@ -419,6 +429,7 @@ router.get('/briefs', async (req, res) => {
     if (req.query.lane) add('lane = ?', String(req.query.lane));
     if (req.query.source) add('source = ?', String(req.query.source));
     if (req.query.ids) add('id = ANY(?::uuid[])', String(req.query.ids).split(',').filter(x => UUID_RE.test(x)));
+    if (req.user?.role === 'Growth' || req.query.mine === '1') add('author = ?', actorOf(req));   // Growth: their own briefs only
     const { rows } = await db.query(
       `SELECT id, status, source, author, lane, product, format, move, kind, ticket_name, fields->>'hook' AS hook, fields->>'why' AS why,
               (score->>'total')::int AS score, score->>'band' AS band, preflight->>'verdict' AS preflight, (preflight->>'must_fix')::int AS must_fix, preflight->'issues' AS pf_issues,
@@ -551,7 +562,9 @@ router.post('/briefs/:id/approve', async (req, res) => {
  */
 async function submitToMonday(b, req, cfg) {
   try {
-    const r = await require('../lib/medium/monday').submitBrief(b, { approver: actorOf(req), approverEmail: req.user?.email, cfg });
+    // their own Monday when they've connected it (the ticket and the brief show as theirs), else CP's account
+    const user = await require('../lib/mondayUser').tokenFor(req.user?.id).catch(() => null);
+    const r = await require('../lib/medium/monday').submitBrief(b, { approver: actorOf(req), approverEmail: req.user?.email, cfg, user });
     let captain = '';
     if (b.preflight?.check_id) {
       const override = Number(b.preflight.must_fix) > 0 ? { by: actorOf(req), reason: b.review_reason || 'Approved in Medium' } : null;
@@ -565,7 +578,7 @@ async function submitToMonday(b, req, cfg) {
     const n = r.references?.attached?.length || 0;
     const refNote = n ? ` · reference attached (${n} file${n === 1 ? '' : 's'} in Relevant Files)` : '';
     const campNote = r.campaign ? ` · campaign “${r.campaign}”` : '';
-    return { ok: true, item_id: r.item_id, message: `Created on Monday (item ${r.item_id})${campNote}${refNote}${captain}${r.skipped.length ? ` · not set: ${r.skipped.join('; ')}` : ''}` };
+    return { ok: true, item_id: r.item_id, message: `Created on Monday${r.as_user ? ' as you' : ''} (item ${r.item_id})${campNote}${refNote}${captain}${r.skipped.length ? ` · not set: ${r.skipped.join('; ')}` : ''}` };
   } catch (e) {
     await db.query(`UPDATE medium_briefs SET error = $2, updated_at = NOW() WHERE id = $1`, [b.id, `Monday: ${String(e.message).slice(0, 500)}`]).catch(() => null);
     return { ok: false, message: `Approved, but Monday creation failed: ${e.message} — use "Create on Monday" to try again` };

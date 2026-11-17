@@ -47,7 +47,8 @@ function appBase(req) { return (process.env.APP_URL || `https://${req.get('host'
 
 router.use(verifyJWT);
 router.use((req, res, next) => {
-  if ((RANK[req.user?.role] ?? -1) < RANK.Editor) return res.status(403).json({ error: 'Editor access required' });
+  // Growth reaches only what middleware/auth.js lists for it (dashboard, campaigns, the ticket creator)
+  if ((RANK[req.user?.role] ?? -1) < RANK.Editor && req.user?.role !== 'Growth') return res.status(403).json({ error: 'Editor access required' });
   const brandId = String(req.query.brand_id || req.body?.brand_id || DEFAULT_BRAND);
   const u = req.user || {};
   if (!(u.super_admin || u.brand_id === brandId || (u.brand_ids || []).includes(brandId))) return res.status(403).json({ error: 'No access to this brand' });
@@ -76,6 +77,23 @@ router.get('/campaigns', async (req, res) => {
     const labels = [...new Set(data.items.flatMap(it => it.campaigns || []))];
     const groups = G.classify(labels, await G.getConfig(req.brandId));
     res.json({ ...data, campaign_groups: groups, today: W.localDate(Date.now()) });
+  } catch (err) { errorJson(res, err); }
+});
+
+/** Every campaign label on both boards → its group (cheap: board settings only, no tickets) — the Workload's stats. */
+router.get('/campaign-groups', async (req, res) => {
+  try {
+    const G = require('../lib/studio/campaignGroups');
+    const { getCreativeConfig } = require('../lib/creative/config');
+    const config = await getCreativeConfig(req.brandId);
+    const labels = new Set();
+    for (const bk of Object.keys(config.boards)) {
+      const col = config.boards[bk].columns?.campaign;
+      if (!col) continue;
+      const meta = await monday.boardMeta(config.boards[bk].board_id).catch(() => null);
+      for (const l of meta?.dropdowns?.[col] || []) labels.add(l);
+    }
+    res.json(G.classify([...labels].filter(Boolean), await G.getConfig(req.brandId)));
   } catch (err) { errorJson(res, err); }
 });
 
@@ -321,8 +339,25 @@ router.get('/connections', async (req, res) => {
       bamboohr: { connected: !!bc, source: bc?.source || null, subdomain: bc?.subdomain || null, ...(st.bamboohr || {}) },
       tmdb: { connected: await tmdbConfigured(), ...(st.tmdb || {}) },
       dropbox: { ...(await require('../lib/studio/dropboxFolders').status(req.brandId)), redirect_uri: `${appBase(req)}/api/studio/dropbox/callback` },
+      // the company's Monday app — lets each person connect their own Monday in one click (lib/mondayUser.js)
+      monday_app: { connected: !!st.monday_app, ...(st.monday_app || {}), redirect_uri: require('../lib/mondayUser').redirectUri(),
+        people: (await require('../lib/mondayUser').connectedUsers().catch(() => [])).map(u => ({ name: u.name, method: u.method, connected_at: u.connected_at })) },
     });
   } catch (err) { errorJson(res, err); }
+});
+
+router.put('/connections/monday-app', requireAdmin, async (req, res) => {
+  try {
+    const clientId = String(req.body?.client_id || '').trim();
+    const clientSecret = String(req.body?.client_secret || '').trim();
+    if (!/^[A-Za-z0-9]{16,64}$/.test(clientId)) return res.status(400).json({ error: 'That doesn’t look like a Monday Client ID' });
+    if (!/^[A-Za-z0-9]{16,128}$/.test(clientSecret)) return res.status(400).json({ error: 'That doesn’t look like a Monday Client Secret' });
+    await secrets.setSecret('monday_app', { client_id: clientId, client_secret: clientSecret }, { brandId: 'particle', user: req.user, meta: { client_id_end: clientId.slice(-4) } });
+    res.json({ ok: true });
+  } catch (err) { errorJson(res, err); }
+});
+router.delete('/connections/monday-app', requireAdmin, async (req, res) => {
+  try { await secrets.clearSecret('monday_app', 'particle'); res.json({ ok: true }); } catch (err) { errorJson(res, err); }
 });
 
 router.put('/connections/bamboohr', requireAdmin, async (req, res) => {
