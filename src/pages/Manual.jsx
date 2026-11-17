@@ -9,6 +9,11 @@ import clsx from 'clsx';
 // ─── Growth team (17 Nov 2026) ─────────────────────────────────────────────────
 // RULE (Tomer): every change to the growth team's panel updates this section AND adds a dated line to "What's new".
 const GROWTH_WHATS_NEW = [
+  { date: '17 Nov 2026 · evening', items: [
+    '📡 New: On Air — what’s running right now. TV: the agency’s daily report — every spot on air with its spend, orders, MER, CPO and AOV, what moved since the last report, what’s new on air, and the agency’s note. Meta: every live ad from AfterLife — who made it, when it started, spend, ROAS, CTR, AOV, thumb-stop, watch time, comments and likes.',
+    '🎞️ TV Productions — redesigned: a clean list grouped by stage, a “Coming up” strip (shoots, deliveries, on-air dates, deadlines), filters for product, producer, editor and stage, and the internal editor / designer on every production.',
+    '📺 TV Library — the green “On air” dot now follows the agency’s daily report.',
+  ] },
   { date: '17 Nov 2026', items: [
     '🎉 Welcome to CP! The growth team has its own panel: Creative Studio, Briefs Creator, New ticket, Campaign Tracker, Ads Library, TV Productions and TV Library.',
     '🔗 Connect your Monday — the briefs and tickets you send from CP land on Monday as you.',
@@ -41,8 +46,9 @@ const GROWTH_CATEGORY = {
           'Briefs Creator — Medium, the AI creative strategist: write briefs, approve them, send them to Monday.',
           'New ticket — ask the studio for Video or Design work in plain words.',
           'Campaign Tracker — every campaign, grouped by type, with its tickets.',
+          'On Air — what’s running right now, on TV and on Meta.',
           'Ads Library — AfterLife’s Fresh to test: finished creative that never ran on Meta.',
-          'TV Productions — what’s being made and when (no budgets).',
+          'TV Productions — what’s being made, who’s editing it and what’s coming (no budgets).',
           'TV Library — every TV commercial’s final files.',
         ]},
         { type: 'guide', title: 'First thing: connect your Monday', steps: [
@@ -124,6 +130,31 @@ const GROWTH_CATEGORY = {
       ],
     },
     {
+      id: 'growth-onair', icon: '📡', label: 'On Air',
+      summary: 'What’s running right now — TV from the agency’s daily report, Meta from AfterLife.',
+      keywords: ['on air', 'onair', 'tv', 'meta', 'live', 'spots', 'agency', 'report', 'mer', 'roas', 'ctr', 'aov', 'thumbstop', 'watch time', 'comments', 'likes', 'networks'],
+      content: [
+        { type: 'guide', title: 'TV', steps: [
+          'Every product the agency runs (Face Cream, Gravité…): this week’s spend, orders, MER, AOV and CPO, with yesterday next to each.',
+          'Spend per day, MER per day and the last weeks — so you see the movement, not just a number.',
+          'On air now: every spot that aired this week, biggest spend first — its share of the week, orders, MER (green above the week’s average, red below), CPO, AOV, the stations, and what moved since the last report. NEW = first seen on air in the last 7 days.',
+          'Play opens the commercial’s file from the TV Library; “Not in the TV Library” means no commercial there has that code yet.',
+          'From us to the networks: every new creative the team emailed the agency — Sent → Agency confirmed → On air — with the networks it was sent to.',
+          'What the agency says: the daily notes and replies, newest first.',
+        ]},
+        { type: 'guide', title: 'Meta ads', steps: [
+          'Live now, New this week, yesterday’s spend and the 7-day ROAS (each against the period before).',
+          'Just started: every ad whose first spend was in the last 7 days — which day it’s on and how it’s doing.',
+          'Every live ad: who made it, product and campaign, the day it started, 7-day spend with a daily bar per day, ROAS and CTR (with the change from the week before), AOV, thumb-stop, average watch time and hold for videos, and comments, likes, shares and saves.',
+          'Show Live / New / All, filter by format, product or maker, and sort by spend, ROAS, newest or biggest movers.',
+        ]},
+        { type: 'tips', items: [
+          'The TV report is read every day at 17:00 (the agency emails around 16:00–16:45).',
+          'Meta numbers run to the newest day AfterLife has — usually yesterday.',
+        ]},
+      ],
+    },
+    {
       id: 'growth-ads', icon: '📱', label: 'Ads Library',
       summary: 'AfterLife’s Fresh to test, live in CP.',
       keywords: ['ads', 'library', 'afterlife', 'fresh to test', 'download', 'never ran'],
@@ -142,12 +173,15 @@ const GROWTH_CATEGORY = {
       keywords: ['productions', 'tv', 'timeline', 'shoot', 'delivery', 'on air', 'library', 'commercials', 'masters'],
       content: [
         { type: 'guide', title: 'TV Productions', steps: [
-          'Every production: stage, product, type, producer, planned dates, shoot days, delivery and on-air.',
-          'Timeline (months) or List — on your phone it opens as a list.',
-          'No budgets or payments are shown to the growth team.',
+          'At the top: In the works, Shooting soon, Delivering and Going on air (next 30 days) — click one to see only those.',
+          'Coming up: the next shoots, deliveries, on-air dates, deadlines and schedule steps, in order — click one to jump to its production.',
+          'The list is grouped by stage. Each production shows its product, producer, the internal editor / designer (from its Studio tickets), what’s next and where it is (Pre → Shoot → Post → Delivery → On air).',
+          'Click a production for its dates, schedule, team and Studio tickets (open any ticket in Monday).',
+          'Filter by product, producer, editor / designer or stage, or search. No budgets or payments are shown to the growth team.',
         ]},
         { type: 'guide', title: 'TV Library', steps: [
           'Every TV commercial’s final files — pick a product, narrow by market, length or what’s on air, then click a market to download.',
+          'The green “On air” dot follows the agency’s daily report (On Air → TV).',
         ]},
       ],
     },
@@ -557,6 +591,31 @@ const CATEGORIES = [
             'Completed/Archived groups auto-collapse.',
           ]},
           { type: 'tips', items: ['Available for the Particle brand only.'] },
+        ],
+      },
+      {
+        id: 'on-air', icon: '📡', label: 'On Air (TV + Meta)',
+        summary: 'What’s running right now — TV from the agency’s daily report (read from Gmail at 17:00), Meta from AfterLife.',
+        keywords: ['on air', 'onair', 'tv', 'meta', 'live', 'spots', 'agency', 'lbd2c', 'report', 'mer', 'roas', 'ctr', 'aov', 'thumbstop', 'networks', 'gmail'],
+        particleOnly: true,
+        content: [
+          { type: 'guide', title: 'TV — the agency’s daily report', steps: [
+            'Every day at 17:00 (catch-ups at 18:30 and 21:00 if a report is missing) CP reads the agency’s emails: the daily “Particle … Campaign” reports, their replies, and the new creatives the team emails them.',
+            'Per product: this week’s spend, orders, MER, AOV and CPO with yesterday’s numbers, spend and MER per day, and the last weeks.',
+            'On air now: every spot by its creative code — spend, share of the week, orders, MER, CPO, AOV, stations, what moved since the previous report, and NEW for spots first seen in the last 7 days.',
+            'Each code is matched to the TV Library commercial with the same code: its poster, play button and production. The Library’s green “On air” dot follows the report.',
+            'From us to the networks: creatives emailed to the agency → the agency confirmed (and to which networks) → first seen on air.',
+            'Editors and admins can press “Read now” to read the mailbox immediately.',
+          ]},
+          { type: 'guide', title: 'Meta — from AfterLife', steps: [
+            'Live now, New this week, yesterday’s spend and the 7-day ROAS, against the period before; all Meta spend per day for 14 days.',
+            'Just started: ads whose first spend was in the last 7 days.',
+            'Every live creative: maker, product, campaign, start day, 7-day spend with daily bars, ROAS and CTR with the change from the week before, AOV, thumb-stop, average watch time, hold, comments, likes, shares and saves.',
+          ]},
+          { type: 'tips', items: [
+            'Setup (once, admin): Settings → reconnect Google — it adds read-only Gmail access. Nothing is sent, labelled or changed in the mailbox.',
+            'The growth team sees the same page.',
+          ]},
         ],
       },
     ],

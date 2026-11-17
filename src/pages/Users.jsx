@@ -545,6 +545,7 @@ const ALL_PAGES = [
   { to: '/',               label: 'Productions' },
   { to: '/tracker',        label: 'Production Tracker' },
   { to: '/library',        label: 'The Library (replaces Links)' },
+  { to: '/on-air',         label: 'On Air (TV + Meta)' },
   { to: '/contracts',      label: 'Contracts' },
   { to: '/suppliers',      label: 'Suppliers' },
   { to: '/studio', label: 'Studio (control panel)' },

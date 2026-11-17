@@ -69,6 +69,8 @@ router.get('/auth', verifyJWT, (req, res) => {
       'https://www.googleapis.com/auth/spreadsheets',
       'https://www.googleapis.com/auth/calendar',
       'https://www.googleapis.com/auth/gmail.send',
+      // On Air (17 Nov 2026): read the TV agency's daily reports — read-only, nothing is changed in the mailbox
+      'https://www.googleapis.com/auth/gmail.readonly',
     ],
     prompt: 'consent',
     state: String(req.user.id),

@@ -27,5 +27,26 @@ router.get('/afterlife-pass', (req, res) => {
   res.set('Cache-Control', 'no-store').json({ url: `${base}/embed/fresh?pass=${encodeURIComponent(pass)}`, base });
 });
 
+// GET /productions?brand_id= → TV Productions for the Growth team: the tracker without money (lib/growth/productions.js)
+const prodCache = new Map(); // brand → { at, data } — the tracker is a heavy build; 3 minutes is fresh enough here
+router.get('/productions', async (req, res) => {
+  const brandId = String(req.query.brand_id || '');
+  const u = req.user || {};
+  if (!brandId) return res.status(400).json({ error: 'brand_id required' });
+  if (!(u.super_admin || u.role === 'Admin' || u.brand_id === brandId || (u.brand_ids || []).includes(brandId))) return res.status(403).json({ error: 'No access to this brand' });
+  try {
+    const hit = prodCache.get(brandId);
+    if (hit && Date.now() - hit.at < 180000 && req.query.force !== '1') return res.json(hit.data);
+    const { buildTracker } = require('../lib/tracker/data');
+    const { trackerForGrowth } = require('../lib/growth/productions');
+    const data = trackerForGrowth(await buildTracker({ brandId }));
+    prodCache.set(brandId, { at: Date.now(), data });
+    res.json(data);
+  } catch (err) {
+    console.error('[growth/productions]', err?.stack || err);
+    res.status(500).json({ error: 'Couldn’t load productions' });
+  }
+});
+
 module.exports = router;
 module.exports.makePass = makePass;

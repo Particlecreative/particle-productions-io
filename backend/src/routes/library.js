@@ -75,6 +75,12 @@ async function libraryFor(brandId, productionId = null) {
       : [],
   ]);
   const by = (rows) => rows.reduce((m, r) => ((m[r.production_id || ''] = m[r.production_id || ''] || []).push(r), m), {});
+  // On Air: a commercial whose code is in this week's agency report is on air, whatever the sheet's checkbox says
+  const live = brandId === 'particle' ? await require('../lib/onair/tv').liveCodes(brandId).catch(() => new Map()) : new Map();
+  for (const it of items) {
+    const l = it.code ? live.get(String(it.code).toUpperCase()) : null;
+    if (l) { it.on_air = true; it.on_air_live = { since: l.first_seen, report_date: l.report_date, spent: l.spent, orders: l.orders, mer: l.mer }; }
+  }
   const itemsBy = by(items);
   const linksBy = by(links);
   return {

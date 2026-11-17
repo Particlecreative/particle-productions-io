@@ -4,7 +4,7 @@ import {
   LayoutDashboard, DollarSign, BookOpen, Settings, Users, ChevronLeft, ChevronRight,
   History, FileText, FileSignature, Clapperboard, Users2, GripVertical,
   GanttChartSquare, Check, Star, Sun, Moon, Grid3x3, X as XIcon, Scroll, CheckSquare, Presentation, Radar, Library, Landmark, SpellCheck, Sparkles,
-  EyeOff, Plus, Rocket, Activity, Megaphone, Smartphone, Tv,
+  EyeOff, Plus, Rocket, Activity, Megaphone, Smartphone, Tv, Radio,
 } from 'lucide-react';
 import {
   DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors,
@@ -31,6 +31,8 @@ const DEFAULT_NAV_ITEMS = [
   { to: '/ads-library',     icon: Smartphone,       label: 'Ads Library',     sub: 'powered by AfterLife', growth: true, growthOnly: true },
   { to: '/tv-productions',  icon: Clapperboard,     label: 'TV Productions',                              growth: true, growthOnly: true },
   { to: '/tv-library',      icon: Tv,               label: 'TV Library',                                  growth: true, growthOnly: true },
+  // On Air (17 Nov 2026): what's running now on TV (the agency's reports) and Meta (AfterLife) — Growth and everyone else
+  { to: '/on-air',          icon: Radio,            label: 'On Air',          sub: 'TV + Meta, live',     growth: true, accountingHide: true, studioHide: true, particleOnly: true },
   { to: '/',               icon: LayoutDashboard,  label: 'Productions', exact: true, accountingHide: true },
   { to: '/tracker',        icon: Radar,            label: 'Tracker',     accountingHide: true, studioHide: true, editorOnly: true },
   { to: '/tasks',          icon: CheckSquare,      label: 'Tasks',       accountingHide: true },
@@ -451,6 +453,7 @@ export default function Sidebar({ open, onToggle }) {
             </div>
             <div className="grid grid-cols-3 gap-3">
               {(isGrowth ? [
+                { to: '/on-air',         icon: Radio,        label: 'On Air' },
                 { to: '/ads-library',    icon: Smartphone,   label: 'Ads Library' },
                 { to: '/tv-productions', icon: Clapperboard, label: 'TV Productions' },
                 { to: '/tv-library',     icon: Tv,           label: 'TV Library' },
@@ -467,6 +470,7 @@ export default function Sidebar({ open, onToggle }) {
                 { to: '/contracts',      icon: FileSignature,    label: 'Contracts' },
                 { to: '/invoices',       icon: FileText,         label: 'Invoices' },
                 { to: '/manual',         icon: BookOpen,         label: 'Manual' },
+                ...(brand?.id === 'particle' && !isAccounting ? [{ to: '/on-air', icon: Radio, label: 'On Air' }] : []),
                 ...(brand?.id === 'particle' && !isAccounting ? [{ to: '/creative-reports', icon: Presentation, label: 'Creative' }] : []),
                 ...(isAdmin ? [
                   { to: '/settings', icon: Settings, label: 'Settings' },
