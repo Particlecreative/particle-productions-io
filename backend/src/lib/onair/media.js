@@ -18,21 +18,28 @@ function thumbUrl(path, now = Date.now()) {
   const e = Math.floor((now + THUMB_TTL) / 1000);
   return `/api/onair/t?p=${encodeURIComponent(path)}&e=${e}&s=${sig(path, e)}`;
 }
-/** A running ad's real video: a signed CP link (12 h) → AfterLife asks Meta for a fresh playable URL → 302. */
-const vsig = (ad, e) => crypto.createHmac('sha256', secret()).update(`onair-video|${ad}|${e}`).digest('base64url').slice(0, 32);
-function videoUrl(adId, now = Date.now()) {
-  if (!/^\d{5,25}$/.test(String(adId || ''))) return null;
+/** A creative's real file: a signed CP link (12 h) → AfterLife hands a fresh link (its Dropbox file first, else the
+ *  Meta video — Meta often refuses AfterLife's token) → 302. ad = Meta ad id, asset = AfterLife asset id (board:item:var ok). */
+const AD_RE = /^\d{5,25}$/, ASSET_RE = /^[A-Za-z0-9_:.-]{1,96}$/;
+const vsig = (ad, asset, e) => crypto.createHmac('sha256', secret()).update(`onair-file|${ad}|${asset}|${e}`).digest('base64url').slice(0, 32);
+const okIds = (ad, asset) => (!ad || AD_RE.test(ad)) && (!asset || ASSET_RE.test(asset)) && !!(ad || asset);
+function videoUrl(adId, assetId = '', now = Date.now()) {
+  const ad = String(adId || ''), asset = String(assetId || '');
+  if (!okIds(ad, asset)) return null;
   const e = Math.floor((now + THUMB_TTL) / 1000);
-  return `/api/onair/v?ad=${adId}&e=${e}&s=${vsig(adId, e)}`;
+  const q = new URLSearchParams({ ...(ad ? { ad } : {}), ...(asset ? { asset } : {}), e: String(e), s: vsig(ad, asset, e) });
+  return `/api/onair/v?${q}`;
 }
-function verifyVideo(ad, e, s) {
-  if (!/^\d{5,25}$/.test(String(ad || '')) || !e || !s || Number(e) * 1000 < Date.now()) return false;
-  const a = Buffer.from(String(s)), b = Buffer.from(vsig(ad, e));
+function verifyVideo(ad, asset, e, s) {
+  ad = String(ad || ''); asset = String(asset || '');
+  if (!okIds(ad, asset) || !e || !s || Number(e) * 1000 < Date.now()) return false;
+  const a = Buffer.from(String(s)), b = Buffer.from(vsig(ad, asset, e));
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
-async function playableUrl(ad) {
+async function playableUrl(ad, asset) {
   const base = process.env.AFTERLIFE_URL.replace(/\/$/, '');
-  const r = await fetch(`${base}/api/export/ad-video?ad=${encodeURIComponent(ad)}`, { headers: { 'X-Export-Token': process.env.AFTERLIFE_EXPORT_TOKEN }, signal: AbortSignal.timeout(20000) });
+  const q = new URLSearchParams({ ...(ad ? { ad } : {}), ...(asset ? { asset } : {}) });
+  const r = await fetch(`${base}/api/export/ad-video?${q}`, { headers: { 'X-Export-Token': process.env.AFTERLIFE_EXPORT_TOKEN }, signal: AbortSignal.timeout(20000) });
   if (!r.ok) return null;
   return (await r.json()).url || null;
 }
@@ -63,7 +70,8 @@ async function getMedia({ force = false } = {}) {
       creatives: (raw.creatives || []).map(c => ({
         ...c,
         thumb: c.thumb ? thumbUrl(c.thumb) : null,
-        video_url: c.format === 'video' && c.ad_id ? videoUrl(c.ad_id) : null,
+        video_url: c.format === 'video' && (c.ad_id || c.asset_id) ? videoUrl(c.ad_id, c.asset_id) : null,
+        file_url: c.format !== 'video' && c.asset_id ? videoUrl('', c.asset_id) : null,   // the static's full-size file
         afterlife: c.asset_id ? `${base}/asset/${encodeURIComponent(c.asset_id)}` : null,
         ads_manager: c.ad_id && c.ad_account ? `https://adsmanager.facebook.com/adsmanager/manage/ads?act=${String(c.ad_account).replace(/^act_/, '')}&selected_ad_ids=${c.ad_id}` : null,
       })),

@@ -6,7 +6,7 @@
  *   POST /tv/refresh    → read the mailbox now, then the same as GET /tv
  *   GET  /media         → lib/onair/media.js (AfterLife on-air export, cached 10 min; ?force=1 skips the cache)
  *   GET  /t?p&e&s       → an AfterLife thumbnail through a signed URL (public: img tags can't send the login header)
- *   GET  /v?ad&e&s      → a running ad's real video: signed → AfterLife asks Meta for a fresh link → 302 (public, like /t)
+ *   GET  /v?ad&asset&e&s → a creative's real file: signed → AfterLife hands a fresh link (Dropbox file, else Meta) → 302 (public, like /t)
  */
 const router = require('express').Router();
 const { verifyJWT, RANK } = require('../middleware/auth');
@@ -29,10 +29,10 @@ router.get('/t', async (req, res) => {
 });
 
 router.get('/v', async (req, res) => {
-  const ad = String(req.query.ad || '');
-  if (!Media.verifyVideo(ad, req.query.e, req.query.s)) return res.status(403).end();
+  const ad = String(req.query.ad || ''), asset = String(req.query.asset || '');
+  if (!Media.verifyVideo(ad, asset, req.query.e, req.query.s)) return res.status(403).end();
   try {
-    const url = await Media.playableUrl(ad);
+    const url = await Media.playableUrl(ad, asset);
     if (!url) return res.status(404).json({ error: 'Meta didn’t return a playable link' });
     res.set('Cache-Control', 'no-store').redirect(302, url);
   } catch { res.status(502).end(); }

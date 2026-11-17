@@ -21,7 +21,7 @@ function makePass({ email, name, role }, { secret, now = Date.now(), ttlSec = 12
 }
 
 // ?to=/embed/asset/<id> → a creative's AfterLife page (On Air viewer); default → Fresh to test (Ads Library)
-const EMBED_TO = /^\/embed\/(fresh|asset\/[A-Za-z0-9_-]{1,64})$/;
+const EMBED_TO = /^\/embed\/(fresh|asset\/[A-Za-z0-9_:.-]{1,96})$/;   // asset ids can be board:item:var
 router.get('/afterlife-pass', (req, res) => {
   const base = (process.env.AFTERLIFE_URL || '').replace(/\/$/, '');
   const to = EMBED_TO.test(String(req.query.to || '')) ? String(req.query.to) : '/embed/fresh';

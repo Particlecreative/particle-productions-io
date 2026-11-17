@@ -158,3 +158,15 @@ test('TV history: last week per spot, weeks and months from all reports', () => 
   assert.equal(mm.weeks, 2);
   assert.equal(v.history.monthly.find(m => m.month === '2026-11').spend, 56000);
 });
+
+test('On Air viewer: file links are signed over both ids (AfterLife asset ids can be board:item:var)', () => {
+  const u = Media.videoUrl('120211111111', '8036329818:8036347118:var1');
+  const q = new URLSearchParams(u.split('?')[1]);
+  assert.ok(Media.verifyVideo(q.get('ad'), q.get('asset'), q.get('e'), q.get('s')));
+  assert.ok(!Media.verifyVideo(q.get('ad'), 'another:asset', q.get('e'), q.get('s')));
+  assert.ok(!Media.verifyVideo('', q.get('asset'), q.get('e'), q.get('s')));
+  const f = new URLSearchParams(Media.videoUrl('', 'abc:1:var1').split('?')[1]);
+  assert.ok(Media.verifyVideo(f.get('ad'), f.get('asset'), f.get('e'), f.get('s')));
+  assert.equal(Media.videoUrl('not-an-ad', ''), null);
+  assert.equal(Media.videoUrl('', '../etc'), null);
+});

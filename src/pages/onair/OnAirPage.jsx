@@ -862,6 +862,7 @@ function CreativeViewer({ c, initialPeriod, bench, lastDay, onClose }) {
   const [tab, setTab] = useState('ad');
   const [period, setPeriod] = useState(initialPeriod);
   const [videoBad, setVideoBad] = useState(false);
+  const [fileBad, setFileBad] = useState(false);
   const [frame, setFrame] = useState({ url: null, error: null, loading: false });
   useEffect(() => {
     const k = (e) => { if (e.key === 'Escape') onClose(); };
@@ -934,9 +935,11 @@ function CreativeViewer({ c, initialPeriod, bench, lastDay, onClose }) {
                 <div className="rounded-2xl overflow-hidden bg-black aspect-[4/5] relative">
                   {c.format === 'video' && c.video_url && !videoBad
                     ? <video key={c.video_url} src={c.video_url} poster={c.thumb || c.thumb_url || undefined} controls autoPlay muted loop playsInline onError={() => setVideoBad(true)} className="absolute inset-0 w-full h-full object-contain bg-black" />
-                    : <Thumb c={c} contain className="w-full h-full" />}
+                    : c.format !== 'video' && c.file_url && !fileBad
+                      ? <img src={c.file_url} alt="" onError={() => setFileBad(true)} className="absolute inset-0 w-full h-full object-contain bg-black" />
+                      : <Thumb c={c} contain className="w-full h-full" />}
                 </div>
-                {c.format === 'video' && (videoBad || !c.video_url) && <div className="text-[11.5px] text-gray-500">Meta didn’t hand over a playable link for this one{c.afterlife ? ' — open it in AfterLife to watch.' : '.'}</div>}
+                {c.format === 'video' && (videoBad || !c.video_url) && <div className="text-[11.5px] text-gray-500">This video can’t play here — {c.asset_id ? 'try the AfterLife view.' : 'Meta didn’t hand over a playable link (open it in Ads Manager).'}</div>}
                 {c.body && (
                   <div className="rounded-2xl bg-white border border-gray-200 p-3.5">
                     <div className="text-[10.5px] font-bold uppercase tracking-wider text-gray-400 mb-1">The ad copy</div>
