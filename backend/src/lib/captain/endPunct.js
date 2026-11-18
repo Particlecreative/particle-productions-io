@@ -9,8 +9,8 @@
  *  2. Rule table (must fix → blocks approval; please check → a comment):
  *     • a question without "?" · "??" / "?!" · a period after a CTA, button or URL · "!" or repeated marks in a Google
  *       search headline · more than one "!" in search descriptions → must fix
- *     • a period on a claim/badge · the same layer type with the same structure punctuated two ways in one set (not for
- *       video captions — loose on purpose, 18 Nov 2026) · a
+ *     • (designs only — in videos only the must-fixes above apply, 18 Nov 2026) a period on a claim/badge · the same
+ *       layer type with the same structure punctuated two ways in one set · a
  *       multi-sentence line whose last sentence is left open while others are closed (unless that's the house style
  *       across the whole group) → please check. A line that just ends differently from the brief is NOT a note
  *       (18 Nov 2026: the brief is read for intent, not 1:1).
@@ -143,7 +143,7 @@ function check(rawLayers, { brief = '', kind = 'design', voiceover = [], placeNa
       if (/[.?!]{2,}|…|\.{3}|•/.test(l.text)) { add(l, 'must_fix', 'google', l.text.replace(/([.?!])[.?!]+/g, '$1').replace(/…|\.{3}/g, '').replace(/•/g, ''), 'Repeated marks, ellipsis or bullets in a Google headline (disapproval risk)'); continue; }
     }
     if (l.type === 'search_description' && /([.?!])\1|\?!|!\?/.test(l.text)) { add(l, 'must_fix', 'google', l.text.replace(/([.?!])[.?!]+/g, '$1'), 'Repeated marks in a Google description (disapproval risk)'); continue; }
-    if (l.type === 'claim' && l.mark === '.') { add(l, 'check', 'claim_period', withMark(l, ''), 'Claims take no period'); continue; }
+    if (l.type === 'claim' && l.mark === '.' && kind !== 'video') { add(l, 'check', 'claim_period', withMark(l, ''), 'Claims take no period'); continue; }   // video: style, off
   }
 
   // Google descriptions: at most one "!" across the ad
@@ -159,8 +159,10 @@ function check(rawLayers, { brief = '', kind = 'design', voiceover = [], placeNa
     if (flagged.has(l.id) || !light(l.text) || !['headline', 'subhead', 'super', 'caption'].includes(l.type)) continue;
     if (l.final !== 'statement' && l.final !== 'fragment') continue;
     if (runsOn(l)) continue;   // "If you're a guy over 40," runs into the next line — no closing mark to align (was "40,.")
-    // Video captions are loose on purpose — mixed endings in them aren't a note (Tomer, 18 Nov 2026). Designs keep it.
-    if (kind === 'video' && l.type === 'caption') continue;
+    // Video: nothing on screen is compared for period / no period (Tomer, 18 Nov 2026 — "best and less annoying"):
+    // captions are loose on purpose, and supers / titles are read off the picture, so a missed title flips the majority
+    // between sizes (The Hunt: "lose the period" on one size, "add one" on another). Designs keep it — exact layers.
+    if (kind === 'video') continue;
     const key = `${l.type}|${l.multi ? 'multi' : 'single'}`;
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(l);

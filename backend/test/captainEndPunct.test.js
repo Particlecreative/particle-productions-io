@@ -129,3 +129,12 @@ test('video: an end card read as one block, and a split caption before a stacked
     'PARTICLE\nTRY IT NOW\nAt\nParticleForMen.com\n30 DAY MONEY BACK GUARANTEE'].map((text, n) => ({ start: n * 3, end: n * 3 + 2, text }));
   assert.deepEqual(EP.forVideo({ onScreen }).issues, []);
 });
+
+test('video: only the must-fixes — no period / no-period notes on supers, titles or claims (The Hunt, 18 Nov 2026)', () => {
+  const onScreen = ['BEHOLD.', 'THE HUNT', 'Clinically proven.', 'PARTICLE AESTHETIC SCIENCE FOR MEN', 'Is your skin dry', 'Shop now.'].map((text, n) => ({ start: n * 10, end: n * 10 + 2, text }));
+  const r = EP.forVideo({ onScreen });
+  assert.deepEqual(r.issues.map(i => [i.found, i.severity]).sort(), [['Is your skin dry', 'must_fix'], ['Shop now.', 'must_fix']].sort());
+  // designs still get the consistency check
+  const d = EP.forDesign({ frames: [{ id: 'f1', size: '1x1', texts: [{ id: 'a', name: 'Headline', text: 'Made for men.' }] }, { id: 'f2', size: '9x16', texts: [{ id: 'b', name: 'Headline', text: 'Made for men' }] }, { id: 'f3', size: '4x5', texts: [{ id: 'c', name: 'Headline', text: 'Made for men' }] }] });
+  assert.equal(d.issues.length, 1);
+});
