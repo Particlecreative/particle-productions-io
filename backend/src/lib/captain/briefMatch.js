@@ -1,12 +1,36 @@
 /**
- * Brief-match on delivery: when a video or design arrives for a Monday item whose brief passed pre-flight, compare
- * what was made with the approved on-screen text — missing lines, changed wording, a version or size missing a line.
+ * Brief-match on delivery: when a video or design arrives for a Monday item whose brief passed pre-flight, check that
+ * what was made still carries the brief's FACTS. Tomer, 18 Nov 2026: "read the brief, but it's not a must to be literal
+ * 1:1 — be smart". The editor or designer rewords, shortens, splits, reorders and rewrites dialogue; none of that is a
+ * note. A note only when something that must survive any rewording is gone:
+ *  • a price, %, number, promo code, URL or guarantee in an approved line that appears nowhere in the deliverable;
+ *  • a disclaimer / footnote line ("*Results may vary", "*Illustration") that is missing.
  * Pure functions — tested in backend/test/captain.test.js.
  *
  * Issues come out in the same shape as the AI's (video: start/end seconds; design: node_id/frame_node_id), with
- * type brief_mismatch (wording changed) or brief_missing, always severity "check": the editor may have had a reason.
+ * type brief_mismatch (a fact changed) or brief_missing (a fact or disclaimer line missing), always severity "check".
  */
-const MAX_ISSUES = 8;
+const MAX_ISSUES = 3;
+
+/** The facts a line carries — what must survive any rewording: prices, %, numbers, promo codes, web addresses. Pure. */
+function facts(text) {
+  const t = String(text || '').normalize('NFKC');
+  const out = new Set();
+  const MONEY = /[$£€]\s?\d[\d,]*(?:\.\d+)?/g, PCT = /\d+(?:\.\d+)?\s?%/g, CODE = /\b[A-Z][A-Z0-9]*\d[A-Z0-9]*\b/g;
+  for (const m of t.matchAll(MONEY)) out.add(m[0].replace(/[\s,]/g, ''));
+  for (const m of t.matchAll(PCT)) out.add(m[0].replace(/\s/g, ''));
+  for (const m of t.matchAll(CODE)) if (m[0].length >= 4) out.add(m[0]);                  // SAVE15, BF2026
+  for (const m of t.matchAll(/\b(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+\.(?:com|co\.uk|co|net|org|io|shop))\b/gi)) out.add(m[1].toLowerCase());
+  const rest = t.replace(MONEY, ' ').replace(PCT, ' ').replace(CODE, ' ').replace(/\b(?:https?:\/\/)?(?:www\.)?[a-z0-9-]+\.(?:com|co\.uk|co|net|org|io|shop)\S*/gi, ' ');
+  for (const m of rest.matchAll(/\b\d+(?:\.\d+)?\b/g)) out.add(m[0]);                    // 30-day, 1 week, 4.8
+  return out;
+}
+// a disclaimer or footnote line — legal, so it has to be there even when it carries no number
+const LEGAL_RE = /^\s*\*|\b(?:results may vary|individual results|illustration|terms (?:and conditions )?apply|see (?:site|website) for|money[- ]back|guarantee|not intended to|consult (?:your|a) (?:doctor|physician))\b/i;
+const isLegal = (text) => LEGAL_RE.test(String(text || ''));
+const legalKind = (text) => (/money[- ]back|guarantee/i.test(String(text || '')) ? 'guarantee' : 'disclaimer');
+/** The approved line's facts that appear nowhere in the deliverable's text. Pure. */
+const lostFacts = (line, assetFacts) => [...facts(line)].filter(f => !assetFacts.has(f));
 
 const norm = (s) => String(s || '').normalize('NFKC').toLowerCase()
   .replace(/[’‘`´]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, '-')
@@ -68,13 +92,19 @@ function bestMatch(text, entries) {
 function matchVideo(approved, { onScreen = [], voiceover = [] } = {}, deliverable = {}) {
   const want = linesFor(approved, deliverable);
   const issues = [];
+  const assetFacts = facts([...onScreen, ...voiceover].map(e => e.text || '').join(' \n '));
   const check = (line, entries, okAt, nearAt, what) => {
     const b = bestMatch(line.text, entries);
     if (b.sim >= okAt) return;
+    const lost = lostFacts(line.text, assetFacts);
     const where = [line.version, line.size].filter(Boolean).join(' · ');
-    const note = `approved in brief pre-flight${where ? ` (${where})` : ''}`;
-    if (b.sim >= nearAt) issues.push({ start: b.start ?? line.start ?? 0, end: b.end ?? b.start ?? line.end ?? 0, found: b.text, fix: line.text, type: 'brief_mismatch', severity: 'check', note: `${what} wording changed — ${note}` });
-    else issues.push({ start: line.start ?? 0, end: line.end ?? line.start ?? 0, found: '', fix: line.text, type: 'brief_missing', severity: 'check', note: `${what} line missing — ${note}` });
+    const tag = `approved brief${where ? ` (${where})` : ''}`;
+    if (b.sim >= nearAt) {
+      if (!lost.length) return;                       // reworded, same facts — the editor's call
+      issues.push({ start: b.start ?? line.start ?? 0, end: b.end ?? b.start ?? line.end ?? 0, found: b.text, fix: line.text, type: 'brief_mismatch', severity: 'check', note: `${what}: the ${tag} has ${lost.join(', ')} — it isn't in the video` });
+    } else if (lost.length || isLegal(line.text)) {
+      issues.push({ start: line.start ?? 0, end: line.end ?? line.start ?? 0, found: '', fix: line.text, type: 'brief_missing', severity: 'check', note: `${what}: ${lost.length ? `the ${tag} has ${lost.join(', ')} — it isn't in the video` : `the ${tag}'s ${legalKind(line.text)} line isn't in the video`}` });
+    }
   };
   for (const l of want.onScreen) check(l, onScreen, 0.92, 0.5, 'On-screen');
   for (const l of want.voiceover) check(l, voiceover, 0.85, 0.45, 'Voiceover');
@@ -106,13 +136,19 @@ function matchDesign(approved, frames = []) {
       const scored = group.map(f => ({ f, ...scoreIn(line, f) })).sort((a, b) => b.sim - a.sim);
       const top = scored[0];
       if (top.sim >= 0.92) continue;
+      const lost = lostFacts(line.text, facts(group.flatMap(f => f.texts.map(t => t.text)).join(' \n ')));
       const frameLabel = `${top.f.size ? `${top.f.size} ` : ''}frame "${String(top.f.name || top.f.id).slice(0, 40)}"`;
-      if (top.sim >= 0.5) issues.push({ node_id: top.layer, frame_node_id: top.f.id, found: top.text, fix: line.text, type: 'brief_mismatch', severity: 'check', note: `wording changed from the approved brief${label ? ` (${label})` : ''}` });
-      else issues.push({ node_id: top.f.id, frame_node_id: top.f.id, found: '', fix: line.text, type: 'brief_missing', severity: 'check', note: `approved line missing in ${frameLabel}${label ? ` (${label})` : ''}` });
+      const tag = `the approved brief${label ? ` (${label})` : ''}`;
+      if (top.sim >= 0.5) {
+        if (!lost.length) continue;                   // reworded, same facts — the designer's call
+        issues.push({ node_id: top.layer, frame_node_id: top.f.id, found: top.text, fix: line.text, type: 'brief_mismatch', severity: 'check', note: `${tag} has ${lost.join(', ')} — not in the ${frameLabel}` });
+      } else if (lost.length || isLegal(line.text)) {
+        issues.push({ node_id: top.f.id, frame_node_id: top.f.id, found: '', fix: line.text, type: 'brief_missing', severity: 'check', note: lost.length ? `${tag} has ${lost.join(', ')} — not in the ${frameLabel}` : `${tag}'s ${legalKind(line.text)} line isn't in the ${frameLabel}` });
+      }
       if (issues.length >= MAX_ISSUES) return issues;
     }
   }
   return issues;
 }
 
-module.exports = { similarity, linesFor, bestMatch, matchVideo, matchDesign, norm };
+module.exports = { similarity, linesFor, bestMatch, matchVideo, matchDesign, norm, facts, isLegal };

@@ -33,5 +33,5 @@ Return ONLY valid JSON:
              "type": "spelling|wrong_word|inconsistent|brand_name|placeholder|overflow|size_mismatch|baked_text|script_mismatch|punctuation",
              "severity": "must_fix|check", "note": "short reason"}]}
 "node_id" is the id of the text layer the problem is in (for text baked into an image, use the frame's id). "frame_id" is the frame it's in.
-Severity: real typos, wrong words, wrong brand names, placeholders, clipped text → "must_fix". Size mismatches, differences from the brief, and anything a human should judge → "check".
+Severity: real typos, wrong words, wrong brand names, placeholders, clipped text → "must_fix". Size mismatches, the few brief differences that matter, and anything a human should judge → "check".
 If there are no errors: {"issues": []}.

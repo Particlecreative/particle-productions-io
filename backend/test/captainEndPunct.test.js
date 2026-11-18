@@ -54,9 +54,9 @@ test('mixed within one group → ONE please-check naming the frames, aligned to 
   assert.equal(f.fix, 'Made for men.'); assert.equal(f.layer.id, 'b'); assert.match(f.note, /Align to the brief/);
 });
 
-test('brief deviation on a single line → please check; a brief-matched period → nothing', () => {
-  let f = one([L('h', 'Clinically proven results.', { name: 'Headline' })], { brief: 'Headline - Clinically proven results' });
-  assert.equal(f.severity, 'check'); assert.match(f.note, /The brief has/);
+test('a line that only ends differently from the brief → no note (18 Nov 2026: the brief is read for intent, not 1:1)', () => {
+  assert.deepEqual(run([L('h', 'Clinically proven results.', { name: 'Headline' })], { brief: 'Headline - Clinically proven results' }), []);
+  assert.deepEqual(run([L('h', 'PROVE IT', { name: 'Headline' })], { brief: 'PROVE IT.' }), []);
   assert.deepEqual(run([L('h', 'Clinically proven results.', { name: 'Headline' })], { brief: 'Clinically proven results.' }), []);
   assert.deepEqual(run([L('h', 'Clinically proven results.', { name: 'Headline' })]), [], 'no brief → a period is a style choice');
 });
@@ -104,4 +104,23 @@ test('design adapter: Captain issues pinned on the layer, frames named', () => {
   assert.equal(out.issues.length, 1);
   assert.deepEqual([out.issues[0].node_id, out.issues[0].frame_id, out.issues[0].severity, out.issues[0].fix], ['T1', 'F1', 'must_fix', 'Get yours']);
   assert.match(out.issues[0].note, /frame 1 \(1x1\), frame 2 \(9x16\)/);
+});
+
+test('a caption that runs on with a comma is never told to end with a period (no "40,.")', () => {
+  const caps = ['Most guys think skincare is extra.', 'If you\'re a guy over 40,', 'your skin needs more.', 'One cream does it all.'].map((t, n) => ({ id: `c${n}`, frame_id: 'video', frame_label: `0:0${n}`, name: 'Caption', text: t }));
+  const out = run(caps, { kind: 'video' });
+  assert.ok(!out.some(f => /,\.$/.test(f.fix)), JSON.stringify(out));
+  assert.ok(!out.some(f => f.found === "If you're a guy over 40,"));
+});
+
+test('video: a caption broken mid-sentence (the next one starts lowercase) gets no period note', () => {
+  const onScreen = ['there\'s your actual age', 'and there\'s the age people think you are.', 'Wrinkles and sagging skin', 'can easily add five years.', 'The math can hit double digits.', 'You don\'t have to accept this.']
+    .map((text, n) => ({ start: n * 3, end: n * 3 + 2, text }));
+  assert.deepEqual(EP.forVideo({ onScreen }).issues, []);
+});
+
+test('video: an end card read as one block, and a split caption before a stacked super, get no period note', () => {
+  const onScreen = ["there's your actual age", '55\n50 YEARS OLD\nand there\'s the age\npeople think you are.', 'The math can hit double digits.', 'You don\'t have to accept this.',
+    'PARTICLE\nTRY IT NOW\nAt\nParticleForMen.com\n30 DAY MONEY BACK GUARANTEE'].map((text, n) => ({ start: n * 3, end: n * 3 + 2, text }));
+  assert.deepEqual(EP.forVideo({ onScreen }).issues, []);
 });

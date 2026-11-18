@@ -26,7 +26,7 @@ const { frameioMatcher } = require('./dedupe');
 const { brandOf, laneOf } = require('./brand');
 const { matchVideo } = require('./briefMatch');
 const EP = require('./endPunct');   // end punctuation — the house rule, judged by code (17 Nov 2026)
-const { briefRawOf } = require('./briefed');
+const { briefRawOf, BRIEF_SPIRIT } = require('./briefed');
 
 const PREFIX = monday.PREFIX;
 const PROMPT = fs.readFileSync(path.join(__dirname, 'prompts', 'qc-video.txt'), 'utf8');
@@ -53,9 +53,9 @@ function briefBlock(item) {
   const productName = [item.campaign, item.product].find(p => p && !['-', 'Multiple Products', 'Not a Product Task', 'Test Product'].includes(p));
   if (productName) lines.push(`Product: ${productName} — packaging, labels, text and voiceover must show this current product name.`);
   if (hooks.length) lines.push(`Hook variation(s): ${hooks.map((h, i) => `${i + 1}. ${h}`).join('  ')}`);
-  if (item.brief.versions_needed > 1) lines.push(`(The brief asked for ${item.brief.versions_needed} versions, so this video may open with a different hook. If its opening matches none of the listed hooks, report that ONCE as type "script_mismatch", severity "check".)`);
-  if (script) lines.push(`Script (what the voiceover and captions should say, in this order):\n${script}`);
-  lines.push('Compare the voiceover and the on-screen text with the brief. Report meaningful differences — missing or added sentences, changed meaning, different numbers/prices/claims, sentences in a different order — with severity "check". Ignore punctuation-only and capitalisation-only differences against the script.');
+  if (item.brief.versions_needed > 1) lines.push(`(The brief asked for ${item.brief.versions_needed} versions, so this video may open with a different hook. If its opening is about something else than all of the listed hooks — not just worded differently — report that ONCE as type "script_mismatch", severity "check".)`);
+  if (script) lines.push(`Script (the story, message and facts the video should carry — the editor may reword, shorten, reorder and adapt dialogue):\n${script}`);
+  lines.push(BRIEF_SPIRIT);
   return lines.join('\n');
 }
 
@@ -77,8 +77,8 @@ function commentText(issue) {
   if (issue.type === 'script_mismatch' || issue.type === 'vo_script_mismatch') return `${PREFIX} please check — differs from the brief: ${q(issue.found)} (brief: ${q(issue.fix)})${issue.note ? ` · ${issue.note}` : ''}`;
   if (issue.type === 'vo_order') return `${PREFIX} please check — sentence order differs from the script${issue.note ? `: ${issue.note}` : ''}`;
   if (issue.type === 'size_mismatch') return `${PREFIX} please check — copy differs from the master: ${q(issue.found)} (master: ${q(issue.fix)})`;
-  if (issue.type === 'brief_mismatch') return `${PREFIX} please check — differs from the approved brief: ${q(issue.found)} (approved: ${q(issue.fix)})`;
-  if (issue.type === 'brief_missing') return `${PREFIX} please check — approved line missing: ${q(issue.fix)}${issue.note ? ` (${issue.note})` : ''}`;
+  if (issue.type === 'brief_mismatch') return `${PREFIX} please check — ${issue.note || 'a fact differs from the approved brief'}. Here: ${q(issue.found)} · brief: ${q(issue.fix)}`;
+  if (issue.type === 'brief_missing') return `${PREFIX} please check — ${issue.note || 'a line from the approved brief is missing'}: ${q(issue.fix)}`;
   if (issue.type === 'vo_unclear') return `${PREFIX} voiceover: ${issue.note || q(issue.found)}`;
   if (issue.type === 'vo_pronunciation') return `${PREFIX} voiceover mispronounces ${q(issue.fix || issue.found)}${issue.note ? ` — should sound like ${issue.note}` : ''} (please check)`;
   if (issue.type === 'label_mismatch') return `${PREFIX} packaging/label shows ${q(issue.found)} — should be ${q(issue.fix)}${issue.note ? ` · ${issue.note}` : ''}`;

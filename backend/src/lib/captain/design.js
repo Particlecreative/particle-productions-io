@@ -22,7 +22,7 @@ const { postingFor } = require('./video');
 const { insertCheck, updateCheck, lastCheckOf, insertIssue, setIssueComment, approvedTextFor } = require('./store');
 const { matchDesign } = require('./briefMatch');
 const EP = require('./endPunct');   // end punctuation — the house rule, judged by code (17 Nov 2026)
-const { briefRawOf } = require('./briefed');
+const { briefRawOf, BRIEF_SPIRIT } = require('./briefed');
 
 const PREFIX = monday.PREFIX;
 const PROMPT = fs.readFileSync(path.join(__dirname, 'prompts', 'qc-design.txt'), 'utf8');
@@ -44,8 +44,8 @@ function briefBlock(item) {
   if (b.concept) parts.push(`Concept: ${String(b.concept).slice(0, 2000)}`);
   if (b.supporting_text) parts.push(`Supporting text / copy: ${String(b.supporting_text).slice(0, 2000)}`);
   if (b.sizes) parts.push(`Sizes asked for: ${b.sizes}`);
-  parts.push('If the copy in the design clearly contradicts the brief (wrong offer, price, claim or product), report it as type "script_mismatch", severity "check".');
-  parts.push('Text the brief asks for word for word (a quote, a name, a headline) can still have an error — report it as usual, and say in the note that the brief has it too.');
+  parts.push(BRIEF_SPIRIT);
+  parts.push('Text taken from the brief can still have an error (a typo, a wrong word) — report it as usual, and say in the note that the brief has it too.');
   return parts.join('\n');
 }
 
@@ -57,8 +57,8 @@ function commentText(i) {
     case 'overflow': return `${PREFIX} text is cut off or overflowing: ${q(i.found)}${i.note ? ` — ${i.note}` : ''}`;
     case 'size_mismatch': return `${PREFIX} please check — copy differs from the other size: ${q(i.found)} (other size: ${q(i.fix)})`;
     case 'script_mismatch': return `${PREFIX} please check — differs from the brief: ${q(i.found)} (brief: ${q(i.fix)})`;
-    case 'brief_mismatch': return `${PREFIX} please check — differs from the approved brief: ${q(i.found)} (approved: ${q(i.fix)})`;
-    case 'brief_missing': return `${PREFIX} please check — approved line missing: ${q(i.fix)}${i.note ? ` (${i.note})` : ''}`;
+    case 'brief_mismatch': return `${PREFIX} please check — ${i.note || 'a fact differs from the approved brief'}. Here: ${q(i.found)} · brief: ${q(i.fix)}`;
+    case 'brief_missing': return `${PREFIX} please check — ${i.note || 'a line from the approved brief is missing'}: ${q(i.fix)}`;
     case 'baked_text': return `${PREFIX} text in the image: ${q(i.found)} → ${q(i.fix)}${tail}`;
     default: return `${PREFIX} ${q(i.found)} → ${q(i.fix)}${tail}`;
   }

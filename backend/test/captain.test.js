@@ -91,10 +91,13 @@ test('video: frames are 1-based and comments start with the Captain', () => {
   assert.match(commentText({ ...a, type: 'vo_wrong_word', found: 'loose', fix: 'lose' }), /voiceover says "loose" → "lose"/);
 });
 
-test('video: brief block mentions versions and script order', () => {
+test('video: brief block mentions versions and reads the brief for intent, not 1:1', () => {
   const txt = briefBlock({ brief: { versions_needed: 2, script: 'Line one.\nLine two.', hook: 'Hook A', request_update: null } });
   assert.match(txt, /asked for 2 versions/);
-  assert.match(txt, /in this order/);
+  assert.match(txt, /may reword, shorten, reorder and adapt dialogue/);
+  assert.match(txt, /ONLY when it changes something that matters/);
+  assert.match(txt, /At most 3 brief notes/);
+  assert.doesNotMatch(txt, /in this order/);
   assert.match(briefBlock(null), /No Monday brief/);
 });
 
@@ -271,24 +274,49 @@ test('lanes: name tokens, domains, and lane-scoped Brain items', () => {
   assert.equal(matchesScope({ brand: 'Particle' }, { brand: 'Particle', lane: 'GT' }), true);
 });
 
-test('brief-match on delivery: video and design', () => {
-  const { matchVideo, matchDesign } = require('../src/lib/captain/briefMatch');
+test('brief-match on delivery: rewording is the editor’s call — only lost facts and disclaimers are notes', () => {
+  const { matchVideo, matchDesign, facts } = require('../src/lib/captain/briefMatch');
+  assert.deepEqual([...facts('Save 15% with code SAVE15 — $39.99, 30-day guarantee at particleformen.com')].sort(), ['$39.99', '15%', '30', 'SAVE15', 'particleformen.com'].sort());
   const approved = [
     { id: 'l1', kind: 'super', version: 'V1', text: 'Your neck ages first', start: 0, end: 2 },
     { id: 'l2', kind: 'super', version: 'V2', text: 'Nobody treats their neck', start: 0, end: 2 },
     { id: 'l3', kind: 'super', text: 'Firms, lifts and moisturizes', start: 4, end: 6 },
     { id: 'l4', kind: 'cta', text: 'Shop Now', start: 8, end: 10 },
+    { id: 'l5', kind: 'super', text: 'Save 15% today', start: 10, end: 12 },
+    { id: 'l6', kind: 'super', text: '*Results may vary', start: 12, end: 14 },
+    { id: 'l7', kind: 'vo', text: 'MARGE: "Pitch is at noon. Be ready."', start: 1, end: 3 },
   ];
-  const v = matchVideo(approved, { onScreen: [{ start: 0.5, text: 'YOUR NECK AGES FIRST!' }, { start: 4, text: 'Firms, lifts and hydrates' }] }, { variant: 1, size: '9x16' });
-  assert.deepEqual(v.map(i => i.type), ['brief_mismatch', 'brief_missing']);   // l3 reworded, l4 missing; l2 is V2's line
-  assert.equal(v[0].fix, 'Firms, lifts and moisturizes');
-  assert.equal(v[0].start, 4);
+  // reworded (l3), CTA said differently (l4), skit dialogue rewritten (l7) → nothing; 15% became 20% → a note; the disclaimer is gone → a note
+  const v = matchVideo(approved, {
+    onScreen: [{ start: 0.5, text: 'YOUR NECK AGES FIRST!' }, { start: 4, text: 'Firms, lifts and hydrates' }, { start: 8, text: 'Get yours' }, { start: 10, text: 'Save 20% today' }],
+    voiceover: [{ start: 1, text: 'Pitch is at five.' }],
+  }, { variant: 1, size: '9x16' });
+  assert.deepEqual(v.map(i => [i.type, i.fix]), [['brief_mismatch', 'Save 15% today'], ['brief_missing', '*Results may vary']]);
+  assert.match(v[0].note, /has 15% — it isn't in the video/);
+  assert.equal(v[0].start, 10);
+  // the same 15% shown in another line still counts — the fact is in the video
+  assert.deepEqual(matchVideo(approved.filter(l => l.id !== 'l6'), { onScreen: [{ start: 0, text: 'Your neck ages first' }, { start: 9, text: '15% OFF' }, { start: 10, text: 'Save big today' }] }, { variant: 1 }), []);
   const frames = [
-    { id: 'f1', size: '1x1', texts: [{ id: 't1', text: 'Your neck' }, { id: 't2', text: 'ages first' }, { id: 't3', text: 'Firms, lifts and moisturizes' }, { id: 't4', text: 'Shop Now' }] },
+    { id: 'f1', size: '1x1', texts: [{ id: 't1', text: 'Your neck' }, { id: 't2', text: 'ages first' }, { id: 't3', text: 'Save 15% today' }, { id: 't4', text: 'Shop Now' }] },
     { id: 'f2', size: '9x16', texts: [{ id: 't5', text: 'Your neck ages first' }, { id: 't6', text: 'Shop Now' }] },
   ];
-  const d = matchDesign(approved.filter(l => l.id !== 'l2'), frames);
-  assert.deepEqual(d.map(i => [i.type, i.frame_node_id]), [['brief_missing', 'f2']]);   // l3 missing in the 9x16 frame
+  const d = matchDesign(approved.filter(l => !['l2', 'l6', 'l7'].includes(l.id)), frames);
+  assert.deepEqual(d.map(i => [i.type, i.frame_node_id]), [['brief_missing', 'f2']]);   // the 15% offer is missing in the 9x16 frame; l3's rewording isn't a note
+  assert.match(d[0].note, /has 15%/);
+});
+
+test('tidy: brief notes about wording are dropped; at most 3 brief notes per asset', () => {
+  const { tidy, onlyWording } = require('../src/lib/captain/briefed');
+  assert.equal(onlyWording({ type: 'script_mismatch', found: 'PARTICLE GRAVITÉ COLOGNE', fix: 'Particle Gravité Cologne for Men' }), true);
+  assert.equal(onlyWording({ type: 'script_mismatch', found: 'Got it. Pitch at five', fix: 'Got it, pitch at five.' }), true);
+  assert.equal(onlyWording({ type: 'script_mismatch', found: '15% off first order', fix: '15% off' }), false);   // added terms to an offer — a real note
+  assert.equal(onlyWording({ type: 'script_mismatch', found: 'Save 20%', fix: 'Save 15%' }), false);
+  const brief = (n) => ({ start: n, end: n + 1, found: `Line ${n} here 1${n}%`, fix: `Brief ${n} 2${n}%`, type: 'script_mismatch', severity: 'check', note: 'offer differs' });
+  const out = tidy([brief(1), brief(2), brief(3), brief(4),
+    { start: 9, end: 10, found: 'x', fix: 'y', type: 'vo_order', severity: 'check' },
+    { start: 9, end: 10, found: 'IT MIGHT COST YOU MORE', fix: '', type: 'caption_vs_voiceover', severity: 'check', note: 'not in the approved brief script' },
+    { start: 11, end: 12, found: 'recieve', fix: 'receive', type: 'spelling', severity: 'must_fix' }], null);
+  assert.deepEqual(out.map(i => i.type), ['script_mismatch', 'script_mismatch', 'script_mismatch', 'spelling']);
 });
 
 // ── Product: the new Product dropdown first, "Product (old)" (label9) as the fallback (12 Nov 2026) ──

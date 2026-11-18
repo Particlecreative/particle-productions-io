@@ -9,9 +9,10 @@
  *  2. Rule table (must fix → blocks approval; please check → a comment):
  *     • a question without "?" · "??" / "?!" · a period after a CTA, button or URL · "!" or repeated marks in a Google
  *       search headline · more than one "!" in search descriptions → must fix
- *     • a period on a claim/badge · a line that ends differently from the brief · the same layer type with the same
- *       structure punctuated two ways in one set · a multi-sentence line whose last sentence is left open while others
- *       are closed (unless that's the house style across the whole group) → please check
+ *     • a period on a claim/badge · the same layer type with the same structure punctuated two ways in one set · a
+ *       multi-sentence line whose last sentence is left open while others are closed (unless that's the house style
+ *       across the whole group) → please check. A line that just ends differently from the brief is NOT a note
+ *       (18 Nov 2026: the brief is read for intent, not 1:1).
  *  3. Never: a brief-matched period used the same way across its group; a "?" variant compared with a "." variant;
  *     the same line flagged once per frame (one finding names the frames).
  * Pure and tested (test/captainEndPunct.test.js).
@@ -112,6 +113,8 @@ function briefEnding(text, briefRaw) {
   return m ? { found: true, mark: m[1] || '' } : { found: false, mark: null };
 }
 
+// a line that runs on into the next one: ends with , ; : or a dash
+const runsOn = (l) => !!l.cont || !!l.stack || /[,;:\-–—]$/u.test(String(l.core || '').trim());   // cont: the next caption carries on the sentence
 const withMark = (l, mark) => `${l.core.replace(/(?:\.{3}|…|[.?!]+)$/u, '')}${mark}${l.trailer || ''}`.trim();
 const where = (ls, placeName) => [...new Set(ls.map(placeName))].join(', ');
 
@@ -154,6 +157,7 @@ function check(rawLayers, { brief = '', kind = 'design', voiceover = [], placeNa
   for (const l of layers) {
     if (flagged.has(l.id) || !light(l.text) || !['headline', 'subhead', 'super', 'caption'].includes(l.type)) continue;
     if (l.final !== 'statement' && l.final !== 'fragment') continue;
+    if (runsOn(l)) continue;   // "If you're a guy over 40," runs into the next line — no closing mark to align (was "40,.")
     const key = `${l.type}|${l.multi ? 'multi' : 'single'}`;
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(l);
@@ -178,7 +182,7 @@ function check(rawLayers, { brief = '', kind = 'design', voiceover = [], placeNa
     // multi-sentence: last sentence left open while the others are closed → please check, unless it's the house style
     // for the whole group (every multi-sentence line in it leaves the last one open, at least two of them)
     if (type === 'headline' || type === 'super' || type === 'subhead') {
-      const open = ls.filter(l => l.multi && l.mark === '');
+      const open = ls.filter(l => l.multi && l.mark === '' && !runsOn(l));
       const houseStyle = open.length >= 2 && open.length === ls.filter(l => l.multi).length;
       if (open.length && !houseStyle) {
         for (const l of open) {
@@ -189,24 +193,16 @@ function check(rawLayers, { brief = '', kind = 'design', voiceover = [], placeNa
         }
       }
       // body copy (3+ sentences) is always punctuated
-      for (const l of ls) if (type === 'subhead' && l.units.length >= 3 && l.mark === '' && !inGroup.has(l.id)) {
+      for (const l of ls) if (type === 'subhead' && l.units.length >= 3 && l.mark === '' && !inGroup.has(l.id) && !runsOn(l)) {
         per.push({ l, severity: 'check', rule: 'body_open', fix: withMark(l, '.'), note: 'Body copy (3+ sentences) ends with punctuation' });
         inGroup.add(l.id);
       }
     }
   }
 
-  // Brief deviation: a single line that ends differently from the brief (headline / super / subhead)
-  for (const l of layers) {
-    if (flagged.has(l.id) || inGroup.has(l.id) || !['headline', 'super', 'subhead'].includes(l.type)) continue;
-    if (l.final !== 'statement' && l.final !== 'fragment') continue;
-    const b = briefEnding(l.text, brief);
-    if (!b.found || !(b.mark === '' || b.mark === '.')) continue;
-    if ((b.mark === '.') !== (l.mark === '.')) {
-      const briefText = `${l.core.replace(/[.]$/, '')}${b.mark}`;
-      per.push({ l, severity: 'check', rule: 'brief', fix: withMark(l, b.mark), note: `The brief has “${briefText}”; this has “${light(l.text)}”. Confirm which is intended.` });
-    }
-  }
+  // No "ends differently from the brief" note (Tomer, 18 Nov 2026: read the brief, don't hold the ad to it 1:1) — a
+  // closing period the brief has and the ad drops, or the other way round, is the designer's style call. The brief
+  // only breaks a tie inside the set (mixed endings above) and keeps an open last sentence the brief leaves open.
 
   // Captions: "." dropped at line ends while "," is kept
   const caps = layers.filter(l => l.type === 'caption' && light(l.text));
@@ -252,7 +248,13 @@ function forDesign({ frames, brief = '' }) {
 /** A video: the transcribed on-screen text [{ start, end, text }] (+ voiceover, to tell captions from supers). */
 function forVideo({ onScreen, voiceover = [], brief = '' }) {
   const ts = (s) => { const n = Math.max(0, Math.round(Number(s) || 0)); return `${Math.floor(n / 60)}:${String(n % 60).padStart(2, '0')}`; };
-  const layers = (onScreen || []).filter(t => t && t.text).map((t, n) => ({ id: `t${n}`, frame_id: 'video', frame_label: ts(t.start), name: '', text: t.text, start: t.start, end: t.end }));
+  const shown = (onScreen || []).filter(t => t && t.text);
+  // a caption broken mid-sentence ("there's your actual age" → "and there's the age people think you are.") carries on:
+  // the next one starts in lowercase — it gets no closing mark of its own
+  const layers = shown.map((t, n) => ({ id: `t${n}`, frame_id: 'video', frame_label: ts(t.start), name: '', text: t.text, start: t.start, end: t.end,
+    cont: /(?:^|\n)[\s"'“‘(]*\p{Ll}/u.test(String(shown[n + 1]?.text || '')),
+    // an end card or a stack of supers read as one block (3+ lines, or a web address in it) isn't a sentence to close
+    stack: String(t.text).trim().split('\n').length >= 3 || /\b[\w-]+\.(?:com|co\.uk|net|org|io|shop)\b/i.test(String(t.text)) }));
   const issues = check(layers, { brief, kind: 'video', voiceover: (voiceover || []).map(v => v.text || '') })
     .map(p => ({ start: p.layer.start, end: p.layer.end, found: p.found, fix: p.fix, type: 'punctuation', severity: p.severity, note: p.note }));
   return { issues, covers: coverer(layers.map(l => l.text)) };

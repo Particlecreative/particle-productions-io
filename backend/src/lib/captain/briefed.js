@@ -58,16 +58,53 @@ function mergeDuplicates(issues) {
   return out.map(({ also, ...i }) => (also ? { ...i, note: `${i.note ? `${String(i.note).trim()} ` : ''}(also in ${also} more frame${also === 1 ? '' : 's'})` } : i));
 }
 
+/**
+ * How the AI reads a brief (both prompts). Tomer, 18 Nov 2026: "it should read the brief, but it's not a must to be
+ * literal 1:1 — be smart." The brief says what the ad must deliver; the wording is the editor's / designer's.
+ */
+const BRIEF_SPIRIT = [
+  'How to use the brief: read it to understand what this ad must deliver — the product, the offer (price, discount, promo code, guarantee), the claims, the key message and the call to action. The editor or designer is expected to adapt it: rewording, shortening, splitting or merging lines, changing the order, rewriting dialogue, changing capitalisation or punctuation, adding or dropping small words, using a shorter product name. None of that is an issue — don\'t report it and don\'t mention the brief for it.',
+  'Report a difference from the brief ONLY when it changes something that matters: a different or missing offer, price, discount, number, promo code, URL or guarantee; a claim that is new, stronger or different from the brief (a timeframe, a percentage, "clinically proven"); a different product (not just a shorter name); a required disclaimer or footnote missing (e.g. an asterisk with nothing it refers to); the call to action or the offer missing altogether.',
+  'Use type "script_mismatch", severity "check". At most 3 brief notes for the whole asset — combine related differences into one note. When in doubt, leave it out.',
+].join('\n');
+
+// brief notes the AI may still send that are about wording, not substance
+const BRIEF_TYPES = new Set(['script_mismatch', 'vo_script_mismatch', 'brief_mismatch', 'brief_missing']);
+const MAX_BRIEF_NOTES = 3;
+const words = (s) => norm(s).split(' ').filter(Boolean);
+/** A "differs from the brief" note where the ad says the same words, or a shortened version of them (pure). */
+function onlyWording(i) {
+  if (i?.type !== 'script_mismatch' && i?.type !== 'vo_script_mismatch') return false;
+  const f = words(i.found), b = words(i.fix);
+  if (!f.length || !b.length) return false;
+  if (f.join(' ') === b.join(' ')) return true;                       // case / punctuation only
+  const digits = (ws) => ws.filter(w => /\d/.test(w)).join(' ');
+  if (digits(f) !== digits(b)) return false;                          // a number changed — that matters
+  const bs = new Set(b);
+  return f.length >= 2 && f.every(w => bs.has(w));                    // "Particle Gravité Cologne" for "… Cologne for Men"
+}
+// An AI brief note has to be about something that matters — the offer, a price or number, a claim, the product, a
+// disclaimer, the CTA or the hook. "Dialogue differs from the brief across all beats" (The Borrowed Bottle, 18 Nov
+// 2026: 'Pitch is at five' vs 'noon') is the editor adapting the script, not a finding.
+const MATTERS = /\d|[$£€%]|\.com\b|\b(?:offer|price|discount|promo|code|coupon|free|guarantee|money[- ]back|refund|clinically|proven|results may vary|disclaimer|footnote|asterisk)\b/i;
+const MATTERS_NOTE = /\b(?:offer|price|discount|promo|claim|disclaimer|footnote|asterisk|guarantee|hook|wrong product|different product|product name)\b|\b(?:no|missing|without(?: a| the)?)\s+(?:cta|call to action)\b|\b(?:cta|call to action)\s+(?:is\s+)?missing\b/i;   // a CTA worded differently isn't a note; a missing one is
+const immaterial = (i) => (i?.type === 'script_mismatch' || i?.type === 'vo_script_mismatch')
+  && !MATTERS.test(`${i.found || ''} ${i.fix || ''}`) && !MATTERS_NOTE.test(String(i.note || ''));
+// "said in a different order" and "not in the brief's script" (on a caption check) aren't findings any more
+const offBrief = (i) => i?.type === 'vo_order' || (i?.type === 'caption_vs_voiceover' && !String(i.fix || '').trim() && /brief|script/i.test(String(i.note || '')));
+
 /** The issues an asset check keeps (pure — tested). */
 function tidy(issues, item) {
   const raw = briefRaw(item), bNorm = norm(raw), bLight = light(raw);
   const kept = [];
+  let briefNotes = 0;
   for (const i of issues || []) {
-    if (isNoOp(i) || selfDismissed(i)) continue;
+    if (isNoOp(i) || selfDismissed(i) || offBrief(i) || onlyWording(i) || immaterial(i)) continue;
     if (isBriefDifference(i) && wordsInBrief(i, bNorm)) continue;   // it says what the brief says — not a difference
+    if (BRIEF_TYPES.has(i.type) && ++briefNotes > MAX_BRIEF_NOTES) continue;   // a few brief notes, not a line-by-line diff
     kept.push(asBriefed(i, bLight));
   }
   return mergeDuplicates(kept);
 }
 
-module.exports = { briefTextOf, briefRawOf: briefRaw, asBriefed, isNoOp, selfDismissed, mergeDuplicates, tidy, norm, light };
+module.exports = { briefTextOf, briefRawOf: briefRaw, asBriefed, isNoOp, selfDismissed, mergeDuplicates, tidy, norm, light, onlyWording, immaterial, BRIEF_SPIRIT, MAX_BRIEF_NOTES };

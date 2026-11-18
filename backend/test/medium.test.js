@@ -664,11 +664,17 @@ test('Captain tidy: the B&A "differs from brief" that IS the brief, self-dismiss
     { found: 'See how the most talked-about options compared', fix: 'See how the most talked-about options compared.', type: 'inconsistent', severity: 'check', note: 'Missing end period.' },
     { found: 'See how the most talked-about options compared', fix: 'The highest-rated option wasn’t the one we expected.', type: 'size_mismatch', severity: 'must_fix', note: 'Variation B headline paired with Variation A subhead.' },
   ], { brief: { supporting_text: 'Variation A — Headline: Dermatologists Ranked 5 Face Creams for Eye Bags. One Clearly Stood Out. Subhead: See how the most talked-about options compared.\nVariation B — Subhead: The highest-rated option wasn’t the one we expected.' } });
-  assert.equal(sfy.length, 3);
-  assert.match(sfy[0].note, /\(also in 1 more frame\)$/);                 // frames 1 and 2 → one note
-  assert.equal(sfy[1].type, 'inconsistent');
-  assert.deepEqual([sfy[2].severity, sfy[2].from_brief], ['must_fix', undefined]);   // wrong variant isn't "the brief's mistake"
-  assert.doesNotMatch(sfy[2].note, /The brief has this mistake too/);
+  // 18 Nov 2026 — the brief is read for intent: "See how the options compare →" for the brief's subhead is wording → no note
+  assert.equal(sfy.length, 2);
+  assert.ok(!sfy.some(i => i.type === 'script_mismatch'));
+  assert.equal(sfy[0].type, 'inconsistent');
+  assert.deepEqual([sfy[1].severity, sfy[1].from_brief], ['must_fix', undefined]);   // wrong variant isn't "the brief's mistake"
+  assert.doesNotMatch(sfy[1].note, /The brief has this mistake too/);
+  // the same real problem in two frames → one note
+  const dup = tidy([{ found: 'recieve', fix: 'receive', type: 'spelling', severity: 'must_fix', note: 'typo', frame_id: 'f1' }, { found: 'recieve', fix: 'receive', type: 'spelling', severity: 'must_fix', note: 'typo', frame_id: 'f2' }], null);
+  assert.equal(dup.length, 1); assert.match(dup[0].note, /\(also in 1 more frame\)$/);
+  // a missing CTA still is one
+  assert.equal(tidy([{ found: 'No CTA in any frame', fix: 'Add "Shop Now"', type: 'script_mismatch', severity: 'check', note: 'The brief asks for a CTA — missing CTA in every frame' }], null).length, 1);
 });
 
 // ── Product: Medium writes both Product columns and reads the new dropdown first (12 Nov 2026) ──
