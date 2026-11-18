@@ -82,10 +82,11 @@ export function useMondayWrites({ readOnly = false } = {}) {
     for (const k of Object.keys(next)) prev[k] = k === 'timeline' || k === 'deadline' ? (it[k] || null) : it[k];
     put(it.id, display(next));
     try {
-      await studioApi.patchItem(it.id, body(it, next));
+      const r = await studioApi.patchItem(it.id, body(it, next));
       lastWrite = Date.now();
       setToast({
-        text: label,
+        head: r?.as_user ? 'Updated on Monday as you' : 'Updated on Monday',
+        text: r?.refused ? `${label} · from CP’s account (Monday didn’t accept your connection — reconnect it)` : label,
         undo: async () => {
           setToast(null);
           put(it.id, display(prev));
@@ -103,9 +104,9 @@ export function useMondayWrites({ readOnly = false } = {}) {
     if (readOnly) { setToast({ error: true, text: 'View only — the studio manages tasks' }); return false; }
     put(it.id, { archived: true });
     try {
-      await studioApi.archiveItem(it.id);
+      const r = await studioApi.archiveItem(it.id);
       lastWrite = Date.now();
-      setToast({ head: 'Archived on Monday', text: `${it.title || it.name.slice(0, 50)} · restore it from the board’s Archive on Monday if needed` });
+      setToast({ head: r?.as_user ? 'Archived on Monday as you' : 'Archived on Monday', text: `${it.title || it.name.slice(0, 50)} · restore it from the board’s Archive on Monday if needed` });
       return true;
     } catch (e) {
       put(it.id, { archived: false });

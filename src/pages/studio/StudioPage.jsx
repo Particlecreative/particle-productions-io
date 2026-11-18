@@ -14,6 +14,7 @@ import Campaigns from '../../components/studio/Campaigns';
 import HotProjects from '../../components/studio/HotProjects';
 import TaskPanel from '../../components/studio/TaskPanel';
 import { StudioCtx, useMondayWrites } from '../../components/studio/writes';
+import { MondayChip } from '../../components/studio/mondayMe';
 
 const TABS = [
   ['overview', 'Creative Control', LayoutDashboard],
@@ -113,7 +114,8 @@ export default function StudioPage() {
           <h1 className="brand-title text-4xl" style={{ color: 'var(--brand-primary)' }}>Studio</h1>
           <p className="text-sm text-gray-500 mt-1">Design, Video and TV &amp; Special Productions — live from Monday, managed here.</p>
         </div>
-        <nav className="ml-auto flex flex-wrap gap-1 p-1 rounded-2xl bg-white border border-gray-200">
+        <div className="ml-auto self-center"><MondayChip title="Connected: what you schedule, assign and comment here lands on Monday as you" /></div>
+        <nav className="flex flex-wrap gap-1 p-1 rounded-2xl bg-white border border-gray-200">
           {TABS.map(([k, label, Icon]) => (
             <button key={k} type="button" onClick={() => setParams(k === 'overview' ? {} : { tab: k })}
               className={`flex items-center gap-1.5 text-sm font-semibold px-3.5 py-2 rounded-xl transition-colors ${tab === k ? 'text-white shadow' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'}`}

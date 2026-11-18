@@ -178,6 +178,10 @@ router.put('/tv-links/:itemId', async (req, res) => {
   } catch (err) { errorJson(res, err); }
 });
 
+// Their own Monday when they connected it (Tomer, 18 Nov 2026): scheduling, assigning, archiving and comments from the
+// Studio show on Monday as the person who did them, like New ticket and Medium briefs. Not connected → CP's account.
+const mine = (req) => require('../lib/mondayUser').tokenFor(req.user?.id).catch(() => null);
+
 // ── Workload: reschedule / reassign (writes the task's timeline + person columns on Monday) ──
 router.patch('/items/:itemId', async (req, res) => {
   try {
@@ -202,8 +206,7 @@ router.patch('/items/:itemId', async (req, res) => {
         }
       }
     }
-    await updateTask(config, { board, itemId: req.params.itemId, timeline, people, status, deadline });
-    res.json({ ok: true });
+    res.json(await updateTask(config, { board, itemId: req.params.itemId, timeline, people, status, deadline }, { token: (await mine(req))?.token }));
   } catch (err) { errorJson(res, err); }
 });
 
@@ -212,7 +215,7 @@ router.post('/items/:itemId/archive', async (req, res) => {
   try {
     if (req.body?.confirm !== true) return res.status(400).json({ error: 'Confirm the archive first' });
     const config = await getCreativeConfig(req.brandId);
-    res.json(await archiveTask(config, req.params.itemId));
+    res.json(await archiveTask(config, req.params.itemId, { token: (await mine(req))?.token }));
   } catch (err) { errorJson(res, err); }
 });
 
@@ -227,7 +230,7 @@ router.get('/items/:itemId/updates', async (req, res) => {
 router.post('/items/:itemId/updates', async (req, res) => {
   try {
     const config = await getCreativeConfig(req.brandId);
-    res.json(await postUpdate(config, req.params.itemId, req.body?.text, req.user?.name || req.user?.email || null, req.body?.mentions));
+    res.json(await postUpdate(config, req.params.itemId, req.body?.text, req.user?.name || req.user?.email || null, req.body?.mentions, { token: (await mine(req))?.token }));
   } catch (err) { errorJson(res, err); }
 });
 

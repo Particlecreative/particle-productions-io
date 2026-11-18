@@ -5,6 +5,7 @@ import { Avatar, ProductTag, hrs } from './Bits';
 import { addDays, ymd } from './Filters';
 import { studioApi } from '../../lib/studioService';
 import { useStudio, outOn, workdays, fmtDay, firstName } from './writes';
+import { useMondayStatus } from './mondayMe';
 
 const roleOf = (it) => (it.board === 'video' ? 'video' : 'design');
 const BOARD = { video: 'Video', design: 'Design', retention: 'Email task' };
@@ -73,6 +74,7 @@ function mentionQuery(text, caret) {
 
 /** The brief and the conversation from Monday, plus a reply box. Type @ to tag someone (a real Monday mention). */
 function Updates({ it, data, readOnly = false }) {
+  const me = useMondayStatus();
   const [list, setList] = useState(null);
   const [err, setErr] = useState(null);
   const [text, setText] = useState('');
@@ -136,8 +138,10 @@ function Updates({ it, data, readOnly = false }) {
     const mentions = tagged.filter(p => t.includes(`@${p.name}`));
     setPosting(true); setErr(null);
     try {
-      await studioApi.postUpdate(it.id, t, mentions);
+      const r = await studioApi.postUpdate(it.id, t, mentions);
       setList(l => [{ id: `new-${Date.now()}`, text: t, at: new Date().toISOString(), by: { id: 'me', name: 'You' }, replies: [] }, ...(l || [])]);
+      // their Monday refused (revoked / no rights on the board) → CP's account posted it, signed with their name
+      if (r?.refused) setErr('Monday didn’t accept your connection, so CP’s account posted it with your name. Reconnect your Monday (top of the Studio).');
       setText(''); setTagged([]); setQuery(null);
     } catch (e) { setErr(e.message); } finally { setPosting(false); }
   };
@@ -179,7 +183,7 @@ function Updates({ it, data, readOnly = false }) {
           </div>
         )}
         <div className="flex items-center justify-between px-2 pb-2">
-          <span className="text-[10px] text-gray-400 pl-1">⌘ Enter to post · @ to tag · signed with your name</span>
+          <span className="text-[10px] text-gray-400 pl-1">⌘ Enter to post · @ to tag · {me?.connected ? 'posts as you on Monday' : 'signed with your name'}</span>
           <span className="flex items-center gap-1.5">
             <button type="button" onClick={openPicker} title="Tag someone" aria-label="Tag someone"
               className="p-1.5 rounded-lg text-gray-500 hover:text-[#0808f8] hover:bg-[#0808f8]/10"><AtSign size={14} /></button>

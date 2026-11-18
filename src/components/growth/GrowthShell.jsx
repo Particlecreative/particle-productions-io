@@ -1,31 +1,12 @@
 // The frame every Growth-team page shares (17 Nov 2026): a title, their Monday status, and a view-only studio context —
 // a task opens read-only, nothing moves. Each page is its own entry in the left panel.
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Check, Plug } from 'lucide-react';
+import { useCallback, useMemo, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { meApi } from '../../lib/meService';
+import { useMondayStatus, MondayChip } from '../studio/mondayMe';
 import { StudioCtx, useMondayWrites } from '../studio/writes';
 import TaskPanel from '../studio/TaskPanel';
 
-let mondayCache = null;   // { data, at } — one look per few minutes across the Growth pages
-export function useMondayStatus() {
-  const [st, setSt] = useState(() => mondayCache?.data || null);
-  useEffect(() => {
-    if (mondayCache && Date.now() - mondayCache.at < 180000) return;
-    meApi.monday().then((d) => { mondayCache = { data: d, at: Date.now() }; setSt(d); }).catch(() => null);
-  }, []);
-  return st;
-}
-
-export function MondayChip() {
-  const nav = useNavigate();
-  const st = useMondayStatus();
-  if (!st) return null;
-  return st.connected
-    ? <button type="button" onClick={() => nav('/welcome')} className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap"><Check size={13} /> Monday: {String(st.name || 'connected').split(' ')[0]}</button>
-    : <button type="button" onClick={() => nav('/welcome')} className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl bg-amber-50 text-amber-800 border border-amber-200 whitespace-nowrap"><Plug size={13} /> <span className="sm:hidden">Connect Monday</span><span className="hidden sm:inline">Connect your Monday</span></button>;
-}
+export { useMondayStatus, MondayChip };
 
 export default function GrowthShell({ eyebrow, title, sub, children, wide = true }) {
   const { isGrowth, isAdmin } = useAuth();

@@ -22,6 +22,23 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function bad(msg) { const e = new Error(msg); e.status = 400; return e; }
 
+/**
+ * As the person, when they connected their own Monday (lib/mondayUser.js — Tomer, 18 Nov 2026: "if Omer schedules from
+ * the Studio it should be his Monday, same as commenting"). Monday then shows them as the one who moved, assigned,
+ * archived or commented. If Monday refuses their token (revoked, or no rights on that board), CP's account does it as
+ * before and as_user says so. Other errors (a bad value) are real and are not retried.
+ */
+const AUTH_RE = /unauthori[sz]ed|not authenticated|authentication|invalid token|permission|forbidden|not allowed|user is not|access denied/i;
+const refused = (e) => e?.status === 401 || e?.status === 403 || AUTH_RE.test(`${e?.code || ''} ${e?.message || ''}`);
+async function asPerson(token, run) {
+  if (!token) return { result: await run(null), as_user: false };
+  try { return { result: await run(token), as_user: true }; } catch (e) {
+    if (!refused(e)) throw e;
+    console.warn('[studio] their own Monday refused this — CP’s account did it:', e.message);
+    return { result: await run(null), as_user: false, refused: e.message };
+  }
+}
+
 /** The board key a Studio item lives on (throws if it's not one of the Studio boards). */
 async function boardOf(config, itemId) {
   if (!/^\d+$/.test(String(itemId))) throw bad('Bad item id');
@@ -36,7 +53,7 @@ async function boardOf(config, itemId) {
  * Change a task. timeline: { from, to } | null (unschedule); people: [mondayUserId];
  * status: a label from that board's status column; deadline: 'YYYY-MM-DD' | null.
  */
-async function updateTask(config, { board, itemId, timeline, people, status, deadline }) {
+async function updateTask(config, { board, itemId, timeline, people, status, deadline }, { token = null } = {}) {
   const b = boardsFor(config)[board];
   if (!b) throw bad('Unknown board');
   if (!/^\d+$/.test(String(itemId))) throw bad('Bad item id');
@@ -67,21 +84,21 @@ async function updateTask(config, { board, itemId, timeline, people, status, dea
   // The item must really live on that board
   const check = await mondayQuery('query ($ids: [ID!]) { items(ids: $ids) { id board { id } } }', { ids: [String(itemId)] });
   if (String(check?.items?.[0]?.board?.id) !== String(b.board_id)) throw bad('Item is not on that board');
-  await mondayQuery(
+  const done = await asPerson(token, (t) => mondayQuery(
     `mutation ($board: ID!, $item: ID!, $vals: JSON!) { change_multiple_column_values(board_id: $board, item_id: $item, column_values: $vals) { id } }`,
     { board: String(b.board_id), item: String(itemId), vals: JSON.stringify(values) },
-    { retries: 2 }
-  );
+    { retries: 2, token: t }
+  ));
   clearCache('studio:');
-  return { ok: true };
+  return { ok: true, as_user: done.as_user, ...(done.refused ? { refused: done.refused } : {}) };
 }
 
 /** Archive a task on Monday — it leaves the board (and the Studio); it can be restored from the board's Archive. */
-async function archiveTask(config, itemId) {
+async function archiveTask(config, itemId, { token = null } = {}) {
   await boardOf(config, itemId);
-  await mondayQuery('mutation ($item: ID!) { archive_item(item_id: $item) { id state } }', { item: String(itemId) }, { retries: 0 });
+  const done = await asPerson(token, (t) => mondayQuery('mutation ($item: ID!) { archive_item(item_id: $item) { id state } }', { item: String(itemId) }, { retries: 0, token: t }));
   clearCache('studio:');
-  return { ok: true };
+  return { ok: true, as_user: done.as_user, ...(done.refused ? { refused: done.refused } : {}) };
 }
 
 const esc = (t) => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -170,21 +187,25 @@ function updateHtml(body, author, mentions = []) {
 
 const MENTIONS_API_VERSION = '2025-10';
 
-async function postUpdate(config, itemId, text, author, mentions = []) {
+// token: their own Monday → the comment is theirs on Monday, so it carries no "— name, via CP Studio" line
+async function postUpdate(config, itemId, text, author, mentions = [], { token = null } = {}) {
   const body = String(text || '').trim();
   if (!body) throw bad('Write something first');
   if (body.length > 5000) throw bad('That update is too long');
   await boardOf(config, itemId);
-  const { html, tags } = updateHtml(body, author, mentions);
-  const vars = { item: String(itemId), body: html };
-  if (tags.length) {
-    vars.mentions = tags.map(t => ({ id: t.id, type: 'User' }));
-    // mentions_list only exists from API 2025-07 (CP runs on 2024-10, where tagging failed: "Unknown argument") — 17 Nov 2026
-    const r = await mondayQuery('mutation ($item: ID!, $body: String!, $mentions: [UpdateMention]) { create_update(item_id: $item, body: $body, mentions_list: $mentions) { id } }', vars, { retries: 0, apiVersion: MENTIONS_API_VERSION });
-    return { id: String(r?.create_update?.id || ''), mentioned: tags.map(t => t.id) };
-  }
-  const r = await mondayQuery('mutation ($item: ID!, $body: String!) { create_update(item_id: $item, body: $body) { id } }', vars, { retries: 0 });
-  return { id: String(r?.create_update?.id || ''), mentioned: [] };
+  const done = await asPerson(token, async (t) => {
+    const { html, tags } = updateHtml(body, t ? null : author, mentions);
+    const vars = { item: String(itemId), body: html };
+    if (tags.length) {
+      vars.mentions = tags.map(x => ({ id: x.id, type: 'User' }));
+      // mentions_list only exists from API 2025-07 (CP runs on 2024-10, where tagging failed: "Unknown argument") — 17 Nov 2026
+      const r = await mondayQuery('mutation ($item: ID!, $body: String!, $mentions: [UpdateMention]) { create_update(item_id: $item, body: $body, mentions_list: $mentions) { id } }', vars, { retries: 0, apiVersion: MENTIONS_API_VERSION, token: t });
+      return { id: String(r?.create_update?.id || ''), mentioned: tags.map(x => x.id) };
+    }
+    const r = await mondayQuery('mutation ($item: ID!, $body: String!) { create_update(item_id: $item, body: $body) { id } }', vars, { retries: 0, token: t });
+    return { id: String(r?.create_update?.id || ''), mentioned: [] };
+  });
+  return { ...done.result, as_user: done.as_user, ...(done.refused ? { refused: done.refused } : {}) };
 }
 
 /** Create a Monday item. columnValues is already in Monday's JSON shape. No retries (create isn't idempotent). */
@@ -208,4 +229,4 @@ async function addUpdate(itemId, body, { token = null } = {}) {
 
 const updateSchedule = updateTask; // older name
 
-module.exports = { updateHtml, richOf, updateTask, updateSchedule, createItem, addUpdate, getUpdates, postUpdate, archiveTask, boardsFor, boardOf };
+module.exports = { updateHtml, richOf, updateTask, updateSchedule, createItem, addUpdate, getUpdates, postUpdate, archiveTask, boardsFor, boardOf, asPerson };

@@ -10,7 +10,7 @@ export const SKIP_KEY = 'cp_monday_skip_v1';
 const first = (n) => String(n || '').trim().split(/\s+/)[0];
 
 export default function Welcome() {
-  const { user } = useAuth();
+  const { user, isGrowth } = useAuth();
   const nav = useNavigate();
   const [params, setParams] = useSearchParams();
   const [st, setSt] = useState(null);
@@ -34,11 +34,11 @@ export default function Welcome() {
     try { setSt(await meApi.connectToken(token.trim())); setToken(''); } catch (e) { setErr(e.message); } finally { setBusy(null); }
   };
   const disconnect = async () => {
-    if (!window.confirm('Disconnect your Monday? Briefs and tickets you send will be created by CP’s account instead.')) return;
+    if (!window.confirm('Disconnect your Monday? Briefs, tickets, scheduling and comments you send will be done by CP’s account instead.')) return;
     setBusy('off');
     try { await meApi.disconnect(); setSt(s => ({ ...s, connected: false, name: null })); } catch (e) { setErr(e.message); } finally { setBusy(null); }
   };
-  const go = () => nav('/creative-studio');
+  const go = () => nav(isGrowth ? '/creative-studio' : '/studio');
   const skip = () => { try { localStorage.setItem(SKIP_KEY, '1'); } catch { /* ignore */ } go(); };
 
   return (
@@ -49,7 +49,7 @@ export default function Welcome() {
           <h1 className="mt-3 font-black uppercase leading-[0.92] text-[44px] sm:text-[54px]" style={{ fontFamily: '"Sofia Sans Extra Condensed", sans-serif' }}>
             Let’s start by connecting your Monday
           </h1>
-          <p className="mt-3 text-[15px] text-white/75 leading-relaxed">Then the briefs and tickets you send from here land on Monday <b className="text-white">as you</b> — your name on them, your notifications, your activity.</p>
+          <p className="mt-3 text-[15px] text-white/75 leading-relaxed">Then what you do from here — briefs, tickets{isGrowth ? '' : ', scheduling, assigning and comments in the Studio'} — lands on Monday <b className="text-white">as you</b>: your name on it, your notifications, your activity.</p>
         </div>
 
         <div className="px-8 py-7">
@@ -66,7 +66,7 @@ export default function Welcome() {
                 <button type="button" onClick={disconnect} disabled={busy === 'off'} className="ml-auto text-xs font-semibold text-emerald-800/70 hover:text-red-600 flex items-center gap-1"><Unplug size={13} /> Disconnect</button>
               </div>
               <button type="button" onClick={go} className="flex items-center justify-center gap-2 rounded-2xl px-5 py-3.5 text-white font-semibold" style={{ background: '#0808f8' }}>
-                Go to the Creative Studio <ArrowRight size={17} />
+                {isGrowth ? 'Go to the Creative Studio' : 'Back to the Studio'} <ArrowRight size={17} />
               </button>
             </div>
           ) : (

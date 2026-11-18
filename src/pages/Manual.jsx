@@ -598,7 +598,7 @@ const CATEGORIES = [
       {
         id: 'studio', icon: '🎬', label: 'Studio Tickets',
         summary: 'Monday.com integration for video/design project tracking.',
-        keywords: ['studio', 'monday', 'ticket', 'video', 'design', 'brief'],
+        keywords: ['studio', 'monday', 'ticket', 'video', 'design', 'brief', 'connect monday', 'schedule', 'workload', 'comment', 'as you'],
         particleOnly: true,
         content: [
           { type: 'guide', title: 'Studio', steps: [
@@ -606,8 +606,9 @@ const CATEGORIES = [
             'Generate AI Brief from item data. Copy brief. Sync to Gantt. View updates. Open in Monday.',
             'Completed/Archived groups auto-collapse.',
             'Task panel → Brief & updates: type @ (or the @ button) to tag someone — they get a real Monday mention. Links inside updates (e.g. “Uploaded on Dropbox folder”) are blue and open in a new tab.',
+            'Connect your Monday (the chip at the top of the Studio): then what you schedule, reassign, move, archive and comment here shows on Monday as you — your name in its activity, your comments without the “via CP Studio” line. Not connected, CP’s account does it and signs comments with your name.',
           ]},
-          { type: 'tips', items: ['Available for the Particle brand only.'] },
+          { type: 'tips', items: ['Available for the Particle brand only.', 'Green chip = connected (“Monday: Omer”). If Monday stops accepting your connection, CP’s account does the change and the message says so — reconnect from the chip.'] },
         ],
       },
       {
