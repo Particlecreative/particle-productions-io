@@ -78,13 +78,18 @@ test('classification by name, text and size', () => {
   assert.deepEqual(c.map(x => x.type), ['headline', 'subhead', 'cta', 'url', 'claim', 'subhead']);
 });
 
-test('video: captions told from supers by the voiceover; "." dropped but "," kept → please check', () => {
+test('video: captions are loose on purpose — no mixed-ending notes on them; a period after a CTA still is must fix', () => {
   const r = EP.forVideo({
     onScreen: [{ start: 1, end: 2, text: 'I tried everything,' }, { start: 2, end: 3, text: 'nothing worked' }, { start: 9, end: 11, text: 'Shop now.' }],
     voiceover: [{ text: 'I tried everything, nothing worked.' }],
   });
   const sev = r.issues.map(i => [i.severity, i.found]);
-  assert.deepEqual(sev.sort(), [['check', 'I tried everything,'], ['must_fix', 'Shop now.']].sort());
+  assert.deepEqual(sev, [['must_fix', 'Shop now.']]);
+  // captions punctuated two ways → nothing (18 Nov 2026)
+  const caps = ['I tried every cream out there.', 'Nothing worked', 'Then I found Particle.', 'Now my skin looks great'].map((text, n) => ({ start: n * 2, end: n * 2 + 2, text }));
+  assert.deepEqual(EP.forVideo({ onScreen: caps, voiceover: [{ text: caps.map(c => c.text).join(' ') }] }).issues, []);
+  // a question caption without "?" is still must fix
+  assert.equal(EP.forVideo({ onScreen: [{ start: 0, end: 2, text: 'Is your skin dry' }], voiceover: [{ text: 'Is your skin dry' }] }).issues[0]?.severity, 'must_fix');
   assert.equal(r.issues.find(i => i.found === 'Shop now.').start, 9);
   assert.equal(r.covers('Shop now'), true);
 });

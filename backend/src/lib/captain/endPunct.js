@@ -9,7 +9,8 @@
  *  2. Rule table (must fix → blocks approval; please check → a comment):
  *     • a question without "?" · "??" / "?!" · a period after a CTA, button or URL · "!" or repeated marks in a Google
  *       search headline · more than one "!" in search descriptions → must fix
- *     • a period on a claim/badge · the same layer type with the same structure punctuated two ways in one set · a
+ *     • a period on a claim/badge · the same layer type with the same structure punctuated two ways in one set (not for
+ *       video captions — loose on purpose, 18 Nov 2026) · a
  *       multi-sentence line whose last sentence is left open while others are closed (unless that's the house style
  *       across the whole group) → please check. A line that just ends differently from the brief is NOT a note
  *       (18 Nov 2026: the brief is read for intent, not 1:1).
@@ -158,6 +159,8 @@ function check(rawLayers, { brief = '', kind = 'design', voiceover = [], placeNa
     if (flagged.has(l.id) || !light(l.text) || !['headline', 'subhead', 'super', 'caption'].includes(l.type)) continue;
     if (l.final !== 'statement' && l.final !== 'fragment') continue;
     if (runsOn(l)) continue;   // "If you're a guy over 40," runs into the next line — no closing mark to align (was "40,.")
+    // Video captions are loose on purpose — mixed endings in them aren't a note (Tomer, 18 Nov 2026). Designs keep it.
+    if (kind === 'video' && l.type === 'caption') continue;
     const key = `${l.type}|${l.multi ? 'multi' : 'single'}`;
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(l);
@@ -205,7 +208,7 @@ function check(rawLayers, { brief = '', kind = 'design', voiceover = [], placeNa
   // only breaks a tie inside the set (mixed endings above) and keeps an open last sentence the brief leaves open.
 
   // Captions: "." dropped at line ends while "," is kept
-  const caps = layers.filter(l => l.type === 'caption' && light(l.text));
+  const caps = kind === 'video' ? [] : layers.filter(l => l.type === 'caption' && light(l.text));   // off for video captions (18 Nov 2026)
   const commaEnd = caps.filter(l => /,$/.test(l.core));
   if (commaEnd.length && caps.some(l => l.final === 'fragment') && !caps.some(l => l.mark === '.')) {
     out.push({ layer: commaEnd[0], layers: commaEnd, found: commaEnd[0].text, fix: commaEnd[0].text.replace(/,\s*$/, ''), severity: 'check', rule: 'caption_comma',
