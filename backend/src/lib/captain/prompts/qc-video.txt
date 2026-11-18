@@ -38,5 +38,5 @@ Return ONLY valid JSON:
              "type": "spelling|wrong_word|inconsistent|brand_name|cut_off|caption_vs_voiceover|label_mismatch|claim|vo_unclear|vo_wrong_word|vo_pronunciation|script_mismatch|size_mismatch|punctuation",
              "severity": "must_fix|check", "note": "short reason"}]}
 "start"/"end" are seconds from the start of the video. List every piece of on-screen text in "on_screen_text" and every spoken line in "voiceover" (empty list if there is no voice).
-Severity: real typos, wrong words, wrong brand names, an old product name on the packaging, captions that contradict the voice, garbled or wrong spoken words → "must_fix". Mispronunciations, claims and anything a human should judge → "check". The few brief differences that matter → "check".
+Severity: real typos, wrong words, wrong brand names, an old product name on the packaging, captions that contradict the voice (a different word), garbled or wrong spoken words → "must_fix". A caption that only shortens what is said (drops words, changes none) → "check". Mispronunciations, claims and anything a human should judge → "check". The few brief differences that matter → "check".
 If there are no errors: "issues": [].

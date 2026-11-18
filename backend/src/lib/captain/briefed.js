@@ -93,6 +93,22 @@ const immaterial = (i) => (i?.type === 'script_mismatch' || i?.type === 'vo_scri
 // "said in a different order" and "not in the brief's script" (on a caption check) aren't findings any more
 const offBrief = (i) => i?.type === 'vo_order' || (i?.type === 'caption_vs_voiceover' && !String(i.fix || '').trim() && /brief|script/i.test(String(i.note || '')));
 
+/**
+ * A caption that only SHORTENS what is said — drops words, changes none ("THE CONCEPT" for "And that's the concept") —
+ * is often on purpose (micro dramas, punchy captions): please check, not must fix (Tomer, 18 Nov 2026). A caption with a
+ * different word than the voice still contradicts it and stays must fix. Pure.
+ */
+function shortensSpeech(i) {
+  if (i?.type !== 'caption_vs_voiceover') return false;
+  const cap = words(i.found), said = words(i.fix);
+  if (!cap.length || cap.length >= said.length) return false;
+  let k = 0;
+  for (const w of said) if (w === cap[k]) k++;
+  return k === cap.length;                                           // every caption word, in order, in what's said
+}
+const softenShortCaption = (i) => (i.severity === 'must_fix' && shortensSpeech(i)
+  ? { ...i, severity: 'check', note: `The caption shortens what's said — fine if that's on purpose${i.note ? `. ${i.note}` : ''}` } : i);
+
 /** The issues an asset check keeps (pure — tested). */
 function tidy(issues, item) {
   const raw = briefRaw(item), bNorm = norm(raw), bLight = light(raw);
@@ -102,9 +118,9 @@ function tidy(issues, item) {
     if (isNoOp(i) || selfDismissed(i) || offBrief(i) || onlyWording(i) || immaterial(i)) continue;
     if (isBriefDifference(i) && wordsInBrief(i, bNorm)) continue;   // it says what the brief says — not a difference
     if (BRIEF_TYPES.has(i.type) && ++briefNotes > MAX_BRIEF_NOTES) continue;   // a few brief notes, not a line-by-line diff
-    kept.push(asBriefed(i, bLight));
+    kept.push(asBriefed(softenShortCaption(i), bLight));
   }
   return mergeDuplicates(kept);
 }
 
-module.exports = { briefTextOf, briefRawOf: briefRaw, asBriefed, isNoOp, selfDismissed, mergeDuplicates, tidy, norm, light, onlyWording, immaterial, BRIEF_SPIRIT, MAX_BRIEF_NOTES };
+module.exports = { briefTextOf, briefRawOf: briefRaw, asBriefed, isNoOp, selfDismissed, mergeDuplicates, tidy, norm, light, onlyWording, immaterial, shortensSpeech, BRIEF_SPIRIT, MAX_BRIEF_NOTES };

@@ -435,3 +435,16 @@ test('Video notes past the end of the cut are pulled inside it (Frame.io refuses
   // no length known → as before
   assert.equal(normIssues([{ start: 56, end: 60 }], 24)[0].frame, 1345);
 });
+
+test('a caption that only shortens what is said is a please-check; a different word stays must fix', () => {
+  const { tidy, shortensSpeech } = require('../src/lib/captain/briefed');
+  assert.equal(shortensSpeech({ type: 'caption_vs_voiceover', found: 'THE CONCEPT', fix: "AND THAT'S THE CONCEPT" }), true);
+  assert.equal(shortensSpeech({ type: 'caption_vs_voiceover', found: 'SMELLED—', fix: 'WHERE HAVE I SMELLED—' }), true);
+  assert.equal(shortensSpeech({ type: 'caption_vs_voiceover', found: 'LOOSE WEIGHT', fix: 'LOSE WEIGHT' }), false);
+  const out = tidy([
+    { start: 33.7, end: 35, type: 'caption_vs_voiceover', severity: 'must_fix', found: 'THE CONCEPT', fix: "AND THAT'S THE CONCEPT", note: "Spoken VO says 'And that's the concept'." },
+    { start: 40, end: 41, type: 'caption_vs_voiceover', severity: 'must_fix', found: 'SAVE 20% TODAY', fix: 'SAVE 15% TODAY', note: 'the voice says 15%' },
+  ], null);
+  assert.deepEqual(out.map(i => i.severity), ['check', 'must_fix']);
+  assert.match(out[0].note, /shortens what's said/);
+});
