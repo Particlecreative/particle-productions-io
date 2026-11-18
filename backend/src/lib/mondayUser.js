@@ -11,7 +11,9 @@ const db = require('../db');
 const { seal, unseal, getSecret } = require('./studio/secrets');
 const monday = require('./monday');
 
-const ACCOUNT_SLUG = process.env.MONDAY_ACCOUNT_SLUG || 'particleformen';
+// The company's Monday account is "Particle For Men", slug particle-for-men (seen 18 Nov 2026 — the old 'particleformen'
+// default turned away Tomer's own token). A token is accepted when it belongs to the same account as CP's own token.
+const ACCOUNT_SLUG = process.env.MONDAY_ACCOUNT_SLUG || 'particle-for-men';
 const bad = (msg, status = 400) => Object.assign(new Error(msg), { status });
 
 let ready = null;
@@ -25,14 +27,28 @@ function ensure() {
 const call = (token, query, variables = {}) => monday.mondayQuery(query, variables, { token, retries: 1, timeoutMs: 20000 });
 
 async function whoAmI(token) {
-  const d = await call(token, 'query { me { id name email account { slug name } } }');
+  const d = await call(token, 'query { me { id name email account { id slug name } } }');
   if (!d?.me?.id) throw bad('Monday didn’t say who this is');
   return d.me;
 }
 
-function checkAccount(me) {
-  if (ACCOUNT_SLUG && me.account?.slug && me.account.slug !== ACCOUNT_SLUG) {
-    throw bad(`That's the “${me.account.name || me.account.slug}” Monday account — connect your Particle Monday (${ACCOUNT_SLUG}.monday.com)`);
+/** CP's own Monday account ({ id, slug, name }) — the account everyone's token must belong to. Cached; null if unknown. */
+let company = null;
+async function companyAccount() {
+  if (company) return company;
+  try {
+    const d = await monday.mondayQuery('query { me { account { id slug name } } }', {}, { retries: 1, timeoutMs: 15000 });
+    if (d?.me?.account?.id) company = d.me.account;
+  } catch { /* fall back to the slug */ }
+  return company;
+}
+
+async function checkAccount(me) {
+  const co = await companyAccount();
+  const same = co?.id ? String(me.account?.id || '') === String(co.id) : (!me.account?.slug || me.account.slug === ACCOUNT_SLUG);
+  if (!same) {
+    const slug = co?.slug || ACCOUNT_SLUG;
+    throw bad(`That's the “${me.account?.name || me.account?.slug || 'other'}” Monday account — connect the company's Monday (${slug}.monday.com)`);
   }
 }
 
@@ -60,7 +76,7 @@ async function status(userId) {
   return {
     connected: !!r, name: r?.name || null, email: r?.email || null, monday_user_id: r?.monday_user_id || null, account: r?.account_slug || null,
     method: r?.method || null, connected_at: r?.connected_at || null, last_used_at: r?.last_used_at || null,
-    oauth: !!(app?.client_id && app?.client_secret), account_slug: ACCOUNT_SLUG,
+    oauth: !!(app?.client_id && app?.client_secret), account_slug: (await companyAccount())?.slug || ACCOUNT_SLUG,
   };
 }
 
@@ -70,7 +86,7 @@ async function connectToken(userId, token) {
   if (t.length < 30 || /\s/.test(t)) throw bad('That doesn’t look like a Monday token — copy the whole “Personal API token”');
   let me;
   try { me = await whoAmI(t); } catch { throw bad('Monday didn’t accept that token — copy it again from Monday → Developers → My access tokens'); }
-  checkAccount(me);
+  await checkAccount(me);
   await save(userId, t, me, 'token');
   return status(userId);
 }
@@ -111,7 +127,7 @@ async function finishConnect({ code, state }) {
   const j = await r.json().catch(() => ({}));
   if (!r.ok || !j.access_token) throw bad(`Monday didn’t finish the sign-in (${j.error_description || j.error || r.status})`);
   const me = await whoAmI(j.access_token);
-  checkAccount(me);
+  await checkAccount(me);
   await save(s.u, j.access_token, me, 'oauth');
   return { userId: s.u, name: me.name };
 }
@@ -140,4 +156,4 @@ async function connectedUsers() {
   return rows;
 }
 
-module.exports = { status, connectToken, connectUrl, finishConnect, tokenFor, disconnect, connectedUsers, redirectUri, readState, signState, ACCOUNT_SLUG };
+module.exports = { status, connectToken, connectUrl, finishConnect, tokenFor, disconnect, connectedUsers, redirectUri, readState, signState, checkAccount, ACCOUNT_SLUG };

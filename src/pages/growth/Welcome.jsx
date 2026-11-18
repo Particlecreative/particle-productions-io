@@ -84,7 +84,7 @@ export default function Welcome() {
                 {showToken && (
                   <div className="px-4 pb-4 flex flex-col gap-3">
                     <ol className="text-[13px] text-gray-600 leading-relaxed list-decimal pl-5">
-                      <li>Open <a className="font-semibold text-[#0808f8] underline" href={`https://${st.account_slug || 'particleformen'}.monday.com/apps/manage/tokens`} target="_blank" rel="noopener noreferrer">your Monday tokens page</a> (or Monday → your picture → <b>Developers</b> → <b>My access tokens</b>).</li>
+                      <li>Open <a className="font-semibold text-[#0808f8] underline" href={`https://${st.account_slug || 'particle-for-men'}.monday.com/apps/manage/tokens`} target="_blank" rel="noopener noreferrer">your Monday tokens page</a> (or Monday → your picture → <b>Developers</b> → <b>My access tokens</b>).</li>
                       <li>Click <b>Show</b>, then <b>Copy</b> next to “Personal API token”.</li>
                       <li>Paste it here. It’s locked away on the server — nobody, including you, can see it again.</li>
                     </ol>

@@ -11,6 +11,18 @@ const FINANCE_CODES = new Set(['reason_required', 'postpone_required', 'stage_pr
 let financePrompt = null;
 export function setFinancePrompt(fn) { financePrompt = fn; }
 
+// The server answers errors as { error: "…" } — show that sentence, not the raw JSON (18 Nov 2026: the Monday
+// connect page showed {"error":"That's the …"}). The parsed body stays on err.data, the status on err.status.
+function httpError(text, status) {
+  let data = null;
+  try { data = JSON.parse(text); } catch { /* not JSON */ }
+  const msg = (data && typeof data === 'object' && (typeof data.error === 'string' ? data.error : typeof data.message === 'string' ? data.message : null)) || text || `HTTP ${status}`;
+  const err = new Error(msg);
+  err.status = status;
+  if (data) err.data = data;
+  return err;
+}
+
 export async function api(path, options = {}) {
   const token = localStorage.getItem('cp_auth_token');
 
@@ -54,7 +66,7 @@ export async function api(path, options = {}) {
       err.code = data.code;
       throw err;
     }
-    throw new Error(text || `HTTP ${res.status}`);
+    throw httpError(text, res.status);
   }
 
   if (res.status === 502 || res.status === 503 || res.status === 504) {
@@ -63,7 +75,7 @@ export async function api(path, options = {}) {
 
   if (!res.ok) {
     const text = await res.text().catch(() => 'Unknown error');
-    throw new Error(text || `HTTP ${res.status}`);
+    throw httpError(text, res.status);
   }
 
   // 204 No Content or empty body

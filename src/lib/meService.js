@@ -5,7 +5,7 @@
 import { api, apiGet, apiPost } from './apiClient';
 
 const LIVE = !import.meta.env.DEV || import.meta.env.VITE_ME_LIVE === '1';
-const devMonday = { connected: false, oauth: true, account_slug: 'particleformen' };
+const devMonday = { connected: false, oauth: true, account_slug: 'particle-for-men' };
 
 // Local preview of the live Ads Library: a pass the real server signed can be dropped in sessionStorage
 // ('cp_dev_afterlife_url'); it's used once, then AfterLife's own 12-hour embed session carries on.
