@@ -1,5 +1,7 @@
 // On Air (17 Nov 2026; redesigned 18 Nov for creative people — see the result, then the numbers): what's running right
-// now. TV from the media agency's daily reports (read from Gmail at 17:00, matched to the TV Library by creative code);
+// now. TV from Particle Brain (hourly: totals, every creative / station / daypart, site visits and store orders from TV)
+// and the media agency's daily reports (read from Gmail at 17:00: the agency's note, the booked plan, the creatives we
+// sent), matched to the TV Library by creative code;
 // Meta from AfterLife (live creatives, who made them, how they do against our own 2026 average). Day / Week / Month
 // everywhere. Click a Meta ad to watch it and read it like AfterLife shows it. The growth team sees TV only.
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -188,14 +190,14 @@ export default function OnAirPage() {
             On air now
           </div>
           <h1 className="font-black uppercase leading-none text-[38px] sm:text-[52px] mt-1" style={{ ...DISPLAY, color: NAVY }}>On Air</h1>
-          <p className="text-sm text-gray-500 mt-1.5 max-w-[720px]">{isGrowth ? 'What’s running on TV right now — from the media agency’s daily report.' : 'What’s running right now — on TV from the media agency’s daily report, on Meta from AfterLife.'}</p>
+          <p className="text-sm text-gray-500 mt-1.5 max-w-[720px]">{isGrowth ? 'What’s running on TV right now — the numbers from Particle Brain, the notes from the media agency.' : 'What’s running right now — on TV from Particle Brain and the media agency, on Meta from AfterLife.'}</p>
         </div>
         <div className="flex flex-wrap gap-2 w-full sm:w-auto">
           <Segmented value={period} onChange={(k) => set('p', k === 'week' ? null : k)} options={PERIODS} label="Period" />
           {!isGrowth && <Segmented value={tab} onChange={(k) => set('tab', k === 'tv' ? null : k)} options={[['tv', 'TV', Tv], ['meta', 'Meta ads', Smartphone]]} label="On Air" />}
         </div>
       </div>
-      {!LIVE && <div className="mb-3 text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">Local preview — made-up data (the live page reads the agency’s emails{isGrowth ? '' : ' and AfterLife'}).</div>}
+      {!LIVE && <div className="mb-3 text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">Local preview — made-up data (the live page reads Particle Brain, the agency’s emails{isGrowth ? '' : ' and AfterLife'}).</div>}
       {tab === 'tv' ? <TvTab period={period} /> : <MetaTab period={period} />}
     </div>
   );
@@ -221,6 +223,8 @@ function TvTab({ period }) {
   if (!data) return <div className="py-20 text-center text-gray-400"><Loader2 className="inline animate-spin" /></div>;
 
   const canRead = data.google?.connected && data.google?.can_read !== false;
+  const brain = data.brain || {};
+  const canRefresh = canRead || brain.configured;
   const products = data.products || [];
   const shown = product ? products.filter(p => p.product === product) : products;
   const needsReconnect = !data.google?.connected || data.google?.can_read === false || data.sync?.needs_reconnect;
@@ -250,13 +254,19 @@ function TvTab({ period }) {
           ))}
         </div>
         <div className="ml-auto flex items-center gap-2 text-[11px] text-gray-500">
-          <Clock size={12} /> Read every day at 17:00{data.sync?.at ? ` · last read ${fmtTime(data.sync.at)}` : ''}
-          {isEditor && canRead && <button type="button" onClick={refresh} disabled={busy} className="flex items-center gap-1 font-semibold px-2.5 py-1.5 rounded-lg bg-white border border-gray-200 hover:border-gray-300 text-gray-700 disabled:opacity-50"><RefreshCw size={12} className={busy ? 'animate-spin' : ''} /> {busy ? 'Reading…' : 'Read now'}</button>}
+          <Clock size={12} />
+          {brain.configured
+            ? <span title={`Particle Brain is copied every hour; the agency’s email is read at 17:00${data.sync?.at ? ` (last read ${fmtTime(data.sync.at)})` : ''}`}>Particle Brain hourly{brain.sync?.at ? ` · synced ${fmtTime(brain.sync.at)}` : ''} · agency email 17:00</span>
+            : <span>Read every day at 17:00{data.sync?.at ? ` · last read ${fmtTime(data.sync.at)}` : ''}</span>}
+          {isEditor && canRefresh && <button type="button" onClick={refresh} disabled={busy} className="flex items-center gap-1 font-semibold px-2.5 py-1.5 rounded-lg bg-white border border-gray-200 hover:border-gray-300 text-gray-700 disabled:opacity-50"><RefreshCw size={12} className={busy ? 'animate-spin' : ''} /> {busy ? 'Reading…' : 'Read now'}</button>}
         </div>
       </div>
       {error && <div className="px-4 py-2 rounded-xl bg-red-50 text-red-700 text-xs">{error}</div>}
+      {isEditor && brain.configured && brain.sync && brain.sync.ok === false && (
+        <div className="px-4 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center gap-2"><AlertTriangle size={14} className="flex-none" /> Particle Brain didn’t answer at {fmtTime(brain.sync.at)} — showing the numbers from the last good copy. {brain.sync.error}</div>
+      )}
 
-      {!products.length && canRead && <Empty icon={Tv} title="No agency reports yet">The next read is at 17:00{isEditor ? ' — or press “Read now”' : ''}. Reports are the daily “Particle … Campaign” emails from the agency.</Empty>}
+      {!products.length && canRefresh && <Empty icon={Tv} title="No agency reports yet">The next read is at 17:00{isEditor ? ' — or press “Read now”' : ''}. Reports are the daily “Particle … Campaign” emails from the agency.</Empty>}
 
       {shown.map(p => <ProductBlock key={p.product} p={p} period={period} />)}
 
@@ -297,15 +307,19 @@ function tvPeriodBase(p, period) {
   }
   if (period === 'month') {
     const cur = per.month || null;
+    const months = p.history?.monthly || [];
+    const years = new Set(months.map(m => m.month.slice(0, 4))).size > 1;   // 13 months from Brain: say which November
     return {
       cur, prev: cur?.prev || null, label: fmtMonth(cur?.label || p.month?.month), prevLabel: fmtMonth(p.month?.prev_month), partial: !!cur?.partial,
-      points: (p.history?.monthly || []).map(m => ({ key: m.month, label: fmtMonth(m.month), short: fmtMonth(m.month, false), ...m })),
+      prevSame: cur?.prev_same || null, sameLabel: cur?.days ? `${fmtMonth(p.month?.prev_month, false)} 1–${cur.days}` : null,
+      points: months.map(m => ({ key: m.month, label: `${fmtMonth(m.month)}${years ? ` ${m.month.slice(0, 4)}` : ''}`, short: `${fmtMonth(m.month, false)}${years ? ` ’${m.month.slice(2, 4)}` : ''}`, ...m })),
       spots: p.month?.spots || [], move: (s) => (s.prev ? { text: `${fmtMonth(p.month?.prev_month, false)}: ${money(s.prev.spent)} · MER ${x2(s.prev.mer)}`, mer: s.prev.mer } : s.is_new ? { text: 'New this month', fresh: true } : null),
     };
   }
   const cur = per.week || null;
   return {
     cur, prev: cur?.prev || null, label: `Week of ${fmtDay(p.week_of, { day: 'numeric', month: 'short' })}`, prevLabel: 'last week', partial: cur?.partial !== false,
+    prevSame: cur?.prev_same || null, sameLabel: 'same days last week',
     points: (p.history?.weekly || []).map(w => ({ key: w.date, label: `Week of ${fmtDay(w.date, { day: 'numeric', month: 'short' })}`, short: fmtDay(w.date, { day: 'numeric', month: 'numeric' }), ...w })),
     spots: p.spots, move: (s) => (s.week_prev ? { text: `Last week: ${money(s.week_prev.spent)} · MER ${x2(s.week_prev.mer)}`, mer: s.week_prev.mer } : s.is_new || s.new_in_report ? { text: 'New this week', fresh: true } : null),
   };
@@ -321,6 +335,14 @@ function ProductBlock({ p, period }) {
   const [all, setAll] = useState(false);
   const P = tvPeriod(p, period);
   const cur = P.cur || {}, prev = P.prev || {};
+  // a period still running is compared with the same days of the one before (Brain has every day); else the whole one
+  const fair = P.partial && P.prevSame;
+  const cmp = fair ? P.prevSame : prev;
+  const cmpLabel = fair ? P.sameLabel : P.prevLabel;
+  const showDelta = !P.partial || fair;
+  const site = p.brain?.site?.[period] || null, sitePrev = p.brain?.site?.[`${period}_prev`] || null;
+  const visits = (x) => x?.sessions?.sessions ?? x?.sessions?.tv_sessions ?? x?.sessions?.visits ?? null;
+  const est = p.brain?.estimated?.after_last || [];
   const libPath = isGrowth ? '/tv-library' : '/library';
   const openPrd = (id) => nav(isGrowth ? '/tv-productions' : `/production/${encodeURIComponent(id)}`);
 
@@ -331,8 +353,12 @@ function ProductBlock({ p, period }) {
   const nameOf = (s) => s?.library?.title || s?.name;
   const story = [
     cur.spend != null
-      ? `${P.label}${P.partial ? ' so far' : ''}: ${money(cur.spend)} on ${p.product} TV → ${int(cur.orders)} orders, MER ${x2(cur.mer)}${prev.mer != null && cur.mer != null ? ` (${cur.mer >= prev.mer ? 'up' : 'down'} from ${x2(prev.mer)} ${P.prevLabel})` : ''}.`
+      ? `${P.label}${P.partial ? ' so far' : ''}: ${money(cur.spend)} on ${p.product} TV → ${int(cur.orders)} orders, MER ${x2(cur.mer)}${cmp.mer != null && cur.mer != null ? ` (${cur.mer >= cmp.mer ? 'up' : 'down'} from ${x2(cmp.mer)} ${cmpLabel})` : ''}.`
       : `${p.product}: no numbers for this period yet.`,
+    visits(site) != null || site?.store?.new_customers != null
+      ? `From TV: ${[visits(site) != null ? `${int(visits(site))} site visits` : null, site?.store?.new_customers != null ? `${int(site.store.new_customers)} new customers` : null].filter(Boolean).join(' and ')}.`
+      : null,
+    est.length ? `The agency hasn’t reported ${est.length === 1 ? fmtDay(est[0].date, { weekday: 'long' }) : `${est.length} days`} yet — the media pre-log has ${money(p.brain.estimated.spend_after_last)} booked.` : null,
     best && worst && best !== worst ? `Strongest spot: ${nameOf(best)} — MER ${x2(best.mer)}. Weakest: ${nameOf(worst)} — ${x2(worst.mer)}.` : null,
     fresh.length ? `New on air: ${fresh.slice(0, 3).map(nameOf).join(', ')}${fresh.length > 3 ? ` +${fresh.length - 3}` : ''}.` : null,
   ];
@@ -345,24 +371,32 @@ function ProductBlock({ p, period }) {
     <section className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end gap-x-3 gap-y-1">
         <h2 className="font-black uppercase text-[30px] sm:text-[36px] leading-none" style={{ ...DISPLAY, color: NAVY }}>{p.product}</h2>
-        <span className="text-xs text-gray-500 pb-1">Agency report of {fmtDay(p.report_date)}{p.received_at ? ` · in at ${fmtTime(p.received_at).split(', ').pop()}` : ''}</span>
+        <span className="text-xs text-gray-500 pb-1">
+          {p.brain
+            ? <>Particle Brain · through {fmtDay(p.brain.last)}{p.report_date ? ` · agency report ${fmtDay(p.report_date, { day: 'numeric', month: 'short' })}` : ''}</>
+            : <>Agency report of {fmtDay(p.report_date)}{p.received_at ? ` · in at ${fmtTime(p.received_at).split(', ').pop()}` : ''}</>}
+        </span>
       </div>
 
       <Story icon={Tv} lines={story} />
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2 sm:gap-3">
-        <Tile label={`Spent · ${P.label}`} value={money(cur.spend)} delta={!P.partial ? <Delta v={change(cur.spend, prev.spend)} /> : null} sub={`${P.prevLabel} ${money(prev.spend)}${P.partial ? ' (full)' : ''}`} />
-        <Tile label="Orders" value={int(cur.orders)} delta={!P.partial ? <Delta v={change(cur.orders, prev.orders)} /> : null} sub={`${P.prevLabel} ${int(prev.orders)}`} />
-        <Tile label="MER" value={x2(cur.mer)} delta={<Delta v={change(cur.mer, prev.mer)} />} sub={`revenue ÷ spend · ${P.prevLabel} ${x2(prev.mer)}`} />
-        <Tile label="AOV" value={money(cur.aov, { exact: true })} delta={<Delta v={change(cur.aov, prev.aov)} />} sub={`per order · ${P.prevLabel} ${money(prev.aov, { exact: true })}`} />
-        <Tile label="CPO" value={money(cur.cpo, { exact: true })} delta={<Delta v={change(cur.cpo, prev.cpo)} invert />} sub={`spend per order · ${P.prevLabel} ${money(prev.cpo, { exact: true })}`} className="col-span-2 md:col-span-1" />
+        <Tile label={`Spent · ${P.label}`} value={money(cur.spend)} delta={showDelta ? <Delta v={change(cur.spend, cmp.spend)} /> : null}
+          sub={fair ? `${cmpLabel} ${money(cmp.spend)} · all ${P.prevLabel} ${money(prev.spend)}` : `${P.prevLabel} ${money(prev.spend)}${P.partial ? ' (full)' : ''}`} />
+        <Tile label="Orders" value={int(cur.orders)} delta={showDelta ? <Delta v={change(cur.orders, cmp.orders)} /> : null} sub={`${cmpLabel} ${int(cmp.orders)}`} />
+        <Tile label="MER" value={x2(cur.mer)} delta={<Delta v={change(cur.mer, cmp.mer)} />} sub={`revenue ÷ spend · ${cmpLabel} ${x2(cmp.mer)}`} />
+        <Tile label="AOV" value={money(cur.aov, { exact: true })} delta={<Delta v={change(cur.aov, cmp.aov)} />} sub={`per order · ${cmpLabel} ${money(cmp.aov, { exact: true })}`} />
+        <Tile label="CPO" value={money(cur.cpo, { exact: true })} delta={<Delta v={change(cur.cpo, cmp.cpo)} invert />} sub={`spend per order · ${cmpLabel} ${money(cmp.cpo, { exact: true })}`} className="col-span-2 md:col-span-1" />
       </div>
+      {site && <SiteStrip site={site} prev={sitePrev} visits={visits} prevLabel={P.prevLabel} partial={P.partial} />}
 
       <div className="grid gap-3 lg:grid-cols-[1.4fr_1fr]">
         <ChartCard title={period === 'day' ? 'Per day' : period === 'month' ? 'Per month' : 'Per week'} metrics={metrics.map(([k, l]) => [k, l])} metric={metric} onMetric={setMetric}
           points={P.points.map(pt => ({ ...pt, value: pt[metric], title: `${pt.label}${pt.partial ? ' (so far)' : ''}: ${mfmt(pt[metric])}` }))} fmt={mfmt}
           color={metric === 'mer' ? '#7e5bef' : BLUE}
-          note={period === 'month' ? 'Months group the agency’s weeks by the week they start. Striped = still running.' : period === 'week' ? 'Striped = this week so far.' : null} />
+          note={p.brain
+            ? (period === 'month' ? 'Calendar months — the last 13, so the same month last year is there too. Striped = still running.' : period === 'week' ? 'Monday-to-Sunday weeks, like the agency’s. Striped = this week so far.' : null)
+            : (period === 'month' ? 'Months group the agency’s weeks by the week they start. Striped = still running.' : period === 'week' ? 'Striped = this week so far.' : null)} />
         {p.note?.text && (
           <div className="rounded-2xl border border-gray-200 bg-white p-4 flex gap-3">
             <span className="flex-none w-9 h-9 rounded-full flex items-center justify-center text-[12px] font-bold text-white" style={{ background: '#5a63a8' }}>AG</span>
@@ -377,7 +411,7 @@ function ProductBlock({ p, period }) {
       {p.plan && <PlanCard plan={p.plan} />}
 
       <div>
-        <H2 aside={`${P.spots.length} spot${P.spots.length === 1 ? '' : 's'} · ${period === 'day' ? `aired ${P.fromSheet ? fmtDay(p.air?.last) : 'on the last day'}` : period === 'month' ? 'everything that aired this month' : 'aired this week'}${P.fromSheet ? ' · from the agency’s day-by-day sheet' : ''}`}
+        <H2 aside={`${P.spots.length} spot${P.spots.length === 1 ? '' : 's'} · ${period === 'day' ? `aired ${P.fromSheet ? fmtDay(p.air?.last) : 'on the last day'}` : period === 'month' ? 'everything that aired this month' : 'aired this week'}${P.fromSheet ? (p.air?.source === 'brain' ? ' · from Particle Brain' : ' · from the agency’s day-by-day sheet') : ''}`}
           right={<Segmented size="sm" value={sort} onChange={setSort} options={[['spend', 'Spend'], ['mer', 'MER'], ['new', 'New']]} label="Sort spots" />}>
           {period === 'month' ? `On air in ${fmtMonth(p.month?.month)}` : 'On air now'}
         </H2>
@@ -392,11 +426,42 @@ function ProductBlock({ p, period }) {
         <div className="grid gap-3 lg:grid-cols-[1.35fr_1fr]">
           <StationsCard rows={p.air.stations[period] || []} refMer={cur.mer} label={P.label} />
           <DaypartsCard rows={p.air.dayparts[period] || []} hours={p.air.daypart_hours || {}} refMer={cur.mer} label={P.label} />
+          {p.air.markets?.[period]?.length > 1 && (
+            <StationsCard title="Markets" sub="where it ran" rows={p.air.markets[period].map(m => ({ ...m, station: m.market, market: null }))} refMer={cur.mer} label={P.label} />
+          )}
         </div>
       )}
 
       {(p.placements.length > 0 || p.dayparts.length > 0) && <Placements p={p} refMer={cur.mer} />}
     </section>
+  );
+}
+
+/** What TV brought to the site and the store in the period (Particle Brain: TV-attributed sessions and store orders). */
+function SiteStrip({ site, prev, visits, prevLabel, partial }) {
+  const st = site.store || {}, ps = prev?.store || {};
+  const customers = (st.new_customers || 0) + (st.returning_customers || 0);
+  const codes = (st.tv_code_revenue || 0) + (st.non_tv_code_revenue || 0) + (st.no_code_revenue || 0);
+  const items = [
+    visits(site) != null && ['Site visits from TV', int(visits(site)), visits(prev), (a, b) => change(a, b), `${prevLabel} ${int(visits(prev))}`, visits(site)],
+    st.tv_orders != null && ['Store orders from TV', int(st.tv_orders), ps.tv_orders, null, st.tv_revenue != null ? `${money(st.tv_revenue)} revenue` : `${prevLabel} ${int(ps.tv_orders)}`, st.tv_orders],
+    st.new_customers != null && ['New customers', int(st.new_customers), ps.new_customers, null, customers ? `${pct(st.new_customers / customers, 0)} of TV customers are new` : `${prevLabel} ${int(ps.new_customers)}`, st.new_customers],
+    codes > 0 && ['Used the TV promo code', pct((st.tv_code_revenue || 0) / codes, 0), null, null, `${money(st.tv_code_revenue)} of ${money(codes)} TV revenue`, null],
+  ].filter(Boolean);
+  if (!items.length) return null;
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white px-4 py-3">
+      <div className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-gray-400 mb-2">What TV brought in · site and store</div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-3">
+        {items.map(([label, value, before, , sub, raw]) => (
+          <div key={label} className="min-w-0">
+            <div className="text-[11px] text-gray-500 truncate">{label}</div>
+            <div className="flex items-baseline gap-1.5"><span className="text-[22px] font-bold tabular-nums leading-tight" style={{ color: NAVY }}>{value}</span>{!partial && raw != null && before ? <Delta v={change(raw, before)} small /> : null}</div>
+            <div className="text-[11px] text-gray-400 truncate" title={sub}>{sub}</div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -451,13 +516,13 @@ function PlanCard({ plan }) {
 }
 
 /** Where it works: stations for the period, by spend, MER coloured against the product's MER. */
-function StationsCard({ rows, refMer, label }) {
+function StationsCard({ rows, refMer, label, title = 'Where it works', sub = 'stations' }) {
   const [all, setAll] = useState(false);
   const max = Math.max(1, ...rows.map(r => r.spend || 0));
   const list = all ? rows : rows.slice(0, 8);
   return (
     <div className="rounded-2xl bg-white border border-gray-200 p-4">
-      <div className="flex items-baseline gap-2 mb-2"><h3 className="text-[14px] font-bold" style={{ color: NAVY }}>Where it works</h3><span className="text-xs text-gray-400">stations · {label}</span></div>
+      <div className="flex items-baseline gap-2 mb-2"><h3 className="text-[14px] font-bold" style={{ color: NAVY }}>{title}</h3><span className="text-xs text-gray-400">{sub} · {label}</span></div>
       {!rows.length && <div className="text-sm text-gray-400 py-4">No airings in this period.</div>}
       <div className="flex flex-col gap-1.5">
         {list.map(r => {
@@ -540,7 +605,7 @@ function SpotCard({ s, refMer, move, onLibrary, onProduction }) {
         <div className="text-[15px] font-semibold leading-snug line-clamp-2" style={{ color: NAVY }} title={lib ? `Our name in the CP: ${title}` : title}>{title}</div>
         {lib && <div className="min-w-0"><PrdChip id={lib.production_id} name={lib.production_name} onOpen={onProduction} /></div>}
         <div className="text-[11px] text-gray-400 truncate" title="What the agency calls it · its creative code">{[lib && s.name && s.name !== title ? `Agency: “${s.name}”` : null, s.code].filter(Boolean).join(' · ')}</div>
-        {s.first?.date && <div className="text-[11px] text-gray-500 truncate" title="The first time it aired, from the agency’s day-by-day sheet">First aired {fmtDay(s.first.date)}{s.first.time ? ` · ${s.first.time}` : ''}{s.first.station ? ` · ${s.first.station}` : ''}</div>}
+        {s.first?.date && <div className="text-[11px] text-gray-500 truncate" title="The first time it aired">First aired {fmtDay(s.first.date)}{s.first.time ? ` · ${s.first.time}` : ''}{s.first.station ? ` · ${s.first.station}` : ''}</div>}
         <div className="grid grid-cols-3 gap-2 mt-1">
           {[['Spent', money(s.spent)], ['Orders', int(s.orders)], ['CPO', money(s.cpo)]].map(([k, val]) => (
             <div key={k}><div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">{k}</div><div className="text-[16px] font-bold tabular-nums leading-tight" style={{ color: NAVY }}>{val}</div></div>

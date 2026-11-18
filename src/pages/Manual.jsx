@@ -9,6 +9,12 @@ import clsx from 'clsx';
 // ─── Growth team (17 Nov 2026) ─────────────────────────────────────────────────
 // RULE (Tomer): every change to the growth team's panel updates this section AND adds a dated line to "What's new".
 const GROWTH_WHATS_NEW = [
+  { date: '18 Nov 2026 · evening', items: [
+    '🧠 On Air → TV now runs on Particle Brain, copied every hour: spend, orders, MER, AOV and CPO for Day / Week / Month, every spot, station, time of day and market — and the charts go back 13 months, so the same month last year is right there.',
+    '⚖️ A week or month still running is compared with the same days of the one before (Mon–Wed vs last Mon–Wed), so the arrows are fair.',
+    '🛒 New strip — What TV brought in: site visits from TV, store orders from TV, new customers and how much of the revenue used the TV promo code.',
+    '⏳ When the agency hasn’t reported a day yet, the summary says so and shows what the media pre-log has booked.',
+  ] },
   { date: '18 Nov 2026 · later', items: [
     '📊 On Air reads the agency’s Excel files too: every spot’s real numbers per day, when and where it first aired, which stations and times of day work best, and what’s booked this week (with the creatives coming up).',
     '🛠️ Gravité shows all its spots again (a reply in the report thread was being read as the day’s report).',
@@ -141,23 +147,26 @@ const GROWTH_CATEGORY = {
     },
     {
       id: 'growth-onair', icon: '📡', label: 'On Air',
-      summary: 'What’s running on TV right now — from the agency’s daily report.',
-      keywords: ['on air', 'onair', 'tv', 'live', 'spots', 'agency', 'report', 'mer', 'aov', 'cpo', 'networks', 'prd', 'production'],
+      summary: 'What’s running on TV right now — the numbers from Particle Brain (hourly), the notes and plan from the agency.',
+      keywords: ['on air', 'onair', 'tv', 'live', 'spots', 'agency', 'report', 'mer', 'aov', 'cpo', 'networks', 'prd', 'production', 'brain', 'particle brain', 'sessions', 'new customers', 'promo code', 'markets'],
       content: [
         { type: 'guide', title: 'TV', steps: [
           'Pick Day, Week or Month at the top — everything follows it: yesterday vs the day before, this week vs last week, this month vs last month.',
           'The blue card says what happened in one breath: spend, orders, MER, the strongest and weakest spot, what’s new on air.',
-          'Every product the agency runs (Face Cream, Gravité…): spend, orders, MER, AOV and CPO against the period before, and a chart per day, week or month (Spend / Orders / MER).',
+          'Every product on TV (Face Cream, Gravité…): spend, orders, MER, AOV and CPO against the period before, and a chart per day, week or month (Spend / Orders / MER). The month chart shows the last 13 months, so you can compare with the same month last year.',
+          'A week or month that’s still running is compared with the same days of the one before — this Mon–Wed vs last Mon–Wed, 1–18 Nov vs 1–18 Oct. The small line under each number also shows the whole previous period.',
+          'What TV brought in: site visits from TV, store orders and revenue from TV, new customers (and their share), and how much of the TV revenue used the TV promo code.',
           'On air now (Month: everything that aired this month): each spot’s poster with a verdict — Strong / Fine / Weak against the product’s MER — its share of spend, orders, CPO, and how it moved (since the last report · vs last week · vs last month). NEW = first seen on air recently. Sort by Spend, MER or New.',
           'Each spot carries our name for it in the CP, its production (PRD number + name — click it to open TV Productions) and, underneath, what the agency calls it, its code and when it first aired (date · time · station).',
           'Booked this week: the agency’s plan — what’s booked, in which markets, and which creatives rotate (“Coming up” = booked but not aired yet).',
-          'Where it works / When it works: the stations and times of day for the period, green above the product’s MER and red below.',
+          'Where it works / When it works / Markets: the stations, times of day and markets for the period, green above the product’s MER and red below.',
           'Play opens the commercial’s file from the TV Library; “Not in the TV Library” means no commercial there has that code yet.',
           'From us to the networks: every new creative the team emailed the agency — Sent → Agency confirmed → On air — with the networks it was sent to.',
           'What the agency says: the daily notes and replies, newest first.',
         ]},
         { type: 'tips', items: [
-          'The TV report is read every day at 17:00 (the agency emails around 16:00–16:45).',
+          'The numbers come from Particle Brain, copied every hour (Brain gets them from the agency’s system). The agency’s email is read every day at 17:00 for its note, the booked plan and the creatives we sent.',
+          'If the agency hasn’t reported a day yet, the summary says so and shows what the media pre-log has booked for it.',
         ]},
       ],
     },
@@ -603,10 +612,16 @@ const CATEGORIES = [
       },
       {
         id: 'on-air', icon: '📡', label: 'On Air (TV + Meta)',
-        summary: 'What’s running right now — TV from the agency’s daily report (read from Gmail at 17:00), Meta from AfterLife.',
-        keywords: ['on air', 'onair', 'tv', 'meta', 'live', 'spots', 'agency', 'lbd2c', 'report', 'mer', 'roas', 'ctr', 'aov', 'thumbstop', 'networks', 'gmail'],
+        summary: 'What’s running right now — TV from Particle Brain (hourly) and the agency’s daily report (read from Gmail at 17:00), Meta from AfterLife.',
+        keywords: ['on air', 'onair', 'tv', 'meta', 'live', 'spots', 'agency', 'lbd2c', 'report', 'mer', 'roas', 'ctr', 'aov', 'thumbstop', 'networks', 'gmail', 'brain', 'particle brain', 'sessions', 'store', 'promo code'],
         particleOnly: true,
         content: [
+          { type: 'guide', title: 'TV — Particle Brain', steps: [
+            'Particle Brain keeps a copy of the agency’s TV data (spend, orders, revenue per product per day, split by station, creative, time of day and market; TV-attributed site visits and store orders) from January 2024 on. CP copies it every hour at :25, the last 45 days every night, and the whole history once.',
+            'When Brain has a product, its numbers drive the page: Day / Week / Month totals, the charts (13 months back), every spot’s numbers and first airing, Where it works / When it works / Markets, and the What TV brought in strip. A running week or month is compared with the same days of the one before.',
+            'CP reads Brain through AfterLife (AfterLife holds the Brain key; CP never stores it). If Brain doesn’t answer, editors see a short notice and the page keeps the last good copy.',
+            '“Read now” reads Brain and the mailbox at once.',
+          ]},
           { type: 'guide', title: 'TV — the agency’s daily report', steps: [
             'Every day at 17:00 (catch-ups at 18:30 and 21:00 if a report is missing) CP reads the agency’s emails: the daily “Particle … Campaign” reports, their replies, and the new creatives the team emails them.',
             'Per product: this week’s spend, orders, MER, AOV and CPO with yesterday’s numbers, spend and MER per day, and the last weeks.',

@@ -37,7 +37,10 @@ function product(name, spots, base) {
     return { date: sundayOf(-7 * (7 - i)), spend, orders: Math.round((spend * mer) / 93), cpo: 190, revenue: r2(spend * mer), mer, aov: 93, visits: 2500, cpv: 45, conv: 0.22 };
   });
   const last = daily[6], before = daily[5];
-  const months = ['-3', '-2', '-1', '0'].map((k, i) => { const d = new Date(); d.setMonth(d.getMonth() + Number(k)); const m = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; const spend = r2(base * 30 * (0.7 + rnd() * 0.5) * (i === 3 ? 0.55 : 1)); const mer = r2(0.38 + rnd() * 0.25); return { month: m, weeks: 4, partial: i === 3, spend, orders: Math.round(spend * mer / 93), revenue: r2(spend * mer), mer, aov: 93, cpo: r2(93 / mer) }; });
+  const months = Array.from({ length: 13 }, (_, i) => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 12 + i); const m = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; const spend = r2(base * 30 * (0.7 + rnd() * 0.5) * (i === 12 ? 0.55 : 1)); const mer = r2(0.38 + rnd() * 0.25); return { month: m, partial: i === 12, spend, orders: Math.round(spend * mer / 93), revenue: r2(spend * mer), mer, aov: 93, cpo: r2(93 / mer) }; });
+  const cut = (x, f) => ({ ...x, spend: r2(x.spend * f), orders: Math.round(x.orders * f), revenue: r2(x.revenue * f), partial: undefined });
+  const store = (f) => ({ tv_revenue: Math.round(base * 2.2 * f), tv_orders: Math.round(base * 0.024 * f), new_customers: Math.round(base * 0.016 * f), returning_customers: Math.round(base * 0.008 * f), tv_code_revenue: Math.round(base * 1.3 * f), non_tv_code_revenue: Math.round(base * 0.3 * f), no_code_revenue: Math.round(base * 0.6 * f) });
+  const side = (f) => ({ sessions: { sessions: Math.round(base * 0.9 * f) }, store: store(f) });
   const weekly12 = Array.from({ length: 12 }, (_, i) => { const spend = r2(base * 7 * (0.7 + rnd() * 0.6) * (i === 11 ? 0.45 : 1)); const mer = r2(0.35 + rnd() * 0.3); return { date: sundayOf(-7 * (11 - i)), spend, orders: Math.round(spend * mer / 93), revenue: r2(spend * mer), mer, aov: 93, cpo: r2(93 / mer), partial: i === 11 }; });
   const week = { spent: r2(total), orders: spots.reduce((a, s) => a + s.orders, 0), revenue: r2(spots.reduce((a, s) => a + s.revenue, 0)) };
   week.mer = r2(week.revenue / week.spent); week.aov = r2(week.revenue / week.orders); week.cpo = r2(week.spent / week.orders); week.visits = week.orders * 5;
@@ -57,8 +60,14 @@ function product(name, spots, base) {
     history: { daily: [...Array.from({ length: 14 }, (_, i) => { const spend = r2(base * (0.6 + rnd() * 0.8)); const mer = r2(0.3 + rnd() * 0.45); return { date: off(-21 + i), spend, orders: Math.round(spend * mer / 93), revenue: r2(spend * mer), mer, aov: 93, cpo: r2(93 / mer) }; }), ...daily], weekly: weekly12, monthly: months },
     periods: {
       day: { label: last.date, ...last, prev: before },
-      week: { label: sundayOf(0), ...weekly12[11], prev: weekly12[10] },
-      month: { label: months[3].month, ...months[3], prev: months[2] },
+      week: { label: sundayOf(0), ...weekly12[11], prev: weekly12[10], prev_same: cut(weekly12[10], 0.42), days: 3 },
+      month: { label: months[12].month, ...months[12], prev: months[11], prev_same: cut(months[11], 0.58), days: 18 },
+    },
+    source: 'brain',
+    brain: {
+      last: off(-1), products: [name.toLowerCase()],
+      site: { day: side(1), day_prev: side(0.9), week: side(3.2), week_prev: side(6.6), month: side(17), month_prev: side(29) },
+      estimated: { days: [{ date: off(0), spend: r2(base * 1.1) }], after_last: [{ date: off(0), spend: r2(base * 1.1) }], spend_after_last: r2(base * 1.1) },
     },
     air: (() => {
       const mk = (f, pf) => spots.map(sp => ({ code: sp.code, name: sp.name, spent: r2(sp.spent * f), orders: Math.round(sp.orders * f), revenue: r2(sp.revenue * f), mer: sp.mer, cpo: sp.cpo, aov: sp.aov, spots: Math.max(1, Math.round(sp.spent * f / 600)),
@@ -67,13 +76,14 @@ function product(name, spots, base) {
         first_seen: sp.is_new ? off(-2) : off(-60), is_new: sp.is_new, library: sp.library })).sort((a2, b2) => b2.spent - a2.spent);
       const st = (f) => ['FOX NEWS', 'CNN', 'WPHL', 'ACCUWEATHER', 'AMC', 'HISTORY', 'NBC NEWS OTT', 'NEWSMAX'].map((n, i) => ({ station: n, market: i === 2 ? 'Philadelphia' : i === 6 ? 'National OTT' : 'National Cable', spend: Math.round(base * f * (1.6 - i * 0.18)), orders: Math.round(base * f * (1.6 - i * 0.18) * 0.004), spots: Math.round(20 * f), mer: r2(0.25 + rnd() * 0.5) }));
       const dp = (f) => [['Morning', 0.28], ['Daytime', 0.18], ['Early evening', 0.14], ['Prime', 0.3], ['Late night', 0.1]].map(([n, w]) => ({ daypart: n, spend: Math.round(base * f * w * 5), spots: Math.round(60 * f * w), mer: r2(0.25 + rnd() * 0.5) }));
-      return { last: off(-1), spots: { day: mk(0.14, 0.13), week: mk(1, 0.9), month: mk(2.6, 3.1) }, stations: { day: st(0.2), week: st(1), month: st(3) }, dayparts: { day: dp(0.2), week: dp(1), month: dp(3) },
+      const mkt = (f) => [['National Cable', 0.62], ['National OTT', 0.24], ['Philadelphia', 0.09], ['National Network', 0.05]].map(([n, w]) => ({ market: n, spend: Math.round(base * f * w * 5), orders: Math.round(base * f * w * 0.02), spots: Math.round(80 * f * w), mer: r2(0.25 + rnd() * 0.5) }));
+      return { last: off(-1), source: 'brain', markets: { day: mkt(0.2), week: mkt(1), month: mkt(3) }, spots: { day: mk(0.14, 0.13), week: mk(1, 0.9), month: mk(2.6, 3.1) }, stations: { day: st(0.2), week: st(1), month: st(3) }, dayparts: { day: dp(0.2), week: dp(1), month: dp(3) },
         daypart_hours: { Morning: '6a–12p', Daytime: '12p–5p', 'Early evening': '5p–8p', Prime: '8p–11p', 'Late night': '11p–6a' } };
     })(),
     plan: { week: sundayOf(0), lines: 91, unassigned: 48, total: { spots: 852, cost: Math.round(base * 10.5) },
       markets: [{ market: 'National Cable', cost: Math.round(base * 6), spots: 520 }, { market: 'National OTT', cost: Math.round(base * 2.5), spots: 260 }, { market: 'Philadelphia', cost: Math.round(base * 1.2), spots: 50 }, { market: 'National Network', cost: Math.round(base * 0.8), spots: 22 }],
       creatives: spots.slice(0, 6).map((sp, i) => ({ name: sp.name.replace(/ :\d+$/, ''), lines: 19 - i * 3, stations: 12 - i, cost: Math.round(base * (3 - i * 0.4)), share: 0.28 - i * 0.04, code: i === 4 ? null : sp.code, aired: i !== 4, library: i === 4 ? null : sp.library })) },
-    month: { month: months[3].month, prev_month: months[2].month, spots: spots.map(sp => ({ code: sp.code, name: sp.name, length: sp.length, spent: r2(sp.spent * 2.6), orders: sp.orders * 3, revenue: r2(sp.revenue * 2.6), mer: sp.mer, cpo: sp.cpo, aov: sp.aov, weeks: sp.is_new ? 1 : 3, share: sp.spent / total, prev: sp.is_new ? null : { spent: r2(sp.spent * 3.4), orders: sp.orders * 4, revenue: r2(sp.revenue * 3), mer: r2(sp.mer * (0.8 + rnd() * 0.4)) }, first_seen: sp.first_seen, is_new: sp.is_new, on_air_now: true, library: sp.library })).sort((a, b) => b.spent - a.spent) },
+    month: { month: months[12].month, prev_month: months[11].month, spots: spots.map(sp => ({ code: sp.code, name: sp.name, length: sp.length, spent: r2(sp.spent * 2.6), orders: sp.orders * 3, revenue: r2(sp.revenue * 2.6), mer: sp.mer, cpo: sp.cpo, aov: sp.aov, weeks: sp.is_new ? 1 : 3, share: sp.spent / total, prev: sp.is_new ? null : { spent: r2(sp.spent * 3.4), orders: sp.orders * 4, revenue: r2(sp.revenue * 3), mer: r2(sp.mer * (0.8 + rnd() * 0.4)) }, first_seen: sp.first_seen, is_new: sp.is_new, on_air_now: true, library: sp.library })).sort((a, b) => b.spent - a.spent) },
   };
 }
 
@@ -99,6 +109,7 @@ export function tvFixture() {
   return {
     today: off(0), generated_at: new Date().toISOString(),
     google: { connected: true, can_read: true }, sync: { ok: true, checked: 41, added: 3, at: at(0, 17) },
+    brain: { configured: true, via: 'afterlife', backfilled: true, sync: { ok: true, at: at(0, 16) } },
     products: [face, grav],
     pipeline: [
       { title: 'Blindfold 30s 2026 Commercial', product: 'Gravité', sent_by: 'Growth teammate', sent_at: at(-1, 18), links: ['https://www.dropbox.com/'], note: 'A 30-second version of our top performer — please add for testing as soon as possible.', link: null,

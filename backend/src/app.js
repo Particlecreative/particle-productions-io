@@ -179,6 +179,15 @@ const onAirSync = (why) => require('./lib/onair/tvMail').sync()
 cron.schedule('0 17 * * *', () => onAirSync('17:00'), { timezone: 'Asia/Jerusalem' });
 cron.schedule('30 18 * * *', async () => { if (!(await require('./lib/onair/tvMail').todaysReportsIn().catch(() => false))) onAirSync('18:30 catch-up'); }, { timezone: 'Asia/Jerusalem' });
 cron.schedule('0 21 * * *', async () => { if (!(await require('./lib/onair/tvMail').todaysReportsIn().catch(() => false))) onAirSync('21:00 catch-up'); }, { timezone: 'Asia/Jerusalem' });
+// ── On Air · Particle Brain (TV numbers): copy the last 10 days every hour at :25 (Brain itself syncs hourly), the last
+//    45 days at 04:25, and the whole history (from Jan 2024) once — also a minute after start, so a deploy fills it ───
+const brainSync = (opts, why) => require('./lib/onair/brain').sync(opts)
+  .then((r) => { require('./lib/onair/tv').clearLive(); if (!r.ok) console.error(`[CRON] On Air Brain (${why}) failed:`, r.error); else return require('./lib/onair/brain').backfillOnce(); })
+  .then((r) => { if (r) console.log('[CRON] On Air Brain backfill:', JSON.stringify(r)); })
+  .catch(err => console.error(`[CRON] On Air Brain (${why}) failed:`, err.message));
+cron.schedule('25 * * * *', () => brainSync({ days: 10 }, 'hourly'), { timezone: 'Asia/Jerusalem' });
+cron.schedule('25 4 * * *', () => brainSync({ days: 45, why: 'nightly' }, 'nightly'), { timezone: 'Asia/Jerusalem' });
+if (process.env.NODE_ENV === 'production') setTimeout(() => brainSync({ days: 10 }, 'start'), 60 * 1000).unref?.();
 
 // ── Creative Weekly: Sunday auto-generate (opt-in), Frame.io keepalive, media cache prune ───
 require('./lib/creative/jobs').schedule(cron);

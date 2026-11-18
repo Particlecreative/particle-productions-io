@@ -6,12 +6,16 @@
  *  - the daily and weekly results, the big placements and dayparts, the agency's note
  *  - the pipeline: creatives the team sent the agency → the agency confirmed / sent to networks → first seen on air
  * liveCodes() feeds the TV Library: a commercial whose code is in this week's report is "on air".
+ * Particle Brain (18 Nov 2026, lib/onair/brain.js) is the source of the numbers when it has the product: Day / Week /
+ * Month totals and the charts (history from Jan 2024), every creative / station / daypart / market, TV-attributed site
+ * sessions and store orders. The emails stay the source of the agency's note, the creatives pipeline and the booked plan.
  */
 const db = require('../../db');
 const lib = require('../library');
 const M = require('./tvMail');
 const L = require('./agencyReport');
 const Sheets = require('./sheets');
+const Brain = require('./brain');
 const { canonicalUrl, linkKind } = require('../creative/snapshot');
 
 const DAY = 86400000;
@@ -251,24 +255,54 @@ async function pipeline(brandId, firstSeen, liveByCode) {
   return out;
 }
 
+/** A product Brain has but no agency email does (yet): the fields ProductBlock reads, empty. */
+function blankView(product) {
+  return {
+    product, report_date: null, received_at: null, previous_report: null, week_of: null, note: null,
+    history: { daily: [], weekly: [], monthly: [] }, periods: {}, month: { spots: [] }, week: {}, last_day: null,
+    spots: [], daily: [], weekly: [], lifetime: null, placements: [], dayparts: [], reports: [],
+  };
+}
+
+/** Brain's numbers on a product: its Day / Week / Month totals and charts replace the report tables'. */
+function withBrain(v, b) {
+  v.periods = b.periods;
+  v.history = b.history;
+  v.week_of = b.ranges.week[0];
+  v.month = { ...(v.month || {}), month: b.last.slice(0, 7), prev_month: b.ranges.month_prev[0].slice(0, 7) };
+  v.brain = { last: b.last, site: b.site, estimated: b.estimated, products: b.brain_products };
+  if (v.air && b.air) v.air.markets = b.air.markets;
+  v.source = 'brain';
+  return v;
+}
+
 /** The whole TV side of On Air. */
 async function buildTv(brandId = 'particle') {
   const today = todayIL();
-  const [reports, google, sync] = await Promise.all([reportRows(), M.googleStatus(), M.getState('tv_sync')]);
+  const [reports, google, sync, brainStatus] = await Promise.all([reportRows(), M.googleStatus(), M.getState('tv_sync'), Brain.status().catch(() => null)]);
   const byProduct = {};
   for (const r of reports) (byProduct[r.product || 'Other'] = byProduct[r.product || 'Other'] || []).push(r);
   const firstSeen = firstSeenOf(reports);
-  // the agency's Excel files: every airing (RBD) and this week's booked plan (Future), per product
-  const names = Object.keys(byProduct);
-  const air = Object.fromEntries(await Promise.all(names.map(async (n) => [n, await Sheets.airingsView(n).catch((e) => { console.warn('[onair] airings', e.message); return null; })])));
+  const reported = Object.keys(byProduct);
+  const brain = await Brain.views(reported).catch((e) => { console.warn('[onair] brain', e.message); return {}; });
+  const names = [...new Set([...reported, ...Object.keys(brain)])];
+  // per creative: Brain's breakdown when it has the product, else the agency's RBD sheet (every airing)
+  const air = Object.fromEntries(await Promise.all(names.map(async (n) => [n, brain[n]?.air
+    || (byProduct[n] ? await Sheets.airingsView(n).catch((e) => { console.warn('[onair] airings', e.message); return null; }) : null)])));
+  // the real first airing (Brain's history reaches back to 2024) beats "first seen in a report"
+  for (const a of Object.values(air)) for (const c of Object.values(a?.codes || {})) {
+    if (c.first?.date && (!firstSeen.first[c.code] || c.first.date < firstSeen.first[c.code])) firstSeen.first[c.code] = c.first.date;
+  }
   const codes = [...new Set([
     ...Object.values(byProduct).flatMap(rs => rs.flatMap(r => (r.parsed?.spots || []).map(s => s.code))),
     ...Object.values(air).flatMap(a => Object.keys(a?.codes || {})),
   ])];
   const libBy = await libraryByCode(brandId, codes);
-  const plans = Object.fromEntries(await Promise.all(names.map(async (n) => [n, await Sheets.planView(n, air[n]?.codes || {}).catch(() => null)])));
-  const products = Object.values(byProduct).map(rs => withSheets(productView(rs, firstSeen, libBy, today), air[rs[0].product || 'Other'], plans[rs[0].product || 'Other'], libBy, today))
-    .sort((a, b) => (b.week.spent || 0) - (a.week.spent || 0));
+  const plans = Object.fromEntries(await Promise.all(reported.map(async (n) => [n, await Sheets.planView(n, air[n]?.codes || {}).catch(() => null)])));
+  const products = names.map((n) => {
+    const v = withSheets(byProduct[n] ? productView(byProduct[n], firstSeen, libBy, today) : blankView(n), air[n], plans[n], libBy, today);
+    return brain[n] ? withBrain(v, brain[n]) : v;
+  }).sort((a, b) => (b.periods?.week?.spend ?? b.week?.spent ?? 0) - (a.periods?.week?.spend ?? a.week?.spent ?? 0));
   const live = await liveCodes(brandId, { reports });
   const [pipe, notes] = await Promise.all([
     pipeline(brandId, firstSeen, live).catch((e) => { console.warn('[onair] pipeline', e.message); return []; }),
@@ -278,7 +312,7 @@ async function buildTv(brandId = 'particle') {
   ]);
   return {
     today, generated_at: new Date().toISOString(),
-    google, sync,
+    google, sync, brain: brainStatus,
     products,
     pipeline: pipe,
     notes: notes.filter(n => String(n.body_text || '').trim()).map(n => ({
@@ -291,7 +325,7 @@ async function buildTv(brandId = 'particle') {
 /**
  * The Excel side on a product: per period (day / week / month) every creative that aired with its real numbers and the
  * period before, its first airing (date · time · station), plus where (stations) and when (dayparts) it works and the
- * booked plan. Lisa's tables stay the source of the totals; the airings give the per-creative detail.
+ * booked plan. The report's tables stay the source of the totals (unless Particle Brain has the product); the airings give the per-creative detail.
  */
 function withSheets(v, air, plan, libBy, today) {
   if (plan) {
@@ -345,10 +379,12 @@ async function liveCodes(brandId = 'particle', { reports = null } = {}) {
       `SELECT code, product, MAX(aired_on)::text AS last, MIN(aired_on)::text AS first, SUM(spend) spend, SUM(orders) orders, SUM(revenue) rev
          FROM onair_tv_airings WHERE aired_on > (CURRENT_DATE - 8) GROUP BY code, product`);
     for (const r of recent) if (!map.has(r.code)) map.set(r.code, { product: r.product, report_date: r.last, spent: Number(r.spend), orders: Number(r.orders), mer: Number(r.spend) ? Number(r.rev) / Number(r.spend) : null, first_seen: r.first });
+    // and anything Particle Brain shows airing in the last 8 days
+    for (const r of await Brain.recentCodes().catch(() => [])) if (!map.has(r.code)) map.set(r.code, { product: r.product, report_date: r.last, spent: Number(r.spend), orders: Number(r.orders), mer: Number(r.spend) ? Number(r.rev) / Number(r.spend) : null, first_seen: null });
   } catch (e) { console.warn('[onair] liveCodes', e.message); }
   liveCache = { at: Date.now(), map };
   return map;
 }
 const clearLive = () => { liveCache = null; };
 
-module.exports = { buildTv, liveCodes, clearLive, productView, firstSeenOf, historyOf, withSheets };
+module.exports = { buildTv, liveCodes, clearLive, productView, firstSeenOf, historyOf, withSheets, withBrain, blankView };

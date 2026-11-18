@@ -3,7 +3,7 @@
  * Meta (AfterLife). Particle only. Everyone signed in with Particle access may read it — the Growth team sees TV only
  * (Meta ads aren't theirs; middleware/auth.js GROWTH_ALLOW); refreshing the TV mail now is Editor+.
  *   GET  /tv            → lib/onair/tv.js buildTv
- *   POST /tv/refresh    → read the mailbox now, then the same as GET /tv
+ *   POST /tv/refresh    → read the mailbox and Particle Brain now, then the same as GET /tv
  *   GET  /media         → lib/onair/media.js (AfterLife on-air export, cached 10 min; ?force=1 skips the cache)
  *   GET  /t?p&e&s       → an AfterLife thumbnail through a signed URL (public: img tags can't send the login header)
  *   GET  /v?ad&asset&e&s → a creative's real file: signed → AfterLife hands a fresh link (Dropbox file, else Meta) → 302 (public, like /t)
@@ -13,6 +13,7 @@ const { verifyJWT, RANK } = require('../middleware/auth');
 const TV = require('../lib/onair/tv');
 const Mail = require('../lib/onair/tvMail');
 const Media = require('../lib/onair/media');
+const Brain = require('../lib/onair/brain');
 
 const fail = (res, err, label) => {
   console.error(`[onair] ${label}`, err?.stack || err);
@@ -52,12 +53,14 @@ router.get('/tv', async (req, res) => {
 router.post('/tv/refresh', async (req, res) => {
   if ((RANK[req.user?.role] ?? -1) < RANK.Editor && !req.user?.super_admin) return res.status(403).json({ error: 'Editor access required' });
   try {
-    const sync = await Mail.sync({ days: 21 });
+    // the mailbox and Particle Brain at the same time
+    const [sync, brain] = await Promise.all([Mail.sync({ days: 21 }), Brain.sync({ days: 10, why: 'read now' }).catch((e) => ({ ok: false, error: e.message }))]);
     // the newest Excel files (every airing + this week's plan) — only when a newer email has them
     const sheets = sync.ok ? await require('../lib/onair/sheets').ingest().catch((e) => ({ error: e.message })) : null;
     TV.clearLive();
     if (sync.ok) Mail.backfillOnce().then(() => TV.clearLive());   // months of history, once, in the background
-    res.json({ ...(await TV.buildTv('particle')), refreshed: sync, sheets });
+    if (brain.ok) Brain.backfillOnce()?.then?.(() => TV.clearLive());
+    res.json({ ...(await TV.buildTv('particle')), refreshed: sync, brain_sync: brain, sheets });
   } catch (err) { fail(res, err, 'tv refresh'); }
 });
 
