@@ -285,7 +285,10 @@ async function buildTv(brandId = 'particle') {
   const firstSeen = firstSeenOf(reports);
   const reported = Object.keys(byProduct);
   const brain = await Brain.views(reported).catch((e) => { console.warn('[onair] brain', e.message); return {}; });
-  const names = [...new Set([...reported, ...Object.keys(brain)])];
+  // A product only Brain has (no agency report) shows while it's on air: aired in the last 3 weeks (Neck Cream, last on
+  // 10 Sep 2026, stays off the page)
+  const onAirSince = addDays(today, -21);
+  const names = [...new Set([...reported, ...Object.keys(brain).filter(n => byProduct[n] || (brain[n].last && brain[n].last >= onAirSince))])];
   // per creative: Brain's breakdown when it has the product, else the agency's RBD sheet (every airing)
   const air = Object.fromEntries(await Promise.all(names.map(async (n) => [n, brain[n]?.air
     || (byProduct[n] ? await Sheets.airingsView(n).catch((e) => { console.warn('[onair] airings', e.message); return null; }) : null)])));
