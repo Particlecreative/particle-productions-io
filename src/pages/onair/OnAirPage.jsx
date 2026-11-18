@@ -446,7 +446,8 @@ function SiteStrip({ site, prev, visits, prevLabel, partial }) {
     visits(site) != null && ['Site visits from TV', int(visits(site)), visits(prev), (a, b) => change(a, b), `${prevLabel} ${int(visits(prev))}`, visits(site)],
     st.tv_orders != null && ['Store orders from TV', int(st.tv_orders), ps.tv_orders, null, st.tv_revenue != null ? `${money(st.tv_revenue)} revenue` : `${prevLabel} ${int(ps.tv_orders)}`, st.tv_orders],
     st.new_customers != null && ['New customers', int(st.new_customers), ps.new_customers, null, customers ? `${pct(st.new_customers / customers, 0)} of TV customers are new` : `${prevLabel} ${int(ps.new_customers)}`, st.new_customers],
-    codes > 0 && ['Used the TV promo code', pct((st.tv_code_revenue || 0) / codes, 0), null, null, `${money(st.tv_code_revenue)} of ${money(codes)} TV revenue`, null],
+    // Brain's promo-code split covers part of the TV revenue only, so it is shown as its own three parts (no "of $X")
+    codes > 0 && ['Revenue with the TV promo code', pct((st.tv_code_revenue || 0) / codes, 0), null, null, `${money(st.tv_code_revenue)} TV code · ${money(st.non_tv_code_revenue || 0)} other code · ${money(st.no_code_revenue || 0)} no code`, null],
   ].filter(Boolean);
   if (!items.length) return null;
   return (

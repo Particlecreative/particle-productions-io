@@ -260,6 +260,23 @@ function displayName(product, productName, known = []) {
   return near.length === 1 ? near[0] : productName || product;
 }
 
+/**
+ * Brain's endpoints don't share product codes (seen 18 Nov 2026): tv/daily, tv/cost and tv/breakdown say "face" (named
+ * "Anti-Aging Face Cream" in daily / cost only), tv/sessions and tv/store say "face_cream" with no name, and tv/store adds
+ * "_all" / "_other". So every code goes through one resolver: tv/daily's own code → its name first, else the code itself
+ * matched to CP's names. Totals ("_all", "_other") belong to no product. Pure (tested).
+ */
+function nameResolver(dailyProducts = [], known = []) {
+  const byCode = new Map(dailyProducts.map(p => [p.product, displayName(p.product, p.product_name, known)]));
+  const memo = new Map();
+  return (code, productName) => {
+    if (!code || String(code).startsWith('_')) return null;
+    if (byCode.has(code)) return byCode.get(code);
+    if (!memo.has(code)) memo.set(code, displayName(code, productName, known));
+    return memo.get(code);
+  };
+}
+
 /** Day / Week / Month (and the period before, and the same days of it) from per-day totals. Pure. */
 function periodsOf(byDay, last) {
   const R = rangesOf(last);
@@ -299,8 +316,10 @@ function historyFrom(byDay, last) {
   return { daily, weekly, monthly };
 }
 
-const DAYPART_ORDER = ['early morning', 'morning', 'daytime', 'day', 'early fringe', 'early evening', 'early news', 'prime access', 'prime', 'late news', 'late fringe', 'late night', 'overnight', 'rotator', 'ros'];
+// Brain's day parts are lowercase (overnight / morning / daytime / evening, seen 18 Nov 2026); the broadcast day starts in the morning
+const DAYPART_ORDER = ['early morning', 'morning', 'daytime', 'day', 'early fringe', 'early evening', 'evening', 'early news', 'prime access', 'prime', 'late news', 'late fringe', 'late night', 'overnight', 'rotator', 'ros'];
 const dpRank = (n) => { const i = DAYPART_ORDER.indexOf(String(n || '').toLowerCase()); return i < 0 ? 99 : i; };
+const dpName = (s) => (!s ? null : s === s.toLowerCase() ? s.replace(/\b[a-z]/g, c => c.toUpperCase()) : s);
 
 /**
  * The creatives, stations, dayparts and markets per period, from the breakdown rows of the last two months
@@ -348,7 +367,7 @@ function airFrom(rows, firsts, last) {
     return { market: [...c.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null };
   };
   const stations = per(r => r.station_name || r.station || null, 'station', marketOf);
-  const dayparts = per(r => r.day_part || null, 'daypart');
+  const dayparts = per(r => dpName(r.day_part), 'daypart');
   for (const p of Object.keys(dayparts)) dayparts[p].sort((a, b) => dpRank(a.daypart) - dpRank(b.daypart) || (b.spend || 0) - (a.spend || 0));
   const markets = per(r => r.market || null, 'market');
   return {
@@ -401,20 +420,23 @@ async function views(known = []) {
       WHERE endpoint = 'tv/daily' AND product <> '_all' AND day > CURRENT_DATE - 75 GROUP BY product`);
   if (!prods.length) { viewCache = { at: Date.now(), map: {} }; return {}; }
   const names = [...new Set([...known, ...KNOWN])];
+  const nameOf = nameResolver(prods, names);
   const groups = {};
-  for (const p of prods) { const n = displayName(p.product, p.product_name, names); (groups[n] = groups[n] || []).push(p.product); }
+  for (const p of prods) { const n = nameOf(p.product); (groups[n] = groups[n] || []).push(p.product); }
   const all = prods.map(p => p.product);
+  // the other endpoints use their own codes (face_cream ↔ face), so they're loaded whole and matched by name
   const [small, air, firsts] = await Promise.all([
-    db.query(`SELECT endpoint, product, day::text AS day, data FROM onair_brain_day WHERE product = ANY($1) AND (endpoint = 'tv/daily' OR day > CURRENT_DATE - 75)`, [all]).then(r => r.rows),
+    db.query(`SELECT endpoint, product, day::text AS day, data FROM onair_brain_day
+               WHERE (endpoint = 'tv/daily' AND product = ANY($1)) OR (endpoint <> 'tv/daily' AND day > CURRENT_DATE - 75)`, [all]).then(r => r.rows),
     db.query(`SELECT product, day::text AS day, station, station_name, creative, creative_name, day_part, market, spots, spend, orders, revenue
-                FROM onair_brain_air WHERE product = ANY($1) AND day >= date_trunc('month', CURRENT_DATE - 75)`, [all]).then(r => r.rows),
+                FROM onair_brain_air WHERE day >= date_trunc('month', CURRENT_DATE - 75)`).then(r => r.rows),
     db.query(`SELECT DISTINCT ON (product, creative) product, creative, day::text AS d, station_name, station, market
-                FROM onair_brain_air WHERE product = ANY($1) AND creative IS NOT NULL AND COALESCE(spots, 0) > 0
-               ORDER BY product, creative, day, spend DESC NULLS LAST`, [all]).then(r => r.rows),
+                FROM onair_brain_air WHERE creative IS NOT NULL AND COALESCE(spots, 0) > 0
+               ORDER BY product, creative, day, spend DESC NULLS LAST`).then(r => r.rows),
   ]);
   const map = {};
   for (const [name, codes] of Object.entries(groups)) {
-    const mine = (r) => codes.includes(r.product);
+    const mine = (r) => nameOf(r.product, r.data?.[0]?.product_name || r.product_name) === name;
     const pick = (ep) => small.filter(r => r.endpoint === ep && mine(r));
     const fs = {};
     for (const f of firsts.filter(mine)) if (!fs[f.creative] || f.d < fs[f.creative].date) fs[f.creative] = { date: f.d, station: f.station_name || f.station, market: f.market };
@@ -429,10 +451,13 @@ async function views(known = []) {
 async function recentCodes() {
   if (!configured()) return [];
   await ensureTables();
-  const { rows } = await db.query(
-    `SELECT creative AS code, MAX(product_name) AS product, MAX(day)::text AS last, SUM(spend) spend, SUM(orders) orders, SUM(revenue) rev
-       FROM onair_brain_air WHERE day > CURRENT_DATE - 8 AND creative IS NOT NULL AND COALESCE(spots, 0) > 0 GROUP BY creative`);
-  return rows;
+  const [{ rows }, { rows: prods }] = await Promise.all([
+    db.query(`SELECT creative AS code, MAX(product) AS product_code, MAX(product_name) AS product_name, MAX(day)::text AS last, SUM(spend) spend, SUM(orders) orders, SUM(revenue) rev
+                FROM onair_brain_air WHERE day > CURRENT_DATE - 8 AND creative IS NOT NULL AND COALESCE(spots, 0) > 0 GROUP BY creative`),
+    db.query(`SELECT product, MAX(data->0->>'product_name') AS product_name FROM onair_brain_day WHERE endpoint = 'tv/daily' AND day > CURRENT_DATE - 75 GROUP BY product`),
+  ]);
+  const nameOf = nameResolver(prods, KNOWN);       // the breakdown has no product name ("face" → Face Cream)
+  return rows.map(({ product_code, product_name, ...r }) => ({ ...r, product: nameOf(product_code, product_name) || product_name || product_code }));
 }
 
 async function status() {
@@ -443,5 +468,5 @@ async function status() {
 module.exports = {
   configured, sync, backfillOnce, views, recentCodes, status, clearViews, ensureTables,
   // pure, for tests
-  fetchAll, chunks, sumRows, finish, displayName, periodsOf, historyFrom, airFrom, productFrom, pageRequest,
+  fetchAll, chunks, sumRows, finish, displayName, nameResolver, periodsOf, historyFrom, airFrom, productFrom, pageRequest,
 };

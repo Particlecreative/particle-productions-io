@@ -153,3 +153,22 @@ test('withBrain puts Brain’s totals and charts on a product view', () => {
   assert.equal(v.brain.last, '2026-11-17');
   assert.deepEqual(v.brain.products, ['gravite']);
 });
+
+test('nameResolver: Brain’s codes differ per endpoint (face / face_cream) and land on one CP product', () => {
+  // as Brain returned them on 18 Nov 2026
+  const daily = [{ product: 'face', product_name: 'Anti-Aging Face Cream' }, { product: 'gravite', product_name: 'Gravité' }];
+  const nameOf = B.nameResolver(daily, ['Face Cream', 'Gravité', 'Neck Cream', 'Eye Cream']);
+  assert.equal(nameOf('face'), 'Face Cream');            // tv/daily, tv/cost, tv/breakdown (no name there)
+  assert.equal(nameOf('face_cream'), 'Face Cream');      // tv/sessions, tv/store
+  assert.equal(nameOf('gravite'), 'Gravité');
+  assert.equal(nameOf('_all'), null);                     // tv/store totals
+  assert.equal(nameOf('_other'), null);
+  assert.equal(nameOf('beard_oil'), 'beard_oil');         // unknown → Brain's own code
+});
+
+test('airFrom: Brain’s lowercase day parts read as names, in broadcast-day order', () => {
+  const rows = ['overnight', 'evening', 'morning', 'daytime'].map((dp, i) => ({ day: '2026-11-16', creative: 'PM1MMH', creative_name: 'MM', station: 'CNN', station_name: 'CNN', day_part: dp, market: 'National Cable', spots: 1, spend: 10 + i, orders: 0, revenue: 0 }));
+  const a = B.airFrom(rows, {}, '2026-11-16');
+  assert.deepEqual(a.dayparts.day.map(d => d.daypart), ['Morning', 'Daytime', 'Evening', 'Overnight']);
+  assert.equal(a.markets.day[0].market, 'National Cable');
+});
