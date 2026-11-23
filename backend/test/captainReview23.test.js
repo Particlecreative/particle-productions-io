@@ -63,3 +63,12 @@ test('notes on the frame: one sentence, "(the brief has it too)" and "(also in â
   assert.equal(shortNote("The shampoo label is cut off and reads 'PARABEN FRI'. Frames 5, 10 and 11 have the same problem."), "The shampoo label is cut off and reads 'PARABEN FRI'");
   assert.equal(shortNote("'(to confirm)' is an internal note. Remove it (the brief has it too) (also in 2 more frames)"), "'(to confirm)' is an internal note (the brief has it too) (also in 2 more frames)");
 });
+
+test('no "add subtitles" for voiceover over the end card, even when the fix is written as an instruction', () => {
+  const { overEndCard } = require('../src/lib/captain/video');
+  const onScreen = [{ start: 46, text: 'AND WE WANT TO GIVE YOU ANOTHER SHOT' }, { start: 48, text: 'CLICK BELOW,' }, { start: 50.5, text: 'TRY IT NOW\nWWW.PARTICLEFORMEN.COM\n30 DAY MONEY BACK GUARANTEE FREE SHIPPING' }];
+  const subs = { type: 'caption_vs_voiceover', found: '', fix: 'ADD SUBTITLES', severity: 'check', start_s: 48.9, end_s: 55.4 };
+  const early = { type: 'caption_vs_voiceover', found: '', fix: 'ADD SUBTITLES', severity: 'check', start_s: 10, end_s: 14 };
+  assert.deepEqual(overEndCard([subs, early], onScreen), [early]);
+  assert.deepEqual(overEndCard([subs], [{ start: 1, text: 'NO END CARD HERE' }]), [subs]);
+});

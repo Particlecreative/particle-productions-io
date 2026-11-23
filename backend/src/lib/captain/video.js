@@ -98,6 +98,18 @@ function commentText(issue, { full = false } = {}) {
   return issue.severity === 'check' ? `${head} (please check${issue.note ? `: ${issue.note}` : ''})` : head;
 }
 
+/**
+ * "Add subtitles" for voiceover that plays over the end card isn't a note: the end card (web address, "Shop now",
+ * "Try it now") is what's on screen there (COPYCAT | SAVE MONEY, 23 Nov 2026 — the AI wrote the fix as "ADD SUBTITLES",
+ * so the text-based rule in briefed.js missed it). Pure.
+ */
+const END_CARD_RE = /\b[\w-]+\.(?:com|co\.uk|net|shop)\b|\b(?:shop|try it|order|buy|get yours) now\b/i;
+function overEndCard(issues, onScreen) {
+  const at = (onScreen || []).find(t => END_CARD_RE.test(String(t?.text || '')))?.start;
+  if (at == null) return issues;
+  return issues.filter(i => !(i.type === 'caption_vs_voiceover' && !String(i.found || '').trim() && Number(i.end_s ?? i.start_s) >= Number(at) - 1));
+}
+
 // durationSec: the video's length — a moment past the end (a brief line placed by where it sits in the brief, e.g. 56 s
 // on a 54 s cut) is pulled back inside it; Frame.io refuses a comment beyond the last frame (422, 17 Nov 2026)
 function normIssues(issues, fps, durationSec = null) {
@@ -192,7 +204,7 @@ async function checkDeliverable({ d, round, ctx, cfg, posting, master }) {
     // own "add/remove the period" notes on those lines are dropped
     const punct = EP.forVideo({ onScreen: r.on_screen_text || [], voiceover: r.voiceover || [], brief: briefRawOf(item) });
     const ai = (r.issues || []).filter(i => !(EP.endOnly(i) && punct.covers(i.found)));
-    const issues = normIssues(require('./briefed').tidy([...ai, ...matched, ...punct.issues], item), fps, info.duration || (await probeDuration(tmp)));
+    const issues = overEndCard(normIssues(require('./briefed').tidy([...ai, ...matched, ...punct.issues], item), fps, info.duration || (await probeDuration(tmp))), r.on_screen_text);
 
     for (const i of issues) await insertIssue(checkId, i);
     await updateCheck(checkId, {
@@ -354,4 +366,4 @@ async function runVideoJob(payload) {
   return { results: results.map(({ on_screen_text, ...r }) => r), posting };
 }
 
-module.exports = { runVideoJob, findItemForLink, postingFor, commentText, normIssues, buildPrompt, briefBlock, grabThumb };
+module.exports = { runVideoJob, findItemForLink, postingFor, commentText, normIssues, overEndCard, buildPrompt, briefBlock, grabThumb };
