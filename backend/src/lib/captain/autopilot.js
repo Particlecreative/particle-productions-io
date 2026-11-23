@@ -46,12 +46,15 @@ function ensureTables() {
 
 // ── the rules (pure — tested) ─────────────────────────────────────────────────
 /**
- * { review: 1-based review number for this ticket, mustFix, notes, settings } → { to: status | null, why }
+ * { review: 1-based review number for this ticket, mustFix, notes, unposted (must-fixes not on the file), settings } → { to: status | null, why }
  * to = null → leave the status where it is (a person takes it from here).
  */
-function decide({ review, mustFix, notes = 0, settings = DEFAULT }) {
+function decide({ review, mustFix, notes = 0, unposted = 0, settings = DEFAULT }) {
   const s = { ...DEFAULT, ...settings };
   const notesText = notes ? ` (${notes} “please check” note${notes === 1 ? '' : 's'} left for the editor to judge)` : '';
+  // must-fixes the editor can't see (never posted on the file — e.g. a check from the test-posting days, 23 Nov 2026:
+  // "Fixes Round but no notes") never move a ticket: Fixes Round with nothing on the file only confuses the editor
+  if (mustFix > 0 && unposted > 0) return { to: null, needs_person: true, why: `Review ${review}: ${unposted} must-fix${unposted === 1 ? '' : 'es'} not posted on the file — left for a person` };
   if (mustFix > 0) {
     if (review >= s.max_rounds) return { to: null, needs_person: true, why: `Review ${review}: still ${mustFix} must-fix${mustFix === 1 ? '' : 'es'} after ${review} rounds — left for a person` };
     return { to: s.fixes_status, why: `Review ${review}: ${mustFix} must-fix${mustFix === 1 ? '' : 'es'} — back to the editor${notesText}` };
@@ -115,16 +118,19 @@ async function watch() {
 }
 
 // ── one review ────────────────────────────────────────────────────────────────
-/** The checks that count for a run: a re-check of an unchanged file counts as the earlier check it repeats. */
+/** The checks that count for a run: a re-check of an unchanged file counts as the earlier check it repeats.
+ *  unposted = must-fixes whose check never put its comments on the file (the editor can't see them). */
 async function countsFor(results) {
   const ids = (results || []).map(r => r.check_id).filter(Boolean);
   if (!ids.length) return { mustFix: 0, notes: 0, counted: [] };
   const { rows } = await db.query(`SELECT id, status, asset->>'previous_check' AS prev FROM captain_checks WHERE id = ANY($1::uuid[])`, [ids]);
   const counted = [...new Set(rows.map(r => (r.status === 'skipped' && r.prev ? r.prev : r.id)))];
   const { rows: n } = await db.query(
-    `SELECT COUNT(*) FILTER (WHERE severity = 'must_fix')::int AS must_fix, COUNT(*) FILTER (WHERE severity <> 'must_fix')::int AS notes
-       FROM captain_issues WHERE check_id = ANY($1::uuid[]) AND coalesce(feedback, '') <> 'not_a_typo'`, [counted]);
-  return { mustFix: n[0]?.must_fix || 0, notes: n[0]?.notes || 0, counted };
+    `SELECT COUNT(*) FILTER (WHERE i.severity = 'must_fix')::int AS must_fix, COUNT(*) FILTER (WHERE i.severity <> 'must_fix')::int AS notes,
+            COUNT(*) FILTER (WHERE i.severity = 'must_fix' AND c.posted_at IS NULL)::int AS unposted
+       FROM captain_issues i JOIN captain_checks c ON c.id = i.check_id
+      WHERE i.check_id = ANY($1::uuid[]) AND coalesce(i.feedback, '') <> 'not_a_typo'`, [counted]);
+  return { mustFix: n[0]?.must_fix || 0, notes: n[0]?.notes || 0, unposted: n[0]?.unposted || 0, counted };
 }
 
 async function setStatus(boardId, itemId, label) {
@@ -205,8 +211,8 @@ async function review(payload) {
     }
   }
 
-  const { mustFix, notes, counted } = await countsFor(results);
-  const d = decide({ review: n, mustFix, notes, settings: s });
+  const { mustFix, notes, unposted, counted } = await countsFor(results);
+  const d = decide({ review: n, mustFix, notes, unposted, settings: s });
   const why = nothingNew && wasFixes && n > 1 ? `${d.why} — no new version was uploaded` : d.why;
   // a comment-only brand: the comments are posted (by the check above); the status stays for a person to move
   const brand = require('./brand').brandOf({ brand: item.brand, itemName: item.name, product: item.product }, cfg);

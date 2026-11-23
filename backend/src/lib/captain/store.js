@@ -18,8 +18,12 @@ async function updateCheck(id, fields) {
 }
 
 /** The most recent finished check for a dedupe key ("already checked?"). */
+// Only a check whose comments reached the file (or that found nothing) counts as "already checked": a check from the
+// test-posting days kept its notes in CP only, and reusing it sent a ticket to Fixes Round with nothing on Frame.io
+// (Face Cream COPYCAT | SAVE MONEY, 17 Nov 2026) — such a file is checked again, and this time the notes are posted.
 async function lastCheckOf(dedupeKey) {
-  const { rows } = await db.query(`SELECT id, status, issue_count, raw FROM captain_checks WHERE dedupe_key = $1 AND status IN ('passed','issues') ORDER BY created_at DESC LIMIT 1`, [dedupeKey]);
+  const { rows } = await db.query(`SELECT id, status, issue_count, raw FROM captain_checks WHERE dedupe_key = $1 AND status IN ('passed','issues')
+      AND (posted_at IS NOT NULL OR coalesce(issue_count, 0) = 0) ORDER BY created_at DESC LIMIT 1`, [dedupeKey]);
   return rows[0] || null;
 }
 

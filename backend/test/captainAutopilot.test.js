@@ -34,3 +34,12 @@ test('defaults: off until Tomer turns it on; the real status names', () => {
   assert.equal(DEFAULT.fixes_status, 'Fixes Round');
   assert.equal(DEFAULT.approved_status, 'Approved');
 });
+
+test('must-fixes that never reached the file never move a ticket (23 Nov 2026: Fixes Round with no notes)', () => {
+  const d = decide({ review: 1, mustFix: 3, unposted: 3 });
+  assert.equal(d.to, null);
+  assert.equal(d.needs_person, true);
+  assert.match(d.why, /3 must-fixes not posted on the file — left for a person/);
+  assert.equal(decide({ review: 1, mustFix: 3, unposted: 0 }).to, 'Fixes Round');
+  assert.equal(decide({ review: 2, mustFix: 0, unposted: 0 }).to, 'Approved');
+});

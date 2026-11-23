@@ -20,6 +20,7 @@ const { figmaMatcher } = require('./dedupe');
 const { brandOf, laneOf } = require('./brand');
 const { postingFor } = require('./video');
 const { insertCheck, updateCheck, lastCheckOf, insertIssue, setIssueComment, approvedTextFor } = require('./store');
+const { changedPart } = require('./changed');
 const { matchDesign } = require('./briefMatch');
 const EP = require('./endPunct');   // end punctuation — the house rule, judged by code (17 Nov 2026)
 const { briefRawOf, BRIEF_SPIRIT } = require('./briefed');
@@ -49,8 +50,14 @@ function briefBlock(item) {
   return parts.join('\n');
 }
 
-function commentText(i) {
+// A correction shows only the words that change (changed.js); { full: true } = the whole lines, as before 23 Nov 2026
+function commentText(i, { full = false } = {}) {
   const q = (s) => `"${String(s ?? '').trim()}"`;
+  const fullText = { size_mismatch: 1, script_mismatch: 1, brief_mismatch: 1, brief_missing: 1, placeholder: 1, overflow: 1 };
+  if (!full && !fullText[i?.type] && i?.found && i?.fix) {
+    const c = changedPart(i.found, i.fix);
+    if (c.shortened) i = { ...i, found: c.found, fix: c.fix };
+  }
   const tail = i.severity === 'check' && i.note ? ` (please check: ${i.note})` : i.severity === 'check' ? ' (please check)' : '';
   switch (i.type) {
     case 'placeholder': return `${PREFIX} placeholder text left in: ${q(i.found)}`;
@@ -219,7 +226,7 @@ async function runDesignJob(payload) {
       }
       for (const i of issues) {
         const { frame, layer } = placeOf(i, frames);
-        const prev = already(commentText(i), [layer?.id, frame?.id]);
+        const prev = already(commentText(i), [layer?.id, frame?.id]) || already(commentText(i, { full: true }), [layer?.id, frame?.id]);
         if (prev) { skipped++; await setIssueComment(checkId, i.idx, prev.id); continue; }
         const c = await pinComment(fileKey, i, frames);
         if (c?.id) await setIssueComment(checkId, i.idx, c.id);
