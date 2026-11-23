@@ -644,7 +644,7 @@ test('Captain asset checks: an error copied from the brief stays an error, and s
   ], item);
   assert.equal(out.length, 2);                                   // the second note changed nothing → gone
   assert.equal(out[0].severity, 'must_fix');                       // "Linda. E" → "Linda E." is still wrong in the ad
-  assert.match(out[0].note, /^The brief has this mistake too \(the requester wrote it\)/);
+  assert.match(out[0].note, /\(the brief has it too\)$/);
   assert.equal(out[0].from_brief, true);
   assert.deepEqual([out[1].severity, out[1].from_brief], ['must_fix', undefined]);   // a real designer typo stays a must-fix
   assert.equal(tidy([{ found: 'Linda', fix: 'Lynda', severity: 'must_fix' }], { brief: {} })[0].severity, 'must_fix');
@@ -665,11 +665,11 @@ test('Captain tidy: the B&A "differs from brief" that IS the brief, self-dismiss
     { found: 'See how the most talked-about options compared', fix: 'The highest-rated option wasn’t the one we expected.', type: 'size_mismatch', severity: 'must_fix', note: 'Variation B headline paired with Variation A subhead.' },
   ], { brief: { supporting_text: 'Variation A — Headline: Dermatologists Ranked 5 Face Creams for Eye Bags. One Clearly Stood Out. Subhead: See how the most talked-about options compared.\nVariation B — Subhead: The highest-rated option wasn’t the one we expected.' } });
   // 18 Nov 2026 — the brief is read for intent: "See how the options compare →" for the brief's subhead is wording → no note
-  assert.equal(sfy.length, 2);
-  assert.ok(!sfy.some(i => i.type === 'script_mismatch'));
-  assert.equal(sfy[0].type, 'inconsistent');
-  assert.deepEqual([sfy[1].severity, sfy[1].from_brief], ['must_fix', undefined]);   // wrong variant isn't "the brief's mistake"
-  assert.doesNotMatch(sfy[1].note, /The brief has this mistake too/);
+  // 23 Nov 2026 — copy approved on the ticket isn't second-guessed: "Missing end period" on the brief's own subhead goes too
+  assert.equal(sfy.length, 1);
+  assert.ok(!sfy.some(i => i.type === 'script_mismatch' || i.type === 'inconsistent'));
+  assert.deepEqual([sfy[0].type, sfy[0].severity, sfy[0].from_brief], ['size_mismatch', 'must_fix', undefined]);   // wrong variant isn't "the brief's mistake"
+  assert.doesNotMatch(sfy[0].note, /the brief has it too/);
   // the same real problem in two frames → one note
   const dup = tidy([{ found: 'recieve', fix: 'receive', type: 'spelling', severity: 'must_fix', note: 'typo', frame_id: 'f1' }, { found: 'recieve', fix: 'receive', type: 'spelling', severity: 'must_fix', note: 'typo', frame_id: 'f2' }], null);
   assert.equal(dup.length, 1); assert.match(dup[0].note, /\(also in 1 more frame\)$/);

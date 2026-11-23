@@ -4,7 +4,11 @@
  *    the brief has it too, so the designer isn't blamed and the requester hears about it;
  *  • "differs from the brief" when the text IS the brief is dropped (Hand Cream B&A: the brief said "Was made for men.");
  *  • notes that change nothing, or where Captain talks himself out of it ("no issue", "low-confidence"), are dropped;
- *  • the same problem reported frame by frame becomes one note.
+ *  • the same problem reported frame by frame becomes one note;
+ *  • copy approved on the ticket isn't second-guessed (Tomer, 23 Nov 2026: "the copy is approved on the ticket, and then
+ *    the captain comments on it as well"): a "please check" on text that is word for word the brief — a claim, a house
+ *    style, a period, "pair Gravité with Cologne" — was decided when the copy was approved, and the designer / editor
+ *    can't change it anyway. Real mistakes in it (a typo, a placeholder like [date]) are still reported.
  */
 // words only (punctuation and case ignored) — "does the design say what the brief says?"
 const norm = (s) => String(s || '').normalize('NFKD').replace(/[‘’‚′]/g, "'").replace(/[“”„″]/g, '"')
@@ -30,9 +34,18 @@ const TEXT_ERRORS = new Set(['spelling', 'wrong_word', 'brand_name', 'placeholde
 /** One issue, with "the brief has this mistake too" when it came from the brief (pure — tested). */
 function asBriefed(issue, briefLight) {
   if (!issue?.found || !TEXT_ERRORS.has(issue.type) || !exactlyInBrief(issue, briefLight)) return issue;
-  const note = 'The brief has this mistake too (the requester wrote it) — fix it in the design and let the requester know';
-  return { ...issue, note: issue.note ? `${note}. ${issue.note}` : note, from_brief: true };
+  return { ...issue, note: issue.note ? `${String(issue.note).trim().replace(/\.$/, '')} (the brief has it too)` : 'The brief has it too', from_brief: true };
 }
+
+// on approved copy only these are still worth a comment: they aren't a judgment on the wording
+const ALWAYS_KEEP = new Set(['placeholder', 'overflow', 'cut_off', 'size_mismatch', 'baked_text', 'label_mismatch']);
+/** A "please check" on copy that is word for word the approved brief — a call already made (pure). */
+const onApprovedCopy = (i, briefNorm) => i?.severity === 'check' && !ALWAYS_KEEP.has(i?.type) && !BRIEF_TYPES.has(i?.type) && wordsInBrief(i, briefNorm);
+
+// "No subtitles for the spoken line" on the end card — the CTA, web address, guarantee or shipping line is on screen
+// as the end card itself; reviewers marked these "not a typo" (The Hunt, NeoRoot, 18–19 Nov 2026)
+const END_CARD_LINE = /\.com\b|\b(?:visit|shop|order|buy|claim yours|link in|free shipping|guarantee|money[- ]back|risk[- ]free|try it)\b/i;
+const endCardSubtitles = (i) => i?.type === 'caption_vs_voiceover' && !String(i.found || '').trim() && END_CARD_LINE.test(String(i.fix || ''));
 
 /** A note whose fix is the same text as what it found changes nothing (pure). */
 const isNoOp = (issue) => !!issue?.found && !!issue?.fix && light(issue.found) === light(issue.fix);
@@ -115,7 +128,8 @@ function tidy(issues, item) {
   const kept = [];
   let briefNotes = 0;
   for (const i of issues || []) {
-    if (isNoOp(i) || selfDismissed(i) || offBrief(i) || onlyWording(i) || immaterial(i)) continue;
+    if (isNoOp(i) || selfDismissed(i) || offBrief(i) || onlyWording(i) || immaterial(i) || endCardSubtitles(i)) continue;
+    if (onApprovedCopy(i, bNorm)) continue;   // approved on the ticket — not the designer's / editor's call
     if (isBriefDifference(i) && wordsInBrief(i, bNorm)) continue;   // it says what the brief says — not a difference
     if (BRIEF_TYPES.has(i.type) && ++briefNotes > MAX_BRIEF_NOTES) continue;   // a few brief notes, not a line-by-line diff
     kept.push(asBriefed(softenShortCaption(i), bLight));
@@ -123,4 +137,4 @@ function tidy(issues, item) {
   return mergeDuplicates(kept);
 }
 
-module.exports = { briefTextOf, briefRawOf: briefRaw, asBriefed, isNoOp, selfDismissed, mergeDuplicates, tidy, norm, light, onlyWording, immaterial, shortensSpeech, BRIEF_SPIRIT, MAX_BRIEF_NOTES };
+module.exports = { briefTextOf, briefRawOf: briefRaw, asBriefed, isNoOp, selfDismissed, mergeDuplicates, tidy, norm, light, onlyWording, immaterial, shortensSpeech, onApprovedCopy, endCardSubtitles, BRIEF_SPIRIT, MAX_BRIEF_NOTES };

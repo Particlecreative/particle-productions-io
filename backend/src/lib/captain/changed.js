@@ -47,4 +47,21 @@ function changedPart(found, fix, { minWords = 4 } = {}) {
   return { found: a.slice(lo, hiA).join(' '), fix: b.slice(lo, hiB).join(' '), shortened: true };
 }
 
-module.exports = { changedPart };
+/**
+ * A note short enough to read on the frame: its first sentence (Captain's notes ran to three sentences of reasoning —
+ * "The brief has this mistake too (the requester wrote it) — fix it in the design and let the requester know. House
+ * rule: …"). "(also in 2 more frames)" is kept.
+ */
+function shortNote(note, max = 140) {
+  let n = String(note ?? '').replace(/\s+/g, ' ').trim();
+  if (!n) return '';
+  const also = (n.match(/(?:\s*\((?:also in|the brief has)[^)]*\))+\s*$/i) || [''])[0];
+  n = n.slice(0, n.length - also.length).trim();
+  const first = n.match(/^.+?[.!?](?=\s+\p{Lu}|\s*$)/u);
+  if (first && first[0].length >= 20) n = first[0];
+  if (n.length > max) n = `${n.slice(0, max - 1).replace(/\s+\S*$/, '')}…`;
+  n = n.replace(/\.$/, '');
+  return `${n}${also ? ` ${also.trim()}` : ''}`;
+}
+
+module.exports = { changedPart, shortNote };

@@ -47,4 +47,26 @@ async function setIssueComment(checkId, idx, commentId) {
   await db.query('UPDATE captain_issues SET comment_id = $3 WHERE check_id = $1 AND idx = $2', [checkId, idx, String(commentId)]);
 }
 
-module.exports = { insertCheck, updateCheck, lastCheckOf, insertIssue, setIssueComment, approvedTextFor };
+/**
+ * "Please check" notes already posted on an earlier round of the same deliverable (Tomer, 23 Nov 2026 — think as the
+ * editor: the hook note came back in all 4 rounds of COPYCAT | RESELLERS after the editor had decided). Returns
+ * seen(issue) → true when the same kind of note (same found, or same fix) was said before. Must-fixes always repeat:
+ * one still there is still a must.
+ */
+const wordsOnly = (s) => String(s || '').normalize('NFKD').replace(/[^\p{L}\p{N}]+/gu, ' ').trim().toLowerCase();
+async function saidBefore({ discipline, itemId, deliverable = null, nodeId = null, excludeId }) {
+  if (!itemId) return () => false;
+  const { rows } = await db.query(
+    `SELECT i.type, i.found, i.fix FROM captain_issues i JOIN captain_checks c ON c.id = i.check_id
+      WHERE c.discipline = $1 AND c.item_id = $2 AND c.id <> $3 AND c.posted_at IS NOT NULL AND i.severity = 'check'
+        AND ($4::text IS NULL OR c.deliverable = $4) AND ($5::text IS NULL OR c.asset->>'node_id' = $5)`,
+    [discipline, String(itemId), excludeId, deliverable, nodeId]).catch(() => ({ rows: [] }));
+  const byFound = new Set(), byFix = new Set();
+  for (const r of rows) {
+    if (wordsOnly(r.found)) byFound.add(`${r.type}|${wordsOnly(r.found)}`);
+    if (wordsOnly(r.fix)) byFix.add(`${r.type}|${wordsOnly(r.fix)}`);
+  }
+  return (i) => i?.severity === 'check' && ((wordsOnly(i.found) && byFound.has(`${i.type}|${wordsOnly(i.found)}`)) || (wordsOnly(i.fix) && byFix.has(`${i.type}|${wordsOnly(i.fix)}`)));
+}
+
+module.exports = { insertCheck, updateCheck, lastCheckOf, insertIssue, setIssueComment, approvedTextFor, saidBefore };

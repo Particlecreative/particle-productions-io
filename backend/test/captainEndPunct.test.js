@@ -51,7 +51,7 @@ test('mixed within one group → ONE please-check naming the frames, aligned to 
   assert.equal(f.layer.id, 'a'); assert.equal(f.fix, 'Made for men');   // majority: no period
   assert.match(f.note, /frame 1 \(1x1\)/); assert.match(f.note, /frame 2 \(4x5\), frame 3 \(9x16\)/);
   f = one(layers, { brief: 'Headline: Made for men.' });             // the brief has the period → align to it
-  assert.equal(f.fix, 'Made for men.'); assert.equal(f.layer.id, 'b'); assert.match(f.note, /Align to the brief/);
+  assert.equal(f.fix, 'Made for men.'); assert.equal(f.layer.id, 'b'); assert.match(f.note, /The same headline ends with/);
 });
 
 test('a line that only ends differently from the brief → no note (18 Nov 2026: the brief is read for intent, not 1:1)', () => {

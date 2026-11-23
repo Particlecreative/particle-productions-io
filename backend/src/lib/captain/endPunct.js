@@ -31,21 +31,38 @@ const LABEL = {
 /** The line's ending: { core (text without trailing quotes/emoji/space), mark ('' . ? ! … ?? ?! …), trailer }. */
 function ending(text) {
   const t = String(text || '').replace(/\s+$/u, '');
-  const trailer = (t.match(/[\s"'’”»)\]}\p{Extended_Pictographic}\u{FE0F}\u{200D}]+$/u) || [''])[0];
+  // footnote marks (* † ¹ ²…) sit after the closing mark: "Clear in 1 week.*" is closed (it was told to add one: ".*.")
+  const trailer = (t.match(/[\s"'’”»)\]}*†‡¹²³⁴⁵⁶⁷⁸⁹⁰\p{Extended_Pictographic}\u{FE0F}\u{200D}]+$/u) || [''])[0];
   const core = t.slice(0, t.length - trailer.length);
   const m = core.match(/(?:\.{3}|…|[.?!]+)$/u);
   return { core, mark: m ? m[0] : '', trailer };
 }
 
-/** Sentences: split after . ? ! … followed by a space or a line break. */
-const units = (core) => String(core || '').split(/(?<=[.?!…])\s+/u).map(s => s.trim()).filter(Boolean);
+/** Sentences: split after . ? ! … followed by a space or a line break — not after an abbreviation ("Mfg. Date",
+ *  "Dr. Smith", "1.7 fl. oz."), which isn't the end of a sentence (Ashford batch line, 22 Nov 2026). */
+const ABBR = /\b(?:mfg|exp|no|nos|dr|mr|mrs|ms|st|vs|etc|fl|oz|approx|inc|ltd|co|dept|est|ft|lb|lbs|e\.g|i\.e|u\.s|u\.k)\.$/i;
+const units = (core) => {
+  const out = [];
+  for (const part of String(core || '').split(/(?<=[.?!…])\s+/u)) {
+    const t = part.trim();
+    if (!t) continue;
+    if (out.length && ABBR.test(out[out.length - 1])) out[out.length - 1] += ` ${t}`; else out.push(t);
+  }
+  return out;
+};
 
 // A question by its wording ("Is your skin…", "Why does…") — not "How to fix…", "Why it works"
 const AUX = 'is|are|am|do|does|did|can|could|should|would|will|isn\'t|aren\'t|don\'t|doesn\'t|didn\'t|can\'t|won\'t|have|has|was|were';
 const Q1 = new RegExp(`^(?:${AUX})\\s+(?:you|your|it|this|that|these|those|he|she|they|we|there|my|our|any|anyone|men|guys)\\b`, 'i');
 const Q2 = new RegExp(`^(?:why|what|how|when|where|who|which)\\s+(?:${AUX})\\b`, 'i');
 const Q3 = /^(?:ever\s+(?:wonder|notice|tried|feel)|want\s+to\s+know|guess\s+what|know\s+what)\b/i;
-const looksLikeQuestion = (s) => Q1.test(String(s).trim()) || Q2.test(String(s).trim()) || Q3.test(String(s).trim());
+// "Which is why it works" / "which means…" carries on the sentence before it — a statement, not a question
+const NOT_Q = /^which\s+(?:is|was|means|meant)\s+(?:why|how|what|where|when|that|the|a|an|exactly|just|great|perfect)\b|^which\s+means\b/i;
+const looksLikeQuestion = (s) => { const t = String(s).trim(); return !NOT_Q.test(t) && (Q1.test(t) || Q2.test(t) || Q3.test(t)); };
+// a line that stops on a small word ("WHICH IS WHY IT", "DID YOU BATHE IN") is a caption broken mid-sentence — the
+// next caption finishes it, and its "?" (if any) belongs there (NeoRoot, The Last Spritz, 19 Nov 2026)
+const DANGLING = /\b(?:a|an|the|to|of|in|on|at|by|for|from|with|into|onto|about|as|and|or|but|so|if|than|that|this|these|those|it|its|is|are|was|were|be|been|am|do|does|did|have|has|had|will|would|can|could|should|my|your|his|her|our|their|you|we|they|he|she|i|which|who|what|when|where|why|how|just|very|really|more|most|not|no)$/i;
+const dangling = (l) => DANGLING.test(String(l.core || '').replace(/[\s"'’”)\]]+$/u, '').trim());
 
 const finalKind = (lastUnit, mark) => (mark === '?' || /\?/.test(mark) ? 'question' : mark === '!' ? 'exclamation' : looksLikeQuestion(lastUnit) ? 'question' : mark === '.' ? 'statement' : 'fragment');
 
@@ -114,6 +131,7 @@ function briefEnding(text, briefRaw) {
   return m ? { found: true, mark: m[1] || '' } : { found: false, mark: null };
 }
 
+const first0 = (ls) => ls[0];
 // a line that runs on into the next one: ends with , ; : or a dash
 const runsOn = (l) => !!l.cont || !!l.stack || /[,;:\-–—]$/u.test(String(l.core || '').trim());   // cont: the next caption carries on the sentence
 const withMark = (l, mark) => `${l.core.replace(/(?:\.{3}|…|[.?!]+)$/u, '')}${mark}${l.trailer || ''}`.trim();
@@ -134,7 +152,9 @@ function check(rawLayers, { brief = '', kind = 'design', voiceover = [], placeNa
     const L = LABEL[l.type] || 'Line';
     // questions: always one "?"
     if (l.final === 'question' && /^\?[?!]|^!\?/.test(l.mark)) { add(l, 'must_fix', 'repeated', withMark(l, '?'), `${L}: “${l.mark}” — a question ends with one “?”`); continue; }
-    if (l.final === 'question' && (l.mark === '' || l.mark === '.') && l.type !== 'url') { add(l, 'must_fix', 'question', withMark(l, '?'), `${L} is a question — it needs a “?”`); continue; }
+    // …unless the line doesn't end here: it runs on (, ; : – —), it's cut off mid-word ("WHERE HAVE I SMELT—" is an
+    // interruption, not an unfinished question), the next caption carries on, or it stops on a small word
+    if (l.final === 'question' && (l.mark === '' || l.mark === '.') && l.type !== 'url' && !runsOn(l) && !dangling(l)) { add(l, 'must_fix', 'question', withMark(l, '?'), `${L} is a question — it needs a “?”`); continue; }
     if ((l.type === 'cta' || l.type === 'url') && /\./.test(l.mark) && l.mark !== '…' && l.mark !== '...') {
       add(l, 'must_fix', 'cta_period', withMark(l, ''), l.type === 'url' ? 'No period after a URL — it can break or confuse the address' : 'No period after a CTA'); continue;
     }
@@ -163,31 +183,39 @@ function check(rawLayers, { brief = '', kind = 'design', voiceover = [], placeNa
     // captions are loose on purpose, and supers / titles are read off the picture, so a missed title flips the majority
     // between sizes (The Hunt: "lose the period" on one size, "add one" on another). Designs keep it — exact layers.
     if (kind === 'video') continue;
-    const key = `${l.type}|${l.multi ? 'multi' : 'single'}`;
+    // Only the SAME line is compared (Tomer, 23 Nov 2026 — design notes said the obvious and contradicted themselves):
+    // a headline in one size vs the same headline in another. Different lines that share a role — a review quote and
+    // "Verified buyer", a product name and a sentence, V1's headline and V2's — aren't one style to align: grouping
+    // them asked for "Verified buyer." and "Before.", and flipped "She Noticed First" between rounds.
+    const key = `${l.type}|${bareEnd(l.text)}`;
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(l);
   }
   const out = [];
+  const byType = new Map();   // the open-last-sentence rules look at every line of a type (house style = the whole set)
+  for (const ls of groups.values()) for (const l of ls) { if (!byType.has(l.type)) byType.set(l.type, []); byType.get(l.type).push(l); }
   for (const [key, ls] of groups) {
     const [type] = key.split('|');
     const dot = ls.filter(l => l.mark === '.'), none = ls.filter(l => l.mark === '');
     if (dot.length && none.length) {
       const briefMarks = ls.map(l => briefEnding(l.text, brief)).filter(b => b.found && (b.mark === '' || b.mark === '.'));
+      const short = words(first0(ls).text).length <= 3;   // a label or a name ("Before", "Antifungal Foot Treatment") takes no period
       const target = briefMarks.length ? (briefMarks.filter(b => b.mark === '.').length >= briefMarks.filter(b => b.mark === '').length ? '.' : '')
-        : (dot.length > none.length ? '.' : '');
+        : short ? '' : (dot.length > none.length ? '.' : '');
       const off = target === '.' ? none : dot;
       const first = off[0];
       out.push({
         layer: first, layers: off, found: first.text, fix: withMark(first, target), severity: 'check', rule: 'mixed',
-        note: `${LABEL[type]} ends with “.” in ${where(dot, placeName)} and with no mark in ${where(none, placeName)}. Align to ${briefMarks.length ? 'the brief' : 'the majority'} (${target === '.' ? 'with a period' : 'no period'}).`,
+        note: `The same ${String(LABEL[type] || 'line').toLowerCase()} ends with “.” in ${where(dot, placeName)} and with no mark in ${where(none, placeName)} — use one`,
       });
       for (const l of ls) inGroup.add(l.id);
-      continue;
     }
+  }
+  for (const [type, ls] of byType) {
     // multi-sentence: last sentence left open while the others are closed → please check, unless it's the house style
-    // for the whole group (every multi-sentence line in it leaves the last one open, at least two of them)
+    // for the whole set (every multi-sentence line of the type leaves the last one open, at least two of them)
     if (type === 'headline' || type === 'super' || type === 'subhead') {
-      const open = ls.filter(l => l.multi && l.mark === '' && !runsOn(l));
+      const open = ls.filter(l => l.multi && l.mark === '' && !runsOn(l) && !inGroup.has(l.id));
       const houseStyle = open.length >= 2 && open.length === ls.filter(l => l.multi).length;
       if (open.length && !houseStyle) {
         for (const l of open) {

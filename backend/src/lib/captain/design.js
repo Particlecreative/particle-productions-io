@@ -19,8 +19,8 @@ const { logEvent } = require('./log');
 const { figmaMatcher } = require('./dedupe');
 const { brandOf, laneOf } = require('./brand');
 const { postingFor } = require('./video');
-const { insertCheck, updateCheck, lastCheckOf, insertIssue, setIssueComment, approvedTextFor } = require('./store');
-const { changedPart } = require('./changed');
+const { insertCheck, updateCheck, lastCheckOf, insertIssue, setIssueComment, approvedTextFor, saidBefore } = require('./store');
+const { changedPart, shortNote } = require('./changed');
 const { matchDesign } = require('./briefMatch');
 const EP = require('./endPunct');   // end punctuation — the house rule, judged by code (17 Nov 2026)
 const { briefRawOf, BRIEF_SPIRIT } = require('./briefed');
@@ -54,6 +54,7 @@ function briefBlock(item) {
 function commentText(i, { full = false } = {}) {
   const q = (s) => `"${String(s ?? '').trim()}"`;
   const fullText = { size_mismatch: 1, script_mismatch: 1, brief_mismatch: 1, brief_missing: 1, placeholder: 1, overflow: 1 };
+  if (!full && i?.note) i = { ...i, note: shortNote(i.note) };
   if (!full && !fullText[i?.type] && i?.found && i?.fix) {
     const c = changedPart(i.found, i.fix);
     if (c.shortened) i = { ...i, found: c.found, fix: c.fix };
@@ -219,12 +220,14 @@ async function runDesignJob(payload) {
 
     if (posting.comments) {
       const already = await figmaMatcher(figma, fileKey, PREFIX);   // skip what the Captain already said on this layer (re-runs)
-      let posted = 0, skipped = 0;
+      const repeat = await saidBefore({ discipline: 'design', itemId: base.item_id, nodeId, excludeId: checkId });   // a "please check" from an earlier round
+      let posted = 0, skipped = 0, repeated = 0;
       if (!issues.length) {
         const message = `${PREFIX} round ${round} passed ✅ — no typos in ${label}`;
         if (already(message, frames[0].id)) skipped++; else { await figma.postComment(fileKey, { message, nodeId: frames[0].id, offset: { x: 24, y: 24 } }); posted++; }
       }
       for (const i of issues) {
+        if (repeat(i)) { repeated++; continue; }   // the designer saw it last round and decided — not said again
         const { frame, layer } = placeOf(i, frames);
         const prev = already(commentText(i), [layer?.id, frame?.id]) || already(commentText(i, { full: true }), [layer?.id, frame?.id]);
         if (prev) { skipped++; await setIssueComment(checkId, i.idx, prev.id); continue; }
@@ -233,7 +236,7 @@ async function runDesignJob(payload) {
         posted++;
       }
       await updateCheck(checkId, { posted_at: new Date() });
-      await logEvent({ kind: 'post', discipline: 'design', board_id: base.board_id, item_id: base.item_id, check_id: checkId, message: `Posted ${posted} Figma comment(s) on ${name}${skipped ? ` (${skipped} already there — not posted again)` : ''}`, actor });
+      await logEvent({ kind: 'post', discipline: 'design', board_id: base.board_id, item_id: base.item_id, check_id: checkId, message: `Posted ${posted} Figma comment(s) on ${name}${skipped ? ` (${skipped} already there — not posted again)` : ''}${repeated ? ` (${repeated} “please check” from an earlier round not repeated)` : ''}`, actor });
     }
     return { results: [{ label, round, status: issues.length ? 'issues' : 'passed', issue_count: issues.length, check_id: checkId }], posting };
   } catch (e) {

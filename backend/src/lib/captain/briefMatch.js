@@ -103,6 +103,9 @@ function matchVideo(approved, { onScreen = [], voiceover = [] } = {}, deliverabl
       if (!lost.length) return;                       // reworded, same facts — the editor's call
       issues.push({ start: b.start ?? line.start ?? 0, end: b.end ?? b.start ?? line.end ?? 0, found: b.text, fix: line.text, type: 'brief_mismatch', severity: 'check', note: `${what}: the ${tag} has ${lost.join(', ')} — it isn't in the video` });
     } else if (lost.length || isLegal(line.text)) {
+      // the money-back guarantee is never commented on in a video's CTA / end card — there or missing (Brain #265;
+      // every micro drama got "the guarantee line isn't in the video", 23 Nov 2026)
+      if (legalKind(line.text) === 'guarantee') return;
       issues.push({ start: line.start ?? 0, end: line.end ?? line.start ?? 0, found: '', fix: line.text, type: 'brief_missing', severity: 'check', note: `${what}: ${lost.length ? `the ${tag} has ${lost.join(', ')} — it isn't in the video` : `the ${tag}'s ${legalKind(line.text)} line isn't in the video`}` });
     }
   };

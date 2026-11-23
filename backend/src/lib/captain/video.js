@@ -20,8 +20,8 @@ const { loadBrain, brainText } = require('./brain');
 const gemini = require('./engines/gemini');
 const { logEvent } = require('./log');
 const { enqueue } = require('./queue');
-const { insertCheck, updateCheck, lastCheckOf, insertIssue, setIssueComment, approvedTextFor } = require('./store');
-const { changedPart } = require('./changed');
+const { insertCheck, updateCheck, lastCheckOf, insertIssue, setIssueComment, approvedTextFor, saidBefore } = require('./store');
+const { changedPart, shortNote } = require('./changed');
 const L = require('./labels');
 const { frameioMatcher } = require('./dedupe');
 const { brandOf, laneOf } = require('./brand');
@@ -79,6 +79,7 @@ function buildPrompt({ brain, item, master, brand = null }) {
 const WHOLE_LINES = new Set(['script_mismatch', 'vo_script_mismatch', 'size_mismatch', 'brief_mismatch', 'brief_missing', 'vo_order', 'vo_unclear', 'vo_pronunciation']);
 function commentText(issue, { full = false } = {}) {
   const q = (s) => `"${String(s ?? '').trim()}"`;
+  if (!full && issue?.note) issue = { ...issue, note: shortNote(issue.note) };
   if (!full && !WHOLE_LINES.has(issue?.type) && issue?.found && issue?.fix) {
     const c = changedPart(issue.found, issue.fix);
     if (c.shortened) issue = { ...issue, found: c.found, fix: c.fix };
@@ -205,12 +206,14 @@ async function checkDeliverable({ d, round, ctx, cfg, posting, master }) {
     // Comments on the exact frame of this exact version
     if (posting.comments) {
       const already = await frameioMatcher(frameio, fileId, PREFIX);   // skip what the Captain already said here (re-runs)
-      let posted = 0, skipped = 0;
+      const repeat = await saidBefore({ discipline: 'video', itemId: base.item_id, deliverable: d.label, excludeId: checkId });   // a "please check" from an earlier round
+      let posted = 0, skipped = 0, repeated = 0;
       if (!issues.length) {
         const text = `${PREFIX} ${d.label} round ${round.round} passed ✅ — no typos found`;
         if (already(text, 1)) skipped++; else { await frameio.createComment(fileId, { text, timestamp: 1 }); posted++; }
       }
       for (const i of issues) {
+        if (repeat(i)) { repeated++; continue; }   // the editor saw it last round and decided — not said again
         const text = commentText(i);
         const prev = already(text, i.frame) || already(commentText(i, { full: true }), i.frame);
         if (prev) { skipped++; await setIssueComment(checkId, i.idx, prev.id); continue; }
@@ -226,7 +229,7 @@ async function checkDeliverable({ d, round, ctx, cfg, posting, master }) {
         posted++;
       }
       await updateCheck(checkId, { posted_at: new Date() });
-      await logEvent({ kind: 'post', discipline: 'video', board_id: base.board_id, item_id: base.item_id, check_id: checkId, message: `Posted ${posted} Frame.io comment(s) on ${d.label} round ${round.round}${skipped ? ` (${skipped} already there — not posted again)` : ''}`, actor });
+      await logEvent({ kind: 'post', discipline: 'video', board_id: base.board_id, item_id: base.item_id, check_id: checkId, message: `Posted ${posted} Frame.io comment(s) on ${d.label} round ${round.round}${skipped ? ` (${skipped} already there — not posted again)` : ''}${repeated ? ` (${repeated} “please check” from an earlier round not repeated)` : ''}`, actor });
     }
     return { label: d.label, round: round.round, status: issues.length ? 'issues' : 'passed', issue_count: issues.length, must_fix: issues.filter(i => i.severity === 'must_fix').length, check_id: checkId, on_screen_text: r.on_screen_text, size: d.size, variant: d.variant };
   } catch (e) {
