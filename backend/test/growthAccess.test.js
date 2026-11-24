@@ -12,7 +12,7 @@ test('Growth gate: the Growth Studio is open', () => {
   const ok = [
     ['GET', '/api/auth/me'], ['GET', '/api/brands'], ['GET', '/api/settings/particle'], ['GET', '/api/notifications'],
     ['GET', '/api/productions'], ['GET', '/api/productions/PRD26-20'], ['GET', '/api/library'], ['GET', '/api/library/productions/PRD26-20'],
-    ['GET', '/api/studio'], ['GET', '/api/studio/campaigns'], ['GET', '/api/studio/ticket-form'], ['POST', '/api/studio/ticket/draft'], ['POST', '/api/studio/ticket/submit'],
+    ['GET', '/api/studio/dashboard'], ['GET', '/api/studio/campaign-groups'], ['GET', '/api/studio/items/123/updates'], ['GET', '/api/studio/campaigns'], ['GET', '/api/studio/ticket-form'], ['POST', '/api/studio/ticket/draft'], ['POST', '/api/studio/ticket/submit'],
     ['GET', '/api/medium/briefs'], ['GET', `/api/medium/briefs/${ID}`], ['POST', '/api/medium/generate'], ['POST', '/api/medium/freeform'],
     ['PUT', `/api/medium/briefs/${ID}`], ['POST', `/api/medium/briefs/${ID}/approve`], ['POST', `/api/medium/briefs/${ID}/submit`],
     ['GET', '/api/me/monday'], ['POST', '/api/me/monday/token'], ['GET', '/api/me/monday/connect'], ['DELETE', '/api/me/monday'], ['POST', '/api/me/activity'],

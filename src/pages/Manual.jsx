@@ -9,6 +9,10 @@ import clsx from 'clsx';
 // ─── Growth team (17 Nov 2026) ─────────────────────────────────────────────────
 // RULE (Tomer): every change to the growth team's panel updates this section AND adds a dated line to "What's new".
 const GROWTH_WHATS_NEW = [
+  { date: '24 Nov 2026', items: [
+    '📦 New: Creative Studio → By product — every product, week by week: how many video and design tickets are due, how far along they are (Done = ready to go live) and which ones are for Meta. Filter Meta / Not Meta and Video / Design; click a number to see the tickets.',
+    '🛠️ Creative Studio → Overview and Workload load again (they showed zeros and “Not part of the Growth Studio”).',
+  ] },
   { date: '18 Nov 2026 · evening', items: [
     '🧠 On Air → TV now runs on Particle Brain, copied every hour: spend, orders, MER, AOV and CPO for Day / Week / Month, every spot, station, time of day and market — and the charts go back 13 months, so the same month last year is right there.',
     '⚖️ A week or month still running is compared with the same days of the one before (Mon–Wed vs last Mon–Wed), so the arrows are fair.',
@@ -58,7 +62,7 @@ const GROWTH_CATEGORY = {
       keywords: ['growth', 'start', 'welcome', 'menu', 'panel', 'access'],
       content: [
         { type: 'guide', title: 'Your menu (left panel — on your phone, the bottom bar + More)', steps: [
-          'Creative Studio — the studio right now, the workload, and your own requests.',
+          'Creative Studio — the studio right now, the workload, tickets by product week by week, and your own requests.',
           'Briefs Creator — Medium, the AI creative strategist: write briefs, approve them, send them to Monday.',
           'New ticket — ask the studio for Video or Design work in plain words.',
           'Campaign Tracker — every campaign, grouped by type, with its tickets.',
@@ -80,8 +84,8 @@ const GROWTH_CATEGORY = {
     },
     {
       id: 'growth-studio', icon: '🎬', label: 'Creative Studio',
-      summary: 'Overview, Workload and My requests.',
-      keywords: ['studio', 'overview', 'workload', 'requests', 'my requests', 'tickets', 'status'],
+      summary: 'Overview, Workload, By product and My requests.',
+      keywords: ['studio', 'overview', 'workload', 'requests', 'my requests', 'tickets', 'status', 'product', 'by product', 'meta', 'week'],
       content: [
         { type: 'guide', title: 'Overview', steps: [
           'The studio right now: how many tasks are Working, Pending, In review, Fixes and Stuck — video and design.',
@@ -92,6 +96,13 @@ const GROWTH_CATEGORY = {
           'Who’s on what, day by day — designers and video editors, 1, 2 or 4 weeks.',
           'Click a bar to open the task: status, dates, files, the brief and the updates.',
           'View only — nothing here moves or reschedules work.',
+        ]},
+        { type: 'guide', title: 'By product', steps: [
+          'Every product down the side, four weeks across (‹ › to move a week). Each ticket sits in the week it’s due: the end of its timeline on Monday, else its deadline.',
+          'In each week: how many video and design tickets, and a bar of how far along they are — green is Done (ready to go live), purple In review, orange Fixes, blue Working, grey Queued, red Stuck.',
+          '“Meta” shows only tickets whose Platform on Monday is Meta; “Not Meta” the rest (Google, TikTok, TV, website… and tickets with no Platform).',
+          'Overdue = open tickets due before these weeks. No date = open tickets with no timeline or deadline yet.',
+          'Click a number to list those tickets; click a ticket for its brief, files and updates.',
         ]},
         { type: 'guide', title: 'My requests', steps: [
           'Every Video and Design ticket where you are “Requested by” on Monday — open ones first, finished ones from the last 60 days.',

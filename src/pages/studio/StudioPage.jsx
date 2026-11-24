@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { LayoutDashboard, Clock, Plug, Loader2, AlertTriangle, Lock, GanttChart, Sparkles, Megaphone, Flame } from 'lucide-react';
+import { LayoutDashboard, Clock, Plug, Loader2, AlertTriangle, Lock, GanttChart, Sparkles, Megaphone, Flame, Boxes } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useBrand } from '../../context/BrandContext';
 import { studioApi } from '../../lib/studioService';
@@ -9,6 +9,7 @@ import Overview from '../../components/studio/Overview';
 import TimeTracking from '../../components/studio/TimeTracking';
 import Connections from '../../components/studio/Connections';
 import Workload from '../../components/studio/Workload';
+import ProductWeeks from '../../components/studio/ProductWeeks';
 import TicketCreator from '../../components/studio/TicketCreator';
 import Campaigns from '../../components/studio/Campaigns';
 import HotProjects from '../../components/studio/HotProjects';
@@ -20,6 +21,7 @@ const TABS = [
   ['overview', 'Creative Control', LayoutDashboard],
   ['hot', 'Hot Projects', Flame],
   ['workload', 'Workload', GanttChart],
+  ['products', 'By product', Boxes],
   ['campaigns', 'Campaigns', Megaphone],
   ['ticket', 'New ticket', Sparkles],
   ['time', 'Time tracking', Clock],
@@ -126,7 +128,7 @@ export default function StudioPage() {
         </nav>
       </div>
 
-      {!['connections', 'ticket', 'campaigns', 'hot'].includes(tab) && (
+      {!['connections', 'ticket', 'campaigns', 'hot', 'products'].includes(tab) && (
         <Filters f={f} setF={setF} range={range} data={data} loading={loading} onRefresh={() => load(true)} showDivision={tab !== 'workload'} showPeriod={tab !== 'workload'} />
       )}
 
@@ -136,7 +138,7 @@ export default function StudioPage() {
           <button type="button" onClick={() => load(true)} className="ml-auto font-semibold underline">Try again</button>
         </div>
       )}
-      {data?.warnings?.length > 0 && !['connections', 'campaigns', 'hot'].includes(tab) && (
+      {data?.warnings?.length > 0 && !['connections', 'campaigns', 'hot', 'products'].includes(tab) && (
         <div className="my-2 text-xs text-amber-700">{data.warnings.join(' · ')}</div>
       )}
 
@@ -146,6 +148,8 @@ export default function StudioPage() {
         <TicketCreator />
       ) : tab === 'workload' ? (
         <Workload f={f} />
+      ) : tab === 'products' ? (
+        <ProductWeeks />
       ) : tab === 'campaigns' ? (
         <Campaigns f={f} setF={setF} />
       ) : tab === 'hot' ? (

@@ -42,7 +42,7 @@ export function studioFixture({ from, to }) {
       const id = String(13000000000 + (++n));
       const it = {
         id, board, division: tv ? 'tv' : board, name: `${prod} | ${camp} | ${tv ? 'TV' : 'Meta'} | Concept ${n}`, title: `Concept ${n}`, subtitle: camp,
-        product: { label: prod, color }, brand: { label: brand, color: brandColor, source: r() > 0.5 ? 'column' : 'name' }, type: null, department: { label: tv ? 'TV' : 'Marketing/Media', color: null }, platform: 'Meta', campaign: camp,
+        product: { label: prod, color }, brand: { label: brand, color: brandColor, source: r() > 0.5 ? 'column' : 'name' }, type: null, department: { label: tv ? 'TV' : 'Marketing/Media', color: null }, platform: tv ? '' : n % 5 === 0 ? 'Google' : n % 7 === 0 ? 'TikTok' : 'Meta', campaign: camp,
         status: { label: s.label, color: s.color, category: s.category }, group: s.category === 'queued' && r() > 0.5 ? 'Form Requests' : s.label,
         people: s.category === 'queued' && r() > 0.6 ? [] : [pid], requested_by: [REQ[Math.floor(r() * REQ.length)][0]],
         timeline: (() => { const a = Math.floor(r() * days.length); return { from: days[a], to: days[Math.min(days.length - 1, a + Math.floor(r() * 4))] }; })(),

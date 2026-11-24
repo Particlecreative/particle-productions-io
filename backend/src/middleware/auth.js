@@ -20,7 +20,7 @@ const GROWTH_ALLOW = [
   // Library — TV Library (read) + the Ads Library hand-off
   [/^GET$/, /^\/api\/library(\/.*)?$/],
   // Studio — the live dashboard data, campaigns, the ticket creator; nothing that moves or schedules
-  [/^GET$/, /^\/api\/studio\/?$/],
+  [/^GET$/, /^\/api\/studio\/dashboard$/],                       // the studio's live data (Overview, Workload, By product) — 24 Nov: was /api/studio, which doesn't exist, so Growth saw zeros
   [/^GET$/, /^\/api\/studio\/(campaigns|campaign-groups|my-requests)$/],
   [/^GET$/, /^\/api\/studio\/(ticket-form|ticket-link)$/],
   [/^GET$/, /^\/api\/studio\/items\/\d+\/updates$/],               // read a task's brief & updates (posting stays closed)

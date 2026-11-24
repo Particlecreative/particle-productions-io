@@ -1,9 +1,9 @@
-// Creative Studio (Growth team, 17 Nov 2026): Overview (the studio right now + their briefs), Workload (view only) and
-// My requests (the tickets they asked for, from their own Monday user). Briefs Creator, New ticket, Campaign Tracker,
+// Creative Studio (Growth team, 17 Nov 2026): Overview (the studio right now + their briefs), Workload (view only),
+// By product (24 Nov: every product week by week, video / design, Meta or not) and My requests (the tickets they asked for, from their own Monday user). Briefs Creator, New ticket, Campaign Tracker,
 // Ads Library, TV Productions and TV Library are their own entries in the left panel.
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { LayoutDashboard, GanttChart, Inbox, ArrowRight, Loader2 } from 'lucide-react';
+import { LayoutDashboard, GanttChart, Inbox, ArrowRight, Loader2, Boxes } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useBrand } from '../../context/BrandContext';
 import { studioApi } from '../../lib/studioService';
@@ -12,11 +12,12 @@ import { meApi } from '../../lib/meService';
 import { sundayOf, addDays, ymd } from '../../components/studio/Filters';
 import Workload from '../../components/studio/Workload';
 import WorkStats from '../../components/studio/WorkStats';
+import ProductWeeks from '../../components/studio/ProductWeeks';
 import GrowthShell, { useMondayStatus } from '../../components/growth/GrowthShell';
 import MyRequests from '../../components/growth/MyRequests';
 import { SKIP_KEY } from './Welcome';
 
-const TABS = [['overview', 'Overview', LayoutDashboard], ['workload', 'Workload', GanttChart], ['requests', 'My requests', Inbox]];
+const TABS = [['overview', 'Overview', LayoutDashboard], ['workload', 'Workload', GanttChart], ['products', 'By product', Boxes], ['requests', 'My requests', Inbox]];
 const first = (n) => String(n || '').trim().split(/\s+/)[0];
 const STATUS = { QUEUED: ['Writing', '#9aa1c7'], WRITING: ['Writing', '#9aa1c7'], PENDING_REVIEW: ['Waiting for you', '#fdab3d'], APPROVED: ['Approved', '#579bfc'], SUBMITTED: ['On Monday', '#00c875'], REJECTED: ['Rejected', '#c4c4c4'], DROPPED: ['Needs a fix', '#e2445c'], ERROR: ['Failed', '#e2445c'] };
 const WORKLOAD_F = { preset: 'this_week', division: 'all', people: [], requesters: [], product: '', brands: [], colorBy: '', q: '', status: null };
@@ -43,7 +44,7 @@ export default function CreativeStudio() {
 
   return (
     <GrowthShell eyebrow="Creative Studio" title={user?.name ? `Hi ${first(user.name)}` : 'Creative Studio'}>
-      <nav className="grid grid-cols-3 sm:flex gap-1 p-1 mb-4 rounded-2xl bg-white border border-gray-200 w-full sm:w-fit" role="tablist" aria-label="Creative Studio">
+      <nav className="grid grid-cols-2 sm:flex gap-1 p-1 mb-4 rounded-2xl bg-white border border-gray-200 w-full sm:w-fit" role="tablist" aria-label="Creative Studio">
         {TABS.map(([k, label, Icon]) => (
           <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
             className={`flex items-center justify-center gap-1.5 text-[13px] sm:text-sm font-semibold px-2 sm:px-3.5 py-2 rounded-xl whitespace-nowrap transition-colors ${tab === k ? 'text-white' : 'text-gray-600 hover:bg-gray-100'}`}
@@ -54,6 +55,7 @@ export default function CreativeStudio() {
       </nav>
       {tab === 'overview' && <Overview setTab={setTab} monday={monday} />}
       {tab === 'workload' && <Workload f={WORKLOAD_F} />}
+      {tab === 'products' && <ProductWeeks />}
       {tab === 'requests' && <MyRequests />}
     </GrowthShell>
   );
