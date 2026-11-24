@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, Fragment } from 'react';
 import { Plus, Trash2, Mail, FileSignature, ExternalLink, Download, Check, ChevronUp, ChevronDown, ChevronRight, SlidersHorizontal, X, Upload, User, CreditCard, AlertTriangle, FileSpreadsheet, GripVertical, Lock, Sparkles, Loader2, CalendarDays, GitBranch } from 'lucide-react';
 import { DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
@@ -1165,7 +1165,10 @@ function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEd
   const isEditing = (field) => editingCell?.itemId === item.id && editingCell?.field === field;
   const contractKey = production ? `${production.id}_li_${item.id}` : null;
   const [contract, setContract] = useState(null);
-  useEffect(() => {
+  // Re-read when the supplier changes too: AI credits and repeating suppliers get "No contract needed" from the server
+  // (24 Nov 2026) — a short wait lets the save land first
+  const contractWho = `${item.full_name || ''}|${item.item || ''}|${item.supplier_type || ''}|${item.type || ''}`;
+  const loadContract = useCallback(() => {
     if (!contractKey) return;
     try {
       const result = getContract(contractKey);
@@ -1177,7 +1180,14 @@ function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEd
     } catch (e) {
       console.warn('Failed to load contract for', contractKey, e);
     }
-  }, [contractKey, contractRefreshKey]);
+  }, [contractKey]);
+  useEffect(() => { loadContract(); }, [loadContract, contractRefreshKey]);
+  const firstWho = useRef(true);
+  useEffect(() => {
+    if (firstWho.current) { firstWho.current = false; return undefined; }
+    const t = setTimeout(loadContract, 1200);
+    return () => clearTimeout(t);
+  }, [contractWho, loadContract]);
 
   function cell(field, children, className) {
     if (!isEditor || (budgetLocked && BUDGET_FIELDS.has(field))) return <td className={className}>{children}</td>;

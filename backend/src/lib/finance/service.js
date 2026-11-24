@@ -11,6 +11,7 @@ const E = require('./events');
 const T = require('./totals');
 const fx = require('./fx');
 const W = require('../creative/week');
+const AUTO = require('./autoRules');   // AI credits → Paid / no invoice / no contract; repeating suppliers → no contract (24 Nov 2026)
 
 const RANK = { Viewer: 0, Accounting: 1, Studio: 1, Editor: 2, Admin: 3 };
 
@@ -109,11 +110,12 @@ async function changeLines({ productionId, ops, actor, decision = null, flow = n
     const results = [], events = [];
     let raise = null;
     const tm = thisMonth();
+    const contractCheck = [];   // lines the no-contract rule looks at after the writes
 
     for (const o of ops) {
       let oldRow = null, newRow = null;
       if (o.op === 'create') {
-        const vals = normalizeUpdates(o.values, null, actor?.name);
+        const vals = normalizeUpdates({ ...o.values, ...AUTO.aiLineValues(o.values, null) }, null, actor?.name);
         let order;
         if (o.after_id) {
           const { rows: a } = await client.query('SELECT sort_order FROM production_line_items WHERE id = $1 AND production_id = $2', [o.after_id, productionId]);
@@ -134,18 +136,20 @@ async function changeLines({ productionId, ops, actor, decision = null, flow = n
            VALUES ($1, $2, ${keys.map((_, i) => `$${i + 3}`).join(', ')}) RETURNING *`,
           [productionId, order, ...keys.map(k => all[k])]);
         newRow = rows[0];
+        contractCheck.push(newRow);
       } else {
         const { rows: cur } = await client.query('SELECT * FROM production_line_items WHERE id = $1 AND production_id = $2 FOR UPDATE', [o.id, productionId]);
         oldRow = cur[0];
         if (!oldRow) throw new FinanceError(404, 'Line not found');
         if (o.op === 'update') {
-          const vals = normalizeUpdates(o.values, oldRow, actor?.name);
+          const vals = normalizeUpdates({ ...o.values, ...AUTO.aiLineValues(o.values, oldRow) }, oldRow, actor?.name);
           const keys = Object.keys(vals);
           if (!keys.length) { results.push(oldRow); continue; }
           const { rows } = await client.query(
             `UPDATE production_line_items SET ${keys.map((k, i) => `"${k}" = $${i + 2}`).join(', ')}, updated_at = NOW() WHERE id = $1 RETURNING *`,
             [o.id, ...keys.map(k => vals[k])]);
           newRow = rows[0];
+          if (Object.keys(o.values || {}).some(k => AUTO.CONTRACT_FIELDS.includes(k))) contractCheck.push(newRow);
         } else {
           await client.query('DELETE FROM production_line_items WHERE id = $1', [o.id]);
         }
@@ -177,11 +181,19 @@ async function changeLines({ productionId, ops, actor, decision = null, flow = n
       events.push(...d.events);
     }
 
+    // No contract needed (AI credits, repeating suppliers) — a failure here never blocks the budget change
+    let autoContracts = [];
+    if (contractCheck.length) {
+      await client.query('SAVEPOINT auto_contracts');
+      try { autoContracts = await AUTO.waiveContracts(client, contractCheck); }
+      catch (e) { await client.query('ROLLBACK TO SAVEPOINT auto_contracts'); console.error('[finance] auto no-contract:', e.message); }
+    }
+
     const saved = await E.record(client, events);
     await client.query('COMMIT');
     // Wrap-up: the last supplier just got paid (here or from finance's sheet) → it completes by itself
     if (B.normalizeStage(prod.stage) === 'Wrap-up') require('./wrapup').settleSoon(productionId, { actor });
-    return { rows: results, events: saved, prod, sync };
+    return { rows: results, events: saved, prod, sync, autoContracts };
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     throw err;
