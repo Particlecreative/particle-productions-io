@@ -47,6 +47,41 @@ const onApprovedCopy = (i, briefNorm) => i?.severity === 'check' && !ALWAYS_KEEP
 const END_CARD_LINE = /\.com\b|\b(?:visit|shop|order|buy|claim yours|link in|free shipping|guarantee|money[- ]back|risk[- ]free|try it)\b/i;
 const endCardSubtitles = (i) => i?.type === 'caption_vs_voiceover' && !String(i.found || '').trim() && END_CARD_LINE.test(String(i.fix || ''));
 
+// Character names (Tomer, 24 Nov 2026 — Gravité "The Cologne Rain Heist"): Captain swapped Gary ↔ Walt as 6 must-fixes,
+// deciding who is who from how the actors look — and contradicted himself between rounds, while the editor kept the adapted
+// script Omer approved. Who is who is the script's and the editor's call: a name is never "corrected" from the picture.
+// A caption showing a different name than the one SAID stays — as a please-check, the ear can be wrong too.
+const BRAND_WORD = /particle|gravit|neoroot|clearstep|ashford|biomella|blurr|science/i;
+const NAME_NOTE = /\b(?:names?|named|characters?|address(?:es|ed|ing)?|call(?:s|ed|ing)?|wearing|who is|is the one|confus\w*)\b/i;
+const NAME_SOFT_TYPES = new Set(['caption_vs_voiceover', 'vo_wrong_word']);
+const NAME_KEEP_TYPES = new Set(['brand_name', 'label_mismatch', 'placeholder']);
+function editDistance(a, b) {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return d[a.length][b.length];
+}
+/** [found name, fix name] when the only change is one name swapped for a different one ("Walt, go." → "Gary, go."), else null. */
+function swappedName(i) {
+  const w = (s) => String(s || '').split(/\s+/).filter(Boolean).map(x => x.replace(/^[^\p{L}]+|[^\p{L}]+$/gu, '')).filter(Boolean);
+  const a = w(i?.found), b = w(i?.fix);
+  if (!a.length || a.length !== b.length) return null;
+  const diff = a.map((x, k) => [x, b[k]]).filter(([x, y]) => x.toLowerCase() !== y.toLowerCase());
+  if (diff.length !== 1) return null;
+  const [x, y] = diff[0];
+  if (BRAND_WORD.test(x) || BRAND_WORD.test(y)) return null;
+  const title = (t) => /^\p{Lu}[\p{Ll}]+$/u.test(t), caps = (t) => /^\p{Lu}{2,}$/u.test(t);
+  // Title case = a proper noun; ALL CAPS captions could be any word, so those need the note to be about names
+  if (!((title(x) && title(y)) || (caps(x) && caps(y) && NAME_NOTE.test(String(i.note || ''))))) return null;
+  if (editDistance(x.toLowerCase(), y.toLowerCase()) / Math.max(x.length, y.length) < 0.5) return null;   // Its/It's, Lose/Loose, Jon/John — a spelling, not a different person
+  return [x, y];
+}
+/** 'drop' | 'soften' | null for a character-name swap. */
+function nameCall(i) {
+  if (!i || NAME_KEEP_TYPES.has(i.type) || !swappedName(i)) return null;
+  return NAME_SOFT_TYPES.has(i.type) ? 'soften' : 'drop';
+}
+
 /** A note whose fix is the same text as what it found changes nothing (pure). */
 const isNoOp = (issue) => !!issue?.found && !!issue?.fix && light(issue.found) === light(issue.fix);
 
@@ -127,9 +162,12 @@ function tidy(issues, item) {
   const raw = briefRaw(item), bNorm = norm(raw), bLight = light(raw);
   const kept = [];
   let briefNotes = 0;
-  for (const i of issues || []) {
+  for (let i of issues || []) {
     if (isNoOp(i) || selfDismissed(i) || offBrief(i) || onlyWording(i) || immaterial(i) || endCardSubtitles(i)) continue;
     if (onApprovedCopy(i, bNorm)) continue;   // approved on the ticket — not the designer's / editor's call
+    const nc = nameCall(i);
+    if (nc === 'drop') continue;   // who is who is the script's and the editor's call
+    if (nc === 'soften') i = { ...i, severity: 'check', note: i.note || 'The caption shows a different name than the one said — check' };
     if (isBriefDifference(i) && wordsInBrief(i, bNorm)) continue;   // it says what the brief says — not a difference
     if (BRIEF_TYPES.has(i.type) && ++briefNotes > MAX_BRIEF_NOTES) continue;   // a few brief notes, not a line-by-line diff
     kept.push(asBriefed(softenShortCaption(i), bLight));
@@ -137,4 +175,4 @@ function tidy(issues, item) {
   return mergeDuplicates(kept);
 }
 
-module.exports = { briefTextOf, briefRawOf: briefRaw, asBriefed, isNoOp, selfDismissed, mergeDuplicates, tidy, norm, light, onlyWording, immaterial, shortensSpeech, onApprovedCopy, endCardSubtitles, BRIEF_SPIRIT, MAX_BRIEF_NOTES };
+module.exports = { briefTextOf, briefRawOf: briefRaw, asBriefed, isNoOp, selfDismissed, mergeDuplicates, tidy, norm, light, onlyWording, immaterial, shortensSpeech, onApprovedCopy, endCardSubtitles, swappedName, nameCall, BRIEF_SPIRIT, MAX_BRIEF_NOTES };

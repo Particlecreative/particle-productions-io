@@ -20,6 +20,8 @@ Voiceover:
 - A MISPRONOUNCED word — especially product, ingredient, medical and brand words (e.g. Boswellia, glucosamine, chondroitin, cartilage). Report type "vo_pronunciation": found = the word as it sounds, fix = the word, note = how it should sound (e.g. "kon-DROY-tin"). Only when it is clearly wrong, not an accent.
 - Against the brief: only the differences the brief section below says matter (offer, price, claim, product, a missing disclaimer or CTA) — rewording, a different order and adapted dialogue are fine
 
+Character names: never decide who is who from how people look, and never "correct" which character a line names or addresses — names and dialogue that differ from the script are the editor's adaptation. A caption must show the name that is SAID; a different name there is a caption_vs_voiceover "check".
+
 Do NOT flag casual UGC language (gonna, obsessed!!, lowercase style, emojis) — it's intentional, unless a house rule below says otherwise.
 Ignore text on third-party websites, marketplaces or competitor products shown as examples — only {{BRAND}}'s own text counts.
 {{END_PUNCT}} Transcribe on-screen text with its punctuation exactly as shown — the code reads the endings from your transcription.
