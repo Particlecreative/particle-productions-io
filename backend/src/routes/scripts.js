@@ -5,6 +5,7 @@ const { google } = require('googleapis');
 const mammoth = require('mammoth');
 const { verifyJWT } = require('../middleware/auth');
 const higgsfield = require('../lib/higgsfield');
+const ScriptText = require('../lib/scriptText');
 
 const DRIVE_FOLDER_ID = process.env.DRIVE_FOLDER_ID;
 const { execFile } = require('child_process');
@@ -1127,19 +1128,29 @@ router.post('/', async (req, res) => {
 // POST /api/scripts/import — AI-powered import from file or Google URL
 router.post('/import', async (req, res) => {
   try {
-    const { url, fileBase64, fileName, mimeType, production_id } = req.body;
+    const { url, fileBase64, fileName, mimeType, production_id, text } = req.body;
     // Guard: 50MB max (base64 is ~4/3 overhead, so check string length)
     if (fileBase64 && fileBase64.length > 50 * 1024 * 1024 * 1.4) {
       return res.status(413).json({ error: 'File too large. Maximum 50MB.' });
     }
     let scenes = [];
 
+    if (typeof text === 'string' && text.trim() && !url && !fileBase64) {
+      // Pasted script text — e.g. copied out of a Claude artifact (24 Nov 2026)
+      if (text.length > ScriptText.MAX_TEXT) return res.status(413).json({ error: 'That’s too much text to import at once — paste the script in two parts.' });
+      const lines = ScriptText.textToLines(text);
+      if (lines.length < 2) return res.status(400).json({ error: 'Paste the whole script — there’s too little text to split into scenes.' });
+      scenes = await linesToScenes(lines, 'Pasted script');
+      return res.json({ scenes });
+    }
+
     if (url) {
+      if (ScriptText.isClaudeLink(url)) return res.status(400).json({ error: ScriptText.CLAUDE_LINK_HELP, code: 'claude_link' });
       // Google Slides or Docs URL
       const isSlidesUrl = url.includes('/presentation/d/');
       const isDocsUrl   = url.includes('/document/d/');
       if (!isSlidesUrl && !isDocsUrl) {
-        return res.status(400).json({ error: 'URL must be a Google Slides or Google Docs link' });
+        return res.status(400).json({ error: 'Paste a Google Slides or Google Docs link — or paste the script text itself' });
       }
 
       // Extract file ID

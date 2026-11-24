@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { X, FileText, Sparkles, Upload, Loader2, ArrowLeft, Link, Package } from 'lucide-react';
 import clsx from 'clsx';
 import ProductionPicker from '../ui/ProductionPicker';
+import ImportLinkOrText from './ImportLinkOrText';
+import { importBody } from '../../lib/scriptImportInput';
 
 const API = import.meta.env.VITE_API_URL || '';
 function jwt() { return localStorage.getItem('cp_auth_token'); }
@@ -150,13 +152,14 @@ export default function NewScriptModal({ defaultProductionId, defaultBrandId, on
           headers: { Authorization: `Bearer ${jwt()}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ fileBase64: base64, fileName: importFile.name, mimeType: importFile.type }),
         });
-      } else if (importUrl.trim()) {
+      } else if (importBody(importUrl)) {
+        // A Google link, or pasted script text (e.g. from a Claude artifact)
         res = await fetch(`${API}/api/scripts/import`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${jwt()}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: importUrl }),
+          body: JSON.stringify(importBody(importUrl)),
         });
-      } else return;
+      } else { setImportStatus('idle'); return; }
       const data = await res.json();
       if (data.scenes && Array.isArray(data.scenes)) {
         setImportScenes(data.scenes);
@@ -220,7 +223,7 @@ export default function NewScriptModal({ defaultProductionId, defaultBrandId, on
               <h2 className="text-base font-black text-gray-900 leading-tight">
                 {step === 1 ? (title.trim() || 'Create a Script') :
                  step === 2 ? 'How do you want to start?' :
-                 method === 'ai' ? 'Describe your script' : 'Import from file or link'}
+                 method === 'ai' ? 'Describe your script' : 'Import a file, link or text'}
               </h2>
             </div>
           </div>
@@ -525,7 +528,7 @@ export default function NewScriptModal({ defaultProductionId, defaultBrandId, on
                       <div key={i} className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
                     ))}
                   </div>
-                  <p className="text-sm text-gray-500">Extracting scenes from your file...</p>
+                  <p className="text-sm text-gray-500">Extracting scenes{importFile ? ' from your file' : ''}...</p>
                 </div>
               )}
               {importStatus === 'preview' && (
@@ -569,23 +572,13 @@ export default function NewScriptModal({ defaultProductionId, defaultBrandId, on
                     <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,.ppt,.pptx" className="hidden" onChange={e => setImportFile(e.target.files[0])} />
                   </div>
 
-                  {/* URL input */}
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1 h-px bg-gray-100" />
-                    <span className="text-xs text-gray-400 shrink-0">or paste a link</span>
-                    <div className="flex-1 h-px bg-gray-100" />
-                  </div>
-                  <input
-                    value={importUrl}
-                    onChange={e => setImportUrl(e.target.value)}
-                    placeholder="https://docs.google.com/..."
-                    className="w-full border border-gray-200 rounded-2xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-emerald-300 focus:border-emerald-400 placeholder-gray-300"
-                  />
+                  {/* Link or pasted text */}
+                  <ImportLinkOrText value={importUrl} onChange={v => { setImportUrl(v); if (importError) setImportError(''); }} />
                   {importError && <p className="text-xs text-red-500">{importError}</p>}
 
                   <button
                     onClick={handleImportExtract}
-                    disabled={!importFile && !importUrl.trim()}
+                    disabled={!importFile && !importBody(importUrl)}
                     className="w-full py-3.5 bg-emerald-600 text-white rounded-2xl text-sm font-bold hover:bg-emerald-700 disabled:opacity-40 transition-all"
                   >
                     Extract Script

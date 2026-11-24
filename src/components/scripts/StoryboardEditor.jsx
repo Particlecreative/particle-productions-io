@@ -26,6 +26,8 @@ import VideoMatchModal from './VideoMatchModal';
 import ImageGalleryModal from './ImageGalleryModal';
 import { CommentSidebar, NameModal } from './CommentPanel';
 import ProductionPicker from '../ui/ProductionPicker';
+import ImportLinkOrText from './ImportLinkOrText';
+import { importBody } from '../../lib/scriptImportInput';
 
 const API = import.meta.env.VITE_API_URL || '';
 
@@ -1088,8 +1090,8 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
         };
         reader.readAsDataURL(importFile);
       });
-    } else if (importUrl.trim()) {
-      body = { url: importUrl.trim() };
+    } else if (importBody(importUrl)) {
+      body = importBody(importUrl);   // a Google link, or pasted script text (e.g. from a Claude artifact)
     } else {
       setImportLoading(false);
       return;
@@ -2409,13 +2411,8 @@ export default function StoryboardEditor({ scriptId, readOnly = false, onBack, o
                         <p className="text-xs text-gray-400 mt-1">PDF · DOC · DOCX · PPT · PPTX</p>
                         <input ref={importFileRef} type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.*" className="hidden" onChange={e => setImportFile(e.target.files[0])} />
                       </div>
-                      <div className="flex items-center gap-3">
-                        <div className="flex-1 h-px bg-gray-200" />
-                        <span className="text-xs text-gray-400">or paste a link</span>
-                        <div className="flex-1 h-px bg-gray-200" />
-                      </div>
-                      <input value={importUrl} onChange={e => setImportUrl(e.target.value)} placeholder="https://docs.google.com/presentation/d/..." className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-indigo-400" />
-                      <button onClick={handleImport} disabled={importLoading || (!importFile && !importUrl.trim())}
+                      <ImportLinkOrText value={importUrl} onChange={setImportUrl} accent="indigo" rounded="rounded-xl" />
+                      <button onClick={handleImport} disabled={importLoading || (!importFile && !importBody(importUrl))}
                         className="w-full py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-2">
                         {importLoading ? <><Loader2 size={14} className="animate-spin" /> Extracting...</> : 'Extract Script'}
                       </button>
