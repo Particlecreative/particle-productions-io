@@ -7,7 +7,7 @@ const BASE = '/api';
 
 // Finance rules answer some writes with 409/423 + a `code` (e.g. "the budget is approved — why?").
 // The FinancePromptHost registers here; the change is sent again with the answers, so every screen gets it for free.
-const FINANCE_CODES = new Set(['reason_required', 'postpone_required', 'stage_prompt', 'unlock_reason', 'unapprove_reason', 'locked', 'dates_from_lines', 'open_payments']);
+const FINANCE_CODES = new Set(['reason_required', 'postpone_required', 'stage_prompt', 'unlock_reason', 'unapprove_reason', 'locked', 'dates_from_lines', 'open_payments', 'ai_credits']);
 let financePrompt = null;
 export function setFinancePrompt(fn) { financePrompt = fn; }
 

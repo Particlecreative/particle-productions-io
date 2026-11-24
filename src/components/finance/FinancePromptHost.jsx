@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Lock, Sparkles, Loader2, X, CalendarClock, CheckCircle2, Wallet } from 'lucide-react';
 import { setFinancePrompt, apiGet } from '../../lib/apiClient';
 import { financeApi, REASONS, usd, dayLabel } from '../../lib/financeService';
+import AiCreditsDialog from './AiCreditsDialog';
 
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
 
@@ -26,6 +27,12 @@ export default function FinancePromptHost() {
     }));
     return () => setFinancePrompt(null);
   }, []);
+  // Local previews: open a prompt by hand (dev builds only — import.meta.env.DEV is false in production)
+  useEffect(() => {
+    if (!import.meta.env.DEV) return undefined;
+    window.__cpFinancePrompt = (payload) => new Promise((resolve) => { const item = { payload, sig: `dev ${Date.now()}`, resolvers: [resolve] }; currentRef.current = item; setCurrent(item); });
+    return () => { delete window.__cpFinancePrompt; };
+  }, []);
 
   function close(answer) {
     currentRef.current?.resolvers.forEach(r => r(answer));
@@ -39,6 +46,7 @@ export default function FinancePromptHost() {
   if (p.code === 'locked' || p.code === 'dates_from_lines') return <InfoDialog payload={p} onClose={() => close(null)} />;
   if (p.code === 'reason_required') return <ReasonDialog key={current.sig} payload={p} onDone={close} />;
   if (p.code === 'open_payments') return <OpenPaymentsDialog key={current.sig} payload={p} onDone={close} />;
+  if (p.code === 'ai_credits') return <AiCreditsDialog key={current.sig} payload={p} onDone={close} />;
   return <FlowDialog key={current.sig} payload={p} onDone={close} />;
 }
 

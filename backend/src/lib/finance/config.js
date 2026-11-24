@@ -28,6 +28,7 @@ const DEFAULTS = {
   nudges: true,
   weekly_digest: true,
   sheet_sync: true,
+  ai_credit_price_usd: 0.065,                      // Higgsfield: what one credit costs us (24 Nov 2026)
 };
 
 let cache = null, cachedAt = 0;

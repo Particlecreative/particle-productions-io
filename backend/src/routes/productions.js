@@ -236,6 +236,31 @@ router.patch('/:id', requireEditor, async (req, res) => {
       }
     }
   }
+  // AI credits (24 Nov 2026): into Wrap-up / Completed with Higgsfield / AI-credit lines → how many credits did it use?
+  // The answer becomes each line's actual (credits × the price in finance settings) before the stage moves.
+  if (stageEdit && [Wrapup.STAGE, 'Completed'].includes(stageEdit[1]) && stageEdit[1] !== B.normalizeStage(old.stage)) {
+    const AI = require('../lib/finance/aiCredits');
+    const fin = require('../lib/finance/service');
+    const fz = req.body?._finance || {};
+    let lines;
+    try { lines = (await db.query('SELECT * FROM production_line_items WHERE production_id = $1', [old.id])).rows; }
+    catch (err) { console.error('PATCH /productions ai credits lines:', err); return res.status(500).json({ error: 'Server error' }); }
+    if (AI.aiLines(lines).length) {
+      const cfg = await require('../lib/finance/config').get();
+      const price = Number(cfg.ai_credit_price_usd) > 0 ? Number(cfg.ai_credit_price_usd) : AI.DEFAULT_PRICE;
+      const rate = require('../lib/finance/fx').latest().rate;
+      const answer = AI.parseAnswer(fz.ai_credits, lines);
+      if (Object.keys(answer).length) {
+        try {
+          const out = await fin.changeLines({ productionId: old.id, ops: AI.updatesFor(answer, lines, { price, rate }), actor: fin.actorOf(req), decision: Events.parseDecision(req.body) });
+          if (fin.sendFinanceOutcome(res, out)) return;
+          require('../lib/finance/after').afterLines(old.id, out);
+        } catch (err) { return fin.sendFinanceError(res, err, 'PATCH /productions ai credits error'); }
+      } else if (!fz.ai_credits_skip && AI.pending(lines).length) {
+        return res.status(409).json(AI.prompt({ prod: old, lines, to: stageEdit[1], price, rate }));
+      }
+    }
+  }
   if (stageEdit && stageEdit[1] === Wrapup.STAGE && B.normalizeStage(old.stage) !== Wrapup.STAGE) {
     // Post is finished — finance gets one email: no more work, here's what's left to pay (no "work this month?" question)
     const from = B.normalizeStage(old.stage);
