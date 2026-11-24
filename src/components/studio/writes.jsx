@@ -132,6 +132,54 @@ export function useMondayWrites({ readOnly = false } = {}) {
     return true;
   }, [apply, readOnly]);
 
+  /**
+   * The same kind of change on many tasks at once (Tomer, 24 Nov 2026 — select tasks in a list, change their status
+   * or deadline together). nextOf(it) → the change for that task, or null to leave it. Optimistic, three at a time,
+   * one toast and one Undo for all of them; a task Monday refuses goes back and is counted.
+   */
+  const saveMany = useCallback(async (items, nextOf, label) => {
+    if (readOnly) { setToast({ error: true, text: 'View only — the studio schedules and moves tasks' }); return false; }
+    const jobs = items.map(it => ({ it, next: nextOf(it) })).filter(j => j.next && Object.keys(j.next).length);
+    if (!jobs.length) return false;
+    for (const j of jobs) {
+      j.prev = {};
+      for (const k of Object.keys(j.next)) j.prev[k] = k === 'timeline' || k === 'deadline' ? (j.it[k] || null) : j.it[k];
+      put(j.it.id, display(j.next));
+    }
+    setToast({ head: 'Updating Monday', text: `${jobs.length} task${jobs.length === 1 ? '' : 's'} · ${label}…` });
+    const run = async (list, pick) => {
+      const failed = []; let asUser = false; let i = 0;
+      const worker = async () => {
+        while (i < list.length) {
+          const j = list[i++];
+          try { const r = await studioApi.patchItem(j.it.id, body(pick === 'prev' ? { ...j.it, ...j.next } : j.it, j[pick])); asUser = asUser || !!r?.as_user; }
+          catch (e) { failed.push({ j, error: e.message }); }
+        }
+      };
+      await Promise.all([worker(), worker(), worker()]);
+      return { failed, asUser };
+    };
+    const { failed, asUser } = await run(jobs, 'next');
+    lastWrite = Date.now();
+    for (const f of failed) put(f.j.it.id, display(f.j.prev));
+    const bad = new Set(failed.map(f => f.j));
+    const ok = jobs.filter(j => !bad.has(j));
+    if (!ok.length) { setToast({ error: true, text: `Nothing changed — ${failed[0]?.error || 'Monday refused'}` }); return false; }
+    setToast({
+      head: asUser ? 'Updated on Monday as you' : 'Updated on Monday',
+      text: `${ok.length} task${ok.length === 1 ? '' : 's'} · ${label}${failed.length ? ` · ${failed.length} not saved (${failed[0].error})` : ''}`,
+      error: false,
+      undo: async () => {
+        setToast({ head: 'Undoing', text: `${ok.length} task${ok.length === 1 ? '' : 's'}…` });
+        for (const j of ok) put(j.it.id, display(j.prev));
+        const u = await run(ok, 'prev');
+        lastWrite = Date.now();
+        setToast(u.failed.length ? { error: true, text: `${u.failed.length} couldn’t be undone — ${u.failed[0].error}` } : { head: 'Undone on Monday', text: `${ok.length} task${ok.length === 1 ? '' : 's'} back as they were` });
+      },
+    });
+    return true;
+  }, [readOnly]);
+
   useEffect(() => {
     if (!toast || toastHover) return undefined;
     const t = setTimeout(() => setToast(null), toast.error ? 7000 : 12000);
@@ -147,5 +195,5 @@ export function useMondayWrites({ readOnly = false } = {}) {
       <button type="button" onClick={() => setToast(null)} className="opacity-60 hover:opacity-100 flex-none"><X size={14} /></button>
     </div>, document.body) : null;
 
-  return useMemo(() => ({ merge, save, archive, setToast, toastEl }), [merge, save, archive, toastEl]);
+  return useMemo(() => ({ merge, save, saveMany, archive, setToast, toastEl, readOnly }), [merge, save, saveMany, archive, toastEl, readOnly]);
 }
