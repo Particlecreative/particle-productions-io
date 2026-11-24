@@ -37,3 +37,25 @@ test('AI credits: the answer becomes each line’s actual, only for AI lines, wh
     { op: 'update', id: 'b', values: { actual_spent: 2112.5, custom_ai_credits: 10000, custom_ai_credit_price: 0.065 } },
   ]);
 });
+
+// The budget table's credits editor (src/lib/aiCredits.js) must agree with the server on which lines are AI lines,
+// what's saved, and the cost — or a typed-in line would still be asked at Wrap-up, or show a different number.
+test('AI credits: the budget table works it out the same way as the server', async () => {
+  const path = require('path');
+  const { pathToFileURL } = require('url');
+  const AUTO = require('../src/lib/finance/autoRules');
+  const W = await import(pathToFileURL(path.join(__dirname, '../../src/lib/aiCredits.js')).href);
+  const more = [...LINES,
+    { id: 'e', item: 'Higgsfield subscription' }, { id: 'f', item: 'AI tools', full_name: '' }, { id: 'g', item: 'Hair & makeup', full_name: 'Aimee Cohen' },
+    { id: 'h', item: 'Editing', supplier: 'higgsfield.ai' }, { id: 'i', item: 'Paid AI platform' }, { id: 'j', item: 'Retail' },
+    { id: 'k', item: 'AI credits', custom_fields: JSON.stringify({ custom_ai_credits: 500 }) }, { id: 'l', item: 'AI credits', custom_fields: { custom_ai_credits: null } }];
+  for (const l of more) {
+    assert.equal(W.isAiCredits(l), AUTO.isAiCredits(l), `isAiCredits ${l.id}`);
+    if (typeof l.custom_fields !== 'string') assert.equal(W.creditsOf(l), AI.creditsOf(l), `creditsOf ${l.id}`);
+  }
+  assert.equal(W.creditsOf(more.find(l => l.id === 'k')), 500);
+  for (const [n, cur] of [[12400, 'USD'], [10000, 'ILS'], [0, 'USD'], [7, 'ILS'], [123457, 'USD']]) {
+    assert.deepEqual(W.creditCost(n, { price: 0.065, currency: cur, rate: 3.25 }), AI.costOf(n, { price: 0.065, currency: cur, rate: 3.25 }));
+  }
+  assert.equal(W.DEFAULT_PRICE, AI.DEFAULT_PRICE);
+});

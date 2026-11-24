@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo, useRef, useCallback, Fragment } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback, Fragment } from 'react';
+import { createPortal } from 'react-dom';
 import { Plus, Trash2, Mail, FileSignature, ExternalLink, Download, Check, ChevronUp, ChevronDown, ChevronRight, SlidersHorizontal, X, Upload, User, CreditCard, AlertTriangle, FileSpreadsheet, GripVertical, Lock, Sparkles, Loader2, CalendarDays, GitBranch } from 'lucide-react';
 import { DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
@@ -29,6 +30,7 @@ import {
   getCCPurchases,
 } from '../../lib/dataService';
 import { getDownloadUrl } from '../../lib/invoiceUtils';
+import { isAiCredits, creditsOf, creditCost, DEFAULT_PRICE as AI_PRICE } from '../../lib/aiCredits';
 import { getTablePrefs, toggleColumnVisibility, updateSort } from '../../lib/tablePrefs';
 import { useLists } from '../../context/ListsContext';
 import InvoiceModal from './InvoiceModal';
@@ -81,6 +83,11 @@ export default function BudgetTable({ productionId, production, fin, onRefresh, 
 
   // Use production-specific delivery date rate, fallback to live rate
   const effectiveRate = prodRate || rate || 3.7;
+  // AI-credit lines: typed credits × our price (finance settings) → the line's actual, ILS at today's rate like the server
+  const aiCredit = useMemo(() => ({
+    price: Number(fin?.ai_credit_price) > 0 ? Number(fin.ai_credit_price) : AI_PRICE,
+    rate: Number(fin?.totals?.rate?.rate) || rate || 3.7,
+  }), [fin?.ai_credit_price, fin?.totals?.rate?.rate, rate]);
 
   // Per-row currency helpers (parseFloat handles PostgreSQL NUMERIC→string)
   function fmtRow(amount, code) {
@@ -817,6 +824,7 @@ export default function BudgetTable({ productionId, production, fin, onRefresh, 
                     sortable={isEditor && !sortState.col}
                     budgetLocked={budgetLocked}
                     onUpdateMany={handleUpdateMany}
+                    aiCredit={aiCredit}
                     onReadInvoice={async (lineId) => { try { await financeApi.readInvoice(lineId); } catch (e) { alert(e.message); } await refresh(); }}
                     onSelect={id => setSelectedIds(prev => {
                       const next = new Set(prev);
@@ -1156,13 +1164,16 @@ export default function BudgetTable({ productionId, production, fin, onRefresh, 
 
 const BUDGET_FIELDS = new Set(['item', 'full_name', 'planned_budget', 'type']);
 
-function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEditingCell, onUpdate, onDelete, onInvoice, onContract, lineItemTypes, lineItemStatuses, crewRoles = [], hiddenCols = [], customCols = [], onOpenCastModal, onPhotoFullscreen, ccChildren = [], isExpanded, onToggleExpand, isNew, showColors, contractRefreshKey = 0, isSelected = false, onSelect, sortable = false, budgetLocked = false, onUpdateMany, onReadInvoice }) {
+function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEditingCell, onUpdate, onDelete, onInvoice, onContract, lineItemTypes, lineItemStatuses, crewRoles = [], hiddenCols = [], customCols = [], onOpenCastModal, onPhotoFullscreen, ccChildren = [], isExpanded, onToggleExpand, isNew, showColors, contractRefreshKey = 0, isSelected = false, onSelect, sortable = false, budgetLocked = false, onUpdateMany, onReadInvoice, aiCredit }) {
   const vis = key => !hiddenCols.includes(key);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id, disabled: !sortable });
   const [reading, setReading] = useState(false);
   const flags = Array.isArray(item.invoice_flags) ? item.invoice_flags : [];
   const diff = (parseFloat(item.planned_budget) || 0) - (parseFloat(item.actual_spent) || 0);
   const isEditing = (field) => editingCell?.itemId === item.id && editingCell?.field === field;
+  const isAi = isAiCredits(item);
+  const aiCredits = isAi ? creditsOf(item) : null;
+  const actualTd = useRef(null);
   const contractKey = production ? `${production.id}_li_${item.id}` : null;
   const [contract, setContract] = useState(null);
   // Re-read when the supplier changes too: AI credits and repeating suppliers get "No contract needed" from the server
@@ -1486,7 +1497,25 @@ function BudgetRow({ item, isEditor, production, fmt, fmtRow, editingCell, setEd
           onSave={(v) => onUpdateMany?.(item.id, v)} />
       </td>}
 
-      {vis('actual_spent') && cell('actual_spent', <span>{fmtRow(item.actual_spent, item.currency_code || 'USD')}</span>)}
+      {vis('actual_spent') && (isAi ? (
+        // AI credits / Higgsfield: type the credits, the cost is worked out (24 Nov 2026)
+        <td ref={actualTd}
+          className={clsx(isEditor && 'cursor-pointer hover:bg-violet-50 transition-colors')}
+          onClick={isEditor ? () => setEditingCell({ itemId: item.id, field: 'actual_spent' }) : undefined}
+          title={aiCredits != null ? `${aiCredits.toLocaleString('en-US')} credits × $${Number(item.custom_fields?.custom_ai_credit_price || aiCredit?.price || AI_PRICE)}` : (isEditor ? 'Type the credits used — the cost is worked out' : undefined)}>
+          <span>{fmtRow(item.actual_spent, item.currency_code || 'USD')}</span>
+          {aiCredits != null ? (
+            <div className="flex items-center gap-0.5 text-[10px] font-semibold text-violet-600 whitespace-nowrap"><Sparkles size={9} /> {aiCredits.toLocaleString('en-US')} credits</div>
+          ) : isEditor ? (
+            <div className="flex items-center gap-0.5 text-[10px] text-violet-400 whitespace-nowrap"><Sparkles size={9} /> type credits</div>
+          ) : null}
+          {isEditor && isEditing('actual_spent') && (
+            <AiCreditsEdit anchor={actualTd.current} item={item} price={aiCredit?.price || AI_PRICE} rate={aiCredit?.rate || 3.7}
+              onClose={() => setEditingCell(null)}
+              onSave={async (updates) => { await onUpdateMany?.(item.id, updates); setEditingCell(null); }} />
+          )}
+        </td>
+      ) : cell('actual_spent', <span>{fmtRow(item.actual_spent, item.currency_code || 'USD')}</span>))}
 
       {/* Difference */}
       {vis('difference') && <td className={clsx('font-semibold', diff >= 0 ? 'diff-positive' : 'diff-negative')}>
@@ -1893,6 +1922,147 @@ function CastModalFromBudget({ item, production, onSave, onClose }) {
       </div>
     </div>
   );
+}
+
+/**
+ * AI credits / Higgsfield line — "write how many credits and calculate it yourself" (Tomer, 24 Nov 2026).
+ * Credits × our price → the line's actual (ILS lines at today's rate), live; the credits stay on the line, so the
+ * Wrap-up question doesn't ask for them again. "Type the amount instead" keeps the old way.
+ */
+const AI_EDIT_W = 300;
+function AiCreditsEdit({ anchor, item, price, rate, onSave, onClose }) {
+  const currency = String(item.currency_code || 'USD').toUpperCase() === 'ILS' ? 'ILS' : 'USD';
+  const sym = currency === 'ILS' ? '₪' : '$';
+  const had = creditsOf(item);
+  const [mode, setMode] = useState('credits');
+  const [raw, setRaw] = useState(had != null ? String(had) : '');
+  const [amt, setAmt] = useState(() => { const n = parseFloat(item.actual_spent) || 0; return n ? String(n) : ''; });
+  const [pos, setPos] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  useLayoutEffect(() => {
+    if (!anchor) return undefined;
+    const place = () => {
+      const r = anchor.getBoundingClientRect();
+      const h = 270;
+      const left = Math.max(8, Math.min(r.left, window.innerWidth - AI_EDIT_W - 8));
+      const top = r.bottom + h + 8 > window.innerHeight && r.top - h - 6 > 8 ? r.top - h - 6 : r.bottom + 6;
+      setPos({ left, top });
+    };
+    place();
+    window.addEventListener('scroll', place, true);
+    window.addEventListener('resize', place);
+    return () => { window.removeEventListener('scroll', place, true); window.removeEventListener('resize', place); };
+  }, [anchor]);
+
+  const credits = raw === '' ? null : Number(raw);
+  const cost = credits == null ? null : creditCost(credits, { price, currency, rate });
+  const planned = parseFloat(item.planned_budget) || 0;
+  const typed = parseFloat(String(amt).replace(/[,\s]/g, ''));
+  const shown = mode === 'credits' ? cost?.amount : (Number.isFinite(typed) ? typed : null);
+  const pct = shown != null && planned > 0 ? (shown / planned) * 100 : null;
+  const over = pct != null && pct > 100;
+  const barColor = pct == null ? '#c7d2fe' : over ? '#dc2626' : pct > 85 ? '#f59e0b' : '#10b981';
+  const money = (n) => (currency === 'ILS' ? `₪${Math.round(n).toLocaleString('en-US')}` : `$${Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+  const canSave = mode === 'credits' ? credits != null : (Number.isFinite(typed) && typed >= 0);
+
+  async function save() {
+    if (saving || !canSave) return;
+    let updates;
+    if (mode === 'credits') {
+      if (credits === had && Math.abs((parseFloat(item.actual_spent) || 0) - cost.amount) < 0.005) { onClose(); return; }
+      updates = { actual_spent: cost.amount, custom_ai_credits: credits, custom_ai_credit_price: price };
+    } else {
+      const n = Math.round(typed * 100) / 100;
+      if (Math.abs((parseFloat(item.actual_spent) || 0) - n) < 0.005) { onClose(); return; }
+      // A typed amount replaces the credits — so the line never shows credits that don't match its cost
+      updates = { actual_spent: n, ...(had != null ? { custom_ai_credits: null, custom_ai_credit_price: null } : {}) };
+    }
+    setSaving(true);
+    try { await onSave(updates); } finally { setSaving(false); }
+  }
+  const keys = (e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') onClose(); };
+
+  if (!pos) return null;
+  return createPortal(
+    // Clicks stay here — React passes portal events up to the table cell, which would reopen the editor
+    <div onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
+      <div className="fixed inset-0 z-[60]" onMouseDown={onClose} />
+      <div className="fixed z-[61] bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden text-left"
+        style={{ left: pos.left, top: pos.top, width: AI_EDIT_W }} role="dialog" aria-label="AI credits">
+        <div className="flex items-center gap-2 px-3 py-2" style={{ background: 'linear-gradient(135deg, #f5f3ff 0%, #eef2ff 100%)' }}>
+          <div className="w-6 h-6 rounded-md flex items-center justify-center text-white shrink-0" style={{ background: 'linear-gradient(135deg, #7c3aed, #4f46e5)' }}><Sparkles size={13} /></div>
+          <div className="min-w-0 flex-1">
+            <div className="text-[13px] font-bold text-gray-900 leading-tight">{mode === 'credits' ? 'AI credits used' : 'Actual spent'}</div>
+            <div className="text-[11px] text-gray-500 leading-tight">{mode === 'credits' ? `$${price} a credit${currency === 'ILS' ? ` · ₪${Number(rate).toFixed(3)}/$ today` : ''}` : `typed in ${currency}`}</div>
+          </div>
+          <button type="button" onClick={onClose} className="p-1 rounded text-gray-400 hover:text-gray-700 hover:bg-white/70" aria-label="Close"><X size={14} /></button>
+        </div>
+
+        <div className="px-3 pt-3 pb-2.5">
+          {mode === 'credits' ? (
+            <label className="relative block">
+              <span className="sr-only">Credits used</span>
+              <input autoFocus inputMode="numeric" placeholder="0"
+                value={raw === '' ? '' : Number(raw).toLocaleString('en-US')}
+                onChange={e => setRaw(String(e.target.value).replace(/[^\d]/g, '').slice(0, 9))}
+                onKeyDown={keys}
+                className="w-full rounded-lg border border-gray-200 bg-gray-50 focus:bg-white focus:border-violet-400 focus:ring-2 focus:ring-violet-100 pl-3 pr-16 py-2 text-[18px] font-bold tabular-nums text-gray-900 outline-none placeholder:text-gray-300" />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-gray-400 pointer-events-none">credits</span>
+            </label>
+          ) : (
+            <label className="relative block">
+              <span className="sr-only">Actual spent in {currency}</span>
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[15px] font-bold text-gray-400 pointer-events-none">{sym}</span>
+              <input autoFocus inputMode="decimal" placeholder="0" value={amt}
+                onChange={e => setAmt(String(e.target.value).replace(/[^\d.,]/g, '').slice(0, 14))}
+                onKeyDown={keys}
+                className="w-full rounded-lg border border-gray-200 bg-gray-50 focus:bg-white focus:border-violet-400 focus:ring-2 focus:ring-violet-100 pl-8 pr-3 py-2 text-[18px] font-bold tabular-nums text-gray-900 outline-none placeholder:text-gray-300" />
+            </label>
+          )}
+
+          {mode === 'credits' && (
+            <div className="flex items-baseline justify-between mt-2.5">
+              <span className="text-[11px] text-gray-400">{credits == null ? 'type the credits from the Higgsfield account' : `${credits.toLocaleString('en-US')} × $${price}`}</span>
+              <span className="text-right">
+                <span className={`block text-[20px] font-black tabular-nums leading-none ${cost ? 'text-gray-900' : 'text-gray-300'}`}>${(cost?.usd ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                {currency === 'ILS' && cost && <span className="block text-[11px] text-gray-400 tabular-nums mt-0.5">{money(cost.amount)} on the line</span>}
+              </span>
+            </div>
+          )}
+
+          {planned > 0 && (
+            <div className="mt-2.5">
+              <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                <div className="h-full rounded-full" style={{ width: `${Math.min(100, pct ?? 0)}%`, background: barColor, transition: 'width .4s cubic-bezier(.16,1,.3,1), background-color .3s' }} />
+              </div>
+              <div className="flex justify-between mt-1 text-[11px] tabular-nums">
+                <span className="font-semibold" style={{ color: pct == null ? '#9ca3af' : barColor }}>
+                  {pct == null ? `planned ${money(planned)}` : over ? `${money(shown - planned)} over the plan` : `${Math.round(pct)}% of the ${money(planned)} plan`}
+                </span>
+                {had != null && mode === 'credits' && credits !== had && <span className="text-gray-400">was {had.toLocaleString('en-US')}</span>}
+              </div>
+            </div>
+          )}
+          {mode === 'amount' && had != null && (
+            <p className="mt-2 text-[11px] text-amber-600">Saving an amount clears the {had.toLocaleString('en-US')} credits on this line.</p>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 px-3 py-2 border-t border-gray-100 bg-gray-50/60">
+          <button type="button" onClick={() => setMode(m => (m === 'credits' ? 'amount' : 'credits'))}
+            className="mr-auto text-[11px] font-semibold text-violet-600 hover:underline">
+            {mode === 'credits' ? 'Type the amount instead' : 'Type credits instead'}
+          </button>
+          <button type="button" onClick={onClose} className="px-2.5 py-1 rounded-md text-[12px] font-semibold text-gray-600 bg-white border border-gray-200 hover:bg-gray-50">Cancel</button>
+          <button type="button" onClick={save} disabled={!canSave || saving}
+            className="px-3 py-1 rounded-md text-[12px] font-semibold text-white disabled:opacity-40 inline-flex items-center gap-1 shadow-sm"
+            style={{ background: 'linear-gradient(135deg, #7c3aed, #4f46e5)' }}>
+            {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />} Save
+          </button>
+        </div>
+      </div>
+    </div>, document.body);
 }
 
 function InlineEdit({ value, onSave, type = 'text', suggestions = [] }) {

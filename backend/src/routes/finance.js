@@ -94,6 +94,8 @@ router.get('/productions/:id', async (req, res) => {
       parent_id: prod.parent_id, children: kids,
       dates_from_lines: !!B.spanFromLines(lines),
       totals: { per_currency: ctx.perCurrency(lines), usd: B.round2(usdTotal), rate: fx.quote() },
+      // What one AI credit costs us — the budget table turns typed credits into the line's actual (24 Nov 2026)
+      ai_credit_price: Number(cfg.ai_credit_price_usd) > 0 ? Number(cfg.ai_credit_price_usd) : 0.065,
       payment_plan: ctx.paymentPlan(prod, lines, cfg),
       missing_invoices: ctx.missingInvoiceLines(prod, lines, `${W.localDate(Date.now()).slice(0, 7)}-01`),
       approvers: cfg.approvers,
