@@ -10,6 +10,7 @@ import clsx from 'clsx';
 // RULE (Tomer): every change to the growth team's panel updates this section AND adds a dated line to "What's new".
 const GROWTH_WHATS_NEW = [
   { date: '25 Nov 2026', items: [
+    '📁 New tickets — from New ticket or from the Briefs Creator — get their folders made for them: video tickets a Dropbox folder and a Frame.io folder, design tickets a Dropbox folder. The links are on the ticket and in the brief. TV tickets get their Frame.io folder in “Productions”, next to the commercial’s other cuts.',
     '🧭 Briefs Creator → Market Watch → new “Built like Particle”: brands with a business like ours in other categories (Upspring Lookalikes — e.g. Harry’s, Intake Breathing) and the ads they keep running for months. Each has “Brief from this”, plus a weekly “Outside idea”.',
     '🧴 The competitor brands in Market Watch now come from Upspring Lookalikes — Particle’s closest rivals, refreshed every Sunday. Brands added by hand stay; removed ones don’t come back.',
     '💬 A task’s updates now look like Monday’s: formatting and tables, pictures and files (click a picture to see it big), likes, who has seen each update, pinned updates first, replies under each update and a search. Status changes show as coloured labels. New tabs: Files (everything on the task) and Activity (status moves, who was put on it, date changes — day by day).',
@@ -53,6 +54,7 @@ const GROWTH_WHATS_NEW = [
 // this section and adds a dated line to CREATIVE_WHATS_NEW (same rule as the Growth team's).
 const CREATIVE_WHATS_NEW = [
   { date: '25 Nov 2026', items: [
+    '🎬 A video ticket made in CP (New ticket or Briefs Creator) already has its Frame.io folder — Video › year › month › product › the ticket (TV: Productions › product › the commercial). Upload your cuts there; the link is on the task.',
     '🎉 Your own CP: Home, My Studio (Board · My tasks · Week), New ticket, Briefs Creator, Productions, TV + Ads Library, On Air, My AfterLife and the Team Weekly — no need to open Monday for your day-to-day.',
     '🔗 Paste your Frame.io (video) or Figma (design) link right on the task — “Your delivery” at the top, or “+ Frame.io link” on the card. Once it’s saved CP asks if it should go to Review.',
     '🔔 Notifications: when your task’s status moves, someone writes or tags you, you’re put on a task, or your ad goes live on Meta. Choose what you get in 🔔 → ⚙️.',
@@ -125,6 +127,7 @@ const CREATIVE_CATEGORY = {
         { type: 'guide', title: 'Status', steps: ['Its status, “Move to …” for the next step in one click, and “Other status” for the rest.'] },
         { type: 'guide', title: 'Your delivery — Frame.io / Figma', steps: [
           'Video: paste the Frame.io review link. Design: paste the Figma link. The Dropbox folder is made with the ticket — open or copy it right there.',
+          'A video ticket made in CP comes with its Frame.io folder already (Video › year › month › product › the ticket; TV: Productions › product › the commercial). Upload there — or replace it with your review link.',
           '“Paste” reads what you copied and saves it straight away (only the right kind of link is accepted).',
           'Then CP asks: “Ready to send it to Review?” — one click and it moves.',
           'Copy and Replace are next to a saved link.',
@@ -263,7 +266,7 @@ const GROWTH_CATEGORY = {
         { type: 'guide', title: 'How', steps: [
           'Write what you need like you’d tell the team — paste links, add files or screenshots.',
           'The assistant picks Video or Design, fills the Monday form and asks only what’s missing.',
-          'Submit → the ticket is on Monday (as you, when your Monday is connected), with a Dropbox folder for the finished files.',
+          'Submit → the ticket is on Monday (as you, when your Monday is connected), with a Dropbox folder for the finished files — and for video a Frame.io folder for the cuts. Both links are on the ticket and in the brief.',
         ]},
       ],
     },

@@ -110,19 +110,21 @@ async function accessToken({ forceRefresh = false } = {}) {
 let legacyHeader = false;
 function setLegacyHeader(v) { legacyHeader = !!v; }
 
-async function api(pathAndQuery, { retry = true } = {}) {
+async function api(pathAndQuery, { retry = true, method = 'GET', body = null } = {}) {
   const tk = await accessToken();
   const headers = { Authorization: `Bearer ${tk}`, Accept: 'application/json' };
   if (legacyHeader) headers['x-frameio-legacy-token-auth'] = 'true';
-  const res = await fetch(`${API}${pathAndQuery}`, { headers, signal: AbortSignal.timeout(15000) });
+  if (body) headers['Content-Type'] = 'application/json';
+  const res = await fetch(`${API}${pathAndQuery}`, { method, headers, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(15000) });
   if (res.status === 401 && retry) {
     await accessToken({ forceRefresh: true }).catch(() => null);
-    return api(pathAndQuery, { retry: false });
+    return api(pathAndQuery, { retry: false, method, body });
   }
   if (res.status === 429 && retry) {
-    const ra = Number(res.headers.get('retry-after')) || 2;
-    await new Promise(r => setTimeout(r, Math.min(ra, 10) * 1000));
-    return api(pathAndQuery, { retry: false });
+    // folder creation is limited to ~10 a minute per user — wait what Frame.io asks (up to 20 s), once
+    const ra = Number(res.headers.get('retry-after')) || 6;
+    await new Promise(r => setTimeout(r, Math.min(ra, 20) * 1000));
+    return api(pathAndQuery, { retry: false, method, body });
   }
   const data = await res.json().catch(() => null);
   if (!res.ok) {
@@ -346,4 +348,5 @@ async function keepalive() {
 module.exports = {
   configured, authorizeUrl, verifyState, exchangeCode, accessToken, resolveAccount,
   resolveShortLink, parseLink, listing, fileMediaUrl, status, disconnect, keepalive, setLegacyHeader,
+  api, listChildren,
 };

@@ -578,7 +578,9 @@ async function submitToMonday(b, req, cfg) {
     const n = r.references?.attached?.length || 0;
     const refNote = n ? ` · reference attached (${n} file${n === 1 ? '' : 's'} in Relevant Files)` : '';
     const campNote = r.campaign ? ` · campaign “${r.campaign}”` : '';
-    return { ok: true, item_id: r.item_id, message: `Created on Monday${r.as_user ? ' as you' : ''} (item ${r.item_id})${campNote}${refNote}${captain}${r.skipped.length ? ` · not set: ${r.skipped.join('; ')}` : ''}` };
+    const made = [r.folders?.dropbox && 'Dropbox', r.folders?.frame && 'Frame.io'].filter(Boolean);
+    const folderNote = made.length ? ` · ${made.join(' + ')} folder${made.length > 1 ? 's' : ''} made` : '';
+    return { ok: true, item_id: r.item_id, message: `Created on Monday${r.as_user ? ' as you' : ''} (item ${r.item_id})${campNote}${folderNote}${refNote}${captain}${r.skipped.length ? ` · not set: ${r.skipped.join('; ')}` : ''}` };
   } catch (e) {
     await db.query(`UPDATE medium_briefs SET error = $2, updated_at = NOW() WHERE id = $1`, [b.id, `Monday: ${String(e.message).slice(0, 500)}`]).catch(() => null);
     return { ok: false, message: `Approved, but Monday creation failed: ${e.message} — use "Create on Monday" to try again` };

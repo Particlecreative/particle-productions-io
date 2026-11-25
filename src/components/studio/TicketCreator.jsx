@@ -208,6 +208,11 @@ export default function TicketCreator({ api = studioApi, share = null }) {
         )}
         {!share && created.dropbox?.error && <div className="text-xs text-amber-700 mt-2">{created.dropbox.error}</div>}
         {!share && created.dropbox === null && <div className="text-xs text-gray-400 mt-2">No Dropbox folder — Dropbox isn’t connected yet (Studio → Connections).</div>}
+        {!share && created.frame?.url && (
+          <div className="text-xs text-gray-500 mt-1.5">🎬 <a href={created.frame.url} target="_blank" rel="noopener noreferrer" className="text-[#0808f8] hover:underline">{String(created.frame.path || 'Frame.io folder').split(' / ').join(' › ')}</a>{created.frame.in_column ? ' · in the Frame column' : ''}{created.frame.reused ? ' · its folder was already there' : ''}</div>
+        )}
+        {!share && created.frame?.error && <div className="text-xs text-amber-700 mt-1.5">{created.frame.error}</div>}
+        {!share && created.frame === null && <div className="text-xs text-gray-400 mt-1.5">No Frame.io folder — Frame.io isn’t connected (Creative Weekly → Frame.io).</div>}
         <div className="flex justify-center gap-2 mt-6">
           {created.url && <a href={created.url} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold px-5 py-2.5 rounded-xl text-white flex items-center gap-1.5" style={{ background: '#0808f8' }}>Open in Monday <ExternalLink size={14} /></a>}
           <button type="button" onClick={reset} className="text-sm font-semibold px-5 py-2.5 rounded-xl border border-gray-200 hover:bg-gray-50">{share ? 'Request another' : 'New ticket'}</button>

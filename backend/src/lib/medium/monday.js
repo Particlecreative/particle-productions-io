@@ -117,7 +117,7 @@ function columnValues(b, { labels = {}, requesterId = null, campaign = null } = 
  * Concept, Don'ts, Hook (or hook variations), Script / Message laid out by beat (or Supporting Text), Test, and a
  * one-line Why at the end. Monday updates take simple HTML.
  */
-function briefHtml(b, approver, refs = [], { asUser = false, author = null } = {}) {
+function briefHtml(b, approver, refs = [], { asUser = false, author = null, folders = null } = {}) {
   const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const br = (s) => esc(s).replace(/\n/g, '<br>');
   const f = b.fields || {};
@@ -166,6 +166,8 @@ function briefHtml(b, approver, refs = [], { asUser = false, author = null } = {
     video ? section('Script / Message', script) : section('Supporting Text', f.copy ? `<p>${br(f.copy)}</p>` : ''),
     f.test ? section('What we\u2019re testing', `<p>${esc(String(f.test).replace(/^test:\s*/i, ''))}</p>`) : '',
     f.why ? `<p><em>Why: ${esc(String(f.why).replace(/^why:\s*/i, ''))}</em></p>` : '',
+    // where the work goes — the ticket's own Dropbox / Frame.io folders
+    ...require('../studio/ticketFolders').folderLines(folders).map(l => `<p>${l}</p>`),
     // who it's from (Tomer, 17 Nov 2026): the person who asked for it and who approved it, by name. Created with their
     // own Monday it already shows as theirs; created with CP's account it says who sent it.
     `<p><em>${briefSignature({ approver, author: author || b.author, asUser })}</em></p>`,
@@ -261,6 +263,12 @@ async function submitBrief(b, { approver, approverEmail = null, cfg = {}, user =
       .catch(e => skipped.push(`campaign “${campaignNew}”: ${e.message}`));
   }
   monday.clearCache('studio:');   // the Campaign Tracker shows it straight away
+  // its folders, like a New ticket (Tomer, 25 Nov 2026): video → Dropbox + Frame.io, design → Dropbox, links in their columns
+  const folders = await require('../studio/ticketFolders').makeTicketFolders({
+    board: format, itemId, itemName: ticketName(b, campaign.name), department: DEPARTMENT[format], brand: b.request?.brand || 'Particle',
+    product: b.product, platform: 'Meta', campaigns: campaign.name ? [campaign.name] : [],
+  }).catch(e => ({ error: e.message }));
+  for (const k of ['dropbox', 'frame']) if (folders?.[k]?.error) skipped.push(folders[k].error);
   // the reference first, so the update can say where it is
   const refs = await require('./templateRef').withTemplate(b, { upspringLink: cfg.upspring_link });
   const up = R.attachable(refs).length ? await attachReferences(itemId, format, refs) : null;
@@ -268,11 +276,12 @@ async function submitBrief(b, { approver, approverEmail = null, cfg = {}, user =
   const inUpdate = new Set((up?.later || []).map(l => l.f.ref));
   const shown = refs.map(r => ({ ...r, attached: inColumn.has(r) ? 'column' : inUpdate.has(r) ? 'update' : null }));
   const u = await mondayQuery('mutation ($i: ID!, $body: String!) { create_update(item_id: $i, body: $body) { id } }',
-    { i: itemId, body: briefHtml(b, approver, shown, { asUser: !!user?.token }) }, as)
+    { i: itemId, body: briefHtml(b, approver, shown, { asUser: !!user?.token, folders }) }, as)
     .catch(e => { skipped.push(`brief update: ${e.message}`); return null; });
   const references = up ? await up.finish(u?.create_update?.id || null) : { attached: [], failed: [] };
   if (references.failed.length) skipped.push(`reference: ${references.failed.join('; ')}`);
-  return { item_id: String(itemId), board_id: boardId, skipped, references, campaign: campaign.name, as_user: !!user?.token };
+  return { item_id: String(itemId), board_id: boardId, skipped, references, campaign: campaign.name, as_user: !!user?.token,
+    folders: { dropbox: folders?.dropbox?.url || null, frame: folders?.frame?.url || null } };
 }
 
 const forgetLabels = () => labelCache.clear();
