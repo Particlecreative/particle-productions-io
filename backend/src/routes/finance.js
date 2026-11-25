@@ -106,6 +106,16 @@ router.get('/productions/:id', async (req, res) => {
 });
 
 // Approve the budget: freezes the Planned Budget, emails finance
+// Close all completed (Tomer, 25 Nov 2026): lock every Completed production whose budget is still open — no emails
+router.get('/close-completed', requireAdmin, async (req, res) => {
+  try { const list = await require('../lib/finance/closeDone').openCompleted(); res.json({ count: list.length, productions: list.map(p => ({ id: p.id, name: p.project_name, brand_id: p.brand_id })) }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+router.post('/close-completed', requireAdmin, async (req, res) => {
+  try { res.json(await require('../lib/finance/closeDone').closeAllCompleted({ actor: req.user?.name || 'Admin', userId: req.user?.id || null })); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 router.post('/productions/:id/approve', requireAdmin, async (req, res) => {
   const client = await db.connect();
   try {

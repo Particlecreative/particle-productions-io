@@ -42,3 +42,27 @@ test('accrual emails are off by default (Tomer, 25 Nov 2026) — the report is s
     assert.equal(await A.send(r, { name: 'Tomer' }), r);   // no email, stays approved
   } finally { cfg.get = orig; }
 });
+
+test('Completed = closed: closeOne locks once, writes history + a log-only finance event, and skips an already locked one', async () => {
+  const C = require('../src/lib/finance/closeDone');
+  const calls = [];
+  let locked = false;
+  const client = { query: async (sql, params) => {
+    calls.push({ sql: String(sql).replace(/\s+/g, ' ').trim(), params });
+    if (/^UPDATE productions SET locked = TRUE/.test(String(sql).trim())) {
+      if (locked) return { rows: [] };
+      locked = true;
+      return { rows: [{ id: 'PRD26-01', brand_id: 'particle', project_name: 'Sample' }] };
+    }
+    return { rows: [{ id: 1 }] };
+  } };
+  assert.equal(await C.closeOne(client, { id: 'PRD26-01' }, { actor: 'Tomer' }), true);
+  assert.ok(calls.some(c => /INSERT INTO change_history/.test(c.sql) && c.params.includes('Tomer')));
+  const ev = calls.find(c => /INSERT INTO finance_events/.test(c.sql));
+  assert.ok(ev, 'a finance event is written');
+  assert.ok(ev.params.includes('locked'));
+  assert.ok(ev.params.includes(null), 'notify is null — no email');
+  const n = calls.length;
+  assert.equal(await C.closeOne(client, { id: 'PRD26-01' }), false);   // already closed → nothing else written
+  assert.equal(calls.length, n + 1);
+});

@@ -59,7 +59,7 @@ function changeText(e) {
  * The finance dashboard — same view for finance (the shared link) and inside CP.
  * onOpen(production) opens a production; onConfirm(id) is finance's "Confirmed" on a closed production.
  */
-export default function FinanceDashboardView({ data, onOpen, onConfirm, brand, onBrand, productionHref }) {
+export default function FinanceDashboardView({ data, onOpen, onConfirm, onCloseAll, brand, onBrand, productionHref }) {
   const [q, setQ] = useState('');
   const [show, setShow] = useState('open'); // open | closed | all
   const prods = useMemo(() => (data?.productions || []).filter(p =>
@@ -173,6 +173,12 @@ export default function FinanceDashboardView({ data, onOpen, onConfirm, brand, o
               <button key={v} type="button" onClick={() => setShow(v)} className={`px-2.5 py-1 rounded-md ${show === v ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}>{l}</button>
             ))}
           </div>
+          {onCloseAll && k.not_locked > 0 && (
+            <button type="button" onClick={onCloseAll} title="Lock the budget of every Completed production that isn’t locked yet — logged, no emails"
+              className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full text-white" style={{ background: NAVY }}>
+              <Lock size={12} /> Close all completed ({k.not_locked})
+            </button>
+          )}
           <div className="ml-auto relative">
             <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
             <input value={q} onChange={e => setQ(e.target.value)} placeholder="Code or name" className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg w-48" />

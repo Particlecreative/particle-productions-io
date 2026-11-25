@@ -366,8 +366,15 @@ router.patch('/:id', requireEditor, async (req, res) => {
       if (events.some(e => (Events.KIND[e.kind] ?? null) === 'instant')) require('../lib/finance/notify').run().catch(e => console.error('[finance] notify:', e.message));
     }
 
+    // Completed = closed (Tomer, 25 Nov 2026): the budget locks by itself — logged, no extra email (finance got "completed")
+    let closedNow = false;
+    if (B.normalizeStage(rows[0].stage) === 'Completed' && B.normalizeStage(old.stage) !== 'Completed' && !rows[0].locked) {
+      try {
+        closedNow = await require('../lib/finance/closeDone').closeOne(db, rows[0], { actor: req.user?.name || 'CP', userId: req.user?.id || null, note: 'Closed automatically when it was marked Completed.' });
+      } catch (e) { console.error('[finance] close on complete:', e.message); }
+    }
     triggerFinanceSync(rows[0].id); // refresh sheet title/status if one is linked
-    const out = { ...rows[0], previous_stage: old.stage };
+    const out = { ...rows[0], previous_stage: old.stage, ...(closedNow ? { locked: true, auto_closed: true } : {}) };
     // Into Wrap-up with nothing left to pay → it completes straight away (same rule as when the last line is paid)
     if (stageEdit && Wrapup.isWrap(rows[0].stage) && !Wrapup.isWrap(old.stage)) {
       try { if (await Wrapup.settle(rows[0].id, { actor: { name: req.user?.name || null } })) { out.stage = 'Completed'; out.auto_completed = true; } } catch (e) { console.error('[wrap-up] settle:', e.message); }

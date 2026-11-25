@@ -40,6 +40,7 @@ export const financeApi = {
   approveAccrual: (id) => apiPost(`/finance/accruals/${enc(id)}/approve`, {}),
   accrualCsvUrl: (id, brand) => `/api/finance/accruals/${enc(id)}/csv?brand=${enc(brand)}`,
   dashboard: (brand) => apiGet(`/finance/dashboard${brand ? `?brand=${enc(brand)}` : ''}`),
+  closeCompleted: () => apiPost('/finance/close-completed', {}),
   yearBudgets: (year) => apiGet(`/finance/year-budgets${year ? `?year=${year}` : ''}`),
   saveYearBudget: (brandId, year, amountUsd) => apiPut('/finance/year-budgets', { brand_id: brandId, year, amount_usd: amountUsd }),
 };

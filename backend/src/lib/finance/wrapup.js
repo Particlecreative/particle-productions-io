@@ -102,6 +102,8 @@ async function settle(productionId, { actor = null } = {}) {
       note: 'Every supplier is paid — CP marked it Completed by itself.',
       meta: { auto: true, work_this_month: false },
     }]);
+    // Completed = closed (25 Nov 2026): lock the budget in the same transaction (logged, no extra email)
+    await require('./closeDone').closeOne(client, prod, { actor: actor?.name || 'CP', note: 'Closed automatically — every supplier is paid and it’s Completed.' });
     await client.query('COMMIT');
     try { require('../financeSheet').triggerFinanceSync(productionId); } catch { /* sheet is best-effort */ }
     console.log(`[wrap-up] ${productionId} — every supplier paid → Completed`);

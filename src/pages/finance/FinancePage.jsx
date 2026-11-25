@@ -78,7 +78,15 @@ function DashboardTab() {
         <span className="text-xs text-gray-400">Sign-in is a code emailed to the addresses in Settings — no CP account needed.</span>
       </div>
       {err && <div className="text-sm text-red-600">{err}</div>}
-      {!data ? <Spinner /> : <FinanceDashboardView data={data} brand={brand} onBrand={setBrand} productionHref={(p) => `/production/${encodeURIComponent(p.id)}`} onOpen={(p) => p?.id && window.open(`/production/${encodeURIComponent(p.id)}`, '_self')} />}
+      {!data ? <Spinner /> : <FinanceDashboardView data={data} brand={brand} onBrand={setBrand} productionHref={(p) => `/production/${encodeURIComponent(p.id)}`} onOpen={(p) => p?.id && window.open(`/production/${encodeURIComponent(p.id)}`, '_self')}
+        onCloseAll={async () => {
+          if (!window.confirm(`Close (lock) every Completed production that isn’t closed yet? Their budgets freeze — an admin can reopen one with a reason. No emails are sent.`)) return;
+          try {
+            const r = await financeApi.closeCompleted();
+            alert(`${r.closed} production${r.closed === 1 ? '' : 's'} closed.${r.failed?.length ? ` ${r.failed.length} couldn’t be closed.` : ''}`);
+            setData(null); financeApi.dashboard(brand).then(setData).catch(e => setErr(e.message));
+          } catch (e) { alert(e.message); }
+        }} />}
     </div>
   );
 }
