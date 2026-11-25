@@ -12,6 +12,7 @@ const GROWTH_WHATS_NEW = [
   { date: '25 Nov 2026', items: [
     '🧭 Briefs Creator → Market Watch → new “Built like Particle”: brands with a business like ours in other categories (Upspring Lookalikes — e.g. Harry’s, Intake Breathing) and the ads they keep running for months. Each has “Brief from this”, plus a weekly “Outside idea”.',
     '🧴 The competitor brands in Market Watch now come from Upspring Lookalikes — Particle’s closest rivals, refreshed every Sunday. Brands added by hand stay; removed ones don’t come back.',
+    '💬 A task’s updates now look like Monday’s: formatting and tables, pictures and files (click a picture to see it big), likes, who has seen each update, pinned updates first, replies under each update and a search. Status changes show as coloured labels. New tabs: Files (everything on the task) and Activity (status moves, who was put on it, date changes — day by day).',
   ] },
   { date: '24 Nov 2026', items: [
     '📦 New: Creative Studio → By product — every product, week by week: how many video and design tickets are due, how far along they are (Done = ready to go live) and which ones are for Meta. Filter Meta / Not Meta and Video / Design; click a number to see the tickets.',

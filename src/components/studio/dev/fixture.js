@@ -152,11 +152,46 @@ function spreadEffort(it, pid, days, today, r) {
   return Object.keys(out).length ? { [pid]: out } : {};
 }
 
-export function fixtureUpdates(itemId) {
+// A task's conversation (25 Nov 2026 redesign): formatting, files, likes, seen by, a pin, replies, a status change
+const fxPic = (hue, label) => `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="hsl(${hue},70%,62%)"/><stop offset="1" stop-color="hsl(${hue + 40},70%,40%)"/></linearGradient></defs><rect width="640" height="480" fill="url(#g)"/><text x="320" y="255" font-family="Arial" font-size="40" font-weight="700" fill="white" text-anchor="middle">${label}</text></svg>`)}`;
+export function fixtureUpdates(itemId, page = 1) {
   const at = (h) => new Date(Date.now() - h * 3600e3).toISOString();
-  return { updates: [
-    { id: `${itemId}-2`, text: 'First cut is up on Frame.io — please check the hook in the first 3 seconds.', at: at(5), by: { id: '102', name: 'Itai Cohen' }, replies: [{ id: `${itemId}-r`, text: 'Looks great, just tighten the end card.', at: at(3), by: { id: '301', name: 'Avi Levi' } }] },
-    { id: `${itemId}-1`, text: 'Department: Marketing/Media | Product: Face Cream | Versions Needed: 2 | Sizes Needed: 9x16, 4x5\n\nConcept\n-------\n\nA 15s cut of the Hunt spot for Meta, opening on the close-up of the fox.\n\nKeep the end card from the TV version.', at: at(50), by: { id: '301', name: 'Avi Levi' }, replies: [] },
+  const file = (id, name, ext, size, by, h, pic) => ({ id, name, ext, size, image: !!pic, url: pic || null, thumb: pic || null, at: at(h), by });
+  const upd = (o) => ({ html: '', text: '', likes: [], seen: [], files: [], pinned: false, replies: [], ...o });
+  if (page > 1) return { item_name: 'Philadelphia Bus Station Poster Campaign for Gravité', page, more: false, updates: [
+    upd({ id: `${itemId}-0`, text: 'Kick-off: ticket opened from the Studio.', html: '<p>Kick-off: ticket opened from the Studio.</p>', at: at(170), by: { id: '301', name: 'Avi Levi' } }),
+  ] };
+  const updates = [
+    upd({ id: `${itemId}-6`, text: 'Philadelphia Bus Station Poster Campaign for Gravité Status was changed from Working to Review', at: at(2), by: { id: '202', name: 'Lior Katz' } }),
+    upd({ id: `${itemId}-5`, at: at(4), by: { id: '102', name: 'Itai Cohen' },
+      html: '<p><a class="user_mention_editor router" href="https://x.monday.com/users/301" data-mention-type="User" data-mention-id="301">@Avi Levi</a> first cut is up — <b>please check the hook in the first 3 seconds</b>.</p><ul><li>Version A: fox close-up opener</li><li>Version B: product first</li></ul><p>Frame.io: <a href="https://f.io/abc123">f.io/abc123</a></p>',
+      text: '@Avi Levi first cut is up — please check the hook in the first 3 seconds.\nVersion A: fox close-up opener\nVersion B: product first\nFrame.io: f.io/abc123',
+      likes: [{ id: '301', name: 'Avi Levi' }, { id: '202', name: 'Lior Katz' }], seen: [{ id: '301', name: 'Avi Levi' }, { id: '202', name: 'Lior Katz' }, { id: '103', name: 'Dana Mizrahi' }],
+      files: [file('f1', 'Gravite_Poster_A.png', 'png', 812000, 'Itai Cohen', 4, fxPic(230, 'Poster A')), file('f2', 'Gravite_Poster_B.png', 'png', 790000, 'Itai Cohen', 4, fxPic(280, 'Poster B')), file('f3', 'Bus_Shelter_Specs.pdf', 'pdf', 1402831, 'Itai Cohen', 4)],
+      replies: [
+        upd({ id: `${itemId}-5r1`, text: 'Looks great — B is stronger. Just tighten the end card.', html: '<p>Looks great — <b>B</b> is stronger. Just tighten the end card.</p>', at: at(3), by: { id: '301', name: 'Avi Levi' }, likes: [{ id: '102', name: 'Itai Cohen' }] }),
+        upd({ id: `${itemId}-5r2`, text: 'On it, new end card in an hour 👍', at: at(2.5), by: { id: '102', name: 'Itai Cohen' } }),
+      ] }),
+    upd({ id: `${itemId}-4`, at: at(26), by: { id: '301', name: 'Avi Levi' }, pinned: true,
+      html: '<p><b>Brief</b></p><table><thead><tr><td>Department</td><td>Product</td><td>Sizes</td></tr></thead><tbody><tr><td>Marketing/Media</td><td>Gravité</td><td>9x16, 4x5, 1x1</td></tr></tbody></table><p>Bus-station posters in Philadelphia, opening on the close-up of the fox. Keep the end card from the TV version.</p><p><em>— Avi Levi, via CP Studio</em></p>',
+      text: 'Brief\nDepartment Product Sizes\nMarketing/Media Gravité 9x16, 4x5, 1x1\nBus-station posters in Philadelphia, opening on the close-up of the fox. Keep the end card from the TV version.\n— Avi Levi, via CP Studio',
+      seen: [{ id: '102', name: 'Itai Cohen' }, { id: '202', name: 'Lior Katz' }],
+      files: [file('f4', 'Gravite_Logo_Pack.ai', 'ai', 1635471, 'Avi Levi', 26), file('f5', 'Moodboard.jpg', 'jpg', 455000, 'Avi Levi', 26, fxPic(30, 'Moodboard'))] }),
+    upd({ id: `${itemId}-3`, text: 'Philadelphia Bus Station Poster Campaign for Gravité Status was changed from Pending to Working', at: at(30), by: { id: '102', name: 'Itai Cohen' } }),
+  ];
+  const files = updates.flatMap(u => [...u.files, ...u.replies.flatMap(r => r.files)]);
+  return { item_name: 'Philadelphia Bus Station Poster Campaign for Gravité', page: 1, more: true, updates, files };
+}
+
+export function fixtureActivity() {
+  const at = (h) => new Date(Date.now() - h * 3600e3).toISOString();
+  return { events: [
+    { id: 'a6', at: at(2), by: { id: '202', name: 'Lior Katz' }, kind: 'status', from: 'Working', to: 'Review' },
+    { id: 'a5', at: at(5), by: { id: '301', name: 'Avi Levi' }, kind: 'deadline', from: '2026-11-24', to: '2026-11-27' },
+    { id: 'a4', at: at(28), by: { id: '301', name: 'Avi Levi' }, kind: 'people', added: [{ id: '102', name: 'Itai Cohen' }], removed: [{ id: '103', name: 'Dana Mizrahi' }] },
+    { id: 'a3', at: at(29), by: { id: '301', name: 'Avi Levi' }, kind: 'timeline', from: { from: '2026-11-20', to: '2026-11-21' }, to: { from: '2026-11-24', to: '2026-11-26' } },
+    { id: 'a2', at: at(30), by: { id: '102', name: 'Itai Cohen' }, kind: 'status', from: '', to: 'Working' },
+    { id: 'a1', at: at(52), by: { id: '301', name: 'Avi Levi' }, kind: 'created' },
   ] };
 }
 

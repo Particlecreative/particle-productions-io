@@ -188,21 +188,25 @@ function updateHtml(body, author, mentions = []) {
 const MENTIONS_API_VERSION = '2025-10';
 
 // token: their own Monday → the comment is theirs on Monday, so it carries no "— name, via CP Studio" line
-async function postUpdate(config, itemId, text, author, mentions = [], { token = null } = {}) {
+// parentId: a reply to that update (25 Nov 2026) — Monday threads it under the update
+async function postUpdate(config, itemId, text, author, mentions = [], { token = null, parentId = null } = {}) {
   const body = String(text || '').trim();
   if (!body) throw bad('Write something first');
   if (body.length > 5000) throw bad('That update is too long');
+  if (parentId && !/^\d+$/.test(String(parentId))) throw bad('Bad update id');
   await boardOf(config, itemId);
   const done = await asPerson(token, async (t) => {
     const { html, tags } = updateHtml(body, t ? null : author, mentions);
-    const vars = { item: String(itemId), body: html };
+    const vars = { item: String(itemId), body: html, ...(parentId ? { parent: String(parentId) } : {}) };
+    const parentArg = parentId ? ', parent_id: $parent' : '';
+    const parentVar = parentId ? ', $parent: ID' : '';
     if (tags.length) {
       vars.mentions = tags.map(x => ({ id: x.id, type: 'User' }));
       // mentions_list only exists from API 2025-07 (CP runs on 2024-10, where tagging failed: "Unknown argument") — 17 Nov 2026
-      const r = await mondayQuery('mutation ($item: ID!, $body: String!, $mentions: [UpdateMention]) { create_update(item_id: $item, body: $body, mentions_list: $mentions) { id } }', vars, { retries: 0, apiVersion: MENTIONS_API_VERSION, token: t });
+      const r = await mondayQuery(`mutation ($item: ID!, $body: String!, $mentions: [UpdateMention]${parentVar}) { create_update(item_id: $item, body: $body, mentions_list: $mentions${parentArg}) { id } }`, vars, { retries: 0, apiVersion: MENTIONS_API_VERSION, token: t });
       return { id: String(r?.create_update?.id || ''), mentioned: tags.map(x => x.id) };
     }
-    const r = await mondayQuery('mutation ($item: ID!, $body: String!) { create_update(item_id: $item, body: $body) { id } }', vars, { retries: 0, token: t });
+    const r = await mondayQuery(`mutation ($item: ID!, $body: String!${parentVar}) { create_update(item_id: $item, body: $body${parentArg}) { id } }`, vars, { retries: 0, token: t, ...(parentId ? { apiVersion: MENTIONS_API_VERSION } : {}) });
     return { id: String(r?.create_update?.id || ''), mentioned: [] };
   });
   return { ...done.result, as_user: done.as_user, ...(done.refused ? { refused: done.refused } : {}) };

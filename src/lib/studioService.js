@@ -68,8 +68,26 @@ export const studioApi = {
   inspiration: async () => (LIVE ? call('/inspiration') : (await fx()).fixtureInspiration),
   patchItem: async (itemId, body) => (LIVE ? call(`/items/${itemId}`, { method: 'PATCH', body }) : { ok: true }),
   archiveItem: async (itemId) => (LIVE ? call(`/items/${itemId}/archive`, { method: 'POST', body: { confirm: true } }) : { ok: true }),
-  updates: async (itemId) => (LIVE ? call(`/items/${itemId}/updates`) : (await fx()).fixtureUpdates(itemId)),
-  postUpdate: async (itemId, text, mentions = []) => (LIVE ? call(`/items/${itemId}/updates`, { method: 'POST', body: { text, mentions } }) : { id: String(Date.now()), mentioned: mentions.map(m => m.id) }),
+  // A task's conversation (25 Nov 2026): page by page; the first page also lists the task's files
+  updates: async (itemId, page = 1) => (LIVE ? call(`/items/${itemId}/updates${page > 1 ? `?page=${page}` : ''}`) : (await fx()).fixtureUpdates(itemId, page)),
+  /** Post an update or a reply (parentId), with up to 5 files → multipart when there are files */
+  postUpdate: async (itemId, { text = '', mentions = [], parentId = null, files = [] } = {}) => {
+    if (!LIVE) { await new Promise(r => setTimeout(r, 400)); return { id: String(Date.now()), mentioned: mentions.map(m => m.id), uploaded: files.map(f => f.name) }; }
+    if (!files.length) return call(`/items/${itemId}/updates`, { method: 'POST', body: { text, mentions, parent_id: parentId } });
+    const t = localStorage.getItem('cp_auth_token');
+    const fd = new FormData();
+    fd.append('text', text);
+    fd.append('mentions', JSON.stringify(mentions));
+    if (parentId) fd.append('parent_id', parentId);
+    for (const f of files) fd.append('files', f, f.name || 'file');
+    const res = await fetch(`${BASE}/items/${itemId}/updates`, { method: 'POST', headers: t ? { Authorization: `Bearer ${t}` } : {}, body: fd });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new StudioError(data.error || (res.status === 413 ? 'Those files are too large' : `Posting failed (${res.status})`), res.status);
+    return data;
+  },
+  likeUpdate: async (itemId, updateId, on) => (LIVE ? call(`/items/${itemId}/updates/${updateId}/like`, { method: 'POST', body: { on } }) : { ok: true, liked: on }),
+  editUpdate: async (itemId, updateId, text, mentions = []) => (LIVE ? call(`/items/${itemId}/updates/${updateId}`, { method: 'PUT', body: { text, mentions } }) : { ok: true, html: `<p>${text.replace(/</g, '&lt;')}</p>` }),
+  activity: async (itemId) => (LIVE ? call(`/items/${itemId}/activity`) : (await fx()).fixtureActivity(itemId)),
   /** A file for the ticket creator (multipart) → { id, name, mime, size, kind, readable } */
   uploadTicketFile: async (file) => {
     if (!LIVE) {

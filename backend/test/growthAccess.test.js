@@ -12,7 +12,7 @@ test('Growth gate: the Growth Studio is open', () => {
   const ok = [
     ['GET', '/api/auth/me'], ['GET', '/api/brands'], ['GET', '/api/settings/particle'], ['GET', '/api/notifications'],
     ['GET', '/api/productions'], ['GET', '/api/productions/PRD26-20'], ['GET', '/api/library'], ['GET', '/api/library/productions/PRD26-20'],
-    ['GET', '/api/studio/dashboard'], ['GET', '/api/studio/campaign-groups'], ['GET', '/api/studio/items/123/updates'], ['GET', '/api/studio/campaigns'], ['GET', '/api/studio/ticket-form'], ['POST', '/api/studio/ticket/draft'], ['POST', '/api/studio/ticket/submit'],
+    ['GET', '/api/studio/dashboard'], ['GET', '/api/studio/campaign-groups'], ['GET', '/api/studio/items/123/updates'], ['GET', '/api/studio/items/123/activity'], ['GET', '/api/studio/campaigns'], ['GET', '/api/studio/ticket-form'], ['POST', '/api/studio/ticket/draft'], ['POST', '/api/studio/ticket/submit'],
     ['GET', '/api/medium/briefs'], ['GET', `/api/medium/briefs/${ID}`], ['POST', '/api/medium/generate'], ['POST', '/api/medium/freeform'],
     ['PUT', `/api/medium/briefs/${ID}`], ['POST', `/api/medium/briefs/${ID}/approve`], ['POST', `/api/medium/briefs/${ID}/submit`],
     ['GET', '/api/me/monday'], ['POST', '/api/me/monday/token'], ['GET', '/api/me/monday/connect'], ['DELETE', '/api/me/monday'], ['POST', '/api/me/activity'],
@@ -28,6 +28,7 @@ test('Growth gate: money, admin, moving work and Medium settings are closed', ()
     ['PATCH', '/api/productions/PRD26-20'], ['POST', '/api/productions'], ['GET', '/api/productions/PRD26-20/history'], ['GET', '/api/tracker'],
     ['PATCH', '/api/studio/items/123'], ['POST', '/api/studio/items/123/archive'], ['PUT', '/api/studio/autoplan'], ['POST', '/api/studio/fit'], ['PUT', '/api/studio/campaign-groups'],
     ['POST', '/api/studio/ticket-link'], ['GET', '/api/studio/connections'],
+    ['POST', '/api/studio/items/123/updates'], ['POST', '/api/studio/items/123/updates/456/like'], ['PUT', '/api/studio/items/123/updates/456'],
     ['PUT', '/api/medium/config'], ['POST', '/api/medium/buyer-signal'], ['POST', '/api/medium/market/refresh'], ['POST', '/api/medium/corpus/ingest'], ['PUT', '/api/medium/surveys/key'], ['POST', '/api/medium/autopilot/run'],
     ['POST', '/api/medium/campaigns/backfill'], ['POST', '/api/medium/mass/produce'], ['GET', '/api/activity'], ['POST', '/api/library/items'],
   ];

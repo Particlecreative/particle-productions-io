@@ -23,7 +23,7 @@ const GROWTH_ALLOW = [
   [/^GET$/, /^\/api\/studio\/dashboard$/],                       // the studio's live data (Overview, Workload, By product) — 24 Nov: was /api/studio, which doesn't exist, so Growth saw zeros
   [/^GET$/, /^\/api\/studio\/(campaigns|campaign-groups|my-requests)$/],
   [/^GET$/, /^\/api\/studio\/(ticket-form|ticket-link)$/],
-  [/^GET$/, /^\/api\/studio\/items\/\d+\/updates$/],               // read a task's brief & updates (posting stays closed)
+  [/^GET$/, /^\/api\/studio\/items\/\d+\/(updates|activity)$/],     // read a task's brief & updates and its history (posting, likes and edits stay closed)
   [/^POST$/, /^\/api\/studio\/ticket\/(draft|files|submit)$/],
   // Medium — their own briefs: write, edit, approve, reject, submit. No settings, sources, keys, corpus, autopilot
   // the full Medium to read (Today, Market Watch, Behind the scenes — nothing secret in these: keys are sealed elsewhere)

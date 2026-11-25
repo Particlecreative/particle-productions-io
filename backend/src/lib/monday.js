@@ -346,8 +346,9 @@ function statusValue(statusMap, label) {
 }
 
 /** Upload a file through Monday's file endpoint (multipart; the mutation's $file is the uploaded part). */
-async function uploadFile(query, { name, mime, buffer }) {
-  const token = process.env.MONDAY_API_TOKEN;
+// token: the person's own Monday (their upload shows as theirs); default CP's account
+async function uploadFile(query, { name, mime, buffer }, { token: tokenOverride = null } = {}) {
+  const token = tokenOverride || process.env.MONDAY_API_TOKEN;
   if (!token) throw new MondayError('Monday.com API token not configured (MONDAY_API_TOKEN)', { code: 'NO_TOKEN' });
   const form = new FormData();
   form.append('query', query);
@@ -364,9 +365,9 @@ async function uploadFile(query, { name, mime, buffer }) {
 }
 
 /** Attach a file to an update — it shows in the update and in the item's Files tab. */
-function addFileToUpdate(updateId, file) {
+function addFileToUpdate(updateId, file, opts = {}) {
   if (!/^\d+$/.test(String(updateId))) throw new MondayError('Bad update id');
-  return uploadFile(`mutation ($file: File!) { add_file_to_update(update_id: ${updateId}, file: $file) { id } }`, file);
+  return uploadFile(`mutation ($file: File!) { add_file_to_update(update_id: ${updateId}, file: $file) { id } }`, file, opts);
 }
 
 /** Attach a file to an item's file column. */

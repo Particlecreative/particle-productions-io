@@ -12,7 +12,7 @@ const { decide } = require('../lib/studio/tvLinks');
 const { dailyInspiration, tmdbConfigured, testTmdb } = require('../lib/studio/inspiration');
 const secrets = require('../lib/studio/secrets');
 const { getCreativeConfig } = require('../lib/creative/config');
-const { updateTask, getUpdates, postUpdate, archiveTask } = require('../lib/studio/write');
+const { updateTask, archiveTask } = require('../lib/studio/write');
 const tickets = require('../lib/studio/tickets');
 const monday = require('../lib/monday');
 const bamboo = require('../lib/studio/bamboohr');
@@ -219,18 +219,55 @@ router.post('/items/:itemId/archive', async (req, res) => {
   } catch (err) { errorJson(res, err); }
 });
 
-// Updates (comments) — read the brief and the conversation, and reply, without opening Monday
+// Updates (comments), Monday-style (25 Nov 2026): formatting, files, likes, seen by, pins, replies — read, post, reply,
+// like and edit your own without opening Monday. lib/studio/updates.js
+const UPD = require('../lib/studio/updates');
+const updateFiles = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024, files: 5 } });
 router.get('/items/:itemId/updates', async (req, res) => {
   try {
     const config = await getCreativeConfig(req.brandId);
-    res.json({ updates: await getUpdates(config, req.params.itemId) });
+    res.json(await UPD.listUpdates(config, req.params.itemId, { page: req.query.page }));
   } catch (err) { errorJson(res, err); }
 });
 
-router.post('/items/:itemId/updates', async (req, res) => {
+// JSON { text, mentions, parent_id } — or multipart with up to 5 "files" (mentions as a JSON string)
+router.post('/items/:itemId/updates', (req, res) => {
+  updateFiles.array('files', 5)(req, res, async (err) => {
+    try {
+      if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'Files can be up to 50 MB each' : err.code === 'LIMIT_FILE_COUNT' ? 'Up to 5 files at a time' : err.message });
+      const config = await getCreativeConfig(req.brandId);
+      let mentions = req.body?.mentions;
+      if (typeof mentions === 'string') { try { mentions = JSON.parse(mentions); } catch { mentions = []; } }
+      // Browsers send UTF-8 names that multer reads as latin1 (Hebrew names, dashes…)
+      const files = (req.files || []).map(f => ({ name: Buffer.from(f.originalname || 'file', 'latin1').toString('utf8'), mime: f.mimetype, buffer: f.buffer }));
+      if (!String(req.body?.text || '').trim() && !files.length) return res.status(400).json({ error: 'Write something first' });
+      res.json(await UPD.post(config, req.params.itemId, {
+        text: req.body?.text, mentions, parentId: req.body?.parent_id || null, files,
+        author: req.user?.name || req.user?.email || null, mine: await mine(req),
+      }));
+    } catch (e) { errorJson(res, e); }
+  });
+});
+
+router.post('/items/:itemId/updates/:updateId/like', async (req, res) => {
   try {
     const config = await getCreativeConfig(req.brandId);
-    res.json(await postUpdate(config, req.params.itemId, req.body?.text, req.user?.name || req.user?.email || null, req.body?.mentions, { token: (await mine(req))?.token }));
+    res.json(await UPD.like(config, req.params.itemId, req.params.updateId, req.body?.on !== false, await mine(req)));
+  } catch (err) { errorJson(res, err); }
+});
+
+router.put('/items/:itemId/updates/:updateId', async (req, res) => {
+  try {
+    const config = await getCreativeConfig(req.brandId);
+    res.json(await UPD.edit(config, req.params.itemId, req.params.updateId, req.body?.text, req.body?.mentions, await mine(req)));
+  } catch (err) { errorJson(res, err); }
+});
+
+// The task's history (status moves, people, timeline and deadline changes) from Monday's activity log
+router.get('/items/:itemId/activity', async (req, res) => {
+  try {
+    const config = await getCreativeConfig(req.brandId);
+    res.json(await UPD.activity(config, req.params.itemId));
   } catch (err) { errorJson(res, err); }
 });
 
