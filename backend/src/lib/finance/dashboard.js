@@ -89,8 +89,11 @@ async function build({ brandId = null } = {}) {
 
   for (const { prod, lines, months, state } of all) {
     const totals = ctx.totalsOf(lines);
-    const open = !prod.locked;
     const stage = B.normalizeStage(prod.stage);
+    // Open = still running (Tomer, 25 Nov 2026: "why do I see completed productions in Open?") — a Completed / Cancelled
+    // production is closed even when nobody locked its budget yet (then it's "not locked" — finance confirms after the 🔒)
+    const doneUnlocked = !prod.locked && B.isDone(stage);
+    const open = !prod.locked && !doneUnlocked;
     const hasActivity = lines.length || B.isApproved(prod) || ['Pre Production', 'Production', 'Post', 'Wrap-up'].includes(stage);
     if (!hasActivity) continue;
     for (const [m, v] of Object.entries(months)) {
@@ -109,7 +112,7 @@ async function build({ brandId = null } = {}) {
     if (miss.length) missing.push({ production_id: prod.id, code: B.financeCode(prod.id), name: prod.project_name, brand_id: prod.brand_id, items: miss });
     productions.push({
       id: prod.id, code: B.financeCode(prod.id), name: prod.project_name, brand_id: prod.brand_id, company: companyOf(prod.brand_id).short,
-      parent_id: prod.parent_id || null, stage: B.normalizeStage(prod.stage), open, closed_at: prod.locked_at, closed_by: prod.locked_by,
+      parent_id: prod.parent_id || null, stage: B.normalizeStage(prod.stage), open, not_locked: doneUnlocked, closed_at: prod.locked_at, closed_by: prod.locked_by,
       confirmed_at: prod.finance_confirmed_at, confirmed_by: prod.finance_confirmed_by,
       approved: B.isApproved(prod), approved_at: prod.budget_approved_at, approved_by: prod.budget_approved_by,
       planned_usd: B.num(prod.planned_budget_2026), expected_usd: totals.expectedUsd, actual_usd: totals.actualUsd, paid_usd: totals.paidUsd,
@@ -137,7 +140,8 @@ async function build({ brandId = null } = {}) {
       payments: { d30: B.round2(pay30.usd), d60: B.round2(pay60.usd), d90: B.round2(pay90.usd) },
       missing_invoices: missing.reduce((s, g) => s + g.items.length, 0),
       open_productions: productions.filter(p => p.open).length,
-      to_confirm: productions.filter(p => !p.open && !p.confirmed_at).length,
+      to_confirm: productions.filter(p => !p.open && !p.not_locked && !p.confirmed_at).length,
+      not_locked: productions.filter(p => p.not_locked).length,
     },
     impact: { this_month_usd: B.round2(impact.this_month), past_months_usd: B.round2(impact.past_months), future_months_usd: B.round2(impact.future_months) },
     surprise,
@@ -163,7 +167,8 @@ async function production(id) {
   const { rows: kids } = await db.query('SELECT id, project_name FROM productions WHERE parent_id = $1 ORDER BY id', [id]);
   return {
     id: prod.id, code: B.financeCode(prod.id), name: prod.project_name, brand_id: prod.brand_id, company: companyOf(prod.brand_id).short, company_legal: companyLine(prod.brand_id),
-    parent_id: prod.parent_id, children: kids, stage: B.normalizeStage(prod.stage), open: !prod.locked, closed_at: prod.locked_at, closed_by: prod.locked_by,
+    parent_id: prod.parent_id, children: kids, stage: B.normalizeStage(prod.stage), open: !prod.locked && !B.isDone(B.normalizeStage(prod.stage)),
+    not_locked: !prod.locked && B.isDone(B.normalizeStage(prod.stage)), closed_at: prod.locked_at, closed_by: prod.locked_by,
     confirmed_at: prod.finance_confirmed_at, confirmed_by: prod.finance_confirmed_by,
     approved: state.approved, approved_at: prod.budget_approved_at, approved_by: prod.budget_approved_by,
     state, totals: ctx.totalsOf(lines), per_currency: ctx.perCurrency(lines),

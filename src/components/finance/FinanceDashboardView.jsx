@@ -169,7 +169,7 @@ export default function FinanceDashboardView({ data, onOpen, onConfirm, brand, o
         <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-3 flex-wrap">
           <h3 className="font-bold text-gray-900">Productions</h3>
           <div className="flex rounded-lg bg-gray-100 p-0.5 text-xs font-semibold">
-            {[['open', `Open (${k.open_productions})`], ['closed', `Closed${k.to_confirm ? ` · ${k.to_confirm} to confirm` : ''}`], ['all', 'All']].map(([v, l]) => (
+            {[['open', `Open (${k.open_productions})`], ['closed', `Closed${k.to_confirm ? ` · ${k.to_confirm} to confirm` : ''}${k.not_locked ? ` · ${k.not_locked} not locked` : ''}`], ['all', 'All']].map(([v, l]) => (
               <button key={v} type="button" onClick={() => setShow(v)} className={`px-2.5 py-1 rounded-md ${show === v ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}>{l}</button>
             ))}
           </div>
@@ -205,6 +205,8 @@ export default function FinanceDashboardView({ data, onOpen, onConfirm, brand, o
                   <td className="px-3 py-2.5">
                     {p.open ? (
                       <span className="text-xs font-semibold text-gray-700">{p.stage || 'Open'}</span>
+                    ) : p.not_locked ? (
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-gray-500" title="The production is done, but its budget isn’t locked (🔒) yet — lock it on the production page, then finance can confirm">{p.stage || 'Completed'} · budget not locked yet</span>
                     ) : p.confirmed_at ? (
                       <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700"><CheckCircle2 size={12} /> Closed · confirmed</span>
                     ) : (
@@ -225,7 +227,7 @@ export default function FinanceDashboardView({ data, onOpen, onConfirm, brand, o
                   <td className="px-3 py-2.5 text-right whitespace-nowrap">
                     {p.sheet_url && <a href={p.sheet_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-emerald-700 hover:underline mr-2">Sheet <ExternalLink size={10} /></a>}
                     {productionHref && <a href={productionHref(p)} className="text-xs text-blue-600 hover:underline mr-2">CP</a>}
-                    {onConfirm && !p.open && !p.confirmed_at && (
+                    {onConfirm && !p.open && !p.not_locked && !p.confirmed_at && (
                       <button type="button" onClick={() => onConfirm(p)} className="text-xs font-bold px-2.5 py-1 rounded-full text-white" style={{ background: NAVY }}>Confirm closed</button>
                     )}
                   </td>
