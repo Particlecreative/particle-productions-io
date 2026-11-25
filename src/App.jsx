@@ -77,6 +77,9 @@ const MyStudioPage = lazyPage(() => import('./pages/creative-team/MyStudio'));
 const MyAfterlifePage = lazyPage(() => import('./pages/creative-team/MyAfterlife'));
 const TeamWeeklyPage = lazyPage(() => import('./pages/creative-team/TeamWeekly'));
 const PasswordsPage = lazyPage(() => import('./pages/studio/Passwords'));
+const MyHRPage = lazyPage(() => import('./pages/hr/MyHR'));
+const HRPanelPage = lazyPage(() => import('./pages/hr/HRPanel'));
+const TimeTrackingPage = lazyPage(() => import('./pages/timetrack/TimeTracking'));
 const ProductionsViewPage = lazyPage(() => import('./pages/creative-team/ProductionsView'));
 
 function DeckSplash() {
@@ -99,11 +102,11 @@ if (typeof window !== 'undefined') {
 }
 
 // Growth team (17 Nov 2026): one place — every other page sends them to the Growth Studio (the API refuses the rest anyway)
-const GROWTH_PATHS = ['/creative-studio', '/medium', '/new-ticket', '/campaigns', '/on-air', '/ads-library', '/tv-productions', '/tv-library', '/growth', '/welcome', '/manual'];
+const GROWTH_PATHS = ['/creative-studio', '/medium', '/new-ticket', '/campaigns', '/on-air', '/ads-library', '/tv-productions', '/tv-library', '/growth', '/my-hr', '/welcome', '/manual'];
 
 // Creative team — video editors & designers (25 Nov 2026): their own CP. Home, their Studio, briefs, tickets, productions
 // and libraries without money, On Air without money, My AFTERLIFE, the team's weekly (viewer only), Monday, Manual.
-const CREATIVE_PATHS = ['/home', '/my-studio', '/medium', '/new-ticket', '/productions-view', '/tv-library', '/ads-library', '/on-air', '/my-afterlife', '/team-weekly', '/passwords', '/welcome', '/manual'];
+const CREATIVE_PATHS = ['/home', '/my-studio', '/medium', '/new-ticket', '/productions-view', '/tv-library', '/ads-library', '/on-air', '/my-afterlife', '/team-weekly', '/passwords', '/my-hr', '/welcome', '/manual'];
 const CREATIVE_RE = [/^\/creative-reports\/[0-9a-f-]{36}\/present$/];   // the team deck, presented
 
 function ProtectedRoute({ children, adminOnly = false, blockForAccounting = false, blockForStudio = false }) {
@@ -201,6 +204,9 @@ function AppRoutes() {
         <Route path="/my-afterlife" element={<ProtectedRoute blockForAccounting><AppShell><ErrorBoundary>{lazyEl(<MyAfterlifePage />)}</ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="/team-weekly" element={<ProtectedRoute blockForAccounting><AppShell><ErrorBoundary>{lazyEl(<TeamWeeklyPage />)}</ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="/passwords" element={<ProtectedRoute blockForAccounting><AppShell><ErrorBoundary>{lazyEl(<PasswordsPage />)}</ErrorBoundary></AppShell></ProtectedRoute>} />
+        <Route path="/my-hr" element={<ProtectedRoute><AppShell><ErrorBoundary>{lazyEl(<MyHRPage />)}</ErrorBoundary></AppShell></ProtectedRoute>} />
+        <Route path="/hr" element={<ProtectedRoute adminOnly><AppShell><ErrorBoundary>{lazyEl(<HRPanelPage />)}</ErrorBoundary></AppShell></ProtectedRoute>} />
+        <Route path="/time-tracking" element={<ProtectedRoute blockForAccounting blockForStudio><AppShell><ErrorBoundary>{lazyEl(<TimeTrackingPage />)}</ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="/productions-view" element={<ProtectedRoute blockForAccounting><AppShell><ErrorBoundary>{lazyEl(<ProductionsViewPage />)}</ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="/activity" element={<ProtectedRoute adminOnly><AppShell><ErrorBoundary>{lazyEl(<TeamActivityPage />)}</ErrorBoundary></AppShell></ProtectedRoute>} />
         <Route path="/tracker" element={<ProtectedRoute blockForAccounting blockForStudio><AppShell><ErrorBoundary>{lazyEl(<TrackerPage />)}</ErrorBoundary></AppShell></ProtectedRoute>} />

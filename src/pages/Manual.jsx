@@ -9,6 +9,10 @@ import clsx from 'clsx';
 // ─── Growth team (17 Nov 2026) ─────────────────────────────────────────────────
 // RULE (Tomer): every change to the growth team's panel updates this section AND adds a dated line to "What's new".
 const GROWTH_WHATS_NEW = [
+  { date: '25 Nov 2026 — later', items: [
+    '⏱ My HR (left menu): connect your own BambooHR once — clock in / out, your hours, time off and balances, who’s out — right in CP, with a 10:00 / 19:00 reminder if you forgot to clock in or out.',
+    '⚡ Pages refresh themselves while they’re open, and dark mode looks right now.',
+  ] },
   { date: '25 Nov 2026', items: [
     '📁 New tickets — from New ticket or from the Briefs Creator — get their folders made for them: video tickets a Dropbox folder and a Frame.io folder, design tickets a Dropbox folder. The links are on the ticket and in the brief. TV tickets get their Frame.io folder in “Productions”, next to the commercial’s other cuts.',
     '🧭 Briefs Creator → Market Watch → new “Built like Particle”: brands with a business like ours in other categories (Upspring Lookalikes — e.g. Harry’s, Intake Breathing) and the ads they keep running for months. Each has “Brief from this”, plus a weekly “Outside idea”.',
@@ -59,6 +63,8 @@ const CREATIVE_WHATS_NEW = [
     '🎬 Home → Line of the day — the studio’s movie line, on your Home too.',
     '⚡ Live: Home and My Studio refresh themselves every 30 seconds (“● Live” at the top). A task you were just put on, or one someone else moved, shows a green New / Moved badge and a note at the top. An open task’s updates refresh every 20 seconds.',
     '🌙 Dark mode looks right now — every page.',
+    '⏱ My HR (left menu): connect your own BambooHR once, then clock in / out, see today’s and this week’s hours, ask for time off, see your balances and who’s out — all in CP. A reminder at 10:00 if you haven’t clocked in, and at 19:00 if you’re still clocked in. The pill next to the 🔔 shows if you’re in.',
+    '⏳ A task now shows “Time on this task”: when it was asked for, how long you actually worked on it (Working while you were clocked in), review rounds and where it waited.',
   ] },
   { date: '25 Nov 2026', items: [
     '🎬 A video ticket made in CP (New ticket or Briefs Creator) already has its Frame.io folder — Video › year › month › product › the ticket (TV: Productions › product › the commercial). Upload your cuts there; the link is on the task.',
@@ -175,6 +181,29 @@ const CREATIVE_CATEGORY = {
           'On Air — what runs on Meta (live since, ended on, yours first) and on TV (spots, first airing, what’s booked). No money.',
           'My AfterLife — your own AfterLife page; “Open in a new tab” for the full screen.',
           'Team Weekly — the team’s Sunday deck, to watch.',
+        ]},
+      ],
+    },
+    {
+      id: 'creative-hr', icon: '⏱', label: 'My HR — clock in, time off',
+      summary: 'Your own BambooHR in CP: clock in / out, hours, time off, who’s out.',
+      keywords: ['hr', 'bamboo', 'bamboohr', 'clock', 'clock in', 'clock out', 'hours', 'vacation', 'time off', 'sick', 'holiday'],
+      content: [
+        { type: 'guide', title: 'Connect it once (about a minute)', steps: [
+          'Left menu → My HR. Open BambooHR in another tab and sign in.',
+          'Click your name (bottom-left) → “API Keys” → “Add New Key”, call it “CP”, then “Generate Key”.',
+          'Copy the whole key, paste it in My HR, press Connect. (No “API Keys” in your menu? Ask HR to allow it.)',
+        ]},
+        { type: 'guide', title: 'Every day', steps: [
+          'Clock in / Clock out — the big button on My HR, or the pill next to the 🔔 at the top.',
+          'Today and this week: your hours against 9h a day (Sun–Thu).',
+          'Time off: your balances, “Ask for time off” (type, dates, half day, a note), your requests — cancel one that’s still waiting.',
+          'Who’s out this week / next week, and your details from BambooHR.',
+        ]},
+        { type: 'tips', items: [
+          'At 10:00 CP reminds you if you haven’t clocked in; at 19:00 if you’re still clocked in (not on Fri / Sat, holidays or your days off). Turn it off in 🔔 → ⚙️.',
+          'Forgot to clock out yesterday? My HR asks what time you finished and fixes it.',
+          'Your key is kept encrypted on CP’s server — nobody can see it. Disconnect any time (⋯ on My HR).',
         ]},
       ],
     },
@@ -778,6 +807,41 @@ const CATEGORIES = [
           { type: 'tips', items: [
             'Each move also lands in your 🔔 under “Team moves” (quietly — no pop-up). Turn it off in 🔔 → ⚙️ → “Every move of the team”.',
             'Opening the same page twice within 10 minutes counts once.',
+          ]},
+        ],
+      },
+      {
+        id: 'team-hr', icon: '⏱', label: 'Team HR (BambooHR)',
+        summary: 'Who’s in, hours, time-off requests and who’s out — the whole team, live from BambooHR.',
+        keywords: ['hr', 'bamboo', 'bamboohr', 'clock', 'timesheet', 'vacation', 'time off', 'approve', 'who is out'],
+        content: [
+          { type: 'guide', title: 'Admin menu → Team HR', steps: [
+            'Waiting for you — time-off requests: Approve / Deny (with an optional note). The person gets a CP notification.',
+            'Today — In now · Not in yet · Done for today · Off today, with times.',
+            'Timesheet — hours per person per day (Sun–Thu), totals against 9h a day; ◀ ▶ for other weeks. Amber = under, missing days stand out.',
+            'Who’s out — the next 30 days, holidays included. Connected to CP — who connected My HR and Monday, with a message you can send them.',
+          ]},
+          { type: 'tips', items: [
+            'It uses the company BambooHR connection (Studio → Connections), so approvals show in BambooHR as that key’s owner.',
+            'Everyone else uses My HR with their own key: clock in / out, time off, reminders at 10:00 and 19:00.',
+          ]},
+        ],
+      },
+      {
+        id: 'time-tracking', icon: '⏳', label: 'Time tracking — request to delivery',
+        summary: 'How long tasks really take: status by status, and the hours actually worked (Working while clocked in).',
+        keywords: ['time', 'tracking', 'hours', 'lead time', 'worked', 'utilization', 'review rounds', 'productivity'],
+        content: [
+          { type: 'guide', title: 'Left menu → Time tracking', steps: [
+            'Pick a range (this week … last 90 days, or custom), Video / Design, and filter by person, product, type, requester or campaign — the link keeps the filters, so you can share a view.',
+            'Key numbers: tasks delivered, median lead time (request → approved), median worked hours, review rounds, on time %, utilization (time with a task in Working while clocked in ÷ time clocked in).',
+            'Where the time goes — waiting, working, review, fixes, stuck, paused. People, types and products — sortable. “Took much longer than usual” — over twice the usual worked time for its type.',
+            'Each task has a status strip (hover for each step); Download CSV for everything.',
+          ]},
+          { type: 'tips', items: [
+            '“Worked” = time in Working while the person on the task was clocked in on BambooHR. Without clock data it’s estimated from working hours (Sun–Thu 09:00–19:00) and marked ≈.',
+            'The first load of a long range can take a while (it reads every status change) — after that it’s cached for 25 minutes; Refresh re-reads.',
+            'Every task panel shows its own “Time on this task”. The Studio’s Time tab is the quick view; this is the detailed one.',
           ]},
         ],
       },

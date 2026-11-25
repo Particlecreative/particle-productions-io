@@ -1817,3 +1817,5 @@ html.dark .text-sky-600, html.dark .text-sky-700 { color: #7cc4ff !important; }
 html.dark .text-yellow-700, html.dark .text-yellow-800 { color: #f5d06b !important; }
 html.dark .text-green-700, html.dark .text-green-800 { color: #5ee0a0 !important; }
 html.dark .text-rose-600, html.dark .text-rose-700, html.dark .text-pink-600 { color: #ff8fa6 !important; }
+/* a deliberately white button (bg-[#fff]) keeps its navy text in dark mode */
+html.dark .bg-\[\#fff\].text-\[\#030b2e\], html.dark .bg-\[\#fff\] .text-\[\#030b2e\], html.dark .cp-keep-ink { color: #030b2e !important; }

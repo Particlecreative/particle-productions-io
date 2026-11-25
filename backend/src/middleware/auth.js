@@ -11,6 +11,7 @@ const RANK = { Viewer: 0, Accounting: 1, Studio: 1, Growth: 1, Creative: 1, Edit
  */
 const GROWTH_ALLOW = [
   [/^GET$/, /^\/api\/auth\/me$/],
+  [/^GET$/, /^\/api\/timetrack\/task\/(video|design)\/\d+$/],   // a task's time (timetrack.js)
   [/^(GET|POST|PATCH|DELETE)$/, /^\/api\/notifications(\/[^/]+(\/read)?|\/read-all)?$/],
   [/^GET$/, /^\/api\/brands$/],
   [/^GET$/, /^\/api\/settings\/[a-z0-9_]+$/i],                  // a brand's logo / colours / fonts only (settings.js strips the rest; no "monday-config" etc.)
@@ -43,6 +44,8 @@ const growthMay = (method, path) => GROWTH_ALLOW.some(([m, p]) => m.test(method)
 const PERSONAL = [
   [/^(GET|PUT)$/, /^\/api\/settings\/view-order\/(sidebar|sidebar_hidden|creative-[a-z0-9-]+|growth-[a-z0-9-]+)$/],
   [/^(GET|PUT)$/, /^\/api\/notifications\/settings$/],
+  // My HR — their own BambooHR: clock in / out, time off (Team HR /api/hr/team* stays admins-only)
+  [/^(GET|POST|DELETE)$/, /^\/api\/hr\/me(\/(clock|connect|clock-in|clock-out|time-off(\/\d+\/cancel)?))?$/],
 ];
 GROWTH_ALLOW.push(...PERSONAL);
 
@@ -87,6 +90,7 @@ const CREATIVE_ALLOW = [
   // Creative Weekly — the team deck, read-only (creativeReports.js)
   [/^GET$/, /^\/api\/creative-reports\/?$/],
   [/^GET$/, /^\/api\/creative-reports\/[0-9a-f-]{36}(\/picks)?$/],
+  [/^GET$/, /^\/api\/timetrack\/task\/(video|design)\/\d+$/],   // their own task's time (timetrack.js checks it's theirs)
   // Studio passwords — the Access Passwords boards: read, reveal / copy (logged), edit, add (passwords.js)
   [/^GET$/, /^\/api\/passwords\/?$/],
   [/^POST$/, /^\/api\/passwords\/(particle|blurr)\/\d+\/reveal$/],

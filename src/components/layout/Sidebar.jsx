@@ -5,7 +5,7 @@ import {
   History, FileText, FileSignature, Clapperboard, Users2, GripVertical,
   GanttChartSquare, Check, Star, Sun, Moon, Grid3x3, X as XIcon, Scroll, CheckSquare, Presentation, Radar, Library, Landmark, SpellCheck, Sparkles,
   EyeOff, Plus, Rocket, Activity, Megaphone, Smartphone, Tv, Radio, Home, KanbanSquare, Gauge,
- KeyRound } from 'lucide-react';
+ KeyRound, Timer, Hourglass } from 'lucide-react';
 import {
   DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors,
 } from '@dnd-kit/core';
@@ -52,6 +52,7 @@ const DEFAULT_NAV_ITEMS = [
   { to: '/contracts',      icon: FileSignature,    label: 'Contracts',   accountingHide: true, studioHide: true },
   { to: '/suppliers',      icon: Users2,           label: 'Suppliers',   accountingHide: true, studioHide: true },
   { to: '/studio',         icon: Clapperboard,     label: 'Studio',      accountingHide: true, studioHide: true, particleOnly: true, editorOnly: true },
+  { to: '/time-tracking',  icon: Hourglass,        label: 'Time tracking', sub: 'request → delivery', accountingHide: true, studioHide: true, particleOnly: true, editorOnly: true },
   { to: '/studio-tickets', icon: Clapperboard,     label: 'Studio',      accountingHide: true, particleOnly: true, nonEditorOnly: true },
   { to: '/creative-reports', icon: Presentation,   label: 'Creative Weekly', accountingHide: true, studioHide: true, particleOnly: true, editorOnly: true },
   { to: '/captain',        icon: SpellCheck,       label: 'Captain Caption', accountingHide: true, studioHide: true, particleOnly: true, editorOnly: true },
@@ -66,6 +67,8 @@ const DEFAULT_NAV_ITEMS = [
   { to: '/scripts',        icon: Scroll,           label: 'Scripts',     accountingHide: true },
   // Studio passwords (25 Nov 2026): the Access Passwords board — producers, the studio and admins (+ the creative team above)
   { to: '/passwords',      icon: KeyRound,         label: 'Studio passwords', accountingHide: true, particleOnly: true, editorOrStudio: true },
+  // My HR (25 Nov 2026): each person's own BambooHR — clock in / out, time off — for everyone, every role
+  { to: '/my-hr',          icon: Timer,            label: 'My HR',       sub: 'clock · time off', growth: true, creative: true, everyone: true },
   { to: '/manual',         icon: BookOpen,         label: 'Manual',      accountingHide: true },
 ];
 
@@ -74,6 +77,7 @@ const ADMIN_ITEMS = [
   { to: '/settings', icon: Settings, label: 'Settings' },
   { to: '/users',    icon: Users,    label: 'Users' },
   { to: '/activity', icon: Activity, label: 'Team activity' },
+  { to: '/hr',       icon: Timer,    label: 'Team HR' },
 ];
 
 function applySavedOrder(items, order) {
@@ -189,9 +193,9 @@ export default function Sidebar({ open, onToggle }) {
   // Pages this person is allowed to see (role, brand, group access)…
   const allowedItems = navItems
     // Growth team: their own entries (+ Manual); nobody else sees those entries
-    .filter(i => (isGrowth ? (i.growth && !i.creativeOnly) || i.to === '/manual' : !i.growthOnly))
+    .filter(i => (isGrowth ? (i.growth && !i.creativeOnly) || i.to === '/manual' || i.everyone : !i.growthOnly))
     // Creative team: their own entries (+ Manual); nobody else sees those
-    .filter(i => (isCreative ? i.creativeOnly || i.to === '/manual' : !i.creativeOnly))
+    .filter(i => (isCreative ? i.creativeOnly || i.to === '/manual' || i.everyone : !i.creativeOnly))
     .filter(i => !isAccounting || !i.accountingHide)
     .filter(i => !isStudio || !i.studioHide)
     .filter(i => !i.particleOnly || brand.id === 'particle')
@@ -199,7 +203,7 @@ export default function Sidebar({ open, onToggle }) {
     .filter(i => !i.editorOrStudio || isEditor || isStudio)
     .filter(i => !i.nonEditorOnly || !isEditor)
     // The Library replaced Links: groups that had Links get the Library
-    .filter(i => !pageAccess || isAdmin || (isGrowth && i.growth) || (isCreative && i.creative) || pageAccess.includes(i.to) || (i.to === '/library' && pageAccess.includes('/links')));
+    .filter(i => !pageAccess || isAdmin || (isGrowth && i.growth) || (isCreative && i.creative) || i.everyone || pageAccess.includes(i.to) || (i.to === '/library' && pageAccess.includes('/links')));
   // …minus the ones they hid from their own menu
   const visibleItems = allowedItems.filter(i => !hidden.includes(i.to));
   const hiddenItems = allowedItems.filter(i => hidden.includes(i.to));
@@ -492,6 +496,7 @@ export default function Sidebar({ open, onToggle }) {
                 { to: '/my-afterlife',     icon: Gauge,        label: 'My AfterLife' },
                 { to: '/team-weekly',      icon: Presentation, label: 'Team Weekly' },
                 { to: '/passwords',        icon: KeyRound,     label: 'Passwords' },
+                { to: '/my-hr',            icon: Timer,        label: 'My HR' },
                 { to: '/welcome',          icon: CheckSquare,  label: 'My Monday' },
                 { to: '/manual',           icon: BookOpen,     label: 'Manual' },
               ] : isGrowth ? [
@@ -499,6 +504,7 @@ export default function Sidebar({ open, onToggle }) {
                 { to: '/ads-library',    icon: Smartphone,   label: 'Ads Library' },
                 { to: '/tv-productions', icon: Clapperboard, label: 'TV Productions' },
                 { to: '/tv-library',     icon: Tv,           label: 'TV Library' },
+                { to: '/my-hr',          icon: Timer,        label: 'My HR' },
                 { to: '/welcome',        icon: CheckSquare,  label: 'My Monday' },
                 { to: '/manual',         icon: BookOpen,     label: 'Manual' },
               ] : [
@@ -511,6 +517,7 @@ export default function Sidebar({ open, onToggle }) {
                 { to: '/casting-rights', icon: Star,             label: 'Casting' },
                 { to: '/contracts',      icon: FileSignature,    label: 'Contracts' },
                 { to: '/invoices',       icon: FileText,         label: 'Invoices' },
+                { to: '/my-hr',          icon: Timer,            label: 'My HR' },
                 { to: '/manual',         icon: BookOpen,         label: 'Manual' },
                 ...(brand?.id === 'particle' && !isAccounting ? [{ to: '/on-air', icon: Radio, label: 'On Air' }] : []),
                 ...(brand?.id === 'particle' && !isAccounting ? [{ to: '/creative-reports', icon: Presentation, label: 'Creative' }] : []),
@@ -518,6 +525,7 @@ export default function Sidebar({ open, onToggle }) {
                   { to: '/settings', icon: Settings, label: 'Settings' },
                   { to: '/users',    icon: Users,    label: 'Users' },
                   { to: '/activity', icon: Activity, label: 'Activity' },
+                  { to: '/hr',       icon: Timer,    label: 'Team HR' },
                 ] : []),
               ]).filter(({ to }) => !hidden.includes(to)).map(({ to, icon: Icon, label }) => (
                 <button

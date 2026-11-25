@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import TaskTime from '../timetrack/TaskTime';
 import { createPortal } from 'react-dom';
 import { X, ExternalLink, Plane, Loader2, Film, Folder, PenTool, Link2, Archive, ChevronDown, ArrowRight, Flag } from 'lucide-react';
 import { nextStatus, priorityRank } from './kanban';
@@ -166,6 +167,7 @@ export default function TaskPanel({ it: base, data, onClose, focus = null }) {
             </div>
           )}
 
+          <TaskTime board={it.board} itemId={it.id} />
           <TaskUpdates it={it} data={data} readOnly={!can.comment} />
         </div>
 

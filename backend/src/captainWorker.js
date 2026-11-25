@@ -85,6 +85,19 @@ const medium = { corpus: require('./lib/medium/corpus'), writer: require('./lib/
   };
   setTimeout(notifyTick, 75 * 1000);
   setInterval(notifyTick, 2 * 60 * 1000);
+
+  // My HR reminders: ~10:00 "not clocked in yet" / ~19:00 "still clocked in", Sun–Thu Israel time, once a day each (lib/hr/reminders.js)
+  let hrTicking = false;
+  const hrTick = () => {
+    if (hrTicking) return;
+    hrTicking = true;
+    require('./lib/hr/reminders').tick()
+      .then(r => { if (r.notified || r.errors) console.log('[captain-worker] hr reminders:', JSON.stringify(r)); })
+      .catch(e => console.warn('[captain-worker] hr reminders failed:', e.message))
+      .finally(() => { hrTicking = false; });
+  };
+  setTimeout(hrTick, 90 * 1000);
+  setInterval(hrTick, 5 * 60 * 1000);
 })();
 
 process.on('unhandledRejection', (e) => console.warn('[captain-worker] unhandled:', e?.message || e));

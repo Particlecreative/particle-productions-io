@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import ClockPill from '../hr/ClockPill';
 import { useNavigate } from 'react-router-dom';
 import { Search, Bell, LogOut, Menu, User, ChevronDown } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -93,6 +94,9 @@ export default function Header({ onMenuToggle }) {
             aria-label="Switch to Israeli Shekels"
           >₪</button>
         </div>
+
+        {/* My HR — clocked in? (renders nothing until the person connects BambooHR) */}
+        <ClockPill className="hidden sm:flex" />
 
         {/* Notifications */}
         <div className="relative">

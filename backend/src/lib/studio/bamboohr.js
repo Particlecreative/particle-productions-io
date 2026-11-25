@@ -137,6 +137,29 @@ async function whosOut(people, from, to) {
   return out;
 }
 
+/**
+ * Raw clocked-in intervals per Monday person in [fromYmd, toYmd] (Israel dates) — for task time tracking (timetrack/).
+ * Built on clockFor + presenceFrom, so a missing clock-out follows the same rule (today: still running; a past day:
+ * until 19:00, at most 10 hours). BambooHR answers a year back at most: earlier dates are clamped.
+ * → { matched: { mondayId: bambooId }, unmatched: [mondayId], since: first date with an entry | null,
+ *     intervals: { mondayId: [{ start_ms, end_ms }] } (matched people only; [] = never clocked in), clocked_ms: { mondayId: ms } }
+ */
+async function entriesFor(people, fromYmd, toYmd) {
+  const today = W.localDate(Date.now());
+  const floor = W.addDays(today, -365);
+  const from = fromYmd < floor ? floor : fromYmd;
+  const to = toYmd > today ? today : toYmd;
+  if (!people.length || to < from) return { matched: {}, unmatched: people.map(p => p.id), since: null, intervals: {}, clocked_ms: {} };
+  const clock = await clockFor(people, from, to);
+  const intervals = {};
+  const clocked_ms = {};
+  for (const [mid, iv] of Object.entries(presenceFrom(clock))) {
+    intervals[mid] = iv.map(([a, b]) => ({ start_ms: a, end_ms: b }));
+    clocked_ms[mid] = iv.reduce((s, [a, b]) => s + (b - a), 0);
+  }
+  return { matched: clock.matched, unmatched: clock.unmatched, since: clock.since, intervals, clocked_ms };
+}
+
 /** Check a key before saving it: how many employees it can see. */
 async function testConnection(c) {
   const d = await bhr('/employees/directory', {}, c);
@@ -145,4 +168,4 @@ async function testConnection(c) {
 
 function resetCache() { clearCache('bhr:'); }
 
-module.exports = { configured, clockFor, presenceFrom, whosOut, testConnection, resetCache, creds };
+module.exports = { configured, clockFor, presenceFrom, whosOut, testConnection, resetCache, creds, entriesFor };
