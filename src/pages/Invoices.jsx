@@ -38,9 +38,26 @@ const INV_TYPE_LABELS = {
 
 const RECEIPT_REMINDER_HOURS = 48;
 
+// Every amount in its own currency (Tomer, 25 Nov 2026: "Asaf shows $750 here — in the production budget it was 750 ILS").
+// A line shows ₪ or $ exactly as the budget has it; totals add each line converted to dollars, then show in the
+// header's currency ($ / ₪).
+const codeOf = (i) => (String(i?.currency_code || 'USD').toUpperCase() === 'ILS' ? 'ILS' : 'USD');
+const amountOf = (i) => parseFloat(i?.actual_spent) || parseFloat(i?.planned_budget) || 0;
+export function fmtNative(amount, code) {
+  const n = parseFloat(amount) || 0;
+  return `${code === 'ILS' ? '₪' : '$'}${Math.round(n).toLocaleString('en-US')}`;
+}
+const toUSD = (amount, code, rate) => (code === 'ILS' ? (parseFloat(amount) || 0) / (rate || 3.7) : (parseFloat(amount) || 0));
+/** "₪750 · $998" when a list mixes currencies (null when it doesn't). */
+function nativeMix(items) {
+  const ils = items.filter(x => codeOf(x) === 'ILS').reduce((a, x) => a + amountOf(x), 0);
+  const usd = items.filter(x => codeOf(x) === 'USD').reduce((a, x) => a + amountOf(x), 0);
+  return ils && usd ? `${fmtNative(ils, 'ILS')} · ${fmtNative(usd, 'USD')}` : null;
+}
+
 export default function Invoices() {
   const { brandId } = useBrand();
-  const { fmt } = useCurrency();
+  const { fmt, rate, currency } = useCurrency();
   const { isEditor } = useAuth();
   const { addNotification } = useNotifications();
 
@@ -120,9 +137,10 @@ export default function Invoices() {
   // Summary stats
   const pendingItems  = useMemo(() => allItems.filter(i => !i.invoice_status || i.invoice_status === 'Pending'), [allItems]);
   const receivedItems = useMemo(() => allItems.filter(i => i.invoice_status === 'Received'), [allItems]);
-  const getAmount = (i) => parseFloat(i.actual_spent) || parseFloat(i.planned_budget) || 0;
-  const pendingTotal  = useMemo(() => pendingItems.reduce((s, i) => s + getAmount(i), 0), [pendingItems]);
-  const receivedTotal = useMemo(() => receivedItems.reduce((s, i) => s + getAmount(i), 0), [receivedItems]);
+  const getAmount = amountOf;
+  // in dollars (each line converted from its own currency) — fmt() shows it in the header's currency
+  const pendingTotal  = useMemo(() => pendingItems.reduce((s, i) => s + toUSD(getAmount(i), codeOf(i), rate), 0), [pendingItems, rate]);
+  const receivedTotal = useMemo(() => receivedItems.reduce((s, i) => s + toUSD(getAmount(i), codeOf(i), rate), 0), [receivedItems, rate]);
 
   // ILS-only raw amounts for VAT display
   const pendingILS  = useMemo(() => pendingItems.filter(i => (i.currency_code || 'USD') === 'ILS').reduce((s, i) => s + getAmount(i), 0), [pendingItems]);
@@ -203,7 +221,6 @@ export default function Invoices() {
     try {
       const brandMap = { particle: { name: 'Particle', accent: '#0808f8', primary: '#030b2e' }, biomella: { name: 'Biomella', accent: '#C41E1E', primary: '#8B1515' }, blurr: { name: 'Blurr', accent: '#F86EE6', primary: '#B842A9' } };
       const brand = brandMap[brandId] || brandMap.particle;
-      const sym = currency === 'ILS' ? '₪' : '$';
 
       const overdueCount = filteredItems.filter(i => {
         if (i.payment_status === 'Paid' || !i.payment_due) return false;
@@ -216,8 +233,8 @@ export default function Invoices() {
         currency,
         filename: 'payments-report',
         kpis: [
-          { label: 'Awaiting Invoice',  value: pendingItems.length,     sub: `${sym}${Math.round(pendingTotal).toLocaleString()} total`, signal: pendingItems.length > 0 ? 'amber' : 'green' },
-          { label: 'Invoice Received',  value: receivedItems.length,    sub: `${sym}${Math.round(receivedTotal).toLocaleString()} total`, signal: null },
+          { label: 'Awaiting Invoice',  value: pendingItems.length,     sub: `${fmt(pendingTotal)} total`, signal: pendingItems.length > 0 ? 'amber' : 'green' },
+          { label: 'Invoice Received',  value: receivedItems.length,    sub: `${fmt(receivedTotal)} total`, signal: null },
           { label: 'Overdue Payments',  value: overdueCount,            sub: overdueCount > 0 ? 'Requires attention' : 'All on track', signal: overdueCount > 0 ? 'red' : 'green' },
           { label: 'ILS excl. VAT',     value: `₪${Math.round(pendingILS + receivedILS).toLocaleString()}`, sub: `₪${Math.round((pendingILS + receivedILS) * 1.18).toLocaleString()} incl. VAT`, signal: null },
         ],
@@ -257,6 +274,7 @@ export default function Invoices() {
     { key: 'item', label: 'Item' },
     { key: 'full_name', label: 'Name' },
     { key: 'actual_spent', label: 'Amount' },
+    { key: 'currency_code', label: 'Currency' },
     { key: 'invoice_status', label: 'Invoice Status' },
     { key: 'invoice_url', label: 'Invoice URL' },
     { key: 'invoice_type', label: 'Invoice Type' },
@@ -327,13 +345,13 @@ export default function Invoices() {
                       {r.item?.full_name || r.item?.item || r.supplier_name || '—'}
                     </div>
                     <div className="text-xs text-gray-500">
-                      {r.prod?.project_name || r.production_id} · {fmt(r.item?.actual_spent || r.amount || 0)} · {r.daysSince} day{r.daysSince !== 1 ? 's' : ''} since payment
+                      {r.prod?.project_name || r.production_id} · {fmtNative(r.item?.actual_spent || r.amount || 0, codeOf(r.item || r))} · {r.daysSince} day{r.daysSince !== 1 ? 's' : ''} since payment
                     </div>
                   </div>
                   <div className="flex gap-2 flex-shrink-0">
                     {r.item?.full_name && (
                       <a
-                        href={`https://wa.me/?text=${encodeURIComponent(`שלום ${r.item.full_name}, אנא שלח/י חשבונית מס/קבלה עבור תשלום של ₪${(r.item?.actual_spent || r.amount || 0).toLocaleString()} מתאריך ${new Date(r.paid_at).toLocaleDateString('he-IL')}.`)}`}
+                        href={`https://wa.me/?text=${encodeURIComponent(`שלום ${r.item.full_name}, אנא שלח/י חשבונית מס/קבלה עבור תשלום של ${fmtNative(r.item?.actual_spent || r.amount || 0, codeOf(r.item || r))} מתאריך ${new Date(r.paid_at).toLocaleDateString('he-IL')}.`)}`}
                         target="_blank" rel="noopener noreferrer"
                         className="flex items-center gap-1 text-xs px-2 py-1 rounded border border-green-300 text-green-700 hover:bg-green-50 whitespace-nowrap"
                       >
@@ -482,7 +500,9 @@ export default function Invoices() {
 
 function InvoiceProductionGroup({ data, fmt, isEditor, receipts = [], onStatusChange, onInvoiceUrlUpdate, onAction, onUpdate }) {
   const [expanded, setExpanded] = useState(true);
-  const total = data.items.reduce((s, i) => s + (parseFloat(i.actual_spent) || parseFloat(i.planned_budget) || 0), 0);
+  const { rate } = useCurrency();
+  const total = data.items.reduce((s, i) => s + toUSD(amountOf(i), codeOf(i), rate), 0);   // dollars → fmt shows the header's currency
+  const mix = nativeMix(data.items);
   const invoicedCount = data.items.filter(i => i.invoice_url || i.invoice_status).length;
 
   return (
@@ -501,7 +521,10 @@ function InvoiceProductionGroup({ data, fmt, isEditor, receipts = [], onStatusCh
             <span className="text-xs text-green-600 font-semibold">{invoicedCount} invoiced</span>
           )}
         </div>
-        <span className="font-bold text-sm" style={{ color: 'var(--brand-primary)' }}>{fmt(total)}</span>
+        <span className="text-right">
+          <span className="block font-bold text-sm" style={{ color: 'var(--brand-primary)' }}>{fmt(total)}</span>
+          {mix && <span className="block text-[11px] text-gray-400 font-medium">{mix}</span>}
+        </span>
       </button>
 
       {expanded && (
@@ -661,7 +684,7 @@ function ReceiptsTab({ receipts, allItems, productions, fmt, isEditor, onReceipt
                   </td>
                   {/* Amount */}
                   <td className="font-semibold">
-                    {fmt(r.item?.actual_spent || r.amount || 0)}
+                    {fmtNative(r.item?.actual_spent || r.amount || 0, codeOf(r.item || r))}
                   </td>
                   {/* Paid Date */}
                   <td className="text-xs text-gray-500 whitespace-nowrap">
@@ -889,7 +912,7 @@ function InvoiceRow({ item, productionName, fmt, isEditor, showProduction, recei
       <td className="text-gray-600 text-sm">{item.item || '—'}</td>
 
       {/* Amount */}
-      <td className="font-semibold">{fmt(parseFloat(item.actual_spent) || parseFloat(item.planned_budget) || 0)}</td>
+      <td className="font-semibold">{fmtNative(amountOf(item), codeOf(item))}</td>
 
       {/* Invoice — state driven, merged with old Actions */}
       <td><InvoiceCell /></td>

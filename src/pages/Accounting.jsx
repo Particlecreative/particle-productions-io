@@ -70,6 +70,8 @@ export default function Accounting() {
     return num;
   }
   const getAmt = (i) => toDisplay(parseFloat(i.actual_spent) || parseFloat(i.planned_budget) || 0, i.currency_code || 'USD');
+  // the totals are already in the header's currency (toDisplay) — show them as they are; fmt() would convert ₪ again
+  const fmtDisplay = (n) => `${currency === 'ILS' ? '₪' : '$'}${Math.round(n || 0).toLocaleString('en-US')}`;
   const { isEditor, user } = useAuth();
   const { addNotification } = useNotifications();
 
@@ -397,7 +399,7 @@ export default function Accounting() {
           onClick={() => setPayStatusFilter(p => p === 'Paid' ? '' : 'Paid')}
         >
           <div className="text-xs text-gray-400 mb-1">Paid</div>
-          <div className="text-xl font-black text-green-700">{fmt(paidTotal)}</div>
+          <div className="text-xl font-black text-green-700">{fmtDisplay(paidTotal)}</div>
           <div className="text-xs text-gray-400 mt-1">{paid.length} items</div>
           <VATSub ils={paidILS} />
         </div>
@@ -406,7 +408,7 @@ export default function Accounting() {
           onClick={() => setPayStatusFilter(p => p === 'Not Paid' ? '' : 'Not Paid')}
         >
           <div className="text-xs text-gray-400 mb-1">Not Paid</div>
-          <div className="text-xl font-black text-orange-700">{fmt(notPaidTotal)}</div>
+          <div className="text-xl font-black text-orange-700">{fmtDisplay(notPaidTotal)}</div>
           <div className="text-xs text-gray-400 mt-1">{notPaid.length} items</div>
           <VATSub ils={notPaidILS} />
         </div>
@@ -415,7 +417,7 @@ export default function Accounting() {
           onClick={() => setPayStatusFilter(p => p === 'Pending' ? '' : 'Pending')}
         >
           <div className="text-xs text-gray-400 mb-1">Pending</div>
-          <div className="text-xl font-black text-gray-700">{fmt(pendingTotal)}</div>
+          <div className="text-xl font-black text-gray-700">{fmtDisplay(pendingTotal)}</div>
           <div className="text-xs text-gray-400 mt-1">{pending.length} items</div>
           <VATSub ils={pendingILS} />
         </div>
