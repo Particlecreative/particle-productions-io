@@ -29,3 +29,16 @@ test('the bench endpoints: the creative team yes (their own — studio.js checks
   assert.equal(creativeMay('DELETE', '/api/studio/items/123/checklist'), false);
   assert.equal(growthMay('PUT', '/api/studio/items/123/checklist'), false);
 });
+
+test('accrual emails are off by default (Tomer, 25 Nov 2026) — the report is still built for the Finance page', async () => {
+  const cfg = require('../src/lib/finance/config');
+  assert.equal(cfg.DEFAULTS.accrual_emails, false);
+  const A = require('../src/lib/finance/accrual');
+  const orig = cfg.get;
+  cfg.get = async () => ({ ...cfg.DEFAULTS });
+  try {
+    assert.deepEqual(await A.sendDraft({ id: 1, month: '2026-11-01', built_at: new Date().toISOString() }), { skipped: 'accrual emails are off' });
+    const r = { id: 1, month: '2026-11-01', status: 'approved', data: { companies: [] } };
+    assert.equal(await A.send(r, { name: 'Tomer' }), r);   // no email, stays approved
+  } finally { cfg.get = orig; }
+});

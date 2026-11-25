@@ -557,7 +557,7 @@ function SettingsTab({ config, onConfig }) {
           <SettingField f={f} set={set} k="bundle_minutes" label="Bundle changes (minutes)" type="number" />
         </div>
         <div className="flex flex-wrap gap-4 text-sm">
-          {[['nudges', 'Daily past-dates nudge'], ['weekly_digest', 'Weekly digest'], ['sheet_sync', 'Read finance sheets (two-way)']].map(([k, l]) => (
+          {[['nudges', 'Daily past-dates nudge'], ['weekly_digest', 'Weekly digest'], ['sheet_sync', 'Read finance sheets (two-way)'], ['accrual_emails', 'Email the monthly accruals (off: the report stays here)']].map(([k, l]) => (
             <label key={k} className="flex items-center gap-2"><input type="checkbox" checked={!!f[k]} onChange={e => set(k, e.target.checked)} /> {l}</label>
           ))}
         </div>

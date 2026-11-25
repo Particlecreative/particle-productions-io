@@ -28,6 +28,7 @@ const DEFAULTS = {
   nudges: true,
   weekly_digest: true,
   sheet_sync: true,
+  accrual_emails: false,                           // Tomer, 25 Nov 2026: no "Accruals for <month>" emails — the report stays on the Finance page
   ai_credit_price_usd: 0.065,                      // Higgsfield: what one credit costs us (24 Nov 2026)
 };
 

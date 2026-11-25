@@ -121,6 +121,7 @@ function csv(report, brandId) {
 /** Draft ready → email the approvers a review link. */
 async function sendDraft(report) {
   const cfg = await config.get();
+  if (!cfg.accrual_emails) return { skipped: 'accrual emails are off' };
   const url = `${(process.env.APP_URL || 'https://particlepdio.particleface.com').replace(/\/$/, '')}/finance?tab=accruals&month=${report.month.slice(0, 7)}`;
   const mail = tpl.accrual({ report, draft: true, reviewUrl: url });
   return mailer.queue({ kind: 'accrual_draft', to: cfg.report_approvers, subject: mail.subject, html: mail.html, dedupe_key: `accrual_draft:${report.id}:${new Date(report.built_at).getTime()}` });
@@ -155,6 +156,7 @@ async function approve(reportId, user) {
 
 async function send(report, user) {
   const cfg = await config.get();
+  if (!cfg.accrual_emails) return report;   // approved — no email (Tomer, 25 Nov 2026); the CSV is on the Finance page
   const mail = tpl.accrual({ report, draft: false });
   const attachments = (report.data.companies || []).map(c => ({
     filename: `Accruals ${report.month.slice(0, 7)} - ${companyOf(c.brand_id).short}.csv`, mime: 'text/csv',

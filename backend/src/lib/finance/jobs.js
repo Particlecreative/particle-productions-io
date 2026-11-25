@@ -117,8 +117,9 @@ async function accrualDraft({ force = false } = {}) {
   if (!force && dayOfMonth() !== cfg.accrual_day) return { skipped: 'not accrual day' };
   const accrual = require('./accrual');
   const { report } = await accrual.build(thisMonth(), { by: 'CP (scheduled)' });
-  if (report.status === 'draft') await accrual.sendDraft(report);
-  return { month: report.month, status: report.status };
+  // the report is built either way (Finance page → Accruals, with its CSV); emailing it is off unless switched on
+  if (report.status === 'draft' && cfg.accrual_emails) await accrual.sendDraft(report);
+  return { month: report.month, status: report.status, emailed: !!cfg.accrual_emails };
 }
 
 function schedule(cron) {

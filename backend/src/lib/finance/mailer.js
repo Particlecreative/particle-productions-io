@@ -100,8 +100,14 @@ function processOutbox() {
       const { rows } = await client.query(
         `SELECT * FROM email_outbox WHERE status = 'queued' AND next_attempt_at <= NOW()
          ORDER BY id LIMIT 20 FOR UPDATE SKIP LOCKED`);
+      const accrualOff = rows.some(r => /^accrual/.test(String(r.kind || ''))) && !(await require('./config').get()).accrual_emails;
       for (const m of rows) {
         try {
+          // accrual emails are off (25 Nov 2026): anything already queued is cancelled, not sent
+          if (accrualOff && /^accrual/.test(String(m.kind || ''))) {
+            await client.query(`UPDATE email_outbox SET status='cancelled', last_error='accrual emails are off' WHERE id=$1`, [m.id]);
+            continue;
+          }
           if (dryRun()) {
             await client.query(`UPDATE email_outbox SET status='sent', sent_at=NOW(), attempts=attempts+1, last_error='dry run (not sent)' WHERE id=$1`, [m.id]);
             continue;
