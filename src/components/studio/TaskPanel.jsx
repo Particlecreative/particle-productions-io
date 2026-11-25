@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, ExternalLink, Plane, Loader2, Film, Folder, PenTool, Link2, Archive } from 'lucide-react';
+import { X, ExternalLink, Plane, Loader2, Film, Folder, PenTool, Link2, Archive, ChevronDown, ArrowRight, Flag } from 'lucide-react';
+import { nextStatus, priorityRank } from './kanban';
+import { linkInfo } from './updatesKit';
+import { studioApi } from '../../lib/studioService';
 import { Avatar, ProductTag, hrs } from './Bits';
 import { addDays, ymd } from './Filters';
 import TaskUpdates from './TaskUpdates';
@@ -12,8 +15,10 @@ const BOARD = { video: 'Video', design: 'Design', retention: 'Email task' };
  * One task, everything you'd open Monday for: status, timeline, deadline, people, the brief and updates.
  * Every change is saved to Monday straight away (with Undo).
  */
-export default function TaskPanel({ it: base, data, onClose }) {
-  const { writes, readOnly = false } = useStudio();   // readOnly: the Growth Studio sees the task, never changes it
+export default function TaskPanel({ it: base, data, onClose, focus = null }) {
+  const { writes, readOnly = false, can: canCtx } = useStudio();   // readOnly: the Growth Studio sees the task, never changes it
+  // What this person may do here (25 Nov 2026): the Creative team moves its own status and talks, the studio schedules
+  const can = canCtx || { status: !readOnly, schedule: !readOnly, archive: !readOnly, comment: !readOnly, simple: false };
   const it = writes.merge(base, data.generated_at);
   const today = data.today || ymd(new Date());
   const [from, setFrom] = useState('');
@@ -45,8 +50,10 @@ export default function TaskPanel({ it: base, data, onClose }) {
   const shift = (n) => { if (a) { setFrom(addDays(a, n)); setTo(addDays(b, n)); } };
   const late = it.open && it.deadline && it.deadline < today;
   const req = it.requested_by?.map(r => data.requesters?.[r]?.name).filter(Boolean).join(', ');
+  // links the Delivery box above doesn't already show (Growth sees them all here, read-only)
+  const shownAbove = (can.status || can.schedule) && DELIVERY[it.board] ? DELIVERY[it.board].map(r => r[0]) : [];
   const links = [['frame', 'Frame.io', Film], ['dropbox', 'Dropbox', Folder], ['figma', 'Figma', PenTool], ['project', 'Project', Link2]]
-    .filter(([k]) => it.links?.[k]);
+    .filter(([k]) => it.links?.[k] && !shownAbove.includes(k));
   const life = it.life;
 
   return createPortal(
@@ -66,9 +73,10 @@ export default function TaskPanel({ it: base, data, onClose }) {
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-5">
-          {readOnly && <div className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">View only — the studio schedules and moves tasks. Open it in Monday to comment.</div>}
-          <fieldset disabled={readOnly} className="contents">
-          {statuses.length > 0 && (
+          {!can.status && !can.comment && <div className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">View only — the studio schedules and moves tasks. Open it in Monday to comment.</div>}
+          <fieldset disabled={!can.status && !can.schedule} className="contents">
+          {statuses.length > 0 && can.simple && <SimpleStatus it={it} statuses={statuses} onMove={(s) => writes.save(it, { status: s }, data)} />}
+          {statuses.length > 0 && !can.simple && (
             <div>
               <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Status{readOnly ? '' : ' · click to change'}</div>
               <div className="flex flex-wrap gap-1.5">
@@ -86,7 +94,9 @@ export default function TaskPanel({ it: base, data, onClose }) {
             </div>
           )}
 
-          <div className="rounded-xl bg-gray-50 p-3.5 flex flex-col gap-3">
+          {(can.status || can.schedule) && DELIVERY[it.board] && <DeliveryLinks it={it} statuses={statuses} writes={writes} can={can} focus={focus} />}
+          {!can.schedule && <Facts it={it} data={data} late={late} />}
+          {can.schedule && <div className="rounded-xl bg-gray-50 p-3.5 flex flex-col gap-3">
             <div>
               <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Timeline</div>
               <div className="flex items-center gap-2">
@@ -130,7 +140,7 @@ export default function TaskPanel({ it: base, data, onClose }) {
                   className="text-sm font-semibold px-4 py-2 rounded-xl border border-gray-200 text-gray-600 bg-white">Cancel</button>
               </div>
             )}
-          </div>
+          </div>}
           </fieldset>
 
           {(life?.submitted || it.effort_total_s > 0 || links.length > 0) && (
@@ -156,7 +166,7 @@ export default function TaskPanel({ it: base, data, onClose }) {
             </div>
           )}
 
-          <TaskUpdates it={it} data={data} readOnly={readOnly} />
+          <TaskUpdates it={it} data={data} readOnly={!can.comment} />
         </div>
 
         <div className="px-6 py-3 border-t border-gray-100">
@@ -176,10 +186,182 @@ export default function TaskPanel({ it: base, data, onClose }) {
           ) : (
             <div className="flex items-center">
               {it.monday_url && <a href={it.monday_url} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-gray-500 hover:text-[#0808f8] flex items-center gap-1.5">Open in Monday <ExternalLink size={12} /></a>}
-              {!readOnly && <button type="button" onClick={() => setAskArchive(true)} className="ml-auto text-xs font-semibold text-gray-500 hover:text-red-600 flex items-center gap-1.5"><Archive size={13} /> Archive</button>}
+              {can.archive && <button type="button" onClick={() => setAskArchive(true)} className="ml-auto text-xs font-semibold text-gray-500 hover:text-red-600 flex items-center gap-1.5"><Archive size={13} /> Archive</button>}
             </div>
           )}
         </div>
       </div>
     </div>, document.body);
+}
+
+/**
+ * The Creative team's status (25 Nov 2026 — "why do I need to see all statuses"): where it is now, the next step in one
+ * click (Working → Review…), and every other status tucked into a menu.
+ */
+function SimpleStatus({ it, statuses, onMove }) {
+  const [open, setOpen] = useState(false);
+  const nxt = nextStatus(it, statuses);
+  const others = statuses.filter(s => s.label !== it.status.label && s.label !== nxt?.label);
+  return (
+    <div>
+      <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Status</div>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[12.5px] font-bold px-3 py-1.5 rounded-lg text-white shadow-sm" style={{ background: it.status.color || '#c4c4c4' }}>{it.status.label}</span>
+        {nxt && (
+          <button type="button" onClick={() => onMove(nxt)}
+            className="flex items-center gap-1.5 text-[12.5px] font-semibold pl-2.5 pr-3 py-1.5 rounded-lg border-2 border-dashed hover:border-solid transition-all"
+            style={{ borderColor: nxt.color, color: '#030b2e' }}>
+            <ArrowRight size={14} /> Move to <span className="font-bold" style={{ color: nxt.color }}>{nxt.label}</span>
+          </button>
+        )}
+        {others.length > 0 && (
+          <span className="relative">
+            <button type="button" onClick={() => setOpen(v => !v)} className="flex items-center gap-1 text-[12px] font-semibold px-2.5 py-1.5 rounded-lg text-gray-500 hover:bg-gray-100">
+              Other status <ChevronDown size={13} />
+            </button>
+            {open && (
+              <>
+                <span className="fixed inset-0 z-[5]" onClick={() => setOpen(false)} />
+                <span className="absolute left-0 top-full mt-1 z-[6] w-52 rounded-xl border border-gray-200 bg-white shadow-xl py-1 flex flex-col">
+                  {others.map(s => (
+                    <button key={s.label} type="button" onClick={() => { setOpen(false); onMove(s); }} className="flex items-center gap-2 px-3 py-1.5 text-left text-[12.5px] text-gray-700 hover:bg-gray-50">
+                      <span className="w-2.5 h-2.5 rounded-full flex-none" style={{ background: s.color }} /> {s.label}
+                    </button>
+                  ))}
+                </span>
+              </>
+            )}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** What the studio decided, to read (the Creative team doesn't schedule): timeline, deadline, who's on it, who asked, priority. */
+function Facts({ it, data, late }) {
+  const names = (ids, src) => (ids || []).map(id => src?.[id] || data.people?.[id] || data.requesters?.[id]).filter(Boolean);
+  const people = names(it.people, data.people);
+  const asked = names(it.requested_by, data.requesters);
+  const pri = it.priority && typeof it.priority === 'object' ? it.priority : it.priority ? { label: it.priority } : null;
+  const range = it.timeline?.from ? (it.timeline.to && it.timeline.to !== it.timeline.from ? `${fmtDay(it.timeline.from)} – ${fmtDay(it.timeline.to)}` : fmtDay(it.timeline.from)) : null;
+  const Row = ({ label, children }) => (
+    <div className="min-w-0">
+      <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-0.5">{label}</div>
+      <div className="text-[13px] text-gray-800 min-w-0">{children}</div>
+    </div>
+  );
+  return (
+    <div className="rounded-xl bg-gray-50 p-3.5 grid grid-cols-2 gap-x-4 gap-y-3">
+      <Row label="Deadline">{it.deadline ? <span className={late ? 'text-red-600 font-semibold' : 'font-semibold'}>{fmtDay(it.deadline)}{late ? ' · late' : ''}</span> : <span className="text-gray-400">No deadline</span>}</Row>
+      <Row label="Timeline">{range ? <span className="font-semibold">{range}</span> : <span className="text-gray-400">Not scheduled yet</span>}</Row>
+      <Row label={it.board === 'video' ? 'Editor' : 'Designer'}>
+        <span className="flex flex-wrap gap-1.5">{people.length ? people.map(p => <span key={p.id} className="flex items-center gap-1"><Avatar person={p} size={18} /> {firstName(p.name)}</span>) : <span className="text-gray-400">Nobody yet</span>}</span>
+      </Row>
+      <Row label="Requested by">
+        <span className="flex flex-wrap gap-1.5">{asked.length ? asked.map(p => <span key={p.id} className="flex items-center gap-1"><Avatar person={p} size={18} /> {firstName(p.name)}</span>) : <span className="text-gray-400">—</span>}</span>
+      </Row>
+      {pri?.label && (
+        <Row label="Priority">
+          <span className="inline-flex items-center gap-1.5 font-semibold" style={{ color: priorityRank(pri) <= 1 ? (pri.color || '#e2445c') : undefined }}>
+            <Flag size={12} /> {pri.label}
+          </span>
+        </Row>
+      )}
+      {it.type?.label && <Row label="Type"><span className="font-semibold">{it.type.label}</span></Row>}
+    </div>
+  );
+}
+
+const DELIVERY = {
+  video: [['frame', 'Frame.io', 'Paste the Frame.io review link', true], ['dropbox', 'Dropbox', 'Paste the Dropbox folder link', false]],
+  design: [['figma', 'Figma', 'Paste the Figma link', true], ['dropbox', 'Dropbox', 'Paste the Dropbox folder link', false]],
+};
+const KIND_OF = { frame: 'frame', figma: 'figma', dropbox: 'dropbox' };
+
+/**
+ * Your delivery (Tomer, 25 Nov 2026): "editors and designers submit the Frame.io / Figma links — easy to find and paste;
+ * once it's in, ask if they want the next status". Paste (one click reads the clipboard), check it's the right site,
+ * save to Monday as you, then offer the next step (Working → Review).
+ */
+export function DeliveryLinks({ it, statuses, writes, can, focus }) {
+  const rows = DELIVERY[it.board] || [];
+  const [edit, setEdit] = useState(focus === 'link' ? rows.find(r => r[3] && !it.links?.[r[0]])?.[0] || null : null);
+  const [val, setVal] = useState('');
+  const [busy, setBusy] = useState(null);
+  const [err, setErr] = useState(null);
+  const [ask, setAsk] = useState(null);   // { status } after the main link is saved
+  if (!rows.length) return null;
+  const nxt = nextStatus(it, statuses);
+
+  const save = async (kind, raw) => {
+    const url = String(raw ?? val).trim();
+    setErr(null);
+    if (url && linkInfo(url).kind !== KIND_OF[kind]) { setErr(`That isn’t a ${rows.find(r => r[0] === kind)?.[1]} link`); return; }
+    setBusy(kind);
+    try {
+      const r = await studioApi.setLink(it.id, kind, url);
+      writes.patch?.(it.id, { links: { ...(it.links || {}), [kind]: url || null } });
+      writes.setToast({ head: r?.as_user ? 'Updated on Monday as you' : 'Updated on Monday', text: `${rows.find(x => x[0] === kind)?.[1]} link ${url ? 'saved' : 'removed'}` });
+      setEdit(null); setVal('');
+      const main = rows.find(x => x[0] === kind)?.[3];
+      if (url && main && can.simple && nxt && ['in_progress', 'fixes', 'queued', 'paused'].includes(it.status?.category)) setAsk({ status: nxt });
+    } catch (e) { setErr(e.message); } finally { setBusy(null); }
+  };
+  const paste = async (kind) => {
+    try {
+      const t = (await navigator.clipboard.readText()).trim();
+      if (!t) { setErr('The clipboard is empty — copy the link first'); return; }
+      setVal(t);
+      if (linkInfo(t).kind === KIND_OF[kind]) save(kind, t); else setErr(`What you copied isn’t a ${rows.find(r => r[0] === kind)?.[1]} link`);
+    } catch { setErr('Your browser didn’t allow reading the clipboard — paste with ⌘V'); }
+  };
+  const copy = (url, label) => navigator.clipboard?.writeText(url).then(() => writes.setToast({ head: 'Copied', text: `${label} link` })).catch(() => null);
+
+  return (
+    <div className="rounded-xl border border-[#0808f8]/15 bg-[#0808f8]/[0.025] p-3.5 flex flex-col gap-2.5">
+      <div className="text-[10px] font-bold uppercase tracking-wider text-[#0808f8]">{can.simple ? 'Your delivery' : 'Delivery links'}</div>
+      {rows.map(([kind, label, ph, main]) => {
+        const url = it.links?.[kind];
+        const info = url ? linkInfo(url) : null;
+        if (url && edit !== kind) {
+          return (
+            <div key={kind} className="flex items-center gap-2 min-w-0">
+              <a href={url} target="_blank" rel="noopener noreferrer" title={url} data-kind={info.kind} className="cp-chip min-w-0 flex-1 !max-w-none">
+                <span className="cp-chip-k">{info.label}</span>{info.sub ? <span className="cp-chip-s">{info.sub}</span> : null}
+              </a>
+              <button type="button" onClick={() => copy(url, label)} className="text-[11.5px] font-semibold px-2 py-1.5 rounded-lg text-gray-500 hover:bg-white hover:text-[#030b2e]">Copy</button>
+              {can.status && <button type="button" onClick={() => { setEdit(kind); setVal(url); setErr(null); }} className="text-[11.5px] font-semibold px-2 py-1.5 rounded-lg text-gray-500 hover:bg-white hover:text-[#030b2e]">Replace</button>}
+            </div>
+          );
+        }
+        if (!can.status) return <div key={kind} className="text-[12px] text-gray-400">No {label} link yet</div>;
+        return (
+          <div key={kind} className="flex items-center gap-1.5">
+            <input value={edit === kind ? val : ''} onFocus={() => { if (edit !== kind) { setEdit(kind); setVal(''); setErr(null); } }} onChange={(e) => { setEdit(kind); setVal(e.target.value); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') save(kind); if (e.key === 'Escape') { e.stopPropagation(); setEdit(null); setVal(''); } }}
+              autoFocus={focus === 'link' && main && edit === kind} placeholder={ph}
+              className={`flex-1 min-w-0 text-[13px] px-3 py-2 rounded-lg border bg-white focus:outline-none focus:border-[#0808f8]/60 ${main ? 'border-[#0808f8]/30' : 'border-gray-200'}`} />
+            <button type="button" onClick={() => paste(kind)} disabled={!!busy} className="text-[12px] font-semibold px-2.5 py-2 rounded-lg bg-white border border-gray-200 text-gray-600 hover:text-[#030b2e] disabled:opacity-50">Paste</button>
+            {edit === kind && val.trim() && (
+              <button type="button" onClick={() => save(kind)} disabled={!!busy} className="text-[12px] font-semibold px-3 py-2 rounded-lg text-white disabled:opacity-50" style={{ background: '#0808f8' }}>
+                {busy === kind ? <Loader2 size={13} className="animate-spin" /> : 'Save'}
+              </button>
+            )}
+            {edit === kind && url && <button type="button" onClick={() => { setEdit(null); setVal(''); }} className="text-[11.5px] px-1.5 text-gray-400 hover:text-gray-700">Cancel</button>}
+          </div>
+        );
+      })}
+      {err && <div className="text-[12px] text-red-600">{err}</div>}
+      {ask && (
+        <div className="rounded-lg bg-white border border-gray-200 p-3 flex flex-wrap items-center gap-2">
+          <span className="text-[13px] text-[#030b2e] flex-1 min-w-[160px]">✓ Saved on Monday. Ready to send it to <b style={{ color: ask.status.color }}>{ask.status.label}</b>?</span>
+          <button type="button" onClick={() => { writes.save(it, { status: ask.status }); setAsk(null); }} className="flex items-center gap-1.5 text-[12.5px] font-semibold px-3 py-1.5 rounded-lg text-white" style={{ background: ask.status.color || '#0808f8' }}>
+            <ArrowRight size={13} /> Move to {ask.status.label}
+          </button>
+          <button type="button" onClick={() => setAsk(null)} className="text-[12.5px] font-semibold px-2.5 py-1.5 rounded-lg text-gray-500 hover:bg-gray-100">Not now</button>
+        </div>
+      )}
+    </div>
+  );
 }

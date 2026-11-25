@@ -49,6 +49,123 @@ const GROWTH_WHATS_NEW = [
   ] },
 ];
 
+// The Creative team's manual (25 Nov 2026) — video editors & designers learn CP here. Every change to their pages updates
+// this section and adds a dated line to CREATIVE_WHATS_NEW (same rule as the Growth team's).
+const CREATIVE_WHATS_NEW = [
+  { date: '25 Nov 2026', items: [
+    '🎉 Your own CP: Home, My Studio (Board · My tasks · Week), New ticket, Briefs Creator, Productions, TV + Ads Library, On Air, My AfterLife and the Team Weekly — no need to open Monday for your day-to-day.',
+    '🔗 Paste your Frame.io (video) or Figma (design) link right on the task — “Your delivery” at the top, or “+ Frame.io link” on the card. Once it’s saved CP asks if it should go to Review.',
+    '🔔 Notifications: when your task’s status moves, someone writes or tags you, you’re put on a task, or your ad goes live on Meta. Choose what you get in 🔔 → ⚙️.',
+    '📄 Briefs read cleanly: the facts on top, labelled sections, Dropbox / Frame.io / Figma links as named chips.',
+  ] },
+];
+
+const CREATIVE_CATEGORY = {
+  id: 'creative', label: 'Creative team', color: 'from-violet-500 to-[#0808f8]', creativeOnly: true,
+  sections: [
+    {
+      id: 'creative-whats-new', icon: '✨', label: 'What’s new',
+      summary: `Latest: ${CREATIVE_WHATS_NEW[0].date} — what changed in your CP, newest first.`,
+      keywords: ['new', 'updated', 'changes', 'release'],
+      content: CREATIVE_WHATS_NEW.map(w => ({ type: 'guide', title: w.date, steps: w.items })),
+    },
+    {
+      id: 'creative-start', icon: '🚀', label: 'Start here',
+      summary: 'Connect your Monday once — then everything you do in CP lands on Monday as you.',
+      keywords: ['start', 'monday', 'connect', 'login', 'welcome'],
+      content: [
+        { type: 'guide', title: 'First time', steps: [
+          'Sign in with the email the studio gave you.',
+          'Click “Connect your Monday” (top right of every page, or More → My Monday). Your status changes, updates and links then show as you on Monday — your name, your notifications.',
+          'Open Home — your day — and My Studio — your board.',
+        ]},
+        { type: 'tips', items: [
+          'Not connected yet? CP still works — it signs what you write with your name.',
+          'You see your own tasks only. The studio sets timelines, people and deadlines; you move the status, write, and add your links.',
+        ]},
+      ],
+    },
+    {
+      id: 'creative-home', icon: '🏠', label: 'Home',
+      summary: 'Your day: what’s late and due, what needs your link, what changed for you, your ads on air.',
+      keywords: ['home', 'dashboard', 'today', 'arrange', 'widgets'],
+      content: [
+        { type: 'guide', title: 'The cards', steps: [
+          'Today — overdue, due today, next two days, and your next tasks in the smart order. “→ Review” moves one on.',
+          'Waiting for your link — tasks you’re working on with no Frame.io / Figma link yet.',
+          'For you — your latest notifications. Coming up — your next deadlines.',
+          'Your ads on air — your creatives running on Meta (from AfterLife). Team Weekly and My AfterLife — one click away.',
+        ]},
+        { type: 'guide', title: 'Make it yours', steps: ['Click Arrange → move cards up / down, hide the ones you don’t need, bring them back from “Hidden”. Click Done. It’s saved for you.'] },
+      ],
+    },
+    {
+      id: 'creative-studio', icon: '🗂️', label: 'My Studio — Board, My tasks, Week',
+      summary: 'Every task you’re on: a Kanban board like Monday’s (smarter), a table, and your two weeks.',
+      keywords: ['board', 'kanban', 'tasks', 'status', 'week', 'workload', 'drag', 'deadline', 'priority'],
+      content: [
+        { type: 'guide', title: 'Board', steps: [
+          'Columns are your statuses, in Monday’s order. Drag a card to another column — the status changes on Monday as you.',
+          'Cards are sorted for you: late and due-today first, then priority (Critical, High), then what starts and is due first.',
+          '“By deadline” regroups the same tasks: Overdue · Today · Next 2 days · This week · Later · No deadline.',
+          'A card shows the product, the deadline (red when late), the timeline, Frame.io / Dropbox / Figma buttons and who asked.',
+        ]},
+        { type: 'guide', title: 'My tasks and Week', steps: [
+          'My tasks — a table grouped by status or by brand; click a group to fold it.',
+          'Week — your two working weeks with each task’s timeline as a bar, the deadline as ◆, and what isn’t scheduled yet below.',
+        ]},
+        { type: 'tips', items: ['Arrange — choose what a card shows, compact cards, show Done. Search finds a task by name, product or who asked.'] },
+      ],
+    },
+    {
+      id: 'creative-task', icon: '📝', label: 'A task — status, links, brief, updates',
+      summary: 'Open any task: move it on, paste your link, read the brief, talk.',
+      keywords: ['task', 'brief', 'frame', 'figma', 'dropbox', 'link', 'review', 'update', 'reply', 'like', 'files'],
+      content: [
+        { type: 'guide', title: 'Status', steps: ['Its status, “Move to …” for the next step in one click, and “Other status” for the rest.'] },
+        { type: 'guide', title: 'Your delivery — Frame.io / Figma', steps: [
+          'Video: paste the Frame.io review link. Design: paste the Figma link. Dropbox for the files.',
+          '“Paste” reads what you copied and saves it straight away (only the right kind of link is accepted).',
+          'Then CP asks: “Ready to send it to Review?” — one click and it moves.',
+          'Copy and Replace are next to a saved link.',
+        ]},
+        { type: 'guide', title: 'Brief and updates', steps: [
+          'The brief is first: the facts in boxes, then labelled parts (task, concept, reference, hooks, script).',
+          'Write an update with @ to tag someone, attach files (drop or paste a screenshot), reply under any update, like.',
+          'Files — everything on the task. Activity — every status move and date change, day by day.',
+        ]},
+      ],
+    },
+    {
+      id: 'creative-notify', icon: '🔔', label: 'Notifications',
+      summary: 'Status moves, updates, tags, new tasks, and your ad going live — choose what you get.',
+      keywords: ['notifications', 'bell', 'alerts', 'desktop', 'settings', 'meta', 'live'],
+      content: [
+        { type: 'guide', title: 'What you hear about', steps: [
+          'Your task’s status moved (by someone else) · someone wrote or replied on your task · someone tagged you · you were put on a task.',
+          'Your ad was uploaded to Meta, and when it starts running (from AfterLife — usually the next day).',
+        ]},
+        { type: 'guide', title: 'Settings', steps: ['🔔 → ⚙️: switch each kind on or off, the corner pop-up, and desktop notifications (your browser asks once).'] },
+      ],
+    },
+    {
+      id: 'creative-more', icon: '🧭', label: 'Briefs, tickets, productions, On Air, AfterLife, Weekly',
+      summary: 'Everything else in your CP — all without money.',
+      keywords: ['medium', 'brief', 'ticket', 'productions', 'library', 'on air', 'afterlife', 'weekly'],
+      content: [
+        { type: 'guide', title: 'Pages', steps: [
+          'New ticket — ask for work; it’s created on Monday as you.',
+          'Briefs Creator (Medium) — write briefs in the team’s style; you see your own.',
+          'Productions — what’s being made and when (shoots, deliveries, on-air). TV Library and Ads Library — past work and fresh ads.',
+          'On Air — what runs on Meta (live since, ended on, yours first) and on TV (spots, first airing, what’s booked). No money.',
+          'My AfterLife — your own AfterLife page; “Open in a new tab” for the full screen.',
+          'Team Weekly — the team’s Sunday deck, to watch.',
+        ]},
+      ],
+    },
+  ],
+};
+
 const GROWTH_CATEGORY = {
   id: 'growth',
   label: 'Growth team',
@@ -223,6 +340,7 @@ const GROWTH_CATEGORY = {
 
 const CATEGORIES = [
   GROWTH_CATEGORY,
+  CREATIVE_CATEGORY,
   {
     id: 'getting-started',
     label: 'Getting Started',
@@ -822,12 +940,15 @@ export default function Manual() {
   const isParticle = brand?.id === 'particle' || brand?.name?.toLowerCase().includes('particle');
   const isAccounting = role === 'accounting';
   const isGrowth = role === 'growth';
+  const isCreativeTeam = role === 'creative';
 
   const visibleCategories = useMemo(() => {
     return CATEGORIES
       .filter(cat => {
         // Growth team: their own section only; admins see it too (to know what the team reads)
         if (isGrowth) return !!cat.growthOnly;
+        if (isCreativeTeam) return !!cat.creativeOnly;   // the Creative team: their own section (25 Nov 2026)
+        if (cat.creativeOnly && !isAdmin) return false;
         if (cat.growthOnly && !isAdmin) return false;
         if (cat.adminOnly && !isAdmin) return false;
         if (cat.hideFor?.includes('accounting') && isAccounting) return false;

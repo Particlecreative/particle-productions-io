@@ -37,8 +37,8 @@ function hello(name) {
 // Growth team (17 Nov 2026): the full Medium — "Briefs Creator" in their menu — with their limits: their own briefs only
 // (nothing written for them automatically), no batch production, no settings / sources / keys (the server enforces it)
 export default function MediumPage() {
-  const { isAdmin, isGrowth, user } = useAuth();
-  const growth = isGrowth;
+  const { isAdmin, isGrowth, isCreative, user } = useAuth();
+  const growth = isGrowth || isCreative;   // the Creative team: the same Briefs Creator — their own briefs (25 Nov 2026)
   const { brandId } = useBrand();
   const [params, setParams] = useSearchParams();
   const TK = 'tab';

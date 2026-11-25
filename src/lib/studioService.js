@@ -52,6 +52,13 @@ export const studioApi = {
     const me = d.items[0]?.requested_by?.[0] || null;
     return { me: me ? { id: me, source: 'email', name: d.requesters?.[me]?.name || 'You' } : null, items: d.items.filter(it => it.requested_by.includes(me)), people: d.people, boards: d.boards, warnings: [], generated_at: d.generated_at, today: d.today };
   })()),
+  /** The Creative team's own tasks (25 Nov 2026) — every ticket they're the editor / designer on */
+  myTasks: async (force = false) => (LIVE ? call(`/my-tasks${force ? '?force=1' : ''}`) : (async () => {
+    const d = (await fx()).fixtureCampaigns();
+    const me = d.items.find(it => it.people?.length)?.people?.[0] || null;
+    const requesters = { ...(d.requesters || {}) };
+    return { me: me ? { id: me, source: 'connected', name: d.people?.[me]?.name || 'You' } : null, items: d.items.filter(it => it.people.includes(me)).map(it => ({ ...it, links: it.links || { frame: 'https://f.io/demo', dropbox: 'https://www.dropbox.com/scl/fo/x/Project%20Files?dl=0' } })), people: { ...requesters, ...d.people }, boards: d.boards, warnings: [], generated_at: d.generated_at, today: d.today };
+  })()),
   /** Every campaign label → its group (for the Workload stats) */
   campaignGroupMap: async () => (LIVE ? call('/campaign-groups') : (await fx()).fixtureCampaigns().campaign_groups),
   /** Campaign groups: { campaign, group|null } · { add: { name } } · { rename: { key, name } } */
@@ -85,6 +92,8 @@ export const studioApi = {
     if (!res.ok) throw new StudioError(data.error || (res.status === 413 ? 'Those files are too large' : `Posting failed (${res.status})`), res.status);
     return data;
   },
+  /** A delivery link on a task: kind frame | figma | dropbox | project_link; url '' clears it (25 Nov 2026) */
+  setLink: async (itemId, kind, url) => (LIVE ? call(`/items/${itemId}/link`, { method: 'PATCH', body: { kind, url } }) : (await new Promise(r => setTimeout(r, 400)), { ok: true, kind, url: url || null, as_user: true })),
   likeUpdate: async (itemId, updateId, on) => (LIVE ? call(`/items/${itemId}/updates/${updateId}/like`, { method: 'POST', body: { on } }) : { ok: true, liked: on }),
   editUpdate: async (itemId, updateId, text, mentions = []) => (LIVE ? call(`/items/${itemId}/updates/${updateId}`, { method: 'PUT', body: { text, mentions } }) : { ok: true, html: `<p>${text.replace(/</g, '&lt;')}</p>` }),
   activity: async (itemId) => (LIVE ? call(`/items/${itemId}/activity`) : (await fx()).fixtureActivity(itemId)),

@@ -95,11 +95,11 @@ router.use((req, res, next) => {
 
 router.use((req, res, next) => (req.service ? next() : verifyJWT(req, res, next)));
 // Growth: only the routes middleware/auth.js lists (their own briefs — no settings, sources, keys, corpus, autopilot)
-router.use((req, res, next) => ((RANK[req.user?.role] ?? -1) >= RANK.Editor || req.user?.super_admin || req.user?.role === 'Growth' ? next() : res.status(403).json({ error: 'Editor access required' })));
+router.use((req, res, next) => ((RANK[req.user?.role] ?? -1) >= RANK.Editor || req.user?.super_admin || req.user?.role === 'Growth' || req.user?.role === 'Creative' ? next() : res.status(403).json({ error: 'Editor access required' })));
 const requireAdmin = (req, res, next) => (isAdmin(req) ? next() : res.status(403).json({ error: 'Admin access required' }));
 // Growth sees and acts on its own briefs only (Tomer, 17 Nov 2026: "their medium shouldn't create automatically")
 router.use('/briefs/:id', async (req, res, next) => {
-  if (req.user?.role !== 'Growth' || !UUID_RE.test(req.params.id)) return next();
+  if ((req.user?.role !== 'Growth' && req.user?.role !== 'Creative') || !UUID_RE.test(req.params.id)) return next();   // the Creative team too (25 Nov 2026)
   try {
     const { rows } = await db.query('SELECT author FROM medium_briefs WHERE id = $1', [req.params.id]);
     if (rows[0] && rows[0].author !== actorOf(req)) return res.status(404).json({ error: 'Not found' });
@@ -429,7 +429,7 @@ router.get('/briefs', async (req, res) => {
     if (req.query.lane) add('lane = ?', String(req.query.lane));
     if (req.query.source) add('source = ?', String(req.query.source));
     if (req.query.ids) add('id = ANY(?::uuid[])', String(req.query.ids).split(',').filter(x => UUID_RE.test(x)));
-    if (req.user?.role === 'Growth' || req.query.mine === '1') add('author = ?', actorOf(req));   // Growth: their own briefs only
+    if (req.user?.role === 'Growth' || req.user?.role === 'Creative' || req.query.mine === '1') add('author = ?', actorOf(req));   // Growth / Creative: their own briefs only
     const { rows } = await db.query(
       `SELECT id, status, source, author, lane, product, format, move, kind, ticket_name, fields->>'hook' AS hook, fields->>'why' AS why,
               (score->>'total')::int AS score, score->>'band' AS band, preflight->>'verdict' AS preflight, (preflight->>'must_fix')::int AS must_fix, preflight->'issues' AS pf_issues,

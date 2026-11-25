@@ -61,11 +61,34 @@ async function listUpdates(config, itemId, { page = 1, limit = LIMIT } = {}) {
   const item = d?.items?.[0];
   if (!item) throw bad('Task not found', 404);
   const list = item.updates || [];
+  const more = list.length >= limit;
+  // The brief sits at the top of the panel (25 Nov 2026). With more updates than one page it's further back — fetch it.
+  let brief = null;
+  if (p === 1 && more) brief = await olderBrief(itemId, new Set(list.map(u => String(u.id)))).catch(() => null);
   return {
-    item_name: item.name || '', page: p, more: list.length >= limit,
+    item_name: item.name || '', page: p, more,
     updates: list.map(u => ({ ...shape(u), replies: (u.replies || []).map(shape) })),
+    ...(brief ? { brief } : {}),
     ...(p === 1 ? { files: (item.assets || []).filter(Boolean).map(fileOf).sort((a, b) => String(b.at || '').localeCompare(String(a.at || ''))) } : {}),
   };
+}
+
+const CHANGE_TEXT = /\bwas changed from\b/i;
+const BRIEF_WORDS = /\b(task name|video concept|concept|hook|script|brief by medium|department|deliverables?|sizes? needed|references?)\b/i;
+/** The oldest update with substance (pure — tested): what the panel shows as the brief. */
+function pickBrief(rows) {
+  const ok = (rows || []).filter(u => u && !CHANGE_TEXT.test(u.text_body || '')).sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
+  const t = (u) => String(u.text_body || '').replace(/﻿/g, '').trim();
+  return ok.find(u => t(u).length >= 160 || (BRIEF_WORDS.test(t(u)) && t(u).length >= 60)) || null;
+}
+
+async function olderBrief(itemId, have) {
+  const d = await monday.mondayQuery('query ($ids: [ID!]) { items(ids: $ids) { updates(limit: 100) { id created_at text_body } } }', { ids: [String(itemId)] }, { apiVersion: API });
+  const pick = pickBrief(d?.items?.[0]?.updates || []);
+  if (!pick || have.has(String(pick.id))) return null;
+  const r = await monday.mondayQuery(`query ($ids: [ID!]) { updates(ids: $ids) { ${FULL} replies { ${FULL} } } }`, { ids: [String(pick.id)] }, { apiVersion: API });
+  const u = r?.updates?.[0];
+  return u ? { ...shape(u), replies: (u.replies || []).map(shape) } : null;
 }
 
 /** The update belongs to this task (so a like / edit / reply can't land on some other item). */
@@ -170,4 +193,4 @@ async function activity(config, itemId) {
   return { events: activityRows(mine, cols, names).slice(0, 120) };
 }
 
-module.exports = { listUpdates, post, like, edit, activity, shape, fileOf, activityRows, LIMIT };
+module.exports = { listUpdates, post, like, edit, activity, shape, fileOf, activityRows, pickBrief, LIMIT };

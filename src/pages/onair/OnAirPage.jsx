@@ -4,7 +4,7 @@
 // sent), matched to the TV Library by creative code;
 // Meta from AfterLife (live creatives, who made them, how they do against our own 2026 average). Day / Week / Month
 // everywhere. Click a Meta ad to watch it and read it like AfterLife shows it. The growth team sees TV only.
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -172,7 +172,7 @@ function ChartCard({ title, metrics, metric, onMetric, points, fmt, note, color 
   );
 }
 
-export default function OnAirPage() {
+function OnAirFull() {
   const { isGrowth } = useAuth();
   const { brandId } = useBrand();
   const [params, setParams] = useSearchParams();
@@ -1206,4 +1206,11 @@ function CreativeViewer({ c, initialPeriod, bench, lastDay, onClose }) {
     </div>,
     document.body,
   );
+}
+
+// The Creative team sees what runs when — no money (25 Nov 2026; the server strips it too)
+const CreativeOnAir = lazy(() => import('../../components/onair/CreativeOnAir'));
+export default function OnAirPage() {
+  const { isCreative } = useAuth();
+  return isCreative ? <Suspense fallback={null}><CreativeOnAir /></Suspense> : <OnAirFull />;
 }

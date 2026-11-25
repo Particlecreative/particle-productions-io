@@ -26,7 +26,7 @@ function nextRun(weekday, hour) {
 
 /** The home: start something, what's waiting for you, what's coming up. No dashboards. */
 export default function Today({ overview, briefs, onOpen, go }) {
-  const { isGrowth } = useAuth();   // Growth team: no mass production (17 Nov 2026)
+  const { isGrowth: growthRole, isCreative } = useAuth(); const isGrowth = growthRole || isCreative;   // the Creative team has the same Briefs Creator (25 Nov 2026)   // Growth team: no mass production (17 Nov 2026)
   const waiting = useMemo(() => (briefs || []).filter(b => b.status === 'PENDING_REVIEW')
     .map(b => ({ b, r: readiness(b) })).sort((x, y) => (READY_ORDER[x.r.key] ?? 9) - (READY_ORDER[y.r.key] ?? 9) || new Date(y.b.created_at) - new Date(x.b.created_at)), [briefs]);
   // being written: the one in progress first, then the line in order

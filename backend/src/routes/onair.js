@@ -47,7 +47,8 @@ router.use((req, res, next) => {
 });
 
 router.get('/tv', async (req, res) => {
-  try { res.set('Cache-Control', 'no-store').json(await TV.buildTv('particle')); } catch (err) { fail(res, err, 'tv'); }
+  // the Creative team sees what runs when — every money number is taken out here (lib/team/noMoney.js, 25 Nov 2026)
+  try { const tv = await TV.buildTv('particle'); res.set('Cache-Control', 'no-store').json(req.user?.role === 'Creative' ? require('../lib/team/noMoney').tvForCreative(tv) : tv); } catch (err) { fail(res, err, 'tv'); }
 });
 
 router.post('/tv/refresh', async (req, res) => {
@@ -66,7 +67,10 @@ router.post('/tv/refresh', async (req, res) => {
 
 router.get('/media', async (req, res) => {
   if (req.user?.role === 'Growth') return res.status(403).json({ error: 'Not part of the Growth Studio', code: 'growth_only' });
-  try { res.set('Cache-Control', 'no-store').json(await Media.getMedia({ force: req.query.force === '1' })); } catch (err) { fail(res, err, 'media'); }
+  try {
+    const m = await Media.getMedia({ force: req.query.force === '1' && req.user?.role !== 'Creative' });
+    res.set('Cache-Control', 'no-store').json(req.user?.role === 'Creative' ? require('../lib/team/noMoney').mediaForCreative(m) : m);
+  } catch (err) { fail(res, err, 'media'); }
 });
 
 module.exports = router;

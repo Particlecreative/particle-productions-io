@@ -48,7 +48,7 @@ function appBase(req) { return (process.env.APP_URL || `https://${req.get('host'
 router.use(verifyJWT);
 router.use((req, res, next) => {
   // Growth reaches only what middleware/auth.js lists for it (dashboard, campaigns, the ticket creator)
-  if ((RANK[req.user?.role] ?? -1) < RANK.Editor && req.user?.role !== 'Growth') return res.status(403).json({ error: 'Editor access required' });
+  if ((RANK[req.user?.role] ?? -1) < RANK.Editor && req.user?.role !== 'Growth' && req.user?.role !== 'Creative') return res.status(403).json({ error: 'Editor access required' });
   const brandId = String(req.query.brand_id || req.body?.brand_id || DEFAULT_BRAND);
   const u = req.user || {};
   if (!(u.super_admin || u.brand_id === brandId || (u.brand_ids || []).includes(brandId))) return res.status(403).json({ error: 'No access to this brand' });
@@ -87,6 +87,25 @@ router.get('/my-requests', async (req, res) => {
     res.json({ ...data, today: W.localDate(Date.now()) });
   } catch (err) { errorJson(res, err); }
 });
+
+// The Creative team's own tasks (25 Nov 2026): every ticket they're the editor / designer on — Board, My tasks, Home
+router.get('/my-tasks', async (req, res) => {
+  try {
+    const data = await require('../lib/studio/myTasks').getMyTasks({ brandId: req.brandId, user: req.user, force: req.query.force === '1' });
+    res.json({ ...data, today: W.localDate(Date.now()) });
+  } catch (err) { errorJson(res, err); }
+});
+
+/**
+ * The Creative team works their own tickets only (25 Nov 2026): the editor / designer on it, or the one who asked.
+ * Admins, the Studio and editors are not limited. Answers false (and has replied 403) when it isn't theirs.
+ */
+async function creativeOwn(req, res, itemId) {
+  if (req.user?.role !== 'Creative') return true;
+  const ok = await require('../lib/studio/myTasks').isMine({ brandId: req.brandId, user: req.user, itemId }).catch(() => false);
+  if (!ok) res.status(403).json({ error: 'That ticket isn’t yours — only its editor / designer or requester can change it here', code: 'not_yours' });
+  return ok;
+}
 
 /** Every campaign label on both boards → its group (cheap: board settings only, no tickets) — the Workload's stats. */
 router.get('/campaign-groups', async (req, res) => {
@@ -185,6 +204,11 @@ const mine = (req) => require('../lib/mondayUser').tokenFor(req.user?.id).catch(
 // ── Workload: reschedule / reassign (writes the task's timeline + person columns on Monday) ──
 router.patch('/items/:itemId', async (req, res) => {
   try {
+    // The Creative team moves their own ticket's status — the schedule, people and deadline stay the studio's
+    if (req.user?.role === 'Creative') {
+      if (['timeline', 'people', 'deadline'].some(k => k in (req.body || {}))) return res.status(403).json({ error: 'The studio sets timelines, people and deadlines — you can move the status', code: 'status_only' });
+      if (!(await creativeOwn(req, res, req.params.itemId))) return;
+    }
     const { board, timeline, people, status, deadline } = req.body || {};
     const config = await getCreativeConfig(req.brandId);
     // Vacations layer: never schedule work onto someone's day off
@@ -235,6 +259,7 @@ router.post('/items/:itemId/updates', (req, res) => {
   updateFiles.array('files', 5)(req, res, async (err) => {
     try {
       if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'Files can be up to 50 MB each' : err.code === 'LIMIT_FILE_COUNT' ? 'Up to 5 files at a time' : err.message });
+      if (!(await creativeOwn(req, res, req.params.itemId))) return;
       const config = await getCreativeConfig(req.brandId);
       let mentions = req.body?.mentions;
       if (typeof mentions === 'string') { try { mentions = JSON.parse(mentions); } catch { mentions = []; } }
@@ -251,6 +276,7 @@ router.post('/items/:itemId/updates', (req, res) => {
 
 router.post('/items/:itemId/updates/:updateId/like', async (req, res) => {
   try {
+    if (!(await creativeOwn(req, res, req.params.itemId))) return;
     const config = await getCreativeConfig(req.brandId);
     res.json(await UPD.like(config, req.params.itemId, req.params.updateId, req.body?.on !== false, await mine(req)));
   } catch (err) { errorJson(res, err); }
@@ -260,6 +286,17 @@ router.put('/items/:itemId/updates/:updateId', async (req, res) => {
   try {
     const config = await getCreativeConfig(req.brandId);
     res.json(await UPD.edit(config, req.params.itemId, req.params.updateId, req.body?.text, req.body?.mentions, await mine(req)));
+  } catch (err) { errorJson(res, err); }
+});
+
+// A delivery link — Frame.io (video), Figma (design), Dropbox — pasted by the editor / designer (25 Nov 2026)
+router.patch('/items/:itemId/link', async (req, res) => {
+  try {
+    if (!(await creativeOwn(req, res, req.params.itemId))) return;
+    const config = await getCreativeConfig(req.brandId);
+    const kind = String(req.body?.kind || '');
+    if (!['frame', 'figma', 'dropbox', 'project_link'].includes(kind)) return res.status(400).json({ error: 'Unknown link' });
+    res.json(await require('../lib/studio/write').setLink(config, { itemId: req.params.itemId, kind, url: req.body?.url }, { token: (await mine(req))?.token }));
   } catch (err) { errorJson(res, err); }
 });
 

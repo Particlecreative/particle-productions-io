@@ -35,7 +35,7 @@ function CardTile({ card, on, fresh, onPick }) {
  * writes the day's brief(s) on its own (the switch at the bottom).
  */
 export default function HiggsfieldFilms({ notify, onOpen, onQueued, isAdmin }) {
-  const { isGrowth } = useAuth();   // Growth team writes dramas; re-reading Ads Studio is the studio's
+  const { isGrowth: growthRole, isCreative } = useAuth(); const isGrowth = growthRole || isCreative;   // the Creative team has the same Briefs Creator (25 Nov 2026)   // Growth team writes dramas; re-reading Ads Studio is the studio's
   const [ov, setOv] = useState(null);
   const [busy, setBusy] = useState(null);
   const [form, setForm] = useState({ brand: 'Particle', product_key: '', look: 'realistic', card_id: '', length: 60, count: 1, note: '' });

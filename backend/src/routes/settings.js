@@ -103,7 +103,8 @@ router.put('/view-order/:view_key', async (req, res) => {
       `INSERT INTO view_orders (view_key, user_id, "order", for_all)
        VALUES ($1, $2, $3, $4)
        ON CONFLICT (view_key, user_id) DO UPDATE SET "order" = EXCLUDED."order", for_all = EXCLUDED.for_all`,
-      [req.params.view_key, req.user.id, JSON.stringify(order), for_all || false]
+      // only an admin sets the default everyone else starts from (25 Nov 2026 — anyone could before)
+      [req.params.view_key, req.user.id, JSON.stringify(order), !!for_all && (req.user?.role === 'Admin' || !!req.user?.super_admin)]
     );
     res.json({ success: true });
   } catch (err) {

@@ -12,20 +12,23 @@ const { verifyJWT } = require('../middleware/auth');
 router.use(verifyJWT);
 
 /** pass = base64url(payload) + "." + base64url(HMAC-SHA256(key, payloadB64)), key = HMAC-SHA256(export token, "cp-embed-v1"). Pure — tested. */
-function makePass({ email, name, role }, { secret, now = Date.now(), ttlSec = 120 } = {}) {
+// mondayId (25 Nov 2026): the person's Monday user — AfterLife links "Me" with it (My AFTERLIFE for the Creative team)
+function makePass({ email, name, role, mondayId }, { secret, now = Date.now(), ttlSec = 120 } = {}) {
   if (!secret || !email) return null;
-  const payload = { email: String(email).toLowerCase(), name: name || null, cp_role: role || null, exp: Math.floor(now / 1000) + ttlSec, nonce: crypto.randomBytes(16).toString('hex') };
+  const payload = { email: String(email).toLowerCase(), name: name || null, cp_role: role || null, exp: Math.floor(now / 1000) + ttlSec, nonce: crypto.randomBytes(16).toString('hex'), ...(/^\d{1,15}$/.test(String(mondayId || '')) ? { monday_id: String(mondayId) } : {}) };
   const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
   const key = crypto.createHmac('sha256', secret).update('cp-embed-v1').digest();
   return `${body}.${crypto.createHmac('sha256', key).update(body).digest('base64url')}`;
 }
 
 // ?to=/embed/asset/<id> → a creative's AfterLife page (On Air viewer); default → Fresh to test (Ads Library)
-const EMBED_TO = /^\/embed\/(fresh|asset\/[A-Za-z0-9_:.-]{1,96})$/;   // asset ids can be board:item:var
-router.get('/afterlife-pass', (req, res) => {
+const EMBED_TO = /^\/embed\/(fresh|me|asset\/[A-Za-z0-9_:.-]{1,96})$/;   // asset ids can be board:item:var; me = My AFTERLIFE (25 Nov 2026)
+router.get('/afterlife-pass', async (req, res) => {
   const base = (process.env.AFTERLIFE_URL || '').replace(/\/$/, '');
   const to = EMBED_TO.test(String(req.query.to || '')) ? String(req.query.to) : '/embed/fresh';
-  const pass = makePass({ email: req.user?.email, name: req.user?.name, role: req.user?.role }, { secret: process.env.AFTERLIFE_EXPORT_TOKEN });
+  // My AFTERLIFE: who they are on Monday (connected Monday, else their email on Monday) rides on the pass
+  const mid = to === '/embed/me' ? await require('../lib/studio/myRequests').mondayIdOf(req.user).catch(() => null) : null;
+  const pass = makePass({ email: req.user?.email, name: req.user?.name, role: req.user?.role, mondayId: mid?.id }, { secret: process.env.AFTERLIFE_EXPORT_TOKEN });
   if (!base || !pass) return res.status(503).json({ error: 'The Ads Library isn’t connected to AfterLife yet' });
   res.set('Cache-Control', 'no-store').json({ url: `${base}${to}?pass=${encodeURIComponent(pass)}`, base });
 });

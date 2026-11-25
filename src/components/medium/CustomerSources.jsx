@@ -7,7 +7,7 @@ import { useAuth } from '../../context/AuthContext';
 import { relTime } from './util';
 
 export function SurveysCard({ isAdmin, notify }) {
-  const { isGrowth } = useAuth();   // Growth team: reads it, doesn't trigger syncs
+  const { isGrowth: growthRole, isCreative } = useAuth(); const isGrowth = growthRole || isCreative;   // the Creative team has the same Briefs Creator (25 Nov 2026)   // Growth team: reads it, doesn't trigger syncs
   const [st, setSt] = useState(null);
   const [key, setKey] = useState('');
   const [busy, setBusy] = useState(null);
@@ -93,7 +93,7 @@ export function SurveysCard({ isAdmin, notify }) {
 }
 
 export function BuyerSignalCard({ notify }) {
-  const { isGrowth } = useAuth();   // Growth team: sees who's buying, the studio pastes the email
+  const { isGrowth: growthRole, isCreative } = useAuth(); const isGrowth = growthRole || isCreative;   // the Creative team has the same Briefs Creator (25 Nov 2026)   // Growth team: sees who's buying, the studio pastes the email
   const [weeks, setWeeks] = useState(null);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);

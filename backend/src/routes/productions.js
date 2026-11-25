@@ -1,6 +1,8 @@
 const router = require('express').Router();
 const db     = require('../db');
-const { verifyJWT, requireEditor, requireAdmin, isGrowth } = require('../middleware/auth');
+const { verifyJWT, requireEditor, requireAdmin, isCurated } = require('../middleware/auth');
+// Growth and the Creative team (25 Nov 2026) get the same money-free production rows
+const isGrowth = isCurated;
 
 // Growth team: timelines only — never money. A whitelist, so a new money column can't slip through.
 const GROWTH_FIELDS = ['id', 'brand_id', 'project_name', 'product_type', 'producer', 'planned_start', 'planned_end', 'stage', 'production_type',

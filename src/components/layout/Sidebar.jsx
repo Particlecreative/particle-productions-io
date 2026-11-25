@@ -4,7 +4,7 @@ import {
   LayoutDashboard, DollarSign, BookOpen, Settings, Users, ChevronLeft, ChevronRight,
   History, FileText, FileSignature, Clapperboard, Users2, GripVertical,
   GanttChartSquare, Check, Star, Sun, Moon, Grid3x3, X as XIcon, Scroll, CheckSquare, Presentation, Radar, Library, Landmark, SpellCheck, Sparkles,
-  EyeOff, Plus, Rocket, Activity, Megaphone, Smartphone, Tv, Radio,
+  EyeOff, Plus, Rocket, Activity, Megaphone, Smartphone, Tv, Radio, Home, KanbanSquare, Gauge,
 } from 'lucide-react';
 import {
   DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors,
@@ -31,6 +31,17 @@ const DEFAULT_NAV_ITEMS = [
   { to: '/ads-library',     icon: Smartphone,       label: 'Ads Library',     sub: 'powered by AfterLife', growth: true, growthOnly: true },
   { to: '/tv-productions',  icon: Clapperboard,     label: 'TV Productions',                              growth: true, growthOnly: true },
   { to: '/tv-library',      icon: Tv,               label: 'TV Library',                                  growth: true, growthOnly: true },
+  // Creative team — editors & designers (25 Nov 2026): their own CP — only they see these (creativeOnly)
+  { to: '/home',             icon: Home,         label: 'Home',          sub: 'my day',              creative: true, creativeOnly: true },
+  { to: '/my-studio',        icon: KanbanSquare, label: 'My Studio',     sub: 'board · tasks',       creative: true, creativeOnly: true },
+  { to: '/new-ticket',       icon: Plus,         label: 'New ticket',                                creative: true, creativeOnly: true },
+  { to: '/medium',           icon: Sparkles,     label: 'Briefs Creator', sub: 'Medium',             creative: true, creativeOnly: true },
+  { to: '/productions-view', icon: Clapperboard, label: 'Productions',                               creative: true, creativeOnly: true },
+  { to: '/tv-library',       icon: Tv,           label: 'TV Library',                                creative: true, creativeOnly: true },
+  { to: '/ads-library',      icon: Smartphone,   label: 'Ads Library',   sub: 'powered by AfterLife', creative: true, creativeOnly: true },
+  { to: '/on-air',           icon: Radio,        label: 'On Air',        sub: 'what runs when',      creative: true, creativeOnly: true },
+  { to: '/my-afterlife',     icon: Gauge,        label: 'My AfterLife',                              creative: true, creativeOnly: true },
+  { to: '/team-weekly',      icon: Presentation, label: 'Team Weekly',                               creative: true, creativeOnly: true },
   { to: '/',               icon: LayoutDashboard,  label: 'Productions', exact: true, accountingHide: true },
   { to: '/tracker',        icon: Radar,            label: 'Tracker',     accountingHide: true, studioHide: true, editorOnly: true },
   { to: '/tasks',          icon: CheckSquare,      label: 'Tasks',       accountingHide: true },
@@ -129,6 +140,7 @@ export default function Sidebar({ open, onToggle }) {
 
   useEffect(() => {
     async function checkCasting() {
+      if (user?.role === 'Growth' || user?.role === 'Creative') return;   // casting isn't theirs (the API refuses it — 25 Nov 2026)
       try {
         const allCast = await Promise.resolve(getAllCasting());
         const brandCast = (Array.isArray(allCast) ? allCast : []).filter(c => c.brand_id === brand.id);
@@ -170,17 +182,20 @@ export default function Sidebar({ open, onToggle }) {
 
   const isStudio = user?.role === 'Studio';
   const isGrowth = user?.role === 'Growth';
+  const isCreative = user?.role === 'Creative';
   // Pages this person is allowed to see (role, brand, group access)…
   const allowedItems = navItems
     // Growth team: their own entries (+ Manual); nobody else sees those entries
-    .filter(i => (isGrowth ? (i.growth || i.to === '/manual') : !i.growthOnly))
+    .filter(i => (isGrowth ? (i.growth && !i.creativeOnly) || i.to === '/manual' : !i.growthOnly))
+    // Creative team: their own entries (+ Manual); nobody else sees those
+    .filter(i => (isCreative ? i.creativeOnly || i.to === '/manual' : !i.creativeOnly))
     .filter(i => !isAccounting || !i.accountingHide)
     .filter(i => !isStudio || !i.studioHide)
     .filter(i => !i.particleOnly || brand.id === 'particle')
     .filter(i => !i.editorOnly || isEditor)
     .filter(i => !i.nonEditorOnly || !isEditor)
     // The Library replaced Links: groups that had Links get the Library
-    .filter(i => !pageAccess || isAdmin || (isGrowth && i.growth) || pageAccess.includes(i.to) || (i.to === '/library' && pageAccess.includes('/links')));
+    .filter(i => !pageAccess || isAdmin || (isGrowth && i.growth) || (isCreative && i.creative) || pageAccess.includes(i.to) || (i.to === '/library' && pageAccess.includes('/links')));
   // …minus the ones they hid from their own menu
   const visibleItems = allowedItems.filter(i => !hidden.includes(i.to));
   const hiddenItems = allowedItems.filter(i => hidden.includes(i.to));
@@ -393,8 +408,21 @@ export default function Sidebar({ open, onToggle }) {
         )}
       </div>
 
-      {/* Mobile Bottom Nav — the Growth team gets their own pages (17 Nov 2026) */}
-      {isGrowth ? (
+      {/* Mobile Bottom Nav — the Growth team (17 Nov 2026) and the Creative team (25 Nov 2026) get their own pages */}
+      {isCreative ? (
+        <div className="mobile-nav">
+          {[['/home', Home, 'Home'], ['/my-studio', KanbanSquare, 'Board'], ['/new-ticket', Plus, 'Ticket'], ['/on-air', Radio, 'On Air']].map(([to, Icon, label]) => (
+            <NavLink key={to} to={to} className={({ isActive }) => clsx('sidebar-link flex-col', isActive && 'active')}>
+              <Icon size={18} />
+              <span>{label}</span>
+            </NavLink>
+          ))}
+          <button onClick={() => setShowMoreMenu(true)} className="sidebar-link flex-col">
+            <Grid3x3 size={18} />
+            <span>More</span>
+          </button>
+        </div>
+      ) : isGrowth ? (
         <div className="mobile-nav">
           {[['/creative-studio', Rocket, 'Studio'], ['/medium', Sparkles, 'Briefs'], ['/new-ticket', Plus, 'Ticket'], ['/campaigns', Megaphone, 'Campaigns']].map(([to, Icon, label]) => (
             <NavLink key={to} to={to} className={({ isActive }) => clsx('sidebar-link flex-col', isActive && 'active')}>
@@ -452,7 +480,16 @@ export default function Sidebar({ open, onToggle }) {
               </button>
             </div>
             <div className="grid grid-cols-3 gap-3">
-              {(isGrowth ? [
+              {(isCreative ? [
+                { to: '/medium',           icon: Sparkles,     label: 'Briefs' },
+                { to: '/productions-view', icon: Clapperboard, label: 'Productions' },
+                { to: '/tv-library',       icon: Tv,           label: 'TV Library' },
+                { to: '/ads-library',      icon: Smartphone,   label: 'Ads Library' },
+                { to: '/my-afterlife',     icon: Gauge,        label: 'My AfterLife' },
+                { to: '/team-weekly',      icon: Presentation, label: 'Team Weekly' },
+                { to: '/welcome',          icon: CheckSquare,  label: 'My Monday' },
+                { to: '/manual',           icon: BookOpen,     label: 'Manual' },
+              ] : isGrowth ? [
                 { to: '/on-air',         icon: Radio,        label: 'On Air' },
                 { to: '/ads-library',    icon: Smartphone,   label: 'Ads Library' },
                 { to: '/tv-productions', icon: Clapperboard, label: 'TV Productions' },

@@ -74,6 +74,14 @@ export default function StudioPage() {
   } : null), [raw, writes.merge]); // eslint-disable-line react-hooks/exhaustive-deps
   const [panel, setPanel] = useState(null); // { it, data }
   const openTask = useCallback((it, d) => setPanel({ it, data: d || data }), [data]);
+  // ?task=<monday item id> — a notification (25 Nov 2026) opens that task when it's in the loaded data
+  useEffect(() => {
+    const id = params.get('task');
+    if (!id || !data?.items) return;
+    const it = data.items.find(x => String(x.id) === id);
+    if (it) setPanel({ it, data });
+    params.delete('task'); setParams(params, { replace: true });
+  }, [params, data]); // eslint-disable-line react-hooks/exhaustive-deps
   const ctx = useMemo(() => ({ writes, openTask }), [writes, openTask]);
   // The panel follows the latest copy of its task
   const panelIt = panel && ([...(data?.items || []), ...(data?.emails || [])].find(i => i.id === panel.it.id && i.board === panel.it.board) || panel.it);

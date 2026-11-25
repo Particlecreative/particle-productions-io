@@ -26,5 +26,7 @@ export const meApi = {
   disconnect: () => (LIVE ? api('/me/monday', { method: 'DELETE' }) : Promise.resolve({ ok: true })),
   pageView: (page) => (LIVE ? apiPost('/me/activity', { page }).catch(() => null) : Promise.resolve(null)),
   afterlifePass: () => (LIVE ? apiGet('/growth/afterlife-pass') : Promise.resolve(devAfterlife())),
+  /** My AFTERLIFE (25 Nov 2026): a fresh one-use pass to the person's own AfterLife profile (/embed/me) */
+  afterlifeMe: () => (LIVE ? apiGet('/growth/afterlife-pass?to=/embed/me') : Promise.resolve({ url: null, base: AL, dev: true })),
   activity: (days = 30, user = '') => (LIVE ? apiGet(`/activity?days=${days}${user ? `&user=${encodeURIComponent(user)}` : ''}`) : Promise.resolve({ days, people: [], events: [], daily: [], monday: [] })),
 };

@@ -195,5 +195,6 @@ export function useMondayWrites({ readOnly = false } = {}) {
       <button type="button" onClick={() => setToast(null)} className="opacity-60 hover:opacity-100 flex-none"><X size={14} /></button>
     </div>, document.body) : null;
 
-  return useMemo(() => ({ merge, save, saveMany, archive, setToast, toastEl, readOnly }), [merge, save, saveMany, archive, toastEl, readOnly]);
+  // patch: show a change at once everywhere (e.g. a pasted Frame.io link) — the caller wrote it to Monday itself
+  return useMemo(() => ({ merge, save, saveMany, archive, setToast, toastEl, readOnly, patch: put }), [merge, save, saveMany, archive, toastEl, readOnly]); // eslint-disable-line react-hooks/exhaustive-deps
 }

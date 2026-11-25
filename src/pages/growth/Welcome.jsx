@@ -10,7 +10,7 @@ export const SKIP_KEY = 'cp_monday_skip_v1';
 const first = (n) => String(n || '').trim().split(/\s+/)[0];
 
 export default function Welcome() {
-  const { user, isGrowth } = useAuth();
+  const { user, isGrowth, isCreative } = useAuth();
   const nav = useNavigate();
   const [params, setParams] = useSearchParams();
   const [st, setSt] = useState(null);
@@ -38,7 +38,7 @@ export default function Welcome() {
     setBusy('off');
     try { await meApi.disconnect(); setSt(s => ({ ...s, connected: false, name: null })); } catch (e) { setErr(e.message); } finally { setBusy(null); }
   };
-  const go = () => nav(isGrowth ? '/creative-studio' : '/studio');
+  const go = () => nav(isCreative ? '/home' : isGrowth ? '/creative-studio' : '/studio');
   const skip = () => { try { localStorage.setItem(SKIP_KEY, '1'); } catch { /* ignore */ } go(); };
 
   return (
@@ -66,7 +66,7 @@ export default function Welcome() {
                 <button type="button" onClick={disconnect} disabled={busy === 'off'} className="ml-auto text-xs font-semibold text-emerald-800/70 hover:text-red-600 flex items-center gap-1"><Unplug size={13} /> Disconnect</button>
               </div>
               <button type="button" onClick={go} className="flex items-center justify-center gap-2 rounded-2xl px-5 py-3.5 text-white font-semibold" style={{ background: '#0808f8' }}>
-                {isGrowth ? 'Go to the Creative Studio' : 'Back to the Studio'} <ArrowRight size={17} />
+                {isCreative ? 'Go to my Home' : isGrowth ? 'Go to the Creative Studio' : 'Back to the Studio'} <ArrowRight size={17} />
               </button>
             </div>
           ) : (

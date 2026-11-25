@@ -9,7 +9,8 @@ import NotificationsPanel from '../notifications/NotificationsPanel';
 import clsx from 'clsx';
 
 export default function Header({ onMenuToggle }) {
-  const { user, logout, isGrowth } = useAuth();
+  const { user, logout, isGrowth: growthRole, isCreative } = useAuth();
+  const isGrowth = growthRole || isCreative;   // curated roles: no global search
   const { brand } = useBrand();
   const { unreadCount } = useNotifications();
   const { currency, toggleCurrency } = useCurrency();
@@ -96,7 +97,7 @@ export default function Header({ onMenuToggle }) {
         {/* Notifications */}
         <div className="relative">
           <button
-            onClick={() => setShowNotif(true)}
+            onClick={() => setShowNotif(true)} data-bell aria-label="Notifications"
             className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-700 relative transition-colors"
           >
             <Bell size={18} />

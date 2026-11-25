@@ -8,13 +8,13 @@ import { createPortal } from 'react-dom';
 import DOMPurify from 'dompurify';
 import {
   Loader2, Send, AtSign, Paperclip, Smile, ThumbsUp, MessageCircle, Eye, MoreHorizontal, Pin, Link2, ExternalLink, Copy, Pencil, X,
-  Search, History, Download, MessageSquare, ArrowRight, ChevronDown, ImageIcon,
+  Search, History, Download, MessageSquare, ArrowRight, ChevronDown, ImageIcon, FileText,
 } from 'lucide-react';
 import { Avatar } from './Bits';
 import { studioApi } from '../../lib/studioService';
 import { useMondayStatus } from './mondayMe';
 import { fmtDay, firstName } from './writes';
-import { parseChange, fileSize, fileKind, updateLink, dayLabel, filterUpdates, orderUpdates } from './updatesKit';
+import { parseChange, fileSize, fileKind, updateLink, dayLabel, filterUpdates, orderUpdates, linkInfo, labelCase, factsOf, briefOf } from './updatesKit';
 
 const BLUE = '#0808f8';
 const EMOJI = ['👍', '🙏', '🔥', '✅', '👀', '❤️', '🎉', '😂', '💡', '⚠️', '🚀', '👏'];
@@ -45,43 +45,110 @@ function cleanHtml(html) {
   const tpl = document.createElement('template');
   tpl.innerHTML = purify.sanitize(src.replace(/﻿/g, ''), { ALLOWED_TAGS: TAGS, ALLOWED_ATTR: ATTR });
   const root = tpl.content;
+  const KEEP = new Set(['cp-mention', 'cp-chip', 'cp-chip-k', 'cp-chip-s', 'cp-kind', 'cp-sig', 'cp-facts', 'cp-fact', 'cp-field', 'cp-field-label', 'cp-sec', 'cp-tag']);
   root.querySelectorAll('a[data-asset_id]').forEach(a => a.remove());
   root.querySelectorAll('a').forEach(a => {
     if (/mention/i.test(a.className) || a.getAttribute('data-mention-type')) {
       const s = document.createElement('span'); s.className = 'cp-mention'; s.textContent = a.textContent; a.replaceWith(s); return;
     }
-    if (!/^https?:\/\//i.test(a.getAttribute('href') || '')) { a.replaceWith(...a.childNodes); return; }
+    const href = a.getAttribute('href') || '';
+    if (!/^https?:\/\//i.test(href)) { a.replaceWith(...a.childNodes); return; }
     a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener noreferrer'); a.removeAttribute('class');
+    // A raw address becomes a readable chip: "Dropbox · Gravité Cologne", "Figma · Face Wash", "Video · reference .mp4"
+    const info = linkInfo(href);
+    a.setAttribute('data-kind', info.kind);
+    a.setAttribute('title', href);
+    const text = a.textContent.trim();
+    let host = '';
+    try { host = new URL(href).hostname.replace(/^www\./, ''); } catch { /* odd address — keep its text */ }
+    if (!text || /^(https?:\/\/|www\.)/i.test(text) || (host && text.replace(/^www\./, '').startsWith(host))) {
+      a.className = 'cp-chip';
+      a.textContent = '';
+      const k = document.createElement('span'); k.className = 'cp-chip-k'; k.textContent = info.label; a.appendChild(k);
+      if (info.sub) { const s = document.createElement('span'); s.className = 'cp-chip-s'; s.textContent = info.sub; a.appendChild(s); }
+    } else a.className = 'cp-kind';
   });
-  root.querySelectorAll('[class]').forEach(el => { if (el.className !== 'cp-mention') el.removeAttribute('class'); });
+  root.querySelectorAll('[class]').forEach(el => { if (!KEEP.has(el.className)) el.removeAttribute('class'); });
   root.querySelectorAll('em').forEach(el => { if (/via CP Studio\s*$/.test(el.textContent)) el.className = 'cp-sig'; });
   root.querySelectorAll('p, div').forEach(el => { if (!el.textContent.replace(/\s/g, '') && !el.querySelector('table, hr')) el.remove(); });
+  structure(root);
   let out = tpl.innerHTML.replace(/^(\s|<br\s*\/?>)+|(\s|<br\s*\/?>)+$/g, '');
   if (!out.replace(/<[^>]*>/g, '').trim() && !/<(table|hr)\b/i.test(out)) out = '';
   htmlCache.set(src, out);
   return out;
 }
 
-function Linked({ text }) {
-  return String(text || '').split(URL_RE).map((part, i) => (i % 2
-    ? <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-[#0808f8] underline underline-offset-2 decoration-[#0808f8]/40 break-all">{part.length > 60 ? `${part.slice(0, 57)}…` : part}</a>
-    : <Fragment key={i}>{part}</Fragment>));
+const SCRIPT_TAGS = /^(VO|V\.O\.|SFX|SUPERS?|SUPER|CTA|MUSIC|VISUALS?|SCRIPT|ON[- ]SCREEN|TEXT|CAPTION|DIALOGUE)$/i;
+/**
+ * Briefs, easier to read (Tomer, 25 Nov 2026 — "make the brief easier to read"): a "Department: … | Product: …" line
+ * becomes a facts grid; "TASK NAME: CGI Mechanism V2" a labelled field; a bold line on its own a section heading;
+ * script labels (VO / SFX / SUPER…) small tags.
+ */
+function structure(root) {
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  for (const p of [...root.querySelectorAll('p, div:not([class])')]) {
+    if (p.closest('table, li, .cp-facts, .cp-field')) continue;
+    const text = p.textContent.replace(/\s+/g, ' ').trim();
+    if (!text) continue;
+    // facts line
+    const facts = factsOf(text);
+    if (facts && !p.querySelector('a, img, table')) {
+      const grid = el('div', 'cp-facts');
+      for (const [k, v] of facts) { const f = el('div', 'cp-fact'); f.appendChild(el('span', null, k)); f.appendChild(el('b', null, v)); grid.appendChild(f); }
+      p.replaceWith(grid);
+      continue;
+    }
+    const first = p.firstElementChild;
+    const lead = p.firstChild;
+    const startsBold = first && /^(B|STRONG)$/.test(first.tagName) && (lead === first || (lead?.nodeType === 3 && !lead.textContent.trim()));
+    if (!startsBold) continue;
+    const label = first.textContent.replace(/\s+/g, ' ').trim();
+    const rest = text.slice(text.indexOf(label) + label.length).trim();
+    // a bold line on its own → section heading ("HOOK VARIATIONS", "Reference", "0–4s — THE HOOK")
+    if (!rest && label.length <= 60) { p.replaceWith(el('h4', 'cp-sec', label.replace(/[:：]\s*$/, ''))); continue; }
+    // "LABEL: text" → field, or a small tag for script labels
+    const m = label.match(/^(.{1,40}?)\s*[:：]$/);
+    if (!m || !rest) continue;
+    if (SCRIPT_TAGS.test(m[1].trim())) { first.replaceWith(el('span', 'cp-tag', m[1].trim().toUpperCase())); continue; }
+    const field = el('div', 'cp-field');
+    field.appendChild(el('div', 'cp-field-label', labelCase(m[1])));
+    first.remove();
+    const body = el('div');
+    while (p.firstChild) body.appendChild(p.firstChild);
+    // drop the space left after the label
+    if (body.firstChild?.nodeType === 3) body.firstChild.textContent = body.firstChild.textContent.replace(/^\s+/, '');
+    field.appendChild(body);
+    p.replaceWith(field);
+  }
 }
 
-function Body({ u, long }) {
+/** Plain text with readable link chips. */
+function Linked({ text }) {
+  return String(text || '').split(URL_RE).map((part, i) => {
+    if (!(i % 2)) return <Fragment key={i}>{part}</Fragment>;
+    const info = linkInfo(part);
+    return (
+      <a key={i} href={part} target="_blank" rel="noopener noreferrer" title={part} data-kind={info.kind} className="cp-chip">
+        <span className="cp-chip-k">{info.label}</span>{info.sub ? <span className="cp-chip-s">{info.sub}</span> : null}
+      </a>
+    );
+  });
+}
+
+function Body({ u, long, brief }) {
   const [open, setOpen] = useState(false);
   const html = useMemo(() => cleanHtml(u.html), [u.html]);
   const text = String(u.text || '').replace(/﻿/g, '').trim();
   if (!html && !text) return null;
-  const isLong = long ?? ((text.length > 650) || text.split('\n').length > 12);
+  const isLong = long ?? (brief ? text.length > 1100 || text.split('\n').length > 22 : (text.length > 650) || text.split('\n').length > 12);
   return (
     <div>
-      <div className={`relative ${isLong && !open ? 'max-h-[15em] overflow-hidden' : ''}`}>
+      <div className={`relative ${isLong && !open ? (brief ? 'max-h-[26em] overflow-hidden' : 'max-h-[15em] overflow-hidden') : ''}`}>
         {html ? <div className="cp-update-html" dangerouslySetInnerHTML={{ __html: html }} />
           : <div className="cp-update-html whitespace-pre-wrap break-words"><Linked text={text} /></div>}
         {isLong && !open && <div className="absolute bottom-0 inset-x-0 h-12 bg-gradient-to-t from-white to-white/0 pointer-events-none" />}
       </div>
-      {isLong && <button type="button" onClick={() => setOpen(v => !v)} className="mt-1 text-[12px] font-semibold text-[#0808f8] hover:underline">{open ? 'Show less' : 'Show more'}</button>}
+      {isLong && <button type="button" onClick={() => setOpen(v => !v)} className="mt-1 text-[12px] font-semibold text-[#0808f8] hover:underline">{open ? 'Show less' : brief ? 'Read the full brief' : 'Show more'}</button>}
     </div>
   );
 }
@@ -370,7 +437,7 @@ function Reply({ r, ctx }) {
   );
 }
 
-function UpdateCard({ u, ctx }) {
+function UpdateCard({ u, ctx, brief = false }) {
   const [menu, setMenu] = useState(false);
   const [editing, setEditing] = useState(false);
   const [replying, setReplying] = useState(false);
@@ -384,8 +451,9 @@ function UpdateCard({ u, ctx }) {
   const seenNames = u.seen.map(s => s.name || ctx.personOf({ id: s.id }).name).filter(Boolean);
 
   return (
-    <article className={`rounded-2xl border bg-white shadow-[0_1px_2px_rgba(3,11,46,.04)] ${u.pinned ? 'border-amber-200' : 'border-gray-200'}`}>
-      {u.pinned && <div className="flex items-center gap-1.5 px-4 pt-2.5 text-[11px] font-bold uppercase tracking-wider text-amber-600"><Pin size={11} /> Pinned to top</div>}
+    <article className={`rounded-2xl border bg-white shadow-[0_1px_2px_rgba(3,11,46,.04)] ${brief ? 'border-[#0808f8]/25 ring-1 ring-[#0808f8]/[0.06]' : u.pinned ? 'border-amber-200' : 'border-gray-200'}`}>
+      {brief ? <div className="flex items-center gap-1.5 px-4 pt-2.5 text-[11px] font-bold uppercase tracking-wider text-[#0808f8]"><FileText size={12} /> The brief{u.pinned ? <span className="text-amber-600 normal-case tracking-normal font-semibold">· pinned</span> : null}</div>
+        : u.pinned && <div className="flex items-center gap-1.5 px-4 pt-2.5 text-[11px] font-bold uppercase tracking-wider text-amber-600"><Pin size={11} /> Pinned to top</div>}
       <div className="px-4 pt-3.5 pb-3">
         <header className="flex items-center gap-2.5">
           <Avatar person={ctx.personOf(u.by)} size={34} />
@@ -407,7 +475,7 @@ function UpdateCard({ u, ctx }) {
           {editing ? (
             <Composer people={ctx.people} initial={String(u.text || '').replace(/﻿/g, '').trim()} allowFiles={false} submitLabel="Save" hint="⌘ Enter to save" autoFocus
               onCancel={() => setEditing(false)} onSubmit={async (p) => { const ok = await ctx.onEdit(u, p); if (ok) setEditing(false); return ok; }} />
-          ) : <Body u={u} />}
+          ) : <Body u={u} brief={brief} />}
         </div>
         {u.files?.length > 0 && <div className="mt-3"><Files files={u.files} openImage={ctx.openImage} /></div>}
       </div>
@@ -523,7 +591,7 @@ export default function TaskUpdates({ it, data, readOnly = false }) {
   const load = useCallback(async () => {
     try {
       const r = await studioApi.updates(it.id, 1);
-      setSt({ list: r.updates || [], files: r.files || [], itemName: r.item_name || it.name, more: !!r.more, page: 1 });
+      setSt({ list: r.updates || [], files: r.files || [], itemName: r.item_name || it.name, more: !!r.more, page: 1, brief: r.brief || null });
       setErr(null);
     } catch (e) { setErr(e.message); setSt(s => ({ ...s, list: s.list || [] })); }
   }, [it.id, it.name]);
@@ -561,7 +629,8 @@ export default function TaskUpdates({ it, data, readOnly = false }) {
   const changeOf = useCallback((u) => parseChange(u, st.itemName || it.name, labels), [st.itemName, it.name, labels]);
 
   // one update (or reply) changed in place
-  const patch = (id, fn) => setSt(s => ({ ...s, list: (s.list || []).map(u => (u.id === id ? fn(u) : { ...u, replies: (u.replies || []).map(r => (r.id === id ? fn(r) : r)) })) }));
+  const one = (id, fn) => (u) => (u.id === id ? fn(u) : { ...u, replies: (u.replies || []).map(r => (r.id === id ? fn(r) : r)) });
+  const patch = (id, fn) => setSt(s => ({ ...s, list: (s.list || []).map(one(id, fn)), brief: s.brief ? one(id, fn)(s.brief) : s.brief }));
 
   const ctx = {
     it, data, readOnly, people, myId, meP, personOf, colorOf, flash,
@@ -600,7 +669,9 @@ export default function TaskUpdates({ it, data, readOnly = false }) {
   };
 
   const list = st.list;
-  const ordered = useMemo(() => orderUpdates(list || []), [list]);
+  // The brief: the server's pick when it's further back than this page, else the oldest update with substance
+  const brief = useMemo(() => st.brief || briefOf(list || [], (u) => !!changeOf(u)), [st.brief, list, changeOf]);
+  const ordered = useMemo(() => orderUpdates((list || []).filter(u => u.id !== brief?.id)), [list, brief]);
   const anyChange = useMemo(() => ordered.some(u => changeOf(u)), [ordered, changeOf]);
   const shown = useMemo(() => filterUpdates(ordered, {
     q, filter, isChange: (u) => !!changeOf(u),
@@ -624,6 +695,7 @@ export default function TaskUpdates({ it, data, readOnly = false }) {
 
       {tab === 'updates' && (
         <>
+          {brief && <UpdateCard key={`brief-${brief.id}`} u={brief} ctx={ctx} brief />}
           {readOnly
             ? <div className="text-[12px] text-gray-500 bg-gray-50 rounded-lg px-3 py-2">View only — open the task on Monday to write an update.</div>
             : <Composer people={people} meP={meP} placeholder="Write an update and mention others with @" submitLabel="Update"
@@ -649,7 +721,7 @@ export default function TaskUpdates({ it, data, readOnly = false }) {
           {err && <div className="text-[12px] text-red-600">{err}</div>}
           {!list && !err && <Loading line="Loading from Monday…" />}
           {list && !list.length && !err && <Empty icon={MessageSquare} title="No updates yet" line={readOnly ? 'Nothing has been written on this task.' : 'Write the first one — it’s posted on the Monday task.'} />}
-          {list && list.length > 0 && !shown.length && <div className="text-[12.5px] text-gray-500 text-center py-6">Nothing matches “{q}”.</div>}
+          {list && (q || filter !== 'all') && !shown.length && <div className="text-[12.5px] text-gray-500 text-center py-6">{q ? `Nothing matches “${q}”.` : 'Nothing here.'}</div>}
           <div className="flex flex-col gap-3">
             {shown.map(u => { const c = changeOf(u); return c ? <ChangeRow key={u.id} u={u} change={c} ctx={ctx} /> : <UpdateCard key={u.id} u={u} ctx={ctx} />; })}
           </div>

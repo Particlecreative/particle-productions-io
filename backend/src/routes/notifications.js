@@ -4,6 +4,15 @@ const { verifyJWT } = require('../middleware/auth');
 
 router.use(verifyJWT);
 
+// What each person wants to hear about (25 Nov 2026) — lib/notify/store.js
+const N = require('../lib/notify/store');
+router.get('/settings', async (req, res) => {
+  try { res.json({ settings: await N.getSettings(req.user.id), types: N.TYPES }); } catch (err) { res.status(500).json({ error: 'Server error' }); }
+});
+router.put('/settings', async (req, res) => {
+  try { res.json({ settings: await N.saveSettings(req.user.id, req.body?.settings || req.body), types: N.TYPES }); } catch (err) { res.status(500).json({ error: 'Server error' }); }
+});
+
 // GET /api/notifications  (own notifications)
 router.get('/', async (req, res) => {
   try {

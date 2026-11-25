@@ -212,6 +212,39 @@ async function postUpdate(config, itemId, text, author, mentions = [], { token =
   return { ...done.result, as_user: done.as_user, ...(done.refused ? { refused: done.refused } : {}) };
 }
 
+/**
+ * A delivery link on a task (Tomer, 25 Nov 2026: "the editors and designers submit the Frame.io and Figma links — easy to
+ * find and paste"). kind: frame (video) | figma (design) | dropbox | project_link. The address must be the right site
+ * (a Frame.io box takes frame.io / f.io only). Empty url clears it. As the person when their Monday is connected.
+ */
+const LINK_HOSTS = {
+  frame: /(^|\.)frame\.io$|^f\.io$/i, figma: /(^|\.)figma\.com$/i, dropbox: /(^|\.)dropbox\.com$/i, project_link: /./,
+};
+const LINK_TEXT = { frame: 'Frame.io', figma: 'Figma', dropbox: 'Dropbox', project_link: 'Project' };
+function checkLink(kind, url) {
+  if (!LINK_HOSTS[kind]) throw bad('Unknown link');
+  const u = String(url || '').trim();
+  if (!u) return '';
+  let host;
+  try { const x = new URL(u); if (!/^https?:$/.test(x.protocol)) throw new Error(); host = x.hostname; } catch { throw bad('That doesn’t look like a link — paste the whole address (https://…)'); }
+  if (!LINK_HOSTS[kind].test(host)) throw bad(`That isn’t a ${LINK_TEXT[kind]} link`);
+  if (u.length > 1500) throw bad('That link is too long');
+  return u;
+}
+
+async function setLink(config, { itemId, kind, url }, { token = null } = {}) {
+  const board = await boardOf(config, itemId);
+  const col = config.boards[board]?.columns?.[kind];
+  if (!col) throw bad(`The ${board} board has no ${LINK_TEXT[kind] || kind} column`);
+  const clean = checkLink(kind, url);
+  const value = clean ? JSON.stringify({ url: clean, text: LINK_TEXT[kind] }) : JSON.stringify({});
+  const done = await asPerson(token, (t) => mondayQuery(
+    'mutation ($board: ID!, $item: ID!, $col: String!, $val: JSON!) { change_column_value(board_id: $board, item_id: $item, column_id: $col, value: $val) { id } }',
+    { board: String(config.boards[board].board_id), item: String(itemId), col, val: value }, { retries: 0, token: t }));
+  clearCache('studio:');
+  return { ok: true, board, kind, url: clean || null, as_user: done.as_user, ...(done.refused ? { refused: done.refused } : {}) };
+}
+
 /** Create a Monday item. columnValues is already in Monday's JSON shape. No retries (create isn't idempotent). */
 // token: the person's own Monday (lib/mondayUser.js) so the ticket and its brief show as theirs; null → CP's account
 async function createItem({ boardId, groupId, name, columnValues, createLabels = false, token = null }) {
@@ -233,4 +266,4 @@ async function addUpdate(itemId, body, { token = null } = {}) {
 
 const updateSchedule = updateTask; // older name
 
-module.exports = { updateHtml, richOf, updateTask, updateSchedule, createItem, addUpdate, getUpdates, postUpdate, archiveTask, boardsFor, boardOf, asPerson };
+module.exports = { updateHtml, richOf, updateTask, updateSchedule, createItem, addUpdate, getUpdates, postUpdate, archiveTask, boardsFor, boardOf, asPerson, setLink, checkLink };

@@ -260,7 +260,8 @@ function canAccessBrand(user, brandId) {
   return !!(user?.super_admin || user?.brand_id === brandId || (user?.brand_ids || []).includes(brandId));
 }
 function requireCreative(req, res, next) {
-  if ((RANK[req.user?.role] ?? -1) < RANK.Editor) return res.status(403).json({ error: 'Editor access required' });
+  // the Creative team reads the team deck (25 Nov 2026) — middleware/auth.js only lets them GET the list, a deck and its picks
+  if ((RANK[req.user?.role] ?? -1) < RANK.Editor && req.user?.role !== 'Creative') return res.status(403).json({ error: 'Editor access required' });
   const brandId = String(req.query.brand_id || req.body?.brand_id || DEFAULT_BRAND);
   if (!canAccessBrand(req.user, brandId)) return res.status(403).json({ error: 'No access to this brand' });
   req.brandId = brandId;
@@ -279,6 +280,7 @@ router.param('id', async (req, res, next, id) => {
     const report = await service.getReport(id);
     if (!report) return res.status(404).json({ error: 'Not found' });
     if (!canAccessBrand(req.user, report.brand_id)) return res.status(403).json({ error: 'No access to this brand' });
+    if (req.user?.role === 'Creative' && report.deck !== 'team') return res.status(404).json({ error: 'Not found' });   // the team deck only
     req.report = report;
     next();
   } catch (err) { errorJson(res, err); }
@@ -352,7 +354,8 @@ router.delete('/frameio', requireAdminRole, async (req, res) => {
 // ── List / lookup / generate ───────────────────────────────────────────────
 router.get('/', async (req, res) => {
   try {
-    const rows = await service.listReports(req.brandId);
+    const all = await service.listReports(req.brandId);
+    const rows = req.user?.role === 'Creative' ? all.filter(r => r.deck === 'team') : all;   // the Creative team: team decks only
     const current = W.sundayOf(Date.now());
     res.json({ reports: rows.map(coverSummary), current_week: current, review_week: W.reviewWeekOf(Date.now()) });
   } catch (err) { errorJson(res, err); }

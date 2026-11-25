@@ -71,6 +71,20 @@ const medium = { corpus: require('./lib/medium/corpus'), writer: require('./lib/
     .catch(e => console.warn('[captain-worker] medium tick failed:', e.message));
   setTimeout(mediumTick, 60 * 1000);
   setInterval(mediumTick, 10 * 60 * 1000);
+
+  // Notifications (25 Nov 2026): every 2 minutes — status moves, people put on tasks, "Uploaded to Meta", new updates,
+  // replies and tags on the Studio boards; AfterLife's new spenders every 30 minutes. lib/notify/watch.js
+  let notifying = false;
+  const notifyTick = () => {
+    if (notifying) return;
+    notifying = true;
+    require('./lib/notify/watch').tick()
+      .then(r => { if (Object.values(r).some(n => n > 0)) console.log('[captain-worker] notifications:', JSON.stringify(r)); })
+      .catch(e => console.warn('[captain-worker] notifications failed:', e.message))
+      .finally(() => { notifying = false; });
+  };
+  setTimeout(notifyTick, 75 * 1000);
+  setInterval(notifyTick, 2 * 60 * 1000);
 })();
 
 process.on('unhandledRejection', (e) => console.warn('[captain-worker] unhandled:', e?.message || e));

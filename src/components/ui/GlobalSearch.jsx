@@ -35,8 +35,8 @@ function Highlight({ text = '', query }) {
 
 export default function GlobalSearch(props) {
   // The Growth team searches inside the Growth Studio — this one reads budgets and suppliers (17 Nov 2026)
-  const { isGrowth } = useAuth();
-  if (isGrowth) return null;
+  const { isGrowth, isCreative } = useAuth();
+  if (isGrowth || isCreative) return null;   // search reaches pages these roles don't have
   return <GlobalSearchInner {...props} />;
 }
 

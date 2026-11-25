@@ -79,7 +79,7 @@ function watch(req, res) {
   req._activityWatched = true;   // some routes verify the JWT twice — one line per request
   const path = String(req.originalUrl || '').split('?')[0].replace(/\/+$/, '') || '/';
   res.on('finish', () => {
-    if (res.statusCode === 403 && u.role === 'Growth') return record(u, { kind: 'blocked', label: `Tried to open ${path}`, method: req.method, path, status: 403 });
+    if (res.statusCode === 403 && (u.role === 'Growth' || u.role === 'Creative')) return record(u, { kind: 'blocked', label: `Tried to open ${path}`, method: req.method, path, status: 403 });
     if (res.statusCode >= 400) return;
     const l = labelFor(req.method, path);
     if (l) record(u, { ...l, method: req.method, path, status: res.statusCode });

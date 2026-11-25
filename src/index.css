@@ -1677,3 +1677,42 @@ html.dark [data-brand="blurr"] {
 .cp-update-html th, .cp-update-html thead td { background: #f9fafb; font-weight: 700; }
 .cp-update-html .cp-mention { font-weight: 600; color: #0808f8; background: rgba(8, 8, 248, .08); border-radius: 5px; padding: 0 .3em; }
 .cp-update-html .cp-sig { display: block; margin-top: .4em; font-size: .86em; color: #9ca3af; font-style: normal; }
+
+/* Readable links + briefs (25 Nov 2026): Dropbox / Frame.io / Figma… chips, a facts grid, labelled fields, section headings */
+.cp-update-html a.cp-chip, a.cp-chip { display: inline-flex; align-items: center; gap: .4em; max-width: 100%; vertical-align: middle; margin: .1em 0;
+  padding: .2em .6em .2em .3em; border: 1px solid #e5e7eb; border-radius: 9px; background: #fff; text-decoration: none; color: #030b2e; line-height: 1.35;
+  transition: border-color .15s, box-shadow .15s; }
+.cp-update-html a.cp-chip:hover, a.cp-chip:hover { border-color: rgba(8, 8, 248, .35); box-shadow: 0 1px 4px rgba(3, 11, 46, .08); }
+a.cp-chip::before, .cp-update-html a.cp-kind::before { content: '↗'; flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 1.5em; height: 1.5em; border-radius: 6px; font-size: .78em; font-weight: 800; color: #fff; background: #9ca3af; }
+.cp-update-html a.cp-kind::before { width: 1.25em; height: 1.25em; margin-right: .3em; vertical-align: -.15em; font-size: .7em; }
+.cp-chip-k { font-weight: 700; font-size: .92em; white-space: nowrap; }
+.cp-chip-s { color: #6b7280; font-size: .88em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.cp-chip-s::before { content: '·'; margin-right: .4em; color: #d1d5db; }
+a[data-kind="dropbox"]::before { content: 'Db'; background: #0061ff; }
+a[data-kind="frame"]::before { content: 'F'; background: #5b53ff; }
+a[data-kind="figma"]::before { content: 'Fg'; background: linear-gradient(135deg, #f24e1e, #a259ff 55%, #1abcfe); }
+a[data-kind="gdoc"]::before { content: 'D'; background: #4285f4; }
+a[data-kind="gslides"]::before { content: 'S'; background: #f4b400; }
+a[data-kind="gsheet"]::before { content: 'X'; background: #0f9d58; }
+a[data-kind="gdrive"]::before { content: 'G'; background: #1fa463; }
+a[data-kind="video"]::before { content: '▶'; background: #7e3af2; }
+a[data-kind="image"]::before { content: '◧'; background: #0808f8; }
+a[data-kind="pdf"]::before { content: 'P'; background: #e2445c; }
+a[data-kind="monday"]::before { content: 'M'; background: #ff3d57; }
+a[data-kind="meta"]::before { content: 'f'; background: #0866ff; }
+a[data-kind="upspring"]::before { content: 'U'; background: #111827; }
+a[data-kind="youtube"]::before { content: '▶'; background: #ff0000; }
+a[data-kind="instagram"]::before { content: 'Ig'; background: linear-gradient(135deg, #f58529, #dd2a7b, #8134af); }
+a[data-kind="tiktok"]::before { content: 'Tt'; background: #000; }
+.cp-update-html .cp-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: .4em; margin: 0 0 .8em; }
+.cp-update-html .cp-fact { background: #f6f7fb; border-radius: 10px; padding: .45em .65em; min-width: 0; }
+.cp-update-html .cp-fact span { display: block; font-size: .72em; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #9ca3af; }
+.cp-update-html .cp-fact b { display: block; font-size: .92em; color: #030b2e; overflow-wrap: anywhere; }
+.cp-update-html .cp-field { margin: 0 0 .75em; }
+.cp-update-html .cp-field-label { font-size: .72em; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: #0808f8; margin-bottom: .15em; }
+.cp-update-html .cp-sec { font-size: .74em; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: #030b2e; margin: 1em 0 .35em;
+  padding-top: .7em; border-top: 1px solid #f0f1f5; }
+.cp-update-html > .cp-sec:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
+.cp-update-html .cp-tag { display: inline-block; font-size: .7em; font-weight: 800; letter-spacing: .04em; color: #4b5563; background: #eef0f5; border-radius: 5px;
+  padding: .05em .4em; margin-right: .35em; vertical-align: .1em; }
