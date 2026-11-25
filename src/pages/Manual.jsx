@@ -73,6 +73,7 @@ const CREATIVE_WHATS_NEW = [
     '🏆 Home → My month: delivered, worked per task, review rounds, on time and your ads live on Meta — and months back.',
     '🌙 Quiet hours: 🔔 → ⚙️ → no pop-ups at night or all weekend — they wait in the 🔔.',
     '⏱ My HR opens with “Let’s connect your BambooHR” — two steps and you’re in.',
+    '🗂️ My Studio, Monday-style: Filter by any field (status, priority, deadline, product, type, campaign, who asked, brand, board, missing link, checklist — with counts), Quick filters (Overdue, Due this week, Needs my link, High priority, In review, Fixes), Sort, Group by any field (board and table), table Columns (show, hide, order), change a status right in the table, and saved Views as tabs.',
   ] },
   { date: '25 Nov 2026', items: [
     '🎬 A video ticket made in CP (New ticket or Briefs Creator) already has its Frame.io folder — Video › year › month › product › the ticket (TV: Productions › product › the commercial). Upload your cuts there; the link is on the task.',
@@ -139,8 +140,15 @@ const CREATIVE_CATEGORY = {
           '“By deadline” regroups the same tasks: Overdue · Today · Next 2 days · This week · Later · No deadline.',
           'A card shows the product, the deadline (red when late), the timeline, Frame.io / Dropbox / Figma buttons and who asked. “+ Frame.io link” / “+ Figma link” when a task you’re working on doesn’t have one yet.',
         ]},
+        { type: 'guide', title: 'Filter, sort, group, views (like Monday)', steps: [
+          'Filter — every field with how many tasks each choice has: status, priority, deadline, product, type, campaign, who asked, brand, board, missing Frame.io / Figma link, checklist. Pick any mix; the chips underneath show what’s on (✕ removes one).',
+          'Quick filters — one click: Overdue · Due this week · Needs my link · High priority · In review · Fixes.',
+          'Sort — Smart (what’s next), deadline, priority, status, timeline start, created, name, product; ascending or descending.',
+          'Group — the Board and the table can group by status, deadline, priority, product, type, campaign, who asked, brand or board. (Drag-to-move works when grouped by status.)',
+          'Views — set it up the way you like, then “Save as view”: it becomes a tab next to Main (✕ deletes it). Everything is saved for you, on any computer.',
+        ]},
         { type: 'guide', title: 'My tasks and Week', steps: [
-          'My tasks — a table grouped by status or by brand; click a group to fold it.',
+          'My tasks — a Monday-style table: Group by any field (or none), Columns to show / hide / reorder, click a column title to sort, click a status to change it right there. Each group shows its status mix as a bar; Collapse all / Expand all.',
           'Week — two working weeks with each task’s timeline as a bar and the deadline as ◆; ◀ ▶ go back and forward (finished tasks show with a green ✓ — “Show finished” hides them), and what isn’t scheduled yet below.',
         ]},
         { type: 'tips', items: ['Arrange — choose what a card shows, compact cards, show Done. Search finds a task by name, product or who asked.'] },
