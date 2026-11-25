@@ -296,6 +296,8 @@ router.patch('/items/:itemId/link', async (req, res) => {
     const config = await getCreativeConfig(req.brandId);
     const kind = String(req.body?.kind || '');
     if (!['frame', 'figma', 'dropbox', 'project_link'].includes(kind)) return res.status(400).json({ error: 'Unknown link' });
+    // the ticket creator makes the Dropbox folder — editors / designers deliver Frame.io / Figma only (Tomer, 25 Nov 2026)
+    if (req.user?.role === 'Creative' && !['frame', 'figma'].includes(kind)) return res.status(403).json({ error: 'The Dropbox folder comes with the ticket — paste your Frame.io or Figma link', code: 'delivery_only' });
     res.json(await require('../lib/studio/write').setLink(config, { itemId: req.params.itemId, kind, url: req.body?.url }, { token: (await mine(req))?.token }));
   } catch (err) { errorJson(res, err); }
 });

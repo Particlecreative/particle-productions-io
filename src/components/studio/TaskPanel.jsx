@@ -51,7 +51,7 @@ export default function TaskPanel({ it: base, data, onClose, focus = null }) {
   const late = it.open && it.deadline && it.deadline < today;
   const req = it.requested_by?.map(r => data.requesters?.[r]?.name).filter(Boolean).join(', ');
   // links the Delivery box above doesn't already show (Growth sees them all here, read-only)
-  const shownAbove = (can.status || can.schedule) && DELIVERY[it.board] ? DELIVERY[it.board].map(r => r[0]) : [];
+  const shownAbove = (can.status || can.schedule) && DELIVERY[it.board] ? [...DELIVERY[it.board].map(r => r[0]), 'dropbox'] : [];
   const links = [['frame', 'Frame.io', Film], ['dropbox', 'Dropbox', Folder], ['figma', 'Figma', PenTool], ['project', 'Project', Link2]]
     .filter(([k]) => it.links?.[k] && !shownAbove.includes(k));
   const life = it.life;
@@ -273,9 +273,10 @@ function Facts({ it, data, late }) {
   );
 }
 
+// What the editor / designer pastes. Dropbox is made by the ticket creator (Tomer, 25 Nov 2026) — shown read-only below.
 const DELIVERY = {
-  video: [['frame', 'Frame.io', 'Paste the Frame.io review link', true], ['dropbox', 'Dropbox', 'Paste the Dropbox folder link', false]],
-  design: [['figma', 'Figma', 'Paste the Figma link', true], ['dropbox', 'Dropbox', 'Paste the Dropbox folder link', false]],
+  video: [['frame', 'Frame.io', 'Paste the Frame.io review link', true]],
+  design: [['figma', 'Figma', 'Paste the Figma link', true]],
 };
 const KIND_OF = { frame: 'frame', figma: 'figma', dropbox: 'dropbox' };
 
@@ -352,6 +353,15 @@ export function DeliveryLinks({ it, statuses, writes, can, focus }) {
           </div>
         );
       })}
+      {/* Dropbox — the ticket creator makes the folder; here to open or copy, not to paste */}
+      {it.links?.dropbox ? (
+        <div className="flex items-center gap-2 min-w-0">
+          <a href={it.links.dropbox} target="_blank" rel="noopener noreferrer" title={it.links.dropbox} data-kind="dropbox" className="cp-chip min-w-0 flex-1 !max-w-none">
+            <span className="cp-chip-k">Dropbox</span>{linkInfo(it.links.dropbox).sub ? <span className="cp-chip-s">{linkInfo(it.links.dropbox).sub}</span> : null}
+          </a>
+          <button type="button" onClick={() => copy(it.links.dropbox, 'Dropbox')} className="text-[11.5px] font-semibold px-2 py-1.5 rounded-lg text-gray-500 hover:bg-white hover:text-[#030b2e]">Copy</button>
+        </div>
+      ) : <div className="text-[11.5px] text-gray-400">Dropbox folder: made with the ticket — not there yet</div>}
       {err && <div className="text-[12px] text-red-600">{err}</div>}
       {ask && (
         <div className="rounded-lg bg-white border border-gray-200 p-3 flex flex-wrap items-center gap-2">

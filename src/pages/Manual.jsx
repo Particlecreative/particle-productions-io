@@ -108,7 +108,7 @@ const CREATIVE_CATEGORY = {
           'Columns are your statuses, in Monday’s order. Drag a card to another column — the status changes on Monday as you.',
           'Cards are sorted for you: late and due-today first, then priority (Critical, High), then what starts and is due first.',
           '“By deadline” regroups the same tasks: Overdue · Today · Next 2 days · This week · Later · No deadline.',
-          'A card shows the product, the deadline (red when late), the timeline, Frame.io / Dropbox / Figma buttons and who asked.',
+          'A card shows the product, the deadline (red when late), the timeline, Frame.io / Dropbox / Figma buttons and who asked. “+ Frame.io link” / “+ Figma link” when a task you’re working on doesn’t have one yet.',
         ]},
         { type: 'guide', title: 'My tasks and Week', steps: [
           'My tasks — a table grouped by status or by brand; click a group to fold it.',
@@ -124,7 +124,7 @@ const CREATIVE_CATEGORY = {
       content: [
         { type: 'guide', title: 'Status', steps: ['Its status, “Move to …” for the next step in one click, and “Other status” for the rest.'] },
         { type: 'guide', title: 'Your delivery — Frame.io / Figma', steps: [
-          'Video: paste the Frame.io review link. Design: paste the Figma link. Dropbox for the files.',
+          'Video: paste the Frame.io review link. Design: paste the Figma link. The Dropbox folder is made with the ticket — open or copy it right there.',
           '“Paste” reads what you copied and saves it straight away (only the right kind of link is accepted).',
           'Then CP asks: “Ready to send it to Review?” — one click and it moves.',
           'Copy and Replace are next to a saved link.',
