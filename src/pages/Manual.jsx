@@ -53,6 +53,13 @@ const GROWTH_WHATS_NEW = [
 // The Creative team's manual (25 Nov 2026) — video editors & designers learn CP here. Every change to their pages updates
 // this section and adds a dated line to CREATIVE_WHATS_NEW (same rule as the Growth team's).
 const CREATIVE_WHATS_NEW = [
+  { date: '25 Nov 2026 — later', items: [
+    '🔑 Studio passwords (left menu): every studio login from the Access Passwords board — search, copy the login, reveal or copy the password (it hides again after 20 seconds), edit, or add a new one. It’s the Monday board itself, live.',
+    '🎡 Home → My week: a wheel of your week’s tasks — by status, priority, requester, campaign type, product or type. Arrows go a week back or forward; click a slice to see its tasks. Still-open tasks from earlier weeks count as “carried over”.',
+    '🎬 Home → Line of the day — the studio’s movie line, on your Home too.',
+    '⚡ Live: Home and My Studio refresh themselves every 30 seconds (“● Live” at the top). A task you were just put on, or one someone else moved, shows a green New / Moved badge and a note at the top. An open task’s updates refresh every 20 seconds.',
+    '🌙 Dark mode looks right now — every page.',
+  ] },
   { date: '25 Nov 2026', items: [
     '🎬 A video ticket made in CP (New ticket or Briefs Creator) already has its Frame.io folder — Video › year › month › product › the ticket (TV: Productions › product › the commercial). Upload your cuts there; the link is on the task.',
     '🎉 Your own CP: Home, My Studio (Board · My tasks · Week), New ticket, Briefs Creator, Productions, TV + Ads Library, On Air, My AfterLife and the Team Weekly — no need to open Monday for your day-to-day.',
@@ -97,6 +104,11 @@ const CREATIVE_CATEGORY = {
           'Waiting for your link — tasks you’re working on with no Frame.io / Figma link yet.',
           'For you — your latest notifications. Coming up — your next deadlines.',
           'Your ads on air — your creatives running on Meta (from AfterLife). Team Weekly and My AfterLife — one click away.',
+          'Line of the day — the studio’s movie line (collapse it with the arrow).',
+          'My week — a wheel of your week: switch Status · Priority · Requester · Campaign type · Product · Type; ◀ ▶ move a week; click a slice (or its row) to list those tasks and open one. “Carried over” = still open from an earlier week.',
+        ]},
+        { type: 'tips', items: [
+          'The page is live — it refreshes every 30 seconds while it’s open (“● Live · updated 12s ago”). New tasks and moves by others get a green badge for two minutes.',
         ]},
         { type: 'guide', title: 'Make it yours', steps: ['Click Arrange → move cards up / down, hide the ones you don’t need, bring them back from “Hidden”. Click Done. It’s saved for you.'] },
       ],
@@ -163,6 +175,26 @@ const CREATIVE_CATEGORY = {
           'On Air — what runs on Meta (live since, ended on, yours first) and on TV (spots, first airing, what’s booked). No money.',
           'My AfterLife — your own AfterLife page; “Open in a new tab” for the full screen.',
           'Team Weekly — the team’s Sunday deck, to watch.',
+        ]},
+      ],
+    },
+    {
+      id: 'creative-passwords', icon: '🔑', label: 'Studio passwords',
+      summary: 'Every studio login — the Access Passwords board on Monday, live.',
+      keywords: ['password', 'passwords', 'login', 'logins', 'access', 'account', 'artlist', 'credentials'],
+      content: [
+        { type: 'guide', title: 'Find and use a login', steps: [
+          'Left menu → Studio passwords. Particle / Blurr at the top; search, or pick a section (Creative Studio, Footage, AI Assets, Media, Production).',
+          'Copy next to the login copies it. The 👁 shows the password for 20 seconds; Copy next to it copies it without showing it.',
+          'The link under the name opens the service.',
+        ]},
+        { type: 'guide', title: 'Change or add one', steps: [
+          'Hover a card → ✏️ to change the login, password, link or renewal day (leave the password empty to keep it).',
+          '“+ Add login” adds a new one in the section you pick. It’s saved straight to the Monday board.',
+        ]},
+        { type: 'tips', items: [
+          'Every reveal, copy and change is logged (who and when — never the password itself).',
+          'Please don’t paste passwords into Monday updates, chats or briefs — keep them here.',
         ]},
       ],
     },
@@ -730,6 +762,34 @@ const CATEGORIES = [
             'Shows every change: time, production, field, old → new value, who.',
             'Filter by text, field, user, production, date range.',
             'Click Restore on any entry to revert. Confirmation shows current vs. restored value.',
+          ]},
+        ],
+      },
+      {
+        id: 'team-activity', icon: '👥', label: 'Team activity — every move',
+        summary: 'Live: what everyone did in CP, who’s online now, and a quiet notification for each move.',
+        keywords: ['activity', 'team', 'audit', 'online', 'moves', 'who did what', 'log'],
+        content: [
+          { type: 'guide', title: 'Team activity (Admin menu → Activity)', steps: [
+            'Everyone but the super admin is logged: sign-ins, every page opened, task moves (“Moved a task to Review”), updates, delivery links, tickets, briefs, clock in / out and time off, password reveals / copies / edits, and any other change (“Changed something in Contracts”).',
+            '“Online now” — who used CP in the last 5 minutes. The page refreshes itself every 20 seconds.',
+            'Filter: Everything · Moves only · Tasks · Clock & time off · Passwords · Pages. Click a person to see only them.',
+          ]},
+          { type: 'tips', items: [
+            'Each move also lands in your 🔔 under “Team moves” (quietly — no pop-up). Turn it off in 🔔 → ⚙️ → “Every move of the team”.',
+            'Opening the same page twice within 10 minutes counts once.',
+          ]},
+        ],
+      },
+      {
+        id: 'passwords', icon: '🔑', label: 'Studio passwords',
+        summary: 'The Access Passwords boards (Particle + Blurr) in CP — the creative team, the studio, producers and admins.',
+        keywords: ['password', 'passwords', 'login', 'access', 'credentials', 'subscriptions'],
+        content: [
+          { type: 'guide', title: 'How it works', steps: [
+            'Left menu → Studio passwords. It reads and writes the Monday boards live — nothing is copied into CP.',
+            'Passwords stay hidden until someone presses 👁 (20 seconds) or Copy. Every reveal, copy, edit and add is logged — “Who opened what” (admins) shows it.',
+            'Producers and admins also see $/month and credits, and the monthly total; the creative team doesn’t see money.',
           ]},
         ],
       },

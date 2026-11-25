@@ -1807,3 +1807,13 @@ html.dark a.cp-chip:hover { border-color: rgba(149,161,255,.45); box-shadow: non
 html.dark .cp-chip-s { color: #9aa3b2; }
 html.dark .cp-chip-s::before { color: #4b525c; }
 html.dark ::placeholder { color: #6e7681; }
+html.dark .bg-lime-50, html.dark .bg-lime-100 { background: rgba(163,230,53,.12) !important; }
+html.dark .text-lime-600, html.dark .text-lime-700 { color: #b5e86b !important; }
+html.dark .bg-sky-50, html.dark .bg-indigo-50, html.dark .bg-violet-50, html.dark .bg-purple-50 { background: rgba(121,140,255,.1) !important; }
+html.dark .bg-yellow-50, html.dark .bg-yellow-100 { background: rgba(234,179,8,.12) !important; }
+html.dark .bg-green-50 { background: rgba(52,211,153,.1) !important; }
+html.dark .bg-rose-50, html.dark .bg-pink-50 { background: rgba(244,63,94,.1) !important; }
+html.dark .text-sky-600, html.dark .text-sky-700 { color: #7cc4ff !important; }
+html.dark .text-yellow-700, html.dark .text-yellow-800 { color: #f5d06b !important; }
+html.dark .text-green-700, html.dark .text-green-800 { color: #5ee0a0 !important; }
+html.dark .text-rose-600, html.dark .text-rose-700, html.dark .text-pink-600 { color: #ff8fa6 !important; }
