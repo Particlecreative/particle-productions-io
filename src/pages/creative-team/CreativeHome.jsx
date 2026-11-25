@@ -1,11 +1,14 @@
 // Home — the Creative team's day (Tomer, 25 Nov 2026: "give the creative team the full experience to arrange their
 // dashboard"). What's late and due, what still needs your Frame.io / Figma link, what changed for you, your ads on air,
 // the week ahead, the team weekly and your AfterLife — each a card you can move or hide (saved for you).
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { DndContext, PointerSensor, KeyboardSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
+import { SortableContext, useSortable, rectSortingStrategy, arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus, Sparkles, KanbanSquare, ArrowUp, ArrowDown, EyeOff, Eye, SlidersHorizontal, Check, Bell, Radio, CalendarDays, Presentation, Gauge,
-  Link2, AlertTriangle, Clock, ArrowRight, Loader2, Film, PieChart, Trophy, Timer,
+  Link2, AlertTriangle, Clock, ArrowRight, Loader2, Film, PieChart, Trophy, Timer, GripVertical, RotateCcw,
 } from 'lucide-react';
 import Inspiration from '../../components/studio/Inspiration';
 import WeekWheel from '../../components/creative-team/WeekWheel';
@@ -22,20 +25,25 @@ import { creativeApi } from '../../lib/creativeReportService';
 import { meApi } from '../../lib/meService';
 import { routeOf, NOTIFY_LOOK } from '../../lib/notifyRoute';
 
+// size = how wide on a big screen (of 6 columns): third 2 · half 3 · twothirds 4 · full 6
 const WIDGETS = {
-  line: { label: 'Line of the day', icon: Film, full: true, bare: true },
-  focus: { label: 'Today', icon: AlertTriangle, wide: true },
-  clock: { label: 'My clock', icon: Timer },
-  wheel: { label: 'My week', icon: PieChart, wide: true },
-  month: { label: 'My month', icon: Trophy },
-  links: { label: 'Waiting for your link', icon: Link2 },
-  news: { label: 'For you', icon: Bell },
-  onair: { label: 'Your ads on air', icon: Radio },
-  week: { label: 'Coming up', icon: CalendarDays },
-  weekly: { label: 'Team Weekly', icon: Presentation },
-  afterlife: { label: 'My AfterLife', icon: Gauge },
+  line: { label: 'Line of the day', icon: Film, size: 'full', bare: true },
+  focus: { label: 'Today', icon: AlertTriangle, size: 'twothirds' },
+  clock: { label: 'My clock', icon: Timer, size: 'third' },
+  wheel: { label: 'My week', icon: PieChart, size: 'twothirds' },
+  month: { label: 'My month', icon: Trophy, size: 'third' },
+  links: { label: 'Waiting for your link', icon: Link2, size: 'third' },
+  news: { label: 'For you', icon: Bell, size: 'third' },
+  onair: { label: 'Your ads on air', icon: Radio, size: 'third' },
+  week: { label: 'Coming up', icon: CalendarDays, size: 'third' },
+  weekly: { label: 'Team Weekly', icon: Presentation, size: 'third' },
+  afterlife: { label: 'My AfterLife', icon: Gauge, size: 'third' },
 };
-const DEFAULT_LAYOUT = { order: ['line', 'focus', 'clock', 'links', 'wheel', 'month', 'news', 'onair', 'week', 'weekly', 'afterlife'], hidden: [] };
+const SIZES = [['third', '⅓', 2], ['half', '½', 3], ['twothirds', '⅔', 4], ['full', 'Full', 6]];
+const SPAN = { third: 'md:col-span-1 lg:col-span-2', half: 'md:col-span-1 lg:col-span-3', twothirds: 'md:col-span-2 lg:col-span-4', full: 'md:col-span-2 lg:col-span-6' };
+const ROW = 8, GAP = 16;   // the grid packs cards like a dashboard: 8px rows, each card spans as many as its height needs
+const DEFAULT_LAYOUT = { order: ['line', 'focus', 'clock', 'links', 'wheel', 'month', 'news', 'week', 'onair', 'weekly', 'afterlife'], hidden: [], sizes: {} };
+const sizeOf = (layout, k) => layout.sizes?.[k] || WIDGETS[k].size;
 /** A saved layout + cards added since: each new card goes where it sits in the default order (not at the end). */
 function mergeOrder(saved) {
   const order = saved.filter(k => WIDGETS[k]);
@@ -50,26 +58,75 @@ const KEY = 'creative-home';
 const hello = () => { const h = Number(new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: 'Asia/Jerusalem' })); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; };
 const ago = (iso) => { const m = (Date.now() - Date.parse(iso)) / 60000; return m < 60 ? `${Math.max(1, Math.round(m))}m` : m < 1440 ? `${Math.round(m / 60)}h` : `${Math.round(m / 1440)}d`; };
 
-function Card({ id, edit, first, last, onUp, onDown, onHide, children, action }) {
+/**
+ * A card you can drag anywhere (the ⠿ grip) and resize — ⅓ ½ ⅔ Full in its header, or drag its bottom-right corner
+ * (25 Nov 2026: "be able to change sizes of widgets at Home and free dragging of locations"). Its height decides how
+ * many 8px rows it takes, so cards pack without holes.
+ */
+function Card({ id, size, edit, onSize, onHide, children, action }) {
   const W = WIDGETS[id];
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const inner = useRef(null);
+  const [rows, setRows] = useState(20);
+  useEffect(() => {
+    const el = inner.current;
+    if (!el) return undefined;
+    const fit = () => setRows(Math.max(1, Math.ceil((el.getBoundingClientRect().height + GAP) / (ROW + GAP))));
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  // drag the corner: the width snaps to ⅓ · ½ · ⅔ · Full of the grid
+  const startResize = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    const grid = e.currentTarget.closest('[data-home-grid]');
+    if (!grid || window.innerWidth < 1024) return;
+    const colW = (grid.getBoundingClientRect().width + GAP) / 6;
+    const x0 = e.clientX;
+    const cols0 = SIZES.find(z => z[0] === size)?.[2] || 2;
+    let last = size;
+    const move = (ev) => {
+      const want = Math.max(2, Math.min(6, cols0 + Math.round((ev.clientX - x0) / colW)));
+      const snap = SIZES.reduce((a, z) => (Math.abs(z[2] - want) < Math.abs(a[2] - want) ? z : a), SIZES[0])[0];
+      if (snap !== last) { last = snap; onSize(snap, false); }
+    };
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); onSize(last, true); };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+  const controls = (
+    <span className={`flex items-center gap-1 ${edit ? '' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'} transition-opacity`}>
+      <span className="hidden lg:flex p-0.5 rounded-lg bg-gray-100">
+        {SIZES.map(([k, l]) => <button key={k} type="button" onClick={() => onSize(k, true)} title={`Width: ${l}`} className={`text-[10.5px] font-bold px-1.5 py-0.5 rounded-md ${size === k ? 'bg-[#030b2e] text-white' : 'text-gray-500 hover:text-gray-800'}`}>{l}</button>)}
+      </span>
+      <button type="button" onClick={onHide} className="p-1 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Hide this card" aria-label="Hide"><EyeOff size={13} /></button>
+      <button type="button" {...attributes} {...listeners} className="p-1 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 cursor-grab active:cursor-grabbing touch-none" title="Drag to move" aria-label="Drag to move"><GripVertical size={14} /></button>
+    </span>
+  );
   return (
-    W.bare && !edit ? <section className="md:col-span-2 lg:col-span-3 min-w-0">{children}</section> :
-    <section className={`rounded-3xl bg-white border border-gray-200 shadow-[0_1px_3px_rgba(3,11,46,.05)] p-5 flex flex-col min-w-0 ${W.full ? 'md:col-span-2 lg:col-span-3' : W.wide ? 'lg:col-span-2' : ''} ${edit ? 'ring-2 ring-[#0808f8]/15' : ''}`}>
-      <header className="flex items-center gap-2 mb-3">
-        <W.icon size={15} className="text-[#0808f8]" />
-        <h2 className="font-bold text-[14.5px] text-[#030b2e]">{W.label}</h2>
-        <span className="ml-auto flex items-center gap-1">
-          {edit ? (
-            <>
-              <button type="button" disabled={first} onClick={onUp} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 disabled:opacity-30" aria-label="Move up"><ArrowUp size={14} /></button>
-              <button type="button" disabled={last} onClick={onDown} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 disabled:opacity-30" aria-label="Move down"><ArrowDown size={14} /></button>
-              <button type="button" onClick={onHide} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100" aria-label="Hide"><EyeOff size={14} /></button>
-            </>
-          ) : action}
-        </span>
-      </header>
-      {children}
-    </section>
+    <div ref={setNodeRef} style={{ gridRowEnd: `span ${rows}`, transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 30 : undefined }}
+      className={`group relative min-w-0 col-span-1 ${SPAN[size] || SPAN.third} ${isDragging ? 'opacity-80' : ''}`}>
+      <div ref={inner}>
+        {W.bare && !edit ? (
+          <div className="relative">
+            {children}
+            <div className="absolute left-3 top-3 z-[2] rounded-xl bg-white/90 shadow px-1 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity">{controls}</div>
+          </div>
+        ) : (
+          <section className={`rounded-3xl bg-white border border-gray-200 shadow-[0_1px_3px_rgba(3,11,46,.05)] p-5 flex flex-col min-w-0 ${edit ? 'ring-2 ring-[#0808f8]/15' : ''} ${isDragging ? 'shadow-2xl' : ''}`}>
+            <header className="flex items-center gap-2 mb-3 min-w-0">
+              <W.icon size={15} className="text-[#0808f8] flex-none" />
+              <h2 className="font-bold text-[14.5px] text-[#030b2e] truncate">{W.label}</h2>
+              <span className="ml-auto flex items-center gap-1.5 flex-none">{!edit && action}{controls}</span>
+            </header>
+            {edit && W.bare ? <div className="text-[13px] text-gray-500">Today’s movie line — the same one the studio sees.</div> : children}
+          </section>
+        )}
+      </div>
+      <span onPointerDown={startResize} title="Drag to resize" className="hidden lg:block absolute right-1 bottom-1 w-4 h-4 cursor-ew-resize opacity-0 group-hover:opacity-100 transition-opacity z-[3]"
+        style={{ background: 'linear-gradient(135deg, transparent 50%, rgba(8,8,248,.45) 50%, rgba(8,8,248,.45) 60%, transparent 60%, transparent 70%, rgba(8,8,248,.45) 70%, rgba(8,8,248,.45) 80%, transparent 80%)', borderBottomRightRadius: 18 }} />
+    </div>
   );
 }
 
@@ -104,13 +161,19 @@ function HomeBody() {
   useEffect(() => {
     if (!user?.id) return;
     Promise.resolve(getViewOrder(KEY, user.id)).then(p => {
-      if (p && Array.isArray(p.order)) setLayout({ order: mergeOrder(p.order), hidden: (p.hidden || []).filter(k => WIDGETS[k]) });
+      if (p && Array.isArray(p.order)) setLayout({ order: mergeOrder(p.order), hidden: (p.hidden || []).filter(k => WIDGETS[k]), sizes: Object.fromEntries(Object.entries(p.sizes || {}).filter(([k, v]) => WIDGETS[k] && SPAN[v])) });
     }).catch(() => null);
     onairApi.media().then(setMedia).catch(() => setMedia({ creatives: [] }));
     creativeApi.list().then(r => setWeekly((r.reports || []).filter(x => x.deck === 'team').sort((a, b) => String(b.week_start).localeCompare(String(a.week_start)))[0] || null)).catch(() => setWeekly(null));
   }, [user?.id]);
   const save = (next) => { setLayout(next); if (user?.id) Promise.resolve(saveViewOrder(KEY, user.id, next, false)).catch(() => null); };
-  const move = (k, d) => { const o = [...layout.order]; const i = o.indexOf(k); const j = i + d; if (j < 0 || j >= o.length) return; [o[i], o[j]] = [o[j], o[i]]; save({ ...layout, order: o }); };
+  const setSize = (k, size, persist) => { const next = { ...layout, sizes: { ...(layout.sizes || {}), [k]: size } }; if (persist) save(next); else setLayout(next); };
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
+  const onDragEnd = ({ active, over }) => {
+    if (!over || active.id === over.id) return;
+    const o = layout.order;
+    save({ ...layout, order: arrayMove(o, o.indexOf(active.id), o.indexOf(over.id)) });
+  };
   const hide = (k) => save({ ...layout, hidden: [...new Set([...layout.hidden, k])] });
   const unhide = (k) => save({ ...layout, hidden: layout.hidden.filter(x => x !== k) });
 
@@ -128,7 +191,7 @@ function HomeBody() {
   const go = (n) => { if (!n.read) markRead?.(n.id); const r = routeOf(n, user?.role); if (r?.to) nav(r.to); else if (r?.href) window.open(r.href, '_blank', 'noopener'); };
 
   const body = {
-    line: edit ? <div className="text-[13px] text-gray-500">Today’s movie line — the same one the studio sees.</div> : <Inspiration />,
+    line: <Inspiration />,
     wheel: <WeekWheel items={items} people={data?.people || {}} today={today} onOpen={open} Row={TaskRow} />,
     month: <MyMonth ads={myAds} />,
     clock: <ClockCard />,
@@ -198,21 +261,31 @@ function HomeBody() {
           {edit ? <><Check size={15} /> Done</> : <><SlidersHorizontal size={15} /> Arrange</>}
         </button>
       </div>
+      {edit && (
+        <div className="flex flex-wrap items-center gap-2 text-[12.5px] rounded-2xl bg-[#0808f8]/5 border border-[#0808f8]/15 px-3 py-2">
+          <span className="text-gray-600">Drag a card by <GripVertical size={12} className="inline" /> to move it anywhere · pick ⅓ ½ ⅔ Full (or drag its bottom-right corner) to resize · <EyeOff size={12} className="inline" /> hides it.</span>
+          <button type="button" onClick={() => save({ ...DEFAULT_LAYOUT })} className="ml-auto flex items-center gap-1 font-semibold text-[#0808f8] hover:underline"><RotateCcw size={12} /> Back to the default</button>
+        </div>
+      )}
       {edit && layout.hidden.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 text-[12.5px]">
           <span className="text-gray-400">Hidden:</span>
           {layout.hidden.map(k => <button key={k} type="button" onClick={() => unhide(k)} className="flex items-center gap-1 px-2.5 py-1 rounded-full border border-dashed border-gray-300 text-gray-600 hover:border-[#0808f8] hover:text-[#0808f8]"><Eye size={12} /> {WIDGETS[k].label}</button>)}
         </div>
       )}
-      <div className="grid gap-4 lg:grid-cols-3 md:grid-cols-2 items-start">
-        {shown.map((k, i) => (
-          <Card key={k} id={k} edit={edit} first={i === 0} last={i === shown.length - 1} onUp={() => move(k, -1)} onDown={() => move(k, 1)} onHide={() => hide(k)}
-            action={k === 'news' ? <button type="button" onClick={() => document.querySelector('[data-bell]')?.click()} className="text-[12px] font-semibold text-[#0808f8]">All</button>
-              : k === 'focus' ? <button type="button" onClick={() => nav('/my-studio')} className="text-[12px] font-semibold text-[#0808f8]">Board →</button> : null}>
-            {body[k]}
-          </Card>
-        ))}
-      </div>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+        <SortableContext items={shown} strategy={rectSortingStrategy}>
+          <div data-home-grid className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-6" style={{ gridAutoRows: `${ROW}px`, gridAutoFlow: 'row dense' }}>
+            {shown.map((k) => (
+              <Card key={k} id={k} size={sizeOf(layout, k)} edit={edit} onSize={(z, persist) => setSize(k, z, persist)} onHide={() => hide(k)}
+                action={k === 'news' ? <button type="button" onClick={() => document.querySelector('[data-bell]')?.click()} className="text-[12px] font-semibold text-[#0808f8]">All</button>
+                  : k === 'focus' ? <button type="button" onClick={() => nav('/my-studio')} className="text-[12px] font-semibold text-[#0808f8]">Board →</button> : null}>
+                {body[k]}
+              </Card>
+            ))}
+          </div>
+        </SortableContext>
+      </DndContext>
     </div>
   );
 }

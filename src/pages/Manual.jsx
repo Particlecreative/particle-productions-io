@@ -73,6 +73,7 @@ const CREATIVE_WHATS_NEW = [
     '🏆 Home → My month: delivered, worked per task, review rounds, on time and your ads live on Meta — and months back.',
     '🌙 Quiet hours: 🔔 → ⚙️ → no pop-ups at night or all weekend — they wait in the 🔔.',
     '⏱ My HR opens with “Let’s connect your BambooHR” — two steps and you’re in.',
+    '🧩 Home is yours to arrange: drag any card anywhere (⠿), resize it (⅓ ½ ⅔ Full, or drag its corner), hide it — and a tidier default (Today next to My clock, My week next to My month).',
     '⏰ Home → My clock: Clock in / Clock out in one click, today’s time, and your month so far against what’s expected (with % and how much is left to the month’s target).',
     '🌴 My Studio shows who on the team is out — vacation, sick or other — today and coming up, and the Week view marks each day with who’s out (and holidays).',
     '🗂️ My Studio, Monday-style: Filter by any field (status, priority, deadline, product, type, campaign, who asked, brand, board, missing link, checklist — with counts), Quick filters (Overdue, Due this week, Needs my link, High priority, In review, Fixes), Sort, Group by any field (board and table), table Columns (show, hide, order), change a status right in the table, and saved Views as tabs.',
@@ -128,7 +129,11 @@ const CREATIVE_CATEGORY = {
         { type: 'tips', items: [
           'The page is live — it refreshes every 30 seconds while it’s open (“● Live · updated 12s ago”). New tasks and moves by others get a green badge for two minutes.',
         ]},
-        { type: 'guide', title: 'Make it yours', steps: ['Click Arrange → move cards up / down, hide the ones you don’t need, bring them back from “Hidden”. Click Done. It’s saved for you.'] },
+        { type: 'guide', title: 'Make it yours', steps: [
+          'Move a card anywhere: hover it and drag the ⠿ grip (top-right of the card) to where you want it — the others make room. Cards pack together with no gaps.',
+          'Resize: pick ⅓ · ½ · ⅔ · Full in the card’s top-right, or drag its bottom-right corner sideways.',
+          'Hide a card with the crossed eye; Arrange shows the hidden ones (click to bring back) and “Back to the default”. It’s all saved for you, on any computer.',
+        ] },
       ],
     },
     {
