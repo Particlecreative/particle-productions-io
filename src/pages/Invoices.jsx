@@ -41,6 +41,8 @@ const RECEIPT_REMINDER_HOURS = 48;
 // Every amount in its own currency (Tomer, 25 Nov 2026: "Asaf shows $750 here — in the production budget it was 750 ILS").
 // A line shows ₪ or $ exactly as the budget has it; totals add each line converted to dollars, then show in the
 // header's currency ($ / ₪).
+/** Done = the invoice is in: received, waived or not needed. */
+const isDone = (i) => ['Received', 'Waived', 'No invoice needed'].includes(i?.invoice_status);
 const codeOf = (i) => (String(i?.currency_code || 'USD').toUpperCase() === 'ILS' ? 'ILS' : 'USD');
 const amountOf = (i) => parseFloat(i?.actual_spent) || parseFloat(i?.planned_budget) || 0;
 export function fmtNative(amount, code) {
@@ -71,6 +73,9 @@ export default function Invoices() {
   const [invModal, setInvModal] = useState(null); // { lineItemId, productionId, step }
   const [bannerExpanded, setBannerExpanded] = useState(false);
   const [filterAging, setFilterAging] = useState(''); // '' | 'overdue-30' | 'overdue-60'
+  // Hide done (Tomer, 25 Nov 2026): lines whose invoice is in (received / waived / not needed) — remembered on this computer
+  const [hideDone, setHideDone] = useState(() => { try { return localStorage.getItem('cp_invoices_hide_done') === '1'; } catch { return false; } });
+  useEffect(() => { try { localStorage.setItem('cp_invoices_hide_done', hideDone ? '1' : '0'); } catch { /* ignore */ } }, [hideDone]);
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => { loadData(); }, [brandId]);
@@ -149,6 +154,7 @@ export default function Invoices() {
   // Filtered items
   const filteredItems = useMemo(() => {
     let list = allItems;
+    if (hideDone) list = list.filter(i => !isDone(i));
     if (filterProd) list = list.filter(i => i.production_id === filterProd);
     if (filterPrdId) {
       const q = filterPrdId.toLowerCase();
@@ -174,7 +180,8 @@ export default function Invoices() {
       });
     }
     return list;
-  }, [allItems, filter, filterProd, filterPrdId, filterAging, productions]);
+  }, [allItems, filter, filterProd, filterPrdId, filterAging, productions, hideDone]);
+  const doneCount = useMemo(() => allItems.filter(isDone).length, [allItems]);
 
   // By production groups — Received items sink to bottom within each group
   const byProduction = useMemo(() => {
@@ -435,6 +442,11 @@ export default function Invoices() {
                 </button>
               ))}
             </div>
+            <button type="button" onClick={() => setHideDone(v => !v)} title="Hide lines whose invoice is in (received, waived or not needed)"
+              className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border font-medium transition-colors ${hideDone ? 'bg-emerald-600 text-white border-emerald-600' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}>
+              <span className={`w-3 h-3 rounded-sm flex items-center justify-center ${hideDone ? 'bg-white text-emerald-600' : 'border border-gray-300'}`}>{hideDone ? '✓' : ''}</span>
+              Hide done{doneCount ? ` · ${doneCount}` : ''}
+            </button>
             {hasFilters && (
               <button
                 className="text-xs text-blue-500 hover:underline"
