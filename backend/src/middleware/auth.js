@@ -65,7 +65,7 @@ const CREATIVE_ALLOW = [
   // Library — TV + the Ads Library hand-off
   [/^GET$/, /^\/api\/library(\/.*)?$/],
   // Studio — their tasks, the board, the workload, the ticket creator; their own tickets' status and conversation
-  [/^GET$/, /^\/api\/studio\/(dashboard|my-tasks|my-requests|campaigns|campaign-groups|ticket-form|ticket-link)$/],
+  [/^GET$/, /^\/api\/studio\/(dashboard|my-tasks|my-requests|campaigns|campaign-groups|ticket-form|ticket-link|inspiration)$/],
   [/^GET$/, /^\/api\/studio\/items\/\d+\/(updates|activity)$/],
   [/^PATCH$/, /^\/api\/studio\/items\/\d+$/],                                   // status only, their own ticket (studio.js)
   [/^PATCH$/, /^\/api\/studio\/items\/\d+\/link$/],                            // their Frame.io / Figma / Dropbox link (studio.js)
@@ -87,6 +87,11 @@ const CREATIVE_ALLOW = [
   // Creative Weekly — the team deck, read-only (creativeReports.js)
   [/^GET$/, /^\/api\/creative-reports\/?$/],
   [/^GET$/, /^\/api\/creative-reports\/[0-9a-f-]{36}(\/picks)?$/],
+  // Studio passwords — the Access Passwords boards: read, reveal / copy (logged), edit, add (passwords.js)
+  [/^GET$/, /^\/api\/passwords\/?$/],
+  [/^POST$/, /^\/api\/passwords\/(particle|blurr)\/\d+\/reveal$/],
+  [/^PATCH$/, /^\/api\/passwords\/(particle|blurr)\/\d+$/],
+  [/^POST$/, /^\/api\/passwords\/(particle|blurr)$/],
 ];
 const creativeMay = (method, path) => CREATIVE_ALLOW.some(([m, p]) => m.test(method) && p.test(path));
 

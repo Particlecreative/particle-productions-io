@@ -78,7 +78,7 @@ function collapse(notifs) {
   return [...map.values()];
 }
 
-const TABS = [['all', 'All'], ['unread', 'Unread'], ['mentions', 'Tagged'], ['tasks', 'My tasks'], ['ads', 'Ads']];
+const TABS = [['all', 'All'], ['unread', 'Unread'], ['mentions', 'Tagged'], ['tasks', 'My tasks'], ['ads', 'Ads'], ['team', 'Team moves']];
 
 function SettingsView({ onBack }) {
   const { settings, saveSettings, types } = useNotifications();
@@ -137,7 +137,8 @@ export default function NotificationsPanel({ onClose }) {
   const [tab, setTab] = useState('all');
   const [view, setView] = useState('list');
 
-  const filtered = notifications.filter(n => tab === 'all' || (tab === 'unread' ? !n.read : groupOf(n) === tab));
+  // the team's moves (super admins) live in their own tab — they don't flood All / Unread
+  const filtered = notifications.filter(n => (tab === 'all' ? groupOf(n) !== 'team' : tab === 'unread' ? !n.read && groupOf(n) !== 'team' : groupOf(n) === tab));
   const groups = collapse(filtered);
   const buckets = { Today: [], Yesterday: [], 'This week': [], Earlier: [] };
   for (const g of groups) buckets[dayBucket(g.created_at)]?.push(g);

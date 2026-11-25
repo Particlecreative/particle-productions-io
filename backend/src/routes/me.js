@@ -49,7 +49,7 @@ router.delete('/monday', async (req, res) => {
 // A page opened in the Growth Studio (tab names only)
 router.post('/activity', (req, res) => {
   const page = String(req.body?.page || '').replace(/[^\w &·→/-]/g, '').slice(0, 60);
-  if (page && req.user?.role !== 'Admin' && !req.user?.super_admin) activity.record(req.user, { kind: 'page', label: `Opened ${page}`, ref: page });
+  if (page && !req.user?.super_admin) activity.record(req.user, { kind: 'page', label: `Opened ${page}`, ref: page });
   res.json({ ok: true });
 });
 

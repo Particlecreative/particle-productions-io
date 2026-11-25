@@ -4,6 +4,7 @@
 // and date changes from Monday's activity log). Posts, replies, likes and edits land on Monday as you when your Monday
 // is connected.
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLive } from '../../lib/useLive';
 import { createPortal } from 'react-dom';
 import DOMPurify from 'dompurify';
 import {
@@ -596,6 +597,20 @@ export default function TaskUpdates({ it, data, readOnly = false }) {
     } catch (e) { setErr(e.message); setSt(s => ({ ...s, list: s.list || [] })); }
   }, [it.id, it.name]);
   useEffect(() => { setSt({ list: null, files: [], itemName: '', more: false, page: 1 }); setAct(null); setTab('updates'); setQ(''); setFilter('all'); load(); }, [it.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // live (25 Nov 2026): every 20 s while the task is open — new updates and replies slide in on top, likes and replies refresh
+  useLive(async () => {
+    const r = await studioApi.updates(it.id, 1);
+    setSt(s => {
+      if (!s.list) return s;
+      const fresh = r.updates || [];
+      const known = new Set(s.list.map(u => String(u.id)));
+      const added = fresh.filter(u => !known.has(String(u.id))).length;
+      if (added) flash(`${added} new update${added === 1 ? '' : 's'}`);
+      const byId = new Map(fresh.map(u => [String(u.id), u]));
+      const rest = s.list.filter(u => !byId.has(String(u.id)));
+      return { ...s, list: [...fresh, ...rest], files: r.files || s.files };
+    });
+  }, { every: 20000 });
   useEffect(() => {
     if (tab !== 'activity' || act != null) return;
     studioApi.activity(it.id).then(r => setAct(r.events || [])).catch(e => setAct({ error: e.message }));

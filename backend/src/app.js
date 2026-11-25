@@ -112,6 +112,7 @@ app.use('/api/me', require('./routes/me'));             // your own Monday conne
 app.use('/api/growth', require('./routes/growth'));     // Growth Studio: the Ads Library hand-off to AfterLife
 app.use('/api/activity', require('./routes/activity')); // (admins) Team activity
 app.use('/api/onair', require('./routes/onair'));       // On Air: TV (the agency's daily reports, from Gmail) + Meta (AfterLife)
+app.use('/api/passwords', require('./routes/passwords'));   // Studio passwords: the Access Passwords boards on Monday, live
 
 // Google OAuth callback redirect — the callback URL registered with Google
 // points to /api/auth/google/callback, so we redirect to the drive router

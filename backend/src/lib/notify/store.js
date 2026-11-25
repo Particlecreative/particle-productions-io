@@ -15,6 +15,8 @@ const TYPES = {
   assigned: { label: 'You’re put on a task', on: true },
   ad_live: { label: 'Your ad is uploaded to Meta / starts running', on: true },
   requests: { label: 'Tickets you asked for: ready for review, done, stuck', on: true },
+  hr: { label: 'Clock in / clock out reminders (10:00 and 19:00)', on: true },
+  team: { label: 'Every move of the team in CP (super admins)', on: true },
 };
 const DEFAULTS = { types: Object.fromEntries(Object.entries(TYPES).map(([k, v]) => [k, v.on])), toast: true, desktop: false, quiet_hours: null };
 

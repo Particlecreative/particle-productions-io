@@ -5,9 +5,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus, Sparkles, KanbanSquare, ArrowUp, ArrowDown, EyeOff, Eye, SlidersHorizontal, Check, Bell, Radio, CalendarDays, Presentation, Gauge,
-  Link2, AlertTriangle, Clock, ArrowRight, Loader2,
+  Link2, AlertTriangle, Clock, ArrowRight, Loader2, Film, PieChart,
 } from 'lucide-react';
-import CreativeShell, { MyTasksProvider, useMyTasks } from '../../components/creative-team/CreativeShell';
+import Inspiration from '../../components/studio/Inspiration';
+import WeekWheel from '../../components/creative-team/WeekWheel';
+import CreativeShell, { MyTasksProvider, useMyTasks, FreshBadge } from '../../components/creative-team/CreativeShell';
 import { useStudio, fmtDay, firstName } from '../../components/studio/writes';
 import { smartSort, urgency, dueWords, nextStatus } from '../../components/studio/kanban';
 import { useAuth } from '../../context/AuthContext';
@@ -19,7 +21,9 @@ import { meApi } from '../../lib/meService';
 import { routeOf, NOTIFY_LOOK } from '../../lib/notifyRoute';
 
 const WIDGETS = {
+  line: { label: 'Line of the day', icon: Film, full: true, bare: true },
   focus: { label: 'Today', icon: AlertTriangle, wide: true },
+  wheel: { label: 'My week', icon: PieChart, wide: true },
   links: { label: 'Waiting for your link', icon: Link2 },
   news: { label: 'For you', icon: Bell },
   onair: { label: 'Your ads on air', icon: Radio },
@@ -27,7 +31,17 @@ const WIDGETS = {
   weekly: { label: 'Team Weekly', icon: Presentation },
   afterlife: { label: 'My AfterLife', icon: Gauge },
 };
-const DEFAULT_LAYOUT = { order: ['focus', 'links', 'news', 'onair', 'week', 'weekly', 'afterlife'], hidden: [] };
+const DEFAULT_LAYOUT = { order: ['line', 'focus', 'links', 'wheel', 'news', 'onair', 'week', 'weekly', 'afterlife'], hidden: [] };
+/** A saved layout + cards added since: each new card goes where it sits in the default order (not at the end). */
+function mergeOrder(saved) {
+  const order = saved.filter(k => WIDGETS[k]);
+  DEFAULT_LAYOUT.order.forEach((k, i) => {
+    if (order.includes(k)) return;
+    const before = DEFAULT_LAYOUT.order.slice(0, i).reverse().find(x => order.includes(x));
+    order.splice(before ? order.indexOf(before) + 1 : 0, 0, k);
+  });
+  return order;
+}
 const KEY = 'creative-home';
 const hello = () => { const h = Number(new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: 'Asia/Jerusalem' })); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; };
 const ago = (iso) => { const m = (Date.now() - Date.parse(iso)) / 60000; return m < 60 ? `${Math.max(1, Math.round(m))}m` : m < 1440 ? `${Math.round(m / 60)}h` : `${Math.round(m / 1440)}d`; };
@@ -35,7 +49,8 @@ const ago = (iso) => { const m = (Date.now() - Date.parse(iso)) / 60000; return 
 function Card({ id, edit, first, last, onUp, onDown, onHide, children, action }) {
   const W = WIDGETS[id];
   return (
-    <section className={`rounded-3xl bg-white border border-gray-200 shadow-[0_1px_3px_rgba(3,11,46,.05)] p-5 flex flex-col ${W.wide ? 'lg:col-span-2' : ''} ${edit ? 'ring-2 ring-[#0808f8]/15' : ''}`}>
+    W.bare && !edit ? <section className="md:col-span-2 lg:col-span-3 min-w-0">{children}</section> :
+    <section className={`rounded-3xl bg-white border border-gray-200 shadow-[0_1px_3px_rgba(3,11,46,.05)] p-5 flex flex-col min-w-0 ${W.full ? 'md:col-span-2 lg:col-span-3' : W.wide ? 'lg:col-span-2' : ''} ${edit ? 'ring-2 ring-[#0808f8]/15' : ''}`}>
       <header className="flex items-center gap-2 mb-3">
         <W.icon size={15} className="text-[#0808f8]" />
         <h2 className="font-bold text-[14.5px] text-[#030b2e]">{W.label}</h2>
@@ -62,7 +77,7 @@ function TaskRow({ it, today, onOpen, extra }) {
     <button type="button" onClick={() => onOpen(it)} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-[#0808f8]/[0.04] text-left">
       <span className="w-1 self-stretch rounded-full" style={{ background: it.product?.color || '#c4c4c4' }} />
       <span className="min-w-0 flex-1">
-        <span className="block text-[13.5px] font-semibold text-[#030b2e] truncate">{it.title || it.name}</span>
+        <span className="flex items-center gap-1.5 min-w-0"><span className="text-[13.5px] font-semibold text-[#030b2e] truncate">{it.title || it.name}</span><FreshBadge id={it.id} /></span>
         <span className="block text-[11.5px] text-gray-400 truncate">{[it.product?.label, it.status?.label].filter(Boolean).join(' · ')}</span>
       </span>
       {extra}
@@ -85,7 +100,7 @@ function HomeBody() {
   useEffect(() => {
     if (!user?.id) return;
     Promise.resolve(getViewOrder(KEY, user.id)).then(p => {
-      if (p && Array.isArray(p.order)) setLayout({ order: [...p.order.filter(k => WIDGETS[k]), ...DEFAULT_LAYOUT.order.filter(k => !p.order.includes(k))], hidden: (p.hidden || []).filter(k => WIDGETS[k]) });
+      if (p && Array.isArray(p.order)) setLayout({ order: mergeOrder(p.order), hidden: (p.hidden || []).filter(k => WIDGETS[k]) });
     }).catch(() => null);
     onairApi.media().then(setMedia).catch(() => setMedia({ creatives: [] }));
     creativeApi.list().then(r => setWeekly((r.reports || []).filter(x => x.deck === 'team').sort((a, b) => String(b.week_start).localeCompare(String(a.week_start)))[0] || null)).catch(() => setWeekly(null));
@@ -109,6 +124,8 @@ function HomeBody() {
   const go = (n) => { if (!n.read) markRead?.(n.id); const r = routeOf(n, user?.role); if (r?.to) nav(r.to); else if (r?.href) window.open(r.href, '_blank', 'noopener'); };
 
   const body = {
+    line: edit ? <div className="text-[13px] text-gray-500">Today’s movie line — the same one the studio sees.</div> : <Inspiration />,
+    wheel: <WeekWheel items={items} people={data?.people || {}} today={today} onOpen={open} Row={TaskRow} />,
     focus: (
       <>
         <div className="grid grid-cols-3 gap-2 mb-3">

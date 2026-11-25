@@ -5,7 +5,7 @@ import {
   History, FileText, FileSignature, Clapperboard, Users2, GripVertical,
   GanttChartSquare, Check, Star, Sun, Moon, Grid3x3, X as XIcon, Scroll, CheckSquare, Presentation, Radar, Library, Landmark, SpellCheck, Sparkles,
   EyeOff, Plus, Rocket, Activity, Megaphone, Smartphone, Tv, Radio, Home, KanbanSquare, Gauge,
-} from 'lucide-react';
+ KeyRound } from 'lucide-react';
 import {
   DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors,
 } from '@dnd-kit/core';
@@ -42,6 +42,7 @@ const DEFAULT_NAV_ITEMS = [
   { to: '/on-air',           icon: Radio,        label: 'On Air',        sub: 'what runs when',      creative: true, creativeOnly: true },
   { to: '/my-afterlife',     icon: Gauge,        label: 'My AfterLife',                              creative: true, creativeOnly: true },
   { to: '/team-weekly',      icon: Presentation, label: 'Team Weekly',                               creative: true, creativeOnly: true },
+  { to: '/passwords',        icon: KeyRound,     label: 'Studio passwords', sub: 'logins',          creative: true, creativeOnly: true },
   { to: '/',               icon: LayoutDashboard,  label: 'Productions', exact: true, accountingHide: true },
   { to: '/tracker',        icon: Radar,            label: 'Tracker',     accountingHide: true, studioHide: true, editorOnly: true },
   { to: '/tasks',          icon: CheckSquare,      label: 'Tasks',       accountingHide: true },
@@ -63,6 +64,8 @@ const DEFAULT_NAV_ITEMS = [
   { to: '/history',        icon: History,          label: 'History',     studioHide: true },
   { to: '/casting-rights', icon: Star,             label: 'Casting',     accountingHide: true, studioHide: true },
   { to: '/scripts',        icon: Scroll,           label: 'Scripts',     accountingHide: true },
+  // Studio passwords (25 Nov 2026): the Access Passwords board — producers, the studio and admins (+ the creative team above)
+  { to: '/passwords',      icon: KeyRound,         label: 'Studio passwords', accountingHide: true, particleOnly: true, editorOrStudio: true },
   { to: '/manual',         icon: BookOpen,         label: 'Manual',      accountingHide: true },
 ];
 
@@ -193,6 +196,7 @@ export default function Sidebar({ open, onToggle }) {
     .filter(i => !isStudio || !i.studioHide)
     .filter(i => !i.particleOnly || brand.id === 'particle')
     .filter(i => !i.editorOnly || isEditor)
+    .filter(i => !i.editorOrStudio || isEditor || isStudio)
     .filter(i => !i.nonEditorOnly || !isEditor)
     // The Library replaced Links: groups that had Links get the Library
     .filter(i => !pageAccess || isAdmin || (isGrowth && i.growth) || (isCreative && i.creative) || pageAccess.includes(i.to) || (i.to === '/library' && pageAccess.includes('/links')));
@@ -487,6 +491,7 @@ export default function Sidebar({ open, onToggle }) {
                 { to: '/ads-library',      icon: Smartphone,   label: 'Ads Library' },
                 { to: '/my-afterlife',     icon: Gauge,        label: 'My AfterLife' },
                 { to: '/team-weekly',      icon: Presentation, label: 'Team Weekly' },
+                { to: '/passwords',        icon: KeyRound,     label: 'Passwords' },
                 { to: '/welcome',          icon: CheckSquare,  label: 'My Monday' },
                 { to: '/manual',           icon: BookOpen,     label: 'Manual' },
               ] : isGrowth ? [

@@ -8,7 +8,7 @@ import {
   Search, KanbanSquare, List, CalendarRange, Flag, ArrowRight, SlidersHorizontal, ChevronDown, ChevronRight, Film, Folder, PenTool, Link2,
   RefreshCw, Loader2, CircleCheck, AlertTriangle, Clock, Eye, EyeOff,
 } from 'lucide-react';
-import CreativeShell, { MyTasksProvider, useMyTasks } from '../../components/creative-team/CreativeShell';
+import CreativeShell, { MyTasksProvider, useMyTasks, FreshBadge } from '../../components/creative-team/CreativeShell';
 import { useStudio, fmtDay, firstName } from '../../components/studio/writes';
 import { Avatar } from '../../components/studio/Bits';
 import { statusColumns, dueColumns, smartSort, urgency, dueWords, nextStatus, priorityRank, matchTask } from '../../components/studio/kanban';
@@ -87,7 +87,7 @@ function TaskCard({ it, today, people, statuses, prefs, onOpen, onMove, onLink, 
       <div className="flex items-center gap-1.5 flex-wrap pl-1">
         {it.product?.label && <span className="text-[10.5px] font-bold uppercase tracking-wide" style={{ color: it.product.color || '#676879' }}>{it.product.label}</span>}
         {it.type?.label && <span className="text-[10.5px] text-gray-400">· {it.type.label}</span>}
-        <span className="ml-auto flex items-center gap-1">{f.priority && <PriorityFlag p={it.priority} />}</span>
+        <span className="ml-auto flex items-center gap-1"><FreshBadge id={it.id} />{f.priority && <PriorityFlag p={it.priority} />}</span>
       </div>
       <div className={`pl-1 mt-1 font-semibold text-[#030b2e] leading-snug ${prefs.compact ? 'text-[12.5px] line-clamp-2' : 'text-[13.5px] line-clamp-3'}`}>{it.title || it.name}</div>
       {!prefs.compact && it.subtitle && <div className="pl-1 text-[11.5px] text-gray-400 truncate mt-0.5">{it.subtitle}</div>}

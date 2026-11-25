@@ -6,11 +6,13 @@ router.use(verifyJWT);
 
 // What each person wants to hear about (25 Nov 2026) — lib/notify/store.js
 const N = require('../lib/notify/store');
+// "Every move of the team" is only for the super admins — nobody else sees that switch
+const typesFor = (user) => (user?.super_admin ? N.TYPES : Object.fromEntries(Object.entries(N.TYPES).filter(([k]) => k !== 'team')));
 router.get('/settings', async (req, res) => {
-  try { res.json({ settings: await N.getSettings(req.user.id), types: N.TYPES }); } catch (err) { res.status(500).json({ error: 'Server error' }); }
+  try { res.json({ settings: await N.getSettings(req.user.id), types: typesFor(req.user) }); } catch (err) { res.status(500).json({ error: 'Server error' }); }
 });
 router.put('/settings', async (req, res) => {
-  try { res.json({ settings: await N.saveSettings(req.user.id, req.body?.settings || req.body), types: N.TYPES }); } catch (err) { res.status(500).json({ error: 'Server error' }); }
+  try { res.json({ settings: await N.saveSettings(req.user.id, req.body?.settings || req.body), types: typesFor(req.user) }); } catch (err) { res.status(500).json({ error: 'Server error' }); }
 });
 
 // GET /api/notifications  (own notifications)

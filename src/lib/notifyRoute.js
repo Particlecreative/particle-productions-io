@@ -25,6 +25,7 @@ export function groupOf(n) {
   if (t === 'mention') return 'mentions';
   if (['status', 'comment', 'assigned', 'requests'].includes(t)) return 'tasks';
   if (t === 'ad_live') return 'ads';
+  if (t === 'team') return 'team';
   return 'other';
 }
 
@@ -35,4 +36,6 @@ export const NOTIFY_LOOK = {
   requests: { emoji: '✓', color: '#00c875', label: 'Your ticket' },
   assigned: { emoji: '＋', color: '#a25ddc', label: 'New task' },
   ad_live: { emoji: '🎬', color: '#ff7a00', label: 'On Meta' },
+  hr: { emoji: '⏰', color: '#00a9a5', label: 'Clock' },
+  team: { emoji: '👥', color: '#676879', label: 'Team move' },
 };

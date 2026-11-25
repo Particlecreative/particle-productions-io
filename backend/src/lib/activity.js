@@ -30,7 +30,34 @@ const RULES = [
   ['GET', /^\/api\/medium\/briefs\/?$/, 'briefs', 'Looked at their briefs'],
   ['POST', /^\/api\/me\/monday\/token$/, 'monday_connect', 'Connected Monday'],
   ['DELETE', /^\/api\/me\/monday$/, 'monday_disconnect', 'Disconnected Monday'],
+  // Every move (Tomer, 25 Nov 2026: "an update for any move of any user inside the platform")
+  ['PATCH', /^\/api\/studio\/items\/(\d+)$/, 'task_move', 'Changed a task'],
+  ['PATCH', /^\/api\/studio\/items\/(\d+)\/link$/, 'delivery_link', 'Added a delivery link'],
+  ['POST', /^\/api\/studio\/items\/(\d+)\/updates$/, 'task_update', 'Wrote an update'],
+  ['PUT', /^\/api\/studio\/items\/(\d+)\/updates\/\d+$/, 'task_update', 'Edited an update'],
+  ['POST', /^\/api\/studio\/items\/(\d+)\/updates\/\d+\/like$/, 'task_like', 'Liked an update'],
+  ['POST', /^\/api\/hr\/me\/clock-in$/, 'clock_in', 'Clocked in'],
+  ['POST', /^\/api\/hr\/me\/clock-out$/, 'clock_out', 'Clocked out'],
+  ['POST', /^\/api\/hr\/me\/time-off$/, 'time_off', 'Asked for time off'],
+  ['POST', /^\/api\/hr\/me\/time-off\/([^/]+)\/cancel$/, 'time_off', 'Cancelled a time-off request'],
+  ['POST', /^\/api\/hr\/me\/connect$/, 'hr_connect', 'Connected BambooHR'],
 ];
+// Writes no rule names get one plain line ("Changed something in Contracts"); a few are housekeeping, not moves
+const SECTIONS = {
+  productions: 'Productions', 'line-items': 'a budget', comments: 'comments', links: 'links', contracts: 'Contracts', invoices: 'Invoices',
+  receipts: 'Receipts', suppliers: 'Suppliers', gantt: 'a Gantt', 'people-on-set': 'People on set', casting: 'Casting', 'call-sheets': 'Call sheets',
+  scripts: 'Scripts', studio: 'the Studio', tracker: 'the Tracker', library: 'the Library', finance: 'Finance', captain: 'Captain Caption',
+  medium: 'Medium', onair: 'On Air', tasks: 'Tasks', 'weekly-reports': 'Weekly reports', 'creative-reports': 'Creative Weekly', users: 'Users',
+  groups: 'Groups', brands: 'Brands', 'cc-purchases': 'Card purchases', 'product-deliveries': 'Product deliveries', briefs: 'Briefs', hr: 'HR',
+};
+const QUIET = [/^\/api\/me\/activity$/, /^\/api\/notifications(\/|$)/, /^\/api\/settings\/view-order/, /^\/api\/auth\//, /^\/api\/passwords\//, /\/(draft|preview|suggest|search)$/];
+function genericLabel(method, path) {
+  if (method === 'GET' || QUIET.some(re => re.test(path))) return null;
+  const sec = (path.match(/^\/api\/([a-z-]+)/) || [])[1];
+  if (!sec) return null;
+  const verb = method === 'DELETE' ? 'Deleted something in' : method === 'POST' ? 'Added something in' : 'Changed something in';
+  return { kind: 'change', label: `${verb} ${SECTIONS[sec] || sec}`, ref: null };
+}
 const READS = new Set(['tv_library', 'productions', 'production', 'workload', 'campaigns', 'briefs', 'ads_library', 'page']);
 
 /** { kind, label, ref } for a request, or null when it isn't worth a line. */
@@ -67,22 +94,50 @@ function record(user, { kind, label = null, ref = null, method = null, path = nu
   if (!user?.id || !kind) return;
   if (READS.has(kind) && seenRecently(`${user.id}|${kind}|${ref || label || ''}`)) return;
   ensure()
-    .then(() => db.query('INSERT INTO cp_activity (user_id, user_name, role, kind, label, ref, method, path, status, meta) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
+    .then(() => db.query('INSERT INTO cp_activity (user_id, user_name, role, kind, label, ref, method, path, status, meta) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id',
       [String(user.id), user.name || user.email || null, user.role || null, kind, label, ref, method, path ? String(path).slice(0, 300) : null, status, meta ? JSON.stringify(meta) : null]))
+    .then((r) => { if (!READS.has(kind) && kind !== 'blocked') tellAdmins(user, { kind, label, ref, id: r?.rows?.[0]?.id }); })
     .catch(e => console.warn('[activity]', e.message));
 }
 
-/** After a signed-in request finishes: log it when it's a meaningful action (non-admins only). */
+/** Every move (not page views) → a quiet notification to the super admins who keep "Team moves" on (one per person + action + thing per 10 min). */
+let admins = { at: 0, ids: [] };
+async function tellAdmins(user, { kind, label, ref }) {
+  try {
+    if (Date.now() - admins.at > 10 * 60 * 1000) admins = { at: Date.now(), ids: (await db.query('SELECT id FROM users WHERE super_admin = true')).rows.map(r => String(r.id)) };
+    const to = admins.ids.filter(id => id !== String(user.id));
+    if (!to.length) return;
+    const slot = Math.floor(Date.now() / 600000);
+    await require('./notify/store').notify({
+      userIds: to, type: 'team', message: `${user.name || user.email || 'Someone'}: ${label || kind}`, link: '/activity',
+      meta: { kind, ref, role: user.role || null }, actor: user.name || null, dedupe: `team:${user.id}:${kind}:${ref || label}:${slot}`,
+    });
+  } catch (e) { console.warn('[activity] notify:', e.message); }
+}
+
+/** What a task move was, from the request body (status / dates / people) — the feed says "Moved X to Review". */
+function detail(kind, body) {
+  if (kind !== 'task_move' || !body || typeof body !== 'object') return null;
+  const st = body.status?.label || (typeof body.status === 'string' ? body.status : null);
+  if (st) return { label: `Moved a task to ${String(st).slice(0, 40)}`, meta: { status: st } };
+  if (body.timeline || body.deadline) return { label: 'Changed a task’s dates', meta: null };
+  if (body.people) return { label: 'Changed who’s on a task', meta: null };
+  return null;
+}
+
+/** After a signed-in request finishes: log it when it's a meaningful action (everyone except the super admin). */
 function watch(req, res) {
   const u = req.user;
-  if (!u || u.role === 'Admin' || u.super_admin || req._activityWatched) return;
+  if (!u || u.super_admin || req._activityWatched) return;
   req._activityWatched = true;   // some routes verify the JWT twice — one line per request
   const path = String(req.originalUrl || '').split('?')[0].replace(/\/+$/, '') || '/';
   res.on('finish', () => {
     if (res.statusCode === 403 && (u.role === 'Growth' || u.role === 'Creative')) return record(u, { kind: 'blocked', label: `Tried to open ${path}`, method: req.method, path, status: 403 });
     if (res.statusCode >= 400) return;
-    const l = labelFor(req.method, path);
-    if (l) record(u, { ...l, method: req.method, path, status: res.statusCode });
+    const l = labelFor(req.method, path) || genericLabel(req.method, path);
+    if (!l) return;
+    const d = detail(l.kind, req.body);
+    record(u, { ...l, ...(d ? { label: d.label } : {}), meta: d?.meta || null, method: req.method, path, status: res.statusCode });
   });
 }
 
@@ -109,4 +164,4 @@ async function overview({ days = 30, userId = null, limit = 300 } = {}) {
   return { days: d, people: people.rows, events: events.rows, daily: daily.rows };
 }
 
-module.exports = { labelFor, record, watch, overview, READS };
+module.exports = { labelFor, genericLabel, detail, record, watch, overview, READS };

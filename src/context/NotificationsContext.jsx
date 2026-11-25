@@ -17,7 +17,7 @@ import { routeOf, NOTIFY_LOOK } from '../lib/notifyRoute';
 
 const NotificationsContext = createContext(null);
 const DEV = import.meta.env.DEV;
-const POLL_MS = 45 * 1000;
+const POLL_MS = 30 * 1000;
 const DEFAULT_SETTINGS = { types: {}, toast: true, desktop: false };
 
 /**
@@ -45,7 +45,8 @@ export function NotificationsProvider({ children }) {
   const absorb = useCallback((list) => {
     const rows = Array.isArray(list) ? list : [];
     if (known.current) {
-      const fresh = rows.filter(n => !known.current.has(n.id) && !n.read && (n.link || NOTIFY_LOOK[n.type]));
+      // the team's moves are quiet — the bell counts them, they don't pop up
+      const fresh = rows.filter(n => !known.current.has(n.id) && !n.read && n.type !== 'team' && (n.link || NOTIFY_LOOK[n.type]));
       if (fresh.length) {
         const s = settingsRef.current;
         if (s.toast !== false) setToasts(t => [...fresh.slice(0, 3).map(n => ({ ...n, toastAt: Date.now() })), ...t].slice(0, 4));

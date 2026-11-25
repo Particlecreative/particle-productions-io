@@ -63,7 +63,7 @@ async function buildMyTasks({ brandId = 'particle', user, now = Date.now() }) {
 function getMyTasks({ brandId = 'particle', user, force = false }) {
   const key = `studio:${brandId}:mytasks:${user.id}`;
   if (force) monday.clearCache(key);
-  return monday.cached(key, 60 * 1000, () => buildMyTasks({ brandId, user }));
+  return monday.cached(key, 25 * 1000, () => buildMyTasks({ brandId, user }));   // the Creative pages refresh every 30 s (live, 25 Nov 2026)
 }
 
 /**

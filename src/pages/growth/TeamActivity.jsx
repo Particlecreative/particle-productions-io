@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Activity, Loader2, AlertTriangle, RefreshCw, Check } from 'lucide-react';
 import { meApi } from '../../lib/meService';
+import { useLive, useAgo } from '../../lib/useLive';
 
 const NAVY = '#030b2e';
 const KIND = {
@@ -12,7 +13,14 @@ const KIND = {
   ticket_draft: ['📝', 'Drafted a ticket'], ads_library: ['📱', 'Ads Library'], tv_library: ['📺', 'TV Library'], productions: ['🎬', 'Productions'],
   production: ['🎬', 'Opened a production'], workload: ['📅', 'Workload'], campaigns: ['📣', 'Campaigns'], briefs: ['📂', 'Their briefs'],
   monday_connect: ['🔗', 'Connected Monday'], monday_disconnect: ['⛓️', 'Disconnected Monday'], blocked: ['⛔', 'Refused'],
+  task_move: ['🔀', 'Moved a task'], delivery_link: ['🎬', 'Added a delivery link'], task_update: ['💬', 'Wrote an update'], task_like: ['👍', 'Liked an update'],
+  clock_in: ['🟢', 'Clocked in'], clock_out: ['⚪', 'Clocked out'], time_off: ['🌴', 'Time off'], hr_connect: ['🔗', 'Connected BambooHR'],
+  password_reveal: ['👁️', 'Revealed a password'], password_copy: ['📋', 'Copied a password'], password_edit: ['🔐', 'Edited a login'], password_add: ['➕', 'Added a login'],
+  change: ['✏️', 'Changed something'],
 };
+const FILTERS = [['all', 'Everything'], ['moves', 'Moves only'], ['tasks', 'Tasks'], ['hr', 'Clock & time off'], ['passwords', 'Passwords'], ['pages', 'Pages']];
+const inFilter = (k, f) => f === 'all' || (f === 'moves' ? !['page', 'signin', 'tv_library', 'ads_library', 'productions', 'production', 'workload', 'campaigns', 'briefs'].includes(k)
+  : f === 'tasks' ? /^task_|delivery_link|ticket_/.test(k) : f === 'hr' ? /^clock_|time_off|hr_/.test(k) : f === 'passwords' ? /^password_/.test(k) : f === 'pages' ? k === 'page' : true);
 const COLS = [['signin', 'Sign-ins'], ['brief_write', 'Briefs written'], ['brief_approve', 'Approved'], ['brief_submit', 'Sent to Monday'], ['ticket_create', 'Tickets'], ['ads_library', 'Ads Library'], ['tv_library', 'TV Library'], ['productions', 'Productions']];
 const ago = (iso) => {
   if (!iso) return '—';
@@ -37,13 +45,18 @@ export default function TeamActivity() {
     try { setData(await meApi.activity(days, who)); } catch (e) { setError(e.message); } finally { setLoading(false); }
   }, [days, who]);
   useEffect(() => { load(); }, [load]);
+  // live (25 Nov 2026): every 20 s, quietly
+  const liveAt = useLive(async () => { try { setData(await meApi.activity(days, who)); } catch { /* keep what's shown */ } }, { every: 20000 });
+  const liveAgo = useAgo(liveAt);
+  const [kind, setKind] = useState('moves');
+  const online = useMemo(() => (data?.people || []).filter(p => p.last_seen && Date.now() - new Date(p.last_seen).getTime() < 5 * 60 * 1000), [data]);
 
   const connected = useMemo(() => new Set((data?.monday || []).map(m => String(m.user_id))), [data]);
   const byDay = useMemo(() => {
     const m = new Map();
-    for (const e of data?.events || []) { const d = ilDay(e.at); if (!m.has(d)) m.set(d, []); m.get(d).push(e); }
+    for (const e of data?.events || []) { if (!inFilter(e.kind, kind)) continue; const d = ilDay(e.at); if (!m.has(d)) m.set(d, []); m.get(d).push(e); }
     return [...m.entries()];
-  }, [data]);
+  }, [data, kind]);
   const spark = useMemo(() => {
     const m = new Map();
     for (const r of data?.daily || []) if (!who || String(r.user_id) === who) m.set(r.day, (m.get(r.day) || 0) + r.n);
@@ -59,7 +72,7 @@ export default function TeamActivity() {
         <div>
           <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#0808f8] flex items-center gap-1.5"><Activity size={13} /> Team activity</div>
           <h1 className="font-black uppercase leading-none text-[40px] sm:text-[52px] mt-1" style={{ fontFamily: '"Sofia Sans Extra Condensed", sans-serif', color: NAVY }}>Who did what in CP</h1>
-          <p className="text-sm text-gray-500 mt-1">Everyone who isn’t an admin — the Growth team and anyone else you add. Reading the same page twice within 10 minutes counts once.</p>
+          <p className="text-sm text-gray-500 mt-1">Every move of everyone in CP but you — the creative team, Growth, producers and admins. Live: it refreshes itself every 20 seconds{liveAgo ? ` (updated ${liveAgo})` : ''}. Reading the same page twice within 10 minutes counts once.</p>
         </div>
         <div className="ml-auto flex items-center gap-2">
           <div className="flex bg-white border border-gray-200 rounded-xl p-0.5">
@@ -74,6 +87,19 @@ export default function TeamActivity() {
 
       {data && (
         <>
+          <div className="bg-white rounded-2xl border border-gray-200 px-4 py-3 flex flex-wrap items-center gap-3">
+            <span className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+              <span className="relative flex w-2 h-2"><span className="absolute inline-flex w-full h-full rounded-full bg-emerald-400 opacity-60 animate-ping" /><span className="relative inline-flex w-2 h-2 rounded-full bg-emerald-500" /></span>
+              Online now · {online.length}
+            </span>
+            {!online.length && <span className="text-[12.5px] text-gray-400">Nobody in the last 5 minutes.</span>}
+            {online.map(p => (
+              <button key={p.user_id} type="button" onClick={() => setWho(String(p.user_id))} className="flex items-center gap-2 pl-1 pr-3 py-1 rounded-full bg-emerald-50 text-[12.5px] font-semibold text-emerald-800">
+                <span className="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center text-[10px] font-bold">{String(p.name || '?').split(' ').map(x => x[0]).join('').slice(0, 2)}</span>
+                {p.name}<span className="text-emerald-600/70 font-normal">· {p.role}</span>
+              </button>
+            ))}
+          </div>
           <div className="bg-white rounded-2xl border border-gray-200 px-4 py-3">
             <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-2">Actions per day{who ? ` · ${data.people.find(p => String(p.user_id) === who)?.name || ''}` : ''}</div>
             <div className="flex items-end gap-[3px] h-16">
@@ -107,6 +133,9 @@ export default function TeamActivity() {
           <div className="flex items-center gap-2">
             <h2 className="font-black uppercase text-[24px] leading-none" style={{ fontFamily: '"Sofia Sans Extra Condensed", sans-serif', color: NAVY }}>What happened</h2>
             {who && <button type="button" onClick={() => setWho('')} className="text-xs font-semibold text-[#0808f8] hover:underline">Show everyone</button>}
+            <div className="ml-auto flex flex-wrap gap-1">
+              {FILTERS.map(([k, l]) => <button key={k} type="button" onClick={() => setKind(k)} className={`text-[11.5px] font-semibold px-2.5 py-1 rounded-lg ${kind === k ? 'bg-[#030b2e] text-white' : 'text-gray-500 hover:bg-gray-100 bg-white border border-gray-200'}`}>{l}</button>)}
+            </div>
           </div>
           <div className="bg-white rounded-2xl border border-gray-200">
             {!byDay.length && <div className="py-10 text-center text-sm text-gray-400">Nothing in this period.</div>}
