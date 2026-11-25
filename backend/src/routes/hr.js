@@ -17,6 +17,7 @@ const router = require('express').Router();
 const { verifyJWT, requireAdmin } = require('../middleware/auth');
 const P = require('../lib/hr/personal');
 const T = require('../lib/hr/team');
+const I = require('../lib/hr/insights');
 
 function errorJson(res, err) {
   let status = Number(err?.status) || 500;
@@ -45,6 +46,9 @@ router.use(verifyJWT);
 // ── My HR ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
 router.get('/me', wrap((req) => P.me(uid(req), { force: req.query.fresh === '1' })));
 router.get('/me/clock', wrap((req) => P.clockState(uid(req))));
+router.get('/me/month', wrap((req) => P.monthFor(uid(req), typeof req.query.month === 'string' ? req.query.month : undefined)));
+// The team's days off (vacation / sick / other) — My Studio shows who's out (everyone signed in)
+router.get('/out', wrap((req) => I.teamOut({ from: req.query.from, to: req.query.to })));
 router.post('/me/connect', async (req, res) => {
   if (!connectAllowed(uid(req))) return res.status(429).json({ error: 'Too many tries — wait 10 minutes, then paste the key again', code: 'busy' });
   try {
@@ -61,6 +65,9 @@ router.post('/me/time-off/:id/cancel', wrap((req) => P.cancelTimeOff(uid(req), r
 
 // ── HR panel (admins) ─────────────────────────────────────────────────────────────────────────────────────────────────
 router.get('/team', requireAdmin, wrap((req) => T.team({ week: typeof req.query.week === 'string' ? req.query.week : undefined })));
+// My employees (25 Nov 2026): the month dashboard (hours vs expected, %, vacation left) and one person's days read for you + tickets
+router.get('/team/month', requireAdmin, wrap((req) => I.month({ month: typeof req.query.month === 'string' ? req.query.month : undefined })));
+router.get('/team/person/:employeeId', requireAdmin, wrap((req) => I.person({ employeeId: req.params.employeeId, from: req.query.from, to: req.query.to })));
 router.post('/team/time-off/:id/approve', requireAdmin, wrap((req) => T.approve(req.params.id, { note: req.body?.note, actor: req.user?.name || null })));
 router.post('/team/time-off/:id/deny', requireAdmin, wrap((req) => T.deny(req.params.id, { note: req.body?.note, actor: req.user?.name || null })));
 

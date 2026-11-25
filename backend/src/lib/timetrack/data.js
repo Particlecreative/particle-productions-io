@@ -286,7 +286,7 @@ async function buildDataset(R, { brandId, boards, force }) {
   }
   const people = await peopleMap([...ids], config, warnings);
   const { clock, matched, source } = await clockFor([...workers], people, firstWork, now, warnings);
-  for (const id of Object.keys(people)) people[id].matched = !!matched[id];
+  for (const id of Object.keys(people)) { people[id].matched = !!matched[id]; people[id].bamboo_id = matched[id] ? String(matched[id]) : null; }
 
   const range = { from_ms: R.fromMs, to_ms: R.toMs };
   const tasks = [];
@@ -489,7 +489,7 @@ async function buildTask({ brandId, board: bk, itemId, now = Date.now() }) {
   const workers = [...new Set([...assignees.flatMap(p => p.people), ...it.people])];
   const firstWork = segs.find(s => s.category === 'in_progress' || s.category === 'fixes')?.from_ms ?? now;
   const { clock, matched, source } = await clockFor(workers, people, firstWork, now, warnings);
-  for (const id of Object.keys(people)) people[id].matched = !!matched[id];
+  for (const id of Object.keys(people)) { people[id].matched = !!matched[id]; people[id].bamboo_id = matched[id] ? String(matched[id]) : null; }
   const m = E.metrics({ created_at: it.created_at, deadline: it.deadline, people: it.people }, { segments: segs, assignees, clock, now });
   const { worked_pieces, in_range, ...metrics } = m;
   return {

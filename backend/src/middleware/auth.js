@@ -45,7 +45,8 @@ const PERSONAL = [
   [/^(GET|PUT)$/, /^\/api\/settings\/view-order\/(sidebar|sidebar_hidden|creative-[a-z0-9-]+|growth-[a-z0-9-]+)$/],
   [/^(GET|PUT)$/, /^\/api\/notifications\/settings$/],
   // My HR — their own BambooHR: clock in / out, time off (Team HR /api/hr/team* stays admins-only)
-  [/^(GET|POST|DELETE)$/, /^\/api\/hr\/me(\/(clock|connect|clock-in|clock-out|time-off(\/\d+\/cancel)?))?$/],
+  [/^(GET|POST|DELETE)$/, /^\/api\/hr\/me(\/(clock|month|connect|clock-in|clock-out|time-off(\/\d+\/cancel)?))?$/],
+  [/^GET$/, /^\/api\/hr\/out$/],   // who's out on the team (vacation / sick) — My Studio
 ];
 GROWTH_ALLOW.push(...PERSONAL);
 

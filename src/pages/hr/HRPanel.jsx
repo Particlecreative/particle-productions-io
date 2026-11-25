@@ -203,7 +203,7 @@ function WeekGrid({ data, onWeek }) {
 }
 
 // ── requests ──────────────────────────────────────────────────────────────────────────────────────────────────────────
-function RequestCard({ r, onAnswered }) {
+function RequestCard({ r, onAnswered, balances = null, overlaps = [] }) {
   const [noteOpen, setNoteOpen] = useState(false);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(null);
@@ -231,6 +231,13 @@ function RequestCard({ r, onAnswered }) {
           </div>
           <div className={`text-[12.5px] mt-0.5 ${META}`}><b className={TITLE}>{fmtRange(r.start, r.end)}</b> · {amountWords(r.amount, r.unit)}{r.created ? <span className={MUTED}> · asked {ago(r.created)}</span> : null}</div>
           {r.note && <div className={`mt-1.5 text-[12.5px] italic ${META}`}>“{r.note}”</div>}
+          {/* to decide well (25 Nov 2026): what they have left, and who else is out then */}
+          {balances?.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {balances.filter(b => !b.unlimited && b.balance != null).slice(0, 3).map(b => <span key={b.name} className={`text-[11px] font-semibold rounded-md px-1.5 py-0.5 ${b.balance < 0 ? 'bg-rose-50 text-rose-700' : 'bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-300'}`}>{b.name}: {b.balance} {b.units} left</span>)}
+            </div>
+          )}
+          {overlaps.length > 0 && <div className="mt-1 text-[11.5px] text-amber-700 dark:text-amber-300">Also out then: {overlaps.slice(0, 4).join(', ')}{overlaps.length > 4 ? ` +${overlaps.length - 4}` : ''}</div>}
         </div>
       </div>
       {done ? (
@@ -252,12 +259,13 @@ function RequestCard({ r, onAnswered }) {
   );
 }
 
-function Requests({ data, onAnswered, wide = false }) {
+export function Requests({ data, onAnswered, wide = false, balances = null, out = [] }) {
   const list = data.requests || [];
+  const overlapsOf = (r) => [...new Set((out || []).filter(o => String(o.employee_id) !== String(r.employee_id) && o.start <= r.end && o.end >= r.start).map(o => o.name))];
   return (
     <Card title="Waiting for you" icon={Inbox} sub={list.length ? `${list.length} time-off ${list.length === 1 ? 'request' : 'requests'}` : null}>
       {data.errors?.requests ? <Notice>{data.errors.requests}</Notice>
-        : list.length ? <ul className={`grid grid-cols-1 gap-2.5 ${wide && list.length > 1 ? 'lg:grid-cols-2' : ''}`}>{list.map(r => <RequestCard key={r.id} r={r} onAnswered={onAnswered} />)}</ul>
+        : list.length ? <ul className={`grid grid-cols-1 gap-2.5 ${wide && list.length > 1 ? 'lg:grid-cols-2' : ''}`}>{list.map(r => <RequestCard key={r.id} r={r} onAnswered={onAnswered} balances={balances?.[String(r.employee_id)] || null} overlaps={overlapsOf(r)} />)}</ul>
           : (
             <div className="py-6 text-center">
               <div className="mx-auto w-10 h-10 rounded-full bg-emerald-50 dark:bg-emerald-400/10 flex items-center justify-center mb-2"><Sparkles size={17} className="text-emerald-600 dark:text-emerald-300" /></div>

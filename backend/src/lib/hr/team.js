@@ -317,4 +317,4 @@ async function answer(id, decision, { note, actor } = {}) {
 const approve = (id, opts) => answer(id, 'approve', opts);
 const deny = (id, opts) => answer(id, 'deny', opts);
 
-module.exports = { team, approve, deny, connections, matchPeople, weekStartOf, dayState };
+module.exports = { team, approve, deny, connections, matchPeople, weekStartOf, dayState, directory, entries, whosOut, pending, companyCreds };

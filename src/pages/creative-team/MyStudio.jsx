@@ -6,6 +6,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { FrameBadge, ChecklistChip, boxesOf } from '../../components/studio/Bench';
 import { EMPTY_FILTERS, DEFAULT_COLUMNS, passes, sortItems, groupItems, statusMix, campaignsOf, activeCount } from '../../components/creative-team/boardTools';
 import { ViewsBar, QuickFilters, FilterButton, ActiveFilters, SortButton, GroupButton, ColumnsButton } from '../../components/creative-team/BoardToolbar';
+import TeamOut, { OutDots, outOn, holidayOn } from '../../components/creative-team/TeamOut';
+import { hrApi } from '../../lib/hrService';
 import { studioApi as benchApi } from '../../lib/studioService';
 import { useLive } from '../../lib/useLive';
 
@@ -289,7 +291,7 @@ function Table({ items, data, prefs, update, onOpen, onMove }) {
 }
 
 /** Two working weeks (Sun–Thu) with each task's timeline as a bar; the deadline as a ◆. */
-function Week({ items, data, onOpen }) {
+function Week({ items, data, onOpen, out = null }) {
   // Weeks back and forward, finished tasks included (Tomer, 25 Nov 2026: "let me see next weeks and previous weeks, including completed things")
   const today = data.today;
   const sunday = (d) => { const x = new Date(`${d}T12:00:00Z`); x.setUTCDate(x.getUTCDate() - x.getUTCDay()); return x.toISOString().slice(0, 10); };
@@ -328,7 +330,11 @@ function Week({ items, data, onOpen }) {
         <div className="grid" style={{ gridTemplateColumns: 'repeat(10, minmax(84px, 1fr))', minWidth: 860 }}>
           {days.map((d, i) => (
             <div key={d} className={`px-2 py-2 text-[11px] font-bold border-b border-gray-100 ${i === 5 ? 'border-l-2 border-l-gray-200' : ''} ${d === today ? 'text-[#0808f8] bg-[#0808f8]/[0.05]' : d < today ? 'text-gray-300' : 'text-gray-400'}`}>
-              {new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', timeZone: 'UTC' })}
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span>{new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', timeZone: 'UTC' })}</span>
+                <OutDots people={outOn(out, d)} max={3} />
+              </div>
+              {holidayOn(out, d) && <div className="text-[9.5px] font-semibold text-violet-600 truncate">{holidayOn(out, d).name}</div>}
             </div>
           ))}
           {placed.map(it => {
@@ -404,6 +410,11 @@ function StudioBody() {
   useEffect(() => { loadChecks(); loadFrame(); }, [loadChecks, loadFrame]);
   useLive(loadChecks, { every: 60000 });
   useLive(loadFrame, { every: 5 * 60000 });
+  // who's out on the team (vacation / sick), from BambooHR — the strip on top and the Week view's day headers
+  const [out, setOut] = useState(null);
+  const loadOut = useCallback(() => { const t = new Date().toISOString().slice(0, 10); const a = new Date(Date.now() - 35 * 864e5).toISOString().slice(0, 10); return hrApi.out(a, new Date(Date.parse(t) + 27 * 864e5).toISOString().slice(0, 10)).then(setOut).catch(() => setOut(null)); }, []);
+  useEffect(() => { loadOut(); }, [loadOut]);
+  useLive(loadOut, { every: 10 * 60000 });
   const { writes, openTask } = useStudio();
   const [prefs, update] = usePrefs();
   const [q, setQ] = useState('');
@@ -466,6 +477,7 @@ function StudioBody() {
           ))}
         </div>
       )}
+      <TeamOut out={out} today={today} />
       <ViewsBar views={prefs.views || []} active={prefs.activeView} onApply={applyView} onSave={saveView} onDelete={deleteView} dirty={dirty} />
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex rounded-xl border border-gray-200 bg-white p-1">
@@ -499,7 +511,7 @@ function StudioBody() {
       <BenchCtx.Provider value={bench}>
       {prefs.view === 'board' && <Board items={shown} data={data} prefs={prefs} onOpen={open} onMove={move} onLink={pasteLink} />}
       {prefs.view === 'tasks' && <Table items={shown} data={data} prefs={prefs} update={update} onOpen={open} onMove={move} />}
-      {prefs.view === 'week' && <Week items={shown} data={data} onOpen={open} />}
+      {prefs.view === 'week' && <Week items={shown} data={data} onOpen={open} out={out} />}
       </BenchCtx.Provider>
       {!!data.warnings?.length && <div className="text-[12px] text-amber-700">{data.warnings.join(' · ')}</div>}
       <p className="text-[11.5px] text-gray-400 flex items-center gap-1.5"><CircleCheck size={12} /> Drag a card to another status (or “Move to…”) — it changes on Monday as you. Timelines, people and deadlines are set by the studio.</p>

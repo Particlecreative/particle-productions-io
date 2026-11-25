@@ -581,9 +581,47 @@ async function cancelTimeOff(userId, requestId) {
   return { ok: true };
 }
 
+/**
+ * My month (Home's clock card, 25 Nov 2026): hours this month against what's expected so far — workdays (Sun–Thu) that
+ * aren't a holiday or your time off, 9h each; today counts once it's over. → { month, hours_to_date, expected_to_date,
+ * expected_month, pct, today_hours, days_worked, days_short, days_missing, open }
+ */
+async function monthFor(userId, month) {
+  let c;
+  try { c = await credsFor(userId); } catch (e) { if (e.code === 'not_connected') return { connected: false }; throw e; }
+  const nowMs = Date.now();
+  const today = W.localDate(nowMs);
+  const m = /^\d{4}-\d{2}$/.test(String(month || '')) ? month : today.slice(0, 7);
+  const from = `${m}-01`;
+  const last = new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5, 7)), 0)).toISOString().slice(0, 10);
+  if (from > today) return { connected: true, month: m, hours_to_date: 0, expected_to_date: 0, expected_month: 0, pct: null };
+  const to = last < today ? last : today;
+  const [entries, out] = await Promise.all([entriesFor(c, userId, from, to), whosOutFor(c, userId, from, last).catch(() => [])]);
+  const totals = dayTotals(entries, today, nowMs);
+  let hoursToDate = 0, expectedToDate = 0, expectedMonth = 0, worked = 0, short = 0, missing = 0;
+  for (let d = from; d <= last; d = W.addDays(d, 1)) {
+    const off = offOn(out, c.employee_id, d);
+    const workday = W.dow(d) <= 4 && !off;
+    const t = totals[d];
+    if (workday) expectedMonth += EXPECTED_DAY_HOURS;
+    if (d < today) {
+      if (workday) expectedToDate += EXPECTED_DAY_HOURS;
+      if (t) { hoursToDate += t.hours; worked += 1; if (workday && t.hours < EXPECTED_DAY_HOURS - 0.25) short += 1; } else if (workday) missing += 1;
+    }
+  }
+  const t0 = totals[today];
+  return {
+    connected: true, month: m, from, to: last, today,
+    hours_to_date: round2(hoursToDate), expected_to_date: expectedToDate, expected_month: expectedMonth,
+    pct: expectedToDate ? Math.round((hoursToDate / expectedToDate) * 100) : null,
+    today_hours: t0 ? round2(t0.hours) : 0, open: !!t0?.open, days_worked: worked, days_short: short, days_missing: missing,
+    expected_day_hours: EXPECTED_DAY_HOURS,
+  };
+}
+
 module.exports = {
   EXPECTED_DAY_HOURS, ensure, connect, disconnect, status, me, clockState, clockIn, clockOut, requestTimeOff, cancelTimeOff,
-  credsFor, connectedRows, forget, noteError,
+  credsFor, connectedRows, forget, noteError, monthFor, entriesFor, whosOutFor, normBalances,
   // pure (tested)
   cleanKey, cleanSubdomain, anniversary, normProfile, normEntry, entryHours, dayTotals, offOn, planDays, normRequest, clockFrom, isYmd,
 };

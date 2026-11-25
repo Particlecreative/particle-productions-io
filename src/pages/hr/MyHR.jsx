@@ -2,6 +2,8 @@
 // timer, today's and this week's hours, time off (balances, ask, cancel a pending one), who's out, their own details.
 // Not connected: a friendly how-to (with a drawing of BambooHR's menu) and a paste box. The key never comes back here.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useAuth } from '../../context/AuthContext';
+import MyEmployees from './MyEmployees';
 import {
   Clock, LogIn, LogOut, TreePalm, Users, MoreHorizontal, RefreshCw, ExternalLink, Unplug, KeyRound, Lock, ShieldCheck,
   Check, Loader2, AlertTriangle, PartyPopper, Briefcase, Building2, MapPin, Mail, Phone, Gift, Plus, Eye, EyeOff, Bell, StickyNote,
@@ -773,6 +775,9 @@ function Skeleton() {
 }
 
 export default function MyHR() {
+  const { isAdmin } = useAuth();
+  const [tab, setTab] = useState(() => { try { return (isAdmin && sessionStorage.getItem('cp_myhr_tab')) || 'me'; } catch { return 'me'; } });
+  useEffect(() => { try { sessionStorage.setItem('cp_myhr_tab', tab); } catch { /* ignore */ } }, [tab]);
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -822,7 +827,16 @@ export default function MyHR() {
         )}
       </header>
 
-      {loading && !data ? <Skeleton />
+      {/* Me / My employees (25 Nov 2026 — admins supervise the team from here) */}
+      {isAdmin && (
+        <div className="flex gap-1 mb-5 border-b border-gray-200 dark:border-white/10">
+          {[['me', 'Me'], ['employees', 'My employees']].map(([k, l]) => (
+            <button key={k} type="button" onClick={() => setTab(k)} className={`px-3 py-2 text-[13.5px] font-semibold border-b-2 -mb-px ${tab === k ? 'border-[#0808f8] text-[#030b2e] dark:text-gray-100' : 'border-transparent text-gray-500 hover:text-gray-800'}`}>{l}</button>
+          ))}
+        </div>
+      )}
+      {tab === 'employees' && isAdmin ? <MyEmployees />
+        : loading && !data ? <Skeleton />
         : error && !data ? (
           <Card>
             <div className="py-8 text-center">
@@ -848,7 +862,7 @@ export default function MyHR() {
             )}
 
       {askDisconnect && <DisconnectDialog onClose={() => setAskDisconnect(false)} onDone={() => { setAskDisconnect(false); load(); }} />}
-      {data && !connected && !popupClosed && !error && (
+      {tab === 'me' && data && !connected && !popupClosed && !error && (
         <ConnectPopup companySubdomain={data?.company_subdomain || data?.subdomain || null} reconnect={!!data?.needs_reconnect}
           onConnected={() => { setPopupClosed(true); load(); announceClock({ source: 'my-hr-connect' }); }} onLater={() => setPopupClosed(true)} />
       )}

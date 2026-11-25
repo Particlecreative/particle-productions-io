@@ -73,6 +73,8 @@ const CREATIVE_WHATS_NEW = [
     '🏆 Home → My month: delivered, worked per task, review rounds, on time and your ads live on Meta — and months back.',
     '🌙 Quiet hours: 🔔 → ⚙️ → no pop-ups at night or all weekend — they wait in the 🔔.',
     '⏱ My HR opens with “Let’s connect your BambooHR” — two steps and you’re in.',
+    '⏰ Home → My clock: Clock in / Clock out in one click, today’s time, and your month so far against what’s expected (with % and how much is left to the month’s target).',
+    '🌴 My Studio shows who on the team is out — vacation, sick or other — today and coming up, and the Week view marks each day with who’s out (and holidays).',
     '🗂️ My Studio, Monday-style: Filter by any field (status, priority, deadline, product, type, campaign, who asked, brand, board, missing link, checklist — with counts), Quick filters (Overdue, Due this week, Needs my link, High priority, In review, Fixes), Sort, Group by any field (board and table), table Columns (show, hide, order), change a status right in the table, and saved Views as tabs.',
   ] },
   { date: '25 Nov 2026', items: [
@@ -217,6 +219,7 @@ const CREATIVE_CATEGORY = {
           'Today and this week: your hours against 9h a day (Sun–Thu).',
           'Time off: your balances, “Ask for time off” (type, dates, half day, a note), your requests — cancel one that’s still waiting.',
           'Who’s out this week / next week, and your details from BambooHR.',
+          'Home → My clock: the same clock in one click, plus your month so far (hours vs. expected, %, what’s left to the month’s target).',
         ]},
         { type: 'tips', items: [
           'At 10:00 CP reminds you if you haven’t clocked in; at 19:00 if you’re still clocked in (not on Fri / Sat, holidays or your days off). Turn it off in 🔔 → ⚙️.',
@@ -825,6 +828,24 @@ const CATEGORIES = [
           { type: 'tips', items: [
             'Each move also lands in your 🔔 under “Team moves” (quietly — no pop-up). Turn it off in 🔔 → ⚙️ → “Every move of the team”.',
             'Opening the same page twice within 10 minutes counts once.',
+          ]},
+        ],
+      },
+      {
+        id: 'my-employees', icon: '👥', label: 'My HR → My employees',
+        summary: 'The month so far for everyone: hours vs. expected with %, vacation left, days off, approvals — and each person’s days read for you, with their tickets.',
+        keywords: ['employees', 'team', 'hours', 'timesheet', 'vacation', 'sick', 'approve', 'percent', 'month', 'payroll', 'csv'],
+        content: [
+          { type: 'guide', title: 'My HR → My employees (admins)', steps: [
+            'Pick a month (◀ ▶). Top: the team’s %, hours clocked vs. expected, days off, missing days, forgotten clock-outs.',
+            '“Who did more, who did less”: each person’s hours on finished days against what’s expected (workdays that aren’t off × 9h) — the bar, the %, the line for “expected so far”, a small calendar of the month (darker = more hours; teal = vacation, red = sick), hours left to the month’s target, vacation left, and badges for missing days / no clock-out. Sort by %, hours, days off or vacation left.',
+            'Click someone → their days read for you: “Full day: 8h 30m (09:10–17:40). Worked on Face Cream | Hook test (5h)… Moved X → Review at 15:20.” with the tickets behind each day and the tickets of the whole period ranked by hours (Working while clocked in). Last 2 weeks / this month / last month.',
+            'Waiting for you: approve or deny time off — each request shows how much vacation they have left and who else is out then.',
+            'CSV for the month — hours, %, days, vacation left for everyone (payroll-ready).',
+          ]},
+          { type: 'tips', items: [
+            '“Not in Working on any task” on a day means the clock and the board don’t match — reviews, fixes, meetings, or a status nobody moved.',
+            'The team’s days off also show for everyone in My Studio (who’s out today and coming up, and on the Week view).',
           ]},
         ],
       },

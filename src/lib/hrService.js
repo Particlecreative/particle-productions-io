@@ -276,7 +276,60 @@ export const hrApi = {
   team: (week) => (LIVE ? apiGet(`/hr/team${week ? `?week=${encodeURIComponent(week)}` : ''}`) : dev.team(week)),
   approve: (id, note) => (LIVE ? apiPost(`/hr/team/time-off/${encodeURIComponent(id)}/approve`, note ? { note } : {}) : dev.answer(id, 'approve')),
   deny: (id, note) => (LIVE ? apiPost(`/hr/team/time-off/${encodeURIComponent(id)}/deny`, note ? { note } : {}) : dev.answer(id, 'deny')),
+  // My employees + My month + who's out (25 Nov 2026)
+  teamMonth: (month) => (LIVE ? apiGet(`/hr/team/month${month ? `?month=${encodeURIComponent(month)}` : ''}`) : devInsights.month(month)),
+  teamPerson: (id, from, to) => (LIVE ? apiGet(`/hr/team/person/${encodeURIComponent(id)}?${new URLSearchParams({ ...(from ? { from } : {}), ...(to ? { to } : {}) })}`) : devInsights.person(id, from, to)),
+  out: (from, to) => (LIVE ? apiGet(`/hr/out?${new URLSearchParams({ ...(from ? { from } : {}), ...(to ? { to } : {}) })}`) : devInsights.out(from, to)),
+  myMonth: (month) => (LIVE ? apiGet(`/hr/me/month${month ? `?month=${encodeURIComponent(month)}` : ''}`) : devInsights.myMonth(month)),
 };
+
+// ── local preview stand-ins for My employees (obviously sample people) ─────────────────────────────────────────────
+const devInsights = (() => {
+  const P = [['101', 'Dana Demo', 'Video Editor'], ['102', 'Ori Sample', 'Designer'], ['103', 'Noa Example', 'Video Editor'], ['104', 'Gil Placeholder', 'Motion Designer'], ['105', 'Tal Fixture', 'Designer'], ['106', 'Lior Testman', 'Video Editor']];
+  const today = ilToday();
+  const m0 = today.slice(0, 7);
+  const kinds = { 103: [['vacation', addDays(today, -1), addDays(today, 2), 'Vacation']], 104: [['sick', today, today, 'Sick']] };
+  const month = async (m = m0) => {
+    await new Promise(r => setTimeout(r, 250));
+    const from = `${m}-01`;
+    const pcts = [104, 98, 91, 86, 78, 63];
+    const people = P.map(([id, name, job], i) => {
+      const exp = 9 * 16, hrs = Math.round(exp * pcts[i]) / 100;
+      const days = {};
+      for (let d = from; d.slice(0, 7) === m && d <= today; d = addDays(d, 1)) days[d] = dowOf(d) > 4 ? 0 : d === today ? 4.2 : Math.round((7 + ((Number(d.slice(8)) * (i + 3)) % 30) / 10) * 100) / 100;
+      return { id, name, job_title: job, photo_url: null, tracked: true, hours_to_date: hrs, expected_to_date: exp, expected_month: 9 * 21, pct: pcts[i], remaining_to_target: Math.round((9 * 21 - hrs) * 10) / 10,
+        days_worked: 15 + (i % 2), days_short: i, days_missing: i > 3 ? 2 : 0, days_no_out: i === 2 ? 1 : 0, days_over: 5 - i, off_days: (kinds[id] || []).length * 2,
+        off: (kinds[id] || []).map(([kind, a, b, type]) => ({ kind, start: a, end: b, type })), avg_start: `0${8 + (i % 2)}:${['12', '41', '05', '58', '20', '33'][i]}`,
+        balances: [{ name: 'Vacation', kind: 'vacation', balance: 14 - i * 2.5, units: 'days', used_ytd: 3 + i }, { name: 'Sick', kind: 'sick', balance: 18 - i, units: 'days', used_ytd: i }], days };
+    });
+    return { month: m, from, to: `${m}-30`, today, expected_day_hours: 9, team: { hours_to_date: people.reduce((a, p) => a + p.hours_to_date, 0), expected_to_date: 9 * 16 * 6, pct: 87, off_days: 3, missing: 4, no_out: 1 }, holidays: [], people };
+  };
+  const person = async (id, from, to) => {
+    await new Promise(r => setTimeout(r, 300));
+    const p = P.find(x => x[0] === String(id)) || P[0];
+    const end = to || today, start = from || addDays(end, -13);
+    const tickets = [['Face Cream | Meta | Hook test', 'video'], ['NeoRoot | Creators | Cut v2', 'video'], ['Gravité | TV | She Won’t Have To resizes', 'video'], ['Hand Cream | Meta | Static set', 'design']];
+    const days = [];
+    for (let d = end; d >= start; d = addDays(d, -1)) {
+      const wd = dowOf(d) <= 4, n = Number(d.slice(8));
+      const hours = wd ? Math.round((6.5 + (n % 5) * 0.6) * 100) / 100 : 0;
+      const tasks = wd ? [{ id: 't1', name: tickets[n % 4][0], board: tickets[n % 4][1], ms: hours * 0.55 * 3.6e6 }, { id: 't2', name: tickets[(n + 1) % 4][0], board: tickets[(n + 1) % 4][1], ms: hours * 0.25 * 3.6e6 }] : [];
+      const day = { date: d, workday: wd, hours, in: wd ? `${d}T0${8 + (n % 2)}:1${n % 6}:00+02:00` : null, out: wd ? `${d}T17:${10 + (n % 40)}:00+02:00` : null, open: d === today, no_out: false, off: null, holiday: null, tasks, moves: wd && n % 3 === 0 ? [{ id: 't1', name: tickets[n % 4][0], to: 'Review', at: Date.parse(`${d}T15:20:00+02:00`) }] : [] };
+      day.summary = !wd ? 'Weekend.' : `Full day: ${Math.floor(hours)}h ${Math.round((hours % 1) * 60)}m (0${8 + (n % 2)}:1${n % 6}–17:${10 + (n % 40)}). Worked on ${tasks.map(t => `${t.name} (${Math.round(t.ms / 3.6e6 * 10) / 10}h)`).join(', ')}.${day.moves.length ? ` Moved: ${day.moves[0].name} → Review at 15:20.` : ''}`;
+      days.push(day);
+    }
+    return { employee: { id: p[0], name: p[1], job_title: p[2] }, from: start, to: end, today, expected_day_hours: 9, totals: { hours: 92.4, expected: 99, pct: 93, days_worked: 11, on_tasks_hours: 71.2 },
+      tickets: tickets.map(([name, board], i) => ({ id: `t${i}`, board, name, hours: [24.5, 18, 15.2, 13.5][i], days: [5, 4, 3, 3][i] })), days,
+      balances: [{ name: 'Vacation', kind: 'vacation', balance: 11.5, units: 'days', used_ytd: 6 }, { name: 'Sick', kind: 'sick', balance: 14, units: 'days', used_ytd: 2 }], off: [] };
+  };
+  const out = async () => ({ connected: true, from: today, to: addDays(today, 13), today, holidays: [], people: [
+    { employee_id: '103', name: 'Noa Example', kind: 'vacation', type: 'Vacation', start: addDays(today, -1), end: addDays(today, 2) },
+    { employee_id: '104', name: 'Gil Placeholder', kind: 'sick', type: 'Sick', start: today, end: today },
+    { employee_id: '105', name: 'Tal Fixture', kind: 'vacation', type: 'Vacation', start: addDays(today, 5), end: addDays(today, 8) },
+  ] });
+  const myMonth = async () => ({ connected: true, month: m0, hours_to_date: 128.5, expected_to_date: 144, expected_month: 189, pct: 89, today_hours: 3.4, open: false, days_worked: 16, days_short: 3, days_missing: 0, expected_day_hours: 9 });
+  return { month, person, out, myMonth };
+})();
 
 /** "the clock changed" — so the header pill and My HR stay in step without a reload */
 export const HR_CLOCK_EVENT = 'cp:hr-clock';
