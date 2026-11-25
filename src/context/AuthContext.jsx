@@ -49,7 +49,10 @@ export function AuthProvider({ children }) {
       const match = found
         ?? (email === 'admin@demo.com'
             ? { id: 'u-admin', email, name: 'Admin User', role: 'Admin', brand: 'particle', brand_ids: ['particle', 'blurr'], active: true, super_admin: true }
-            : null);
+            // local preview only: the creative team's CP with sample data (any password)
+            : email.toLowerCase() === 'creative@demo.com'
+              ? { id: 'dev-creative', email, name: 'Itai Cohen', role: 'Creative', brand_id: 'particle', brand: 'particle', brand_ids: ['particle'], active: true }
+              : null);
       if (match) {
         setUser(match);
         sessionStorage.setItem('cp_user', JSON.stringify(match));
