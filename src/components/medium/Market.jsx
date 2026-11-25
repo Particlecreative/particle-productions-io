@@ -14,6 +14,7 @@ export default function Market({ notify, isAdmin, go }) {
   const [view, setView] = useState('new');
   const [busy, setBusy] = useState(null);
   const [domain, setDomain] = useState('');
+  const [oBrand, setOBrand] = useState('');
 
   const load = useCallback(async () => { try { setData(await mediumApi.market()); } catch (e) { notify(e.message, true); } }, [notify]);
   useEffect(() => { load(); }, [load]);
@@ -28,6 +29,8 @@ export default function Market({ notify, isAdmin, go }) {
     go('create', 'idea');
   };
   const briefAd = (a) => briefFrom({ idea: `Take what’s working in this ${a.brand} ad — ${a.hook ? `it opens with “${a.hook}”` : a.one_line || 'see the reference'} — and make it Particle’s own: same structure, our product, our proof.`, references: [`upspring-ad:${a.id}`] });
+  // Built like Particle (Upspring Lookalikes, 25 Nov 2026): a brand in another category — borrow the format, not the product
+  const briefOutside = (a) => briefFrom({ idea: `Borrow what’s working in this ${a.brand} ad${a.industry ? ` (${String(a.industry).toLowerCase()})` : ''} — a brand built like ours in another category. ${a.hook ? `It opens with “${a.hook}”${/[.!?…]$/.test(a.hook.trim()) ? '' : '.'}` : a.one_line || ''} Make it Particle’s: the same format and pacing, our product, our proof.`, references: [`upspring-ad:${a.id}`] });
   const briefPage = (p) => briefFrom({ idea: `A ${String(p.type || 'listicle').toLowerCase()} page like ${p.brand}’s “${p.title || p.display_url}” — for one of our lanes (SFY, GT or WAC): the same page logic, with our products and our proof.`, references: [p.url].filter(Boolean) });
 
   const refresh = async () => {
@@ -48,6 +51,9 @@ export default function Market({ notify, isAdmin, go }) {
   if (!run) return <Empty emoji="🌍" title="The first market read is on its way" line="Medium reads Upspring a few minutes after it’s connected, then every Sunday at 06:00." action={isAdmin && <button type="button" className="trk-btn mt-4" disabled={busy === 'refresh'} onClick={refresh}><RefreshCw size={13} /> Read it now</button>} />;
 
   const pages = (run.pages || []);
+  const outside = run.outside || { brands: [], ads: [] };
+  const outsideAds = (outside.ads || []).filter(a => !oBrand || a.brand_id === oBrand);
+  const pct = (m) => (m != null ? `${Math.round(Number(m) * 100)}% match` : '');
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end gap-3">
@@ -71,8 +77,8 @@ export default function Market({ notify, isAdmin, go }) {
         </div>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2" role="tablist">
-        {[['brands', '🧴', 'Particle vs DTC grooming brands'], ['pages', '📰', 'Our lanes vs listicles & advertorials']].map(([k, e, l]) => (
+      <div className="grid gap-3 sm:grid-cols-3" role="tablist">
+        {[['brands', '🧴', 'Particle vs DTC grooming brands'], ['outside', '🧭', 'Built like Particle'], ['pages', '📰', 'Our lanes vs listicles & advertorials']].map(([k, e, l]) => (
           <button key={k} type="button" role="tab" aria-selected={part === k} className={`md-action compact ${part === k ? 'on' : ''}`} onClick={() => setPart(k)}><span className="md-emoji" aria-hidden>{e}</span><span className="md-action-title">{l}</span></button>
         ))}
       </div>
@@ -83,7 +89,8 @@ export default function Market({ notify, isAdmin, go }) {
             <button type="button" className={`trk-btn !py-1.5 ${!brand ? 'primary' : ''}`} onClick={() => setBrand('')}>All brands</button>
             {(run.brands || []).map(x => (
               <span key={x.id} className="inline-flex items-center">
-                <button type="button" className={`trk-btn !py-1.5 ${brand === x.id ? 'primary' : ''}`} onClick={() => setBrand(brand === x.id ? '' : x.id)}>{x.name}{x.new_count ? <span className="md-count !h-[18px] !min-w-[18px] !text-[10.5px] ml-1">{x.new_count}</span> : null}</button>
+                <button type="button" className={`trk-btn !py-1.5 ${brand === x.id ? 'primary' : ''}`} onClick={() => setBrand(brand === x.id ? '' : x.id)}
+                  title={x.match != null ? `Upspring Lookalikes: ${pct(x.match)}` : x.auto ? 'Picked automatically' : 'Added by hand'}>{x.name}{x.new_count ? <span className="md-count !h-[18px] !min-w-[18px] !text-[10.5px] ml-1">{x.new_count}</span> : null}</button>
                 {isAdmin && <button type="button" className="trk-dim hover:text-[var(--trk-red)] -ml-1 p-1" aria-label={`Stop watching ${x.name}`} title="Stop watching" onClick={() => unwatch(x.id, x.name)}><X size={12} /></button>}
               </span>
             ))}
@@ -95,9 +102,11 @@ export default function Market({ notify, isAdmin, go }) {
             )}
           </div>
 
+          {run.lookalikes && <p className="text-[12.5px] trk-dim -mt-2">Picked by Upspring Lookalikes — Particle’s closest competitors, refreshed every Sunday. Brands you add stay; brands you remove don’t come back.</p>}
+
           {b && (
             <div className="trk-glass rounded-3xl p-5 text-[14px]">
-              <div className="font-semibold text-[15.5px]">{b.name}</div>
+              <div className="font-semibold text-[15.5px]">{b.name}{b.match != null && <span className="md-ready gray ml-2 align-middle">{pct(b.match)}</span>}</div>
               {b.one_line && <p className="mt-1 trk-muted">{b.one_line}</p>}
               <div className="mt-3 grid sm:grid-cols-2 gap-3">
                 {b.hook_themes?.length > 0 && <div><div className="md-doc-label">What their ads lean on</div>{b.hook_themes.map(h => <div key={h.name} className="capitalize">{String(h.name).toLowerCase()}</div>)}</div>}
@@ -113,26 +122,43 @@ export default function Market({ notify, isAdmin, go }) {
 
           {ads.length ? (
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-              {ads.slice(0, 24).map(a => (
-                <div key={`${a.brand_id}-${a.id}`} className="md-brief !p-0 overflow-hidden">
-                  <div className={`${a.image ? 'aspect-[4/5] max-h-[260px]' : 'h-[84px]'} w-full flex items-center justify-center text-3xl`} style={{ background: 'var(--trk-glass-hi)' }}>
-                    {a.image ? <img src={a.image} alt="" loading="lazy" referrerPolicy="no-referrer" className="w-full h-full object-cover" /> : <span aria-hidden>{a.media_type === 'video' ? '🎬' : '🖼️'}</span>}
-                  </div>
-                  <div className="p-4 pt-1 flex flex-col gap-2 flex-1">
-                    <div className="md-brief-top"><b style={{ color: 'var(--trk-text)' }}>{a.brand}</b><span>· {a.media_type === 'video' ? 'Video' : 'Static'}</span>
-                      <span className="ml-auto text-[12px]">{a.new ? <span className="md-ready green">New</span> : a.days != null ? `${a.days} days running` : ''}</span></div>
-                    <div className="text-[14.5px] leading-snug" style={{ color: 'var(--trk-text)' }}>{a.hook ? `“${a.hook}”` : a.one_line}</div>
-                    {a.hook && a.one_line && <div className="md-brief-why">{a.one_line}</div>}
-                    {a.backed && <div className="text-[12px] trk-dim">💪 They’re putting real spend behind it</div>}
-                    <div className="mt-auto flex flex-wrap gap-2 pt-1">
-                      <button type="button" className="trk-btn primary !py-1 !text-[12.5px]" onClick={() => briefAd(a)}><Sparkles size={12} /> Brief from this</button>
-                      {a.ad_library_url && <a className="trk-btn !py-1 !text-[12.5px]" href={a.ad_library_url} target="_blank" rel="noopener noreferrer"><ExternalLink size={12} /> See the ad</a>}
-                    </div>
-                  </div>
-                </div>
-              ))}
+              {ads.slice(0, 24).map(a => <AdCard key={`${a.brand_id}-${a.id}`} a={a} onBrief={briefAd} />)}
             </div>
           ) : <Empty emoji="🔭" title={view === 'new' ? 'Nothing new in the last two weeks' : 'Nothing heavily backed right now'} line={view === 'new' ? 'Switch to “What they keep backing” to see their long-running ads.' : 'Try another brand.'} small />}
+        </div>
+      )}
+
+      {part === 'outside' && (
+        <div className="space-y-5">
+          <p className="md-sub">Brands with a business like Particle’s — similar scale and audience, selling direct — in other categories. They aren’t competitors: their long-running ads are formats and angles to borrow. Picked by Upspring Lookalikes, refreshed every Sunday.</p>
+          {run.summary?.outside_idea && (
+            <div className="rounded-2xl p-4 flex flex-wrap items-center gap-3" style={{ background: 'var(--trk-glass-hi)' }}>
+              <span className="text-[15px] flex-1 min-w-[240px]">🧭 <b>Outside idea:</b> {run.summary.outside_idea}</span>
+              <button type="button" className="trk-btn primary" onClick={() => briefFrom({ idea: run.summary.outside_idea, references: [] })}><Sparkles size={13} /> Brief this</button>
+            </div>
+          )}
+          {(outside.brands || []).length ? (
+            <>
+              <div className="flex flex-wrap items-center gap-2">
+                <button type="button" className={`trk-btn !py-1.5 ${!oBrand ? 'primary' : ''}`} onClick={() => setOBrand('')}>All</button>
+                {outside.brands.map(x => (
+                  <button key={x.id} type="button" className={`trk-btn !py-1.5 ${oBrand === x.id ? 'primary' : ''}`} onClick={() => setOBrand(oBrand === x.id ? '' : x.id)}
+                    title={[x.industry, x.category, pct(x.match), x.spend ? `spend ${x.spend}` : ''].filter(Boolean).join(' · ')}>
+                    {x.name}{x.industry && <span className="trk-dim font-normal ml-1">· {x.industry}</span>}
+                  </button>
+                ))}
+              </div>
+              {outsideAds.length ? (
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                  {outsideAds.slice(0, 24).map(a => <AdCard key={`${a.brand_id}-${a.id}`} a={a} onBrief={briefOutside} tag={a.industry} />)}
+                </div>
+              ) : <Empty emoji="🔭" title="No long-running ads from this brand right now" line="Try another brand." small />}
+            </>
+          ) : (
+            <Empty emoji="🧭" title="Brands built like Particle show here"
+              line={run.lookalikes ? 'Upspring found no close match outside men’s grooming this week.' : 'They fill in on the next refresh — it needs the Upspring account connected (Behind the scenes → Sources & settings).'}
+              action={isAdmin && !run.lookalikes && <button type="button" className="trk-btn mt-4" disabled={busy === 'refresh'} onClick={refresh}><RefreshCw size={13} /> Refresh now</button>} small />
+          )}
         </div>
       )}
 
@@ -176,6 +202,29 @@ export default function Market({ notify, isAdmin, go }) {
           </div>
         </details>
       )}
+    </div>
+  );
+}
+
+/** One ad from Upspring's library — picture, how it opens, how long it has run, "Brief from this". */
+function AdCard({ a, onBrief, tag }) {
+  return (
+    <div className="md-brief !p-0 overflow-hidden">
+      <div className={`${a.image ? 'aspect-[4/5] max-h-[260px]' : 'h-[84px]'} w-full flex items-center justify-center text-3xl`} style={{ background: 'var(--trk-glass-hi)' }}>
+        {a.image ? <img src={a.image} alt="" loading="lazy" referrerPolicy="no-referrer" className="w-full h-full object-cover" /> : <span aria-hidden>{a.media_type === 'video' ? '🎬' : '🖼️'}</span>}
+      </div>
+      <div className="p-4 pt-1 flex flex-col gap-2 flex-1">
+        <div className="md-brief-top"><b style={{ color: 'var(--trk-text)' }}>{a.brand}</b><span>· {a.media_type === 'video' ? 'Video' : 'Static'}</span>
+          <span className="ml-auto text-[12px]">{a.new ? <span className="md-ready green">New</span> : a.days != null ? `${a.days} days running` : ''}</span></div>
+        {tag && <div className="text-[12px] trk-dim -mt-1">{tag}</div>}
+        <div className="text-[14.5px] leading-snug" style={{ color: 'var(--trk-text)' }}>{a.hook ? `“${a.hook}”` : a.one_line}</div>
+        {a.hook && a.one_line && <div className="md-brief-why">{a.one_line}</div>}
+        {a.backed && <div className="text-[12px] trk-dim">💪 They’re putting real spend behind it</div>}
+        <div className="mt-auto flex flex-wrap gap-2 pt-1">
+          <button type="button" className="trk-btn primary !py-1 !text-[12.5px]" onClick={() => onBrief(a)}><Sparkles size={12} /> Brief from this</button>
+          {a.ad_library_url && <a className="trk-btn !py-1 !text-[12.5px]" href={a.ad_library_url} target="_blank" rel="noopener noreferrer"><ExternalLink size={12} /> See the ad</a>}
+        </div>
+      </div>
     </div>
   );
 }

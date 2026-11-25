@@ -9,6 +9,10 @@ import clsx from 'clsx';
 // ─── Growth team (17 Nov 2026) ─────────────────────────────────────────────────
 // RULE (Tomer): every change to the growth team's panel updates this section AND adds a dated line to "What's new".
 const GROWTH_WHATS_NEW = [
+  { date: '25 Nov 2026', items: [
+    '🧭 Briefs Creator → Market Watch → new “Built like Particle”: brands with a business like ours in other categories (Upspring Lookalikes — e.g. Harry’s, Intake Breathing) and the ads they keep running for months. Each has “Brief from this”, plus a weekly “Outside idea”.',
+    '🧴 The competitor brands in Market Watch now come from Upspring Lookalikes — Particle’s closest rivals, refreshed every Sunday. Brands added by hand stay; removed ones don’t come back.',
+  ] },
   { date: '24 Nov 2026', items: [
     '📦 New: Creative Studio → By product — every product, week by week: how many video and design tickets are due, how far along they are (Done = ready to go live) and which ones are for Meta. Filter Meta / Not Meta and Video / Design; click a number to see the tickets.',
     '🛠️ Creative Studio → Overview and Workload load again (they showed zeros and “Not part of the Growth Studio”).',
@@ -128,6 +132,7 @@ const GROWTH_CATEGORY = {
         ]},
         { type: 'tips', items: [
           'Market Watch and Behind the scenes are there to read — what Medium believes, its tests and its sources.',
+          'Market Watch → “Built like Particle” shows brands with a business like ours in other categories (Upspring Lookalikes). Their long-running ads are formats to borrow — “Brief from this” opens Create with the ad attached.',
           'If Captain Caption flags a must-fix, fix the line (or ask an admin to override).',
         ]},
       ],
