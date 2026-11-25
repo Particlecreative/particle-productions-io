@@ -96,6 +96,40 @@ router.get('/my-tasks', async (req, res) => {
   } catch (err) { errorJson(res, err); }
 });
 
+// The bench (25 Nov 2026): delivery checklists, the latest Frame.io version + comments, and what's in Working since when
+const myItems = async (req) => (await require('../lib/studio/myTasks').getMyTasks({ brandId: req.brandId, user: req.user })).items || [];
+router.get('/my-checklists', async (req, res) => {
+  try { res.json({ checklists: await require('../lib/studio/craft').checklists((await myItems(req)).map(it => it.id)) }); } catch (err) { errorJson(res, err); }
+});
+router.get('/my-frame', async (req, res) => {
+  try {
+    const items = (await myItems(req)).filter(it => it.open || it.status?.category === 'delivered');
+    res.json({ frame: await require('../lib/studio/craft').frameStatuses(items) });
+  } catch (err) { errorJson(res, err); }
+});
+router.get('/now-working', async (req, res) => {
+  try {
+    const items = await myItems(req);
+    const { getCreativeConfig } = require('../lib/creative/config');
+    const config = await getCreativeConfig(req.brandId);
+    const list = await monday.cached(`now-working:${req.user?.id}:${items.filter(it => it.status?.category === 'in_progress').map(it => it.id).join(',')}`, 2 * 60 * 1000,
+      () => require('../lib/studio/craft').nowWorking(items, config));
+    res.json({ working: list, now: Date.now() });
+  } catch (err) { errorJson(res, err); }
+});
+router.get('/items/:itemId/checklist', async (req, res) => {
+  try {
+    if (!(await creativeOwn(req, res, req.params.itemId))) return;
+    res.json(await require('../lib/studio/craft').getChecklist(req.params.itemId));
+  } catch (err) { errorJson(res, err); }
+});
+router.put('/items/:itemId/checklist', async (req, res) => {
+  try {
+    if (!(await creativeOwn(req, res, req.params.itemId))) return;
+    res.json(await require('../lib/studio/craft').saveChecklist(req.params.itemId, req.body?.done, req.user));
+  } catch (err) { errorJson(res, err); }
+});
+
 /**
  * The Creative team works their own tickets only (25 Nov 2026): the editor / designer on it, or the one who asked.
  * Admins, the Studio and editors are not limited. Answers false (and has replied 403) when it isn't theirs.

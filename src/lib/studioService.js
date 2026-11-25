@@ -57,7 +57,26 @@ export const studioApi = {
     const d = (await fx()).fixtureCampaigns();
     const me = d.items.find(it => it.people?.length)?.people?.[0] || null;
     const requesters = { ...(d.requesters || {}) };
-    return { me: me ? { id: me, source: 'connected', name: d.people?.[me]?.name || 'You' } : null, items: d.items.filter(it => it.people.includes(me)).map(it => ({ ...it, links: it.links || { frame: 'https://f.io/demo', dropbox: 'https://www.dropbox.com/scl/fo/x/Project%20Files?dl=0' } })), people: { ...requesters, ...d.people }, boards: d.boards, warnings: [], generated_at: d.generated_at, today: d.today };
+    return { me: me ? { id: me, source: 'connected', name: d.people?.[me]?.name || 'You' } : null, items: d.items.filter(it => it.people.includes(me)).map((it, i) => ({ ...it, sizes: it.sizes || [['9x16', '1x1', '16x9'], ['9x16', '4x5'], ['1x1']][i % 3], links: it.links || { frame: 'https://f.io/demo', dropbox: 'https://www.dropbox.com/scl/fo/x/Project%20Files?dl=0' } })), people: { ...requesters, ...d.people }, boards: d.boards, warnings: [], generated_at: d.generated_at, today: d.today };
+  })()),
+  // The bench (25 Nov 2026): delivery checklists, the latest Frame.io version + comments, what's in Working since when
+  myChecklists: async () => (LIVE ? call('/my-checklists') : { checklists: JSON.parse(sessionStorage.getItem('cp_dev_checklists') || '{}') }),
+  checklist: async (itemId) => (LIVE ? call(`/items/${itemId}/checklist`) : { done: JSON.parse(sessionStorage.getItem('cp_dev_checklists') || '{}')[itemId] || [] }),
+  saveChecklist: async (itemId, done) => {
+    if (LIVE) return call(`/items/${itemId}/checklist`, { method: 'PUT', body: { done } });
+    const all = JSON.parse(sessionStorage.getItem('cp_dev_checklists') || '{}'); all[itemId] = done; sessionStorage.setItem('cp_dev_checklists', JSON.stringify(all));
+    return { done };
+  },
+  myFrame: async () => (LIVE ? call('/my-frame') : (async () => {
+    const d = (await fx()).fixtureCampaigns();
+    const frame = {};
+    d.items.slice(0, 12).forEach((it, i) => { frame[it.id] = { files: 2 + (i % 4), name: `Cut_v${1 + (i % 3)}.mp4`, version: 1 + (i % 3), modified: new Date(Date.now() - (i + 1) * 3.6e6).toISOString(), comments: [0, 3, 7, 1][i % 4] }; });
+    return { frame };
+  })()),
+  nowWorking: async () => (LIVE ? call('/now-working') : (async () => {
+    const d = (await fx()).fixtureCampaigns();
+    const it = d.items.find(x => x.status?.category === 'in_progress');
+    return { working: it ? [{ id: it.id, board: it.board, name: it.name, title: it.title || null, product: it.product?.label, since_ms: Date.now() - 83 * 60000 }] : [], now: Date.now() };
   })()),
   /** Every campaign label → its group (for the Workload stats) */
   campaignGroupMap: async () => (LIVE ? call('/campaign-groups') : (await fx()).fixtureCampaigns().campaign_groups),

@@ -2,10 +2,14 @@
 // better and smarter, arranged by timelines, deadlines and priority"; "my tasks — a table by status / brand"; "workload").
 // Board (by status like Monday, or by when it's due) · My tasks (table, grouped by status or brand) · Week (my timeline).
 // Drag a card to another status — it moves on Monday as you. Everything is arranged per person and remembered.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { FrameBadge, ChecklistChip } from '../../components/studio/Bench';
+import { studioApi as benchApi } from '../../lib/studioService';
+import { useLive } from '../../lib/useLive';
+
 import { useSearchParams } from 'react-router-dom';
 import {
-  Search, KanbanSquare, List, CalendarRange, Flag, ArrowRight, SlidersHorizontal, ChevronDown, ChevronRight, Film, Folder, PenTool, Link2,
+  Search, KanbanSquare, List, CalendarRange, Flag, ArrowRight, SlidersHorizontal, ChevronDown, ChevronRight, ChevronLeft, Film, Folder, PenTool, Link2,
   RefreshCw, Loader2, CircleCheck, AlertTriangle, Clock, Eye, EyeOff,
 } from 'lucide-react';
 import CreativeShell, { MyTasksProvider, useMyTasks, FreshBadge } from '../../components/creative-team/CreativeShell';
@@ -15,6 +19,9 @@ import { statusColumns, dueColumns, smartSort, urgency, dueWords, nextStatus, pr
 import { useAuth } from '../../context/AuthContext';
 import { getViewOrder, saveViewOrder } from '../../lib/dataService';
 import { meApi } from '../../lib/meService';
+
+// The bench on the cards (25 Nov 2026): the latest Frame.io version + comments, the delivery checklist's progress
+const BenchCtx = createContext({ frame: {}, checks: {} });
 
 const PREFS_KEY = 'creative-board';
 const DEFAULT_PREFS = { view: 'board', group: 'status', showDone: false, compact: false, tableBy: 'status', fields: { timeline: true, links: true, priority: true, requester: true } };
@@ -94,6 +101,7 @@ function TaskCard({ it, today, people, statuses, prefs, onOpen, onMove, onLink, 
       <div className="pl-1 mt-2 flex items-center gap-1.5 flex-wrap">
         <DueChip it={it} today={today} />
         {f.timeline && it.timeline?.from && <span className="inline-flex items-center gap-1 text-[11px] text-gray-500"><CalendarRange size={11} />{range(it.timeline)}</span>}
+        <BenchChips it={it} />
         <span className="ml-auto flex items-center gap-1.5">
           {f.links && <LinkIcons it={it} />}
           {f.requester && asked.slice(0, 2).map(p => <Avatar key={p.id} person={p} size={20} />)}
@@ -206,40 +214,68 @@ function Table({ items, data, prefs, onOpen }) {
 
 /** Two working weeks (Sun–Thu) with each task's timeline as a bar; the deadline as a ◆. */
 function Week({ items, data, onOpen }) {
+  // Weeks back and forward, finished tasks included (Tomer, 25 Nov 2026: "let me see next weeks and previous weeks, including completed things")
   const today = data.today;
   const sunday = (d) => { const x = new Date(`${d}T12:00:00Z`); x.setUTCDate(x.getUTCDate() - x.getUTCDay()); return x.toISOString().slice(0, 10); };
   const add = (d, n) => { const x = new Date(`${d}T12:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
-  const start = sunday(today);
+  const [offset, setOffset] = useState(0);
+  const [showDone, setShowDone] = useState(() => { try { return localStorage.getItem('cp_week_done') !== '0'; } catch { return true; } });
+  useEffect(() => { try { localStorage.setItem('cp_week_done', showDone ? '1' : '0'); } catch { /* ignore */ } }, [showDone]);
+  const start = add(sunday(today), offset * 7);
   const days = [0, 1, 2, 3, 4, 7, 8, 9, 10, 11].map(n => add(start, n));
+  const first = days[0], lastDay = days[days.length - 1];
   const idx = (d) => { let i = days.findIndex(x => x >= d); if (i === -1) i = days.length; return i; };
-  const open = items.filter(it => it.open);
-  const placed = smartSort(open.filter(it => it.timeline?.from && it.timeline.from <= days[days.length - 1] && (it.timeline.to || it.timeline.from) >= days[0]), today);
-  const unscheduled = smartSort(open.filter(it => !it.timeline?.from), today);
+  const done = (it) => !it.open || it.status?.category === 'delivered';
+  const pool = items.filter(it => showDone || !done(it));
+  // on the grid: a timeline that touches the two weeks, else a deadline inside them (a one-day block)
+  const spanOf = (it) => (it.timeline?.from ? { from: it.timeline.from, to: it.timeline.to || it.timeline.from } : it.deadline ? { from: it.deadline, to: it.deadline, byDeadline: true } : null);
+  const placed = smartSort(pool.filter(it => { const sp = spanOf(it); return sp && sp.from <= lastDay && sp.to >= first; }), today)
+    .sort((a, b) => Number(done(a)) - Number(done(b)));
+  const unscheduled = offset === 0 ? smartSort(items.filter(it => it.open && !spanOf(it)), today) : [];
+  const doneHere = placed.filter(done).length;
+  const fmt = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  const label = offset === 0 ? 'This week & next' : offset === -1 ? 'Last week & this week' : offset === 1 ? 'Next two weeks' : `${fmt(first)} – ${fmt(add(start, 11))}`;
   return (
     <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center rounded-xl border border-gray-200 bg-white">
+          <button type="button" onClick={() => setOffset(o => o - 1)} className="p-2 text-gray-500 hover:text-[#030b2e]" aria-label="A week back"><ChevronLeft size={16} /></button>
+          <button type="button" onClick={() => setOffset(0)} className="px-2 text-[12.5px] font-bold text-[#030b2e] min-w-[150px]" title="Back to this week">{label}</button>
+          <button type="button" onClick={() => setOffset(o => o + 1)} className="p-2 text-gray-500 hover:text-[#030b2e]" aria-label="A week forward"><ChevronRight size={16} /></button>
+        </div>
+        <span className="text-[12px] text-gray-400">{fmt(first)} – {fmt(add(start, 11))}</span>
+        <label className="ml-auto flex items-center gap-2 text-[12.5px] text-gray-600 cursor-pointer select-none">
+          <input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} className="w-4 h-4 accent-[#0808f8]" /> Show finished{doneHere ? ` (${doneHere})` : ''}
+        </label>
+      </div>
       <div className="rounded-2xl border border-gray-200 bg-white overflow-x-auto">
         <div className="grid" style={{ gridTemplateColumns: 'repeat(10, minmax(84px, 1fr))', minWidth: 860 }}>
           {days.map((d, i) => (
-            <div key={d} className={`px-2 py-2 text-[11px] font-bold border-b border-gray-100 ${i === 5 ? 'border-l-2 border-l-gray-200' : ''} ${d === today ? 'text-[#0808f8] bg-[#0808f8]/[0.05]' : 'text-gray-400'}`}>
+            <div key={d} className={`px-2 py-2 text-[11px] font-bold border-b border-gray-100 ${i === 5 ? 'border-l-2 border-l-gray-200' : ''} ${d === today ? 'text-[#0808f8] bg-[#0808f8]/[0.05]' : d < today ? 'text-gray-300' : 'text-gray-400'}`}>
               {new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', timeZone: 'UTC' })}
             </div>
           ))}
           {placed.map(it => {
-            const a = Math.max(0, idx(it.timeline.from));
-            const b = Math.min(days.length, idx(add(it.timeline.to || it.timeline.from, 1)));
-            const dl = it.deadline && it.deadline >= days[0] && it.deadline <= days[days.length - 1] ? idx(it.deadline) : null;
+            const sp = spanOf(it);
+            const a = Math.max(0, idx(sp.from));
+            const b = Math.min(days.length, idx(add(sp.to, 1)));
+            const fin = done(it);
+            const dl = !sp.byDeadline && it.deadline && it.deadline >= first && it.deadline <= lastDay ? idx(it.deadline) : null;
             return (
               <div key={it.id} className="contents">
-                <button type="button" onClick={() => onOpen(it)} title={it.name}
-                  className="m-1 rounded-lg px-2 py-1.5 text-left text-[12px] font-semibold text-white truncate hover:brightness-110 shadow-sm relative"
-                  style={{ gridColumn: `${a + 1} / ${Math.max(a + 2, b + 1)}`, background: it.status?.color || '#579bfc' }}>
-                  {it.title || it.name}{dl != null && <span className="ml-1.5 opacity-90" title={`Deadline ${fmtDay(it.deadline)}`}>◆ {fmtDay(it.deadline)}</span>}
+                <button type="button" onClick={() => onOpen(it)} title={`${it.name}${fin ? ' · finished' : ''}`}
+                  className={`m-1 rounded-lg px-2 py-1.5 text-left text-[12px] font-semibold truncate hover:brightness-110 shadow-sm relative flex items-center gap-1 ${fin ? 'text-emerald-800 dark:text-emerald-200 bg-emerald-50 border border-emerald-200' : 'text-white'}`}
+                  style={{ gridColumn: `${a + 1} / ${Math.max(a + 2, b + 1)}`, ...(fin ? {} : { background: it.status?.color || '#579bfc' }) }}>
+                  {fin && <CircleCheck size={12} className="flex-none text-emerald-600" />}
+                  {sp.byDeadline && !fin && <span className="opacity-90 flex-none">◆</span>}
+                  <span className="truncate">{it.title || it.name}</span>
+                  {dl != null && <span className="ml-1 opacity-90 flex-none" title={`Deadline ${fmtDay(it.deadline)}`}>◆ {fmtDay(it.deadline)}</span>}
                 </button>
               </div>
             );
           })}
         </div>
-        {!placed.length && <div className="text-center text-[12.5px] text-gray-400 py-8">Nothing scheduled in these two weeks.</div>}
+        {!placed.length && <div className="text-center text-[12.5px] text-gray-400 py-8">Nothing in these two weeks.</div>}
       </div>
       {unscheduled.length > 0 && (
         <div>
@@ -279,8 +315,19 @@ function Arrange({ prefs, update, onClose }) {
   );
 }
 
+function BenchChips({ it }) {
+  const b = useContext(BenchCtx);
+  return <><FrameBadge status={b.frame[it.id]} compact /><ChecklistChip it={it} done={b.checks[it.id]} /></>;
+}
+
 function StudioBody() {
   const { data, error, loading, panelData, reload } = useMyTasks();
+  const [bench, setBench] = useState({ frame: {}, checks: {} });
+  const loadChecks = useCallback(() => benchApi.myChecklists().then(r => setBench(b => ({ ...b, checks: r.checklists || {} }))).catch(() => null), []);
+  const loadFrame = useCallback(() => benchApi.myFrame().then(r => setBench(b => ({ ...b, frame: r.frame || {} }))).catch(() => null), []);
+  useEffect(() => { loadChecks(); loadFrame(); }, [loadChecks, loadFrame]);
+  useLive(loadChecks, { every: 60000 });
+  useLive(loadFrame, { every: 5 * 60000 });
   const { writes, openTask } = useStudio();
   const [prefs, update] = usePrefs();
   const [q, setQ] = useState('');
@@ -364,9 +411,11 @@ function StudioBody() {
           </span>
         </span>
       </div>
+      <BenchCtx.Provider value={bench}>
       {prefs.view === 'board' && <Board items={shown} data={data} prefs={prefs} onOpen={open} onMove={move} onLink={pasteLink} />}
       {prefs.view === 'tasks' && <Table items={shown} data={data} prefs={prefs} onOpen={open} />}
       {prefs.view === 'week' && <Week items={shown} data={data} onOpen={open} />}
+      </BenchCtx.Provider>
       {!!data.warnings?.length && <div className="text-[12px] text-amber-700">{data.warnings.join(' · ')}</div>}
       <p className="text-[11.5px] text-gray-400 flex items-center gap-1.5"><CircleCheck size={12} /> Drag a card to another status (or “Move to…”) — it changes on Monday as you. Timelines, people and deadlines are set by the studio.</p>
     </div>

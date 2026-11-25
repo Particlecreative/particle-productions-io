@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Clock, LogIn, LogOut, TreePalm, Users, MoreHorizontal, RefreshCw, ExternalLink, Unplug, KeyRound, Lock, ShieldCheck,
   Check, Loader2, AlertTriangle, PartyPopper, Briefcase, Building2, MapPin, Mail, Phone, Gift, Plus, Eye, EyeOff, Bell, StickyNote,
-  MousePointer2, UserRound, Send, Timer, ChevronDown, Sparkles,
+  MousePointer2, UserRound, Send, Timer, ChevronDown, Sparkles, ArrowRight, ArrowLeft, X,
 } from 'lucide-react';
 import {
   hrApi, EXPECTED_DAY_HOURS, ilToday, addDays, dowOf, daysBetween, fmtHours, fmtTimer, fmtTime, fmtDay, fmtRange, initials, colorFor,
@@ -569,14 +569,14 @@ function ConnectScreen({ companySubdomain, reconnect = false, onConnected }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const k = key.trim();
-  const looksOk = /^[a-f0-9]{20,80}$/i.test(k);
+  const looksOk = /^[A-Za-z0-9]{20,80}$/.test(k);
   const site = (editSub ? sub.trim().replace(/^https?:\/\//, '').replace(/\.bamboohr\.com.*$/, '') : companySubdomain) || null;
   const bambooUrl = site ? `https://${site}.bamboohr.com` : 'https://www.bamboohr.com/login';
 
   async function connect(e) {
     e.preventDefault();
     setErr(null);
-    if (!looksOk) { setErr('That doesn’t look like a BambooHR API key yet — it’s a long mix of numbers and the letters a–f.'); return; }
+    if (!looksOk) { setErr('That doesn’t look like a BambooHR API key yet — it’s one long run of letters and numbers.'); return; }
     if (editSub && !sub.trim()) { setErr('Type your company’s BambooHR name — the part before .bamboohr.com'); return; }
     setBusy(true);
     try { await hrApi.connect(k, editSub ? sub.trim() : undefined); setKey(''); onConnected?.(); } catch (e2) { setErr(e2.message); } finally { setBusy(false); }
@@ -658,6 +658,58 @@ function ConnectScreen({ companySubdomain, reconnect = false, onConnected }) {
   );
 }
 
+// ── the welcome popup (Tomer, 25 Nov 2026: "on My HR, start with a popup — let's connect your BambooHR") ──────────────
+function ConnectPopup({ companySubdomain, reconnect, onConnected, onLater }) {
+  const [step, setStep] = useState(reconnect ? 2 : 1);
+  useEffect(() => {
+    const k = (e) => { if (e.key === 'Escape') onLater(); };
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, [onLater]);
+  return (
+    <div className="fixed inset-0 z-[85] flex items-end sm:items-center justify-center bg-[#030b2e]/55 backdrop-blur-sm p-0 sm:p-6" onClick={onLater}>
+      <div className={`w-full ${step === 1 ? 'sm:max-w-[520px]' : 'sm:max-w-[1040px]'} max-h-[94vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl bg-white dark:bg-[#161b22] shadow-2xl transition-all`} onClick={(e) => e.stopPropagation()}>
+        {step === 1 ? (
+          <div className="relative overflow-hidden">
+            <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(520px 260px at 85% -10%, rgba(8,8,248,.28), transparent 60%), radial-gradient(420px 220px at 0% 110%, rgba(0,200,117,.18), transparent 60%)' }} />
+            <div className="relative px-7 pt-8 pb-7">
+              <div className="w-14 h-14 rounded-2xl bg-[#0808f8] text-white flex items-center justify-center shadow-[0_10px_30px_-8px_rgba(8,8,248,.7)]"><Timer size={26} /></div>
+              <h2 className={`mt-5 text-[28px] font-black tracking-tight leading-tight ${TITLE}`}>Let’s connect your BambooHR</h2>
+              <p className={`mt-2 text-[14px] leading-relaxed ${META}`}>One minute, once — then your day lives in CP: no more opening BambooHR to clock in or ask for a day off.</p>
+              <div className="mt-5 grid grid-cols-2 gap-2">
+                {[[Clock, 'Clock in & out', 'From any page — the pill at the top'], [TreePalm, 'Time off', 'Ask, see your balance, cancel'], [Bell, 'Reminders', '10:00 if you forgot to clock in, 19:00 to clock out'], [Users, 'Who’s out', 'This week and next, at a glance']].map(([I, t, d]) => (
+                  <div key={t} className="rounded-2xl border border-gray-200 dark:border-white/10 bg-white/70 dark:bg-white/[0.03] p-3">
+                    <I size={16} className="text-[#0808f8] dark:text-[#8b8bff]" />
+                    <div className={`mt-1.5 text-[13px] font-bold ${TITLE}`}>{t}</div>
+                    <div className={`text-[11.5px] leading-snug ${META}`}>{d}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-6 flex items-center gap-2">
+                <button type="button" onClick={() => setStep(2)} className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-[#0808f8] hover:bg-[#0606d0] text-white px-4 py-3 text-[14.5px] font-bold">Let’s do it <ArrowRight size={16} /></button>
+                <button type="button" onClick={onLater} className={`px-4 py-3 rounded-2xl text-[13.5px] font-semibold ${META} hover:bg-gray-100 dark:hover:bg-white/5`}>Later</button>
+              </div>
+              <div className={`mt-3 flex items-center gap-1.5 text-[11.5px] ${MUTED}`}><Lock size={12} /> Your key is encrypted — nobody can see it, not even admins.</div>
+            </div>
+          </div>
+        ) : (
+          <div className="p-5 sm:p-7">
+            <div className="flex items-center gap-3 mb-5">
+              {!reconnect && <button type="button" onClick={() => setStep(1)} className={`p-1.5 rounded-lg ${MUTED} hover:bg-gray-100 dark:hover:bg-white/5`} aria-label="Back"><ArrowLeft size={16} /></button>}
+              <div className="min-w-0 flex-1">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-[#0808f8] dark:text-[#8b8bff]">Step 2 of 2</div>
+                <div className={`text-[20px] font-black tracking-tight ${TITLE}`}>{reconnect ? 'Connect BambooHR again' : 'Make a key in BambooHR and paste it'}</div>
+              </div>
+              <button type="button" onClick={onLater} className={`p-2 rounded-xl ${MUTED} hover:bg-gray-100 dark:hover:bg-white/5`} aria-label="Close"><X size={16} /></button>
+            </div>
+            <ConnectScreen companySubdomain={companySubdomain} reconnect={reconnect} onConnected={onConnected} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── settings menu ─────────────────────────────────────────────────────────────────────────────────────────────────────
 function SettingsMenu({ subdomain, onRefresh, onDisconnect }) {
   const [open, setOpen] = useState(false);
@@ -726,6 +778,7 @@ export default function MyHR() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [askDisconnect, setAskDisconnect] = useState(false);
+  const [popupClosed, setPopupClosed] = useState(false);
 
   const load = useCallback(async ({ fresh = false, quiet = false } = {}) => {
     if (quiet) setRefreshing(true); else setLoading(true);
@@ -795,6 +848,10 @@ export default function MyHR() {
             )}
 
       {askDisconnect && <DisconnectDialog onClose={() => setAskDisconnect(false)} onDone={() => { setAskDisconnect(false); load(); }} />}
+      {data && !connected && !popupClosed && !error && (
+        <ConnectPopup companySubdomain={data?.company_subdomain || data?.subdomain || null} reconnect={!!data?.needs_reconnect}
+          onConnected={() => { setPopupClosed(true); load(); announceClock({ source: 'my-hr-connect' }); }} onLater={() => setPopupClosed(true)} />
+      )}
     </div>
   );
 }

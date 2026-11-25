@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import ClockPill from '../hr/ClockPill';
+import NowWorking from '../studio/NowWorking';
 import { useNavigate } from 'react-router-dom';
 import { Search, Bell, LogOut, Menu, User, ChevronDown } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -95,8 +96,11 @@ export default function Header({ onMenuToggle }) {
           >₪</button>
         </div>
 
+        {/* Now working on — the creative's task in Working, with a timer (25 Nov 2026) */}
+        {user?.role === 'Creative' && <NowWorking className="hidden lg:flex" />}
+
         {/* My HR — clocked in? (renders nothing until the person connects BambooHR) */}
-        <ClockPill className="hidden sm:flex" />
+        <ClockPill className="hidden sm:flex" showConnect />
 
         {/* Notifications */}
         <div className="relative">

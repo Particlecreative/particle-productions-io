@@ -81,7 +81,7 @@ const DEFAULTS = {
         // product = label9 "Product (old)" (its colours); product_dropdown = the new Product dropdown, read first (12 Nov 2026)
         person: 'people', status: 'status', type: 'label4', department: 'label', product: 'label9', product_dropdown: 'dropdown_mm8qh5b',
         frame: 'link', dropbox: 'link4__1', project_link: 'link1__1', timeline: 'timeline3__1',
-        deadline: 'date_Mjj2cG7T', versions: 'numbers', working_time: 'duration_mkynps36',
+        deadline: 'date_Mjj2cG7T', versions: 'numbers', working_time: 'duration_mkynps36', sizes: 'multi_select_Mjj2VFZH',
         campaign: 'dropdown_mm3n9vjc', platform: 'single_selectu06tevn', concept: 'long_text_mkn8c1ax',
         hook: 'short_text_mkn8n4bx', finished_files: 'numeric_mm321027', files: 'files', requested_by: 'person',
         priority: 'priority_mkm11w0a',
@@ -106,7 +106,7 @@ const DEFAULTS = {
         person: 'people', status: 'status', product: 'label9', product_dropdown: 'dropdown_mm8q7ysv', department: 'status_1__1',
         dropbox: 'link0__1', figma: 'link', files: 'upload_file3__1', timeline: 'timeline_1_Mjj5Yton',
         // Designers' timers live in "Time tracking" — the "Working Time" column (duration_mkynccfs) is unused
-        deadline: 'date_Mjj20aki', versions: 'numberpuotbeaf', working_time: 'time_tracking__1',
+        deadline: 'date_Mjj20aki', versions: 'numberpuotbeaf', working_time: 'time_tracking__1', sizes: 'multi_select_Mjj2tEdu',
         campaign: 'dropdown_mm3n7bw1', platform: 'single_selectrz7230p', concept: 'long_textpvqldjpg',
         brand: 'text_mkz3xf50', requested_by: 'people_Mjj2RrZM', priority: 'priority__1',
         brand_status: 'color_mm8q3pn9',   // "Brands" status (12 Nov 2026); `brand` is the older free-text column

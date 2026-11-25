@@ -12,6 +12,7 @@ const GROWTH_WHATS_NEW = [
   { date: '25 Nov 2026 — later', items: [
     '⏱ My HR (left menu): connect your own BambooHR once — clock in / out, your hours, time off and balances, who’s out — right in CP, with a 10:00 / 19:00 reminder if you forgot to clock in or out.',
     '⚡ Pages refresh themselves while they’re open, and dark mode looks right now.',
+    '🌙 Quiet hours: 🔔 → ⚙️ — no pop-ups at night or all weekend; everything waits in the 🔔.',
   ] },
   { date: '25 Nov 2026', items: [
     '📁 New tickets — from New ticket or from the Briefs Creator — get their folders made for them: video tickets a Dropbox folder and a Frame.io folder, design tickets a Dropbox folder. The links are on the ticket and in the brief. TV tickets get their Frame.io folder in “Productions”, next to the commercial’s other cuts.',
@@ -65,6 +66,13 @@ const CREATIVE_WHATS_NEW = [
     '🌙 Dark mode looks right now — every page.',
     '⏱ My HR (left menu): connect your own BambooHR once, then clock in / out, see today’s and this week’s hours, ask for time off, see your balances and who’s out — all in CP. A reminder at 10:00 if you haven’t clocked in, and at 19:00 if you’re still clocked in. The pill next to the 🔔 shows if you’re in.',
     '⏳ A task now shows “Time on this task”: when it was asked for, how long you actually worked on it (Working while you were clocked in), review rounds and where it waited.',
+    '🎬 Cards show the latest Frame.io version in the task’s folder and its comment count (e.g. “v3 · 💬 4”); the task panel shows the file name too.',
+    '✅ Delivery checklist: the task’s “Sizes needed” (× versions) as boxes in the task panel — tick each as you finish; the card shows 2/6. All ticked → CP asks if it should go to Review.',
+    '▶ Now working on: the task you have in Working sits next to the clock at the top, with a running timer (it pauses while you’re clocked out). Click it to open the task.',
+    '📅 My Studio → Week: ◀ ▶ go back and forward, and finished tasks show (green ✓) — “Show finished” turns them off.',
+    '🏆 Home → My month: delivered, worked per task, review rounds, on time and your ads live on Meta — and months back.',
+    '🌙 Quiet hours: 🔔 → ⚙️ → no pop-ups at night or all weekend — they wait in the 🔔.',
+    '⏱ My HR opens with “Let’s connect your BambooHR” — two steps and you’re in.',
   ] },
   { date: '25 Nov 2026', items: [
     '🎬 A video ticket made in CP (New ticket or Briefs Creator) already has its Frame.io folder — Video › year › month › product › the ticket (TV: Productions › product › the commercial). Upload your cuts there; the link is on the task.',
@@ -112,6 +120,7 @@ const CREATIVE_CATEGORY = {
           'Your ads on air — your creatives running on Meta (from AfterLife). Team Weekly and My AfterLife — one click away.',
           'Line of the day — the studio’s movie line (collapse it with the arrow).',
           'My week — a wheel of your week: switch Status · Priority · Requester · Campaign type · Product · Type; ◀ ▶ move a week; click a slice (or its row) to list those tasks and open one. “Carried over” = still open from an earlier week.',
+          'My month — delivered, worked per task (Working while clocked in), review rounds, on time and your ads live on Meta; ◀ ▶ for earlier months.',
         ]},
         { type: 'tips', items: [
           'The page is live — it refreshes every 30 seconds while it’s open (“● Live · updated 12s ago”). New tasks and moves by others get a green badge for two minutes.',
@@ -132,7 +141,7 @@ const CREATIVE_CATEGORY = {
         ]},
         { type: 'guide', title: 'My tasks and Week', steps: [
           'My tasks — a table grouped by status or by brand; click a group to fold it.',
-          'Week — your two working weeks with each task’s timeline as a bar, the deadline as ◆, and what isn’t scheduled yet below.',
+          'Week — two working weeks with each task’s timeline as a bar and the deadline as ◆; ◀ ▶ go back and forward (finished tasks show with a green ✓ — “Show finished” hides them), and what isn’t scheduled yet below.',
         ]},
         { type: 'tips', items: ['Arrange — choose what a card shows, compact cards, show Done. Search finds a task by name, product or who asked.'] },
       ],
@@ -149,6 +158,7 @@ const CREATIVE_CATEGORY = {
           '“Paste” reads what you copied and saves it straight away (only the right kind of link is accepted).',
           'Then CP asks: “Ready to send it to Review?” — one click and it moves.',
           'Copy and Replace are next to a saved link.',
+          'Under it: the latest file in the Frame.io folder (version, when, how many comments), and the delivery checklist from “Sizes needed” (× versions) — tick each one; everyone on the task sees the same ticks. All done → “Ready to send it to Review?”.',
         ]},
         { type: 'guide', title: 'Brief and updates', steps: [
           'The brief is first: the facts in boxes, then labelled parts (task, concept, reference, hooks, script).',
@@ -166,7 +176,7 @@ const CREATIVE_CATEGORY = {
           'Your task’s status moved (by someone else) · someone wrote or replied on your task · someone tagged you · you were put on a task.',
           'Your ad was uploaded to Meta, and when it starts running (from AfterLife — usually the next day).',
         ]},
-        { type: 'guide', title: 'Settings', steps: ['🔔 → ⚙️: switch each kind on or off, the corner pop-up, and desktop notifications (your browser asks once).'] },
+        { type: 'guide', title: 'Settings', steps: ['🔔 → ⚙️: switch each kind on or off, the corner pop-up, and desktop notifications (your browser asks once).', 'Quiet hours: pick the hours (e.g. 20:00–08:00) and/or all Fri–Sat — nothing pops up then; it all waits in the 🔔.'] },
       ],
     },
     {

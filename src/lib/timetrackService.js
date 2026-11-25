@@ -109,6 +109,17 @@ export const timetrackApi = {
     const { force, ...rest } = params;
     return api(`/timetrack/overview?${qs({ ...rest, force: force ? '1' : '' })}`);
   },
+  /** My month on Home: delivered, worked per task, review rounds, on time (the person's own). */
+  async me(month) {
+    if (import.meta.env.DEV && DEV) {
+      await new Promise(r => setTimeout(r, 300));
+      const m = month || israelYmd().slice(0, 7);
+      const seed = Number(m.slice(5, 7));
+      return { connected: true, month: m, kpis: { delivered: 6 + (seed % 5), open: 4, median_worked_ms: (5 + (seed % 3)) * 3.6e6, median_lead_ms: (3 + (seed % 2)) * 86400000, avg_review_rounds: 1.2 + (seed % 3) / 10, on_time_pct: 80 + (seed % 15), busy_ms: 92 * 3.6e6, clocked_ms: 140 * 3.6e6, estimated: 1 },
+        tasks: [{ id: 'd1', board: 'video', name: 'Sample | Meta | Hook test', worked_ms: 4.5 * 3.6e6, review_rounds: 1, delivered_at: Date.now() - 2 * 86400000 }, { id: 'd2', board: 'video', name: 'Sample | Creators | Cut v2', worked_ms: 7 * 3.6e6, review_rounds: 2, delivered_at: Date.now() - 5 * 86400000 }] };
+    }
+    return api(`/timetrack/me${month ? `?month=${encodeURIComponent(month)}` : ''}`);
+  },
   /** One task's timeline + numbers (403 when it isn't yours to see). */
   async task(board, itemId) {
     if (import.meta.env.DEV && DEV) { await new Promise(r => setTimeout(r, 300)); return fixtureTask(board, itemId); }

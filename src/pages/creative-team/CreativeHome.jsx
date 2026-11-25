@@ -5,10 +5,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus, Sparkles, KanbanSquare, ArrowUp, ArrowDown, EyeOff, Eye, SlidersHorizontal, Check, Bell, Radio, CalendarDays, Presentation, Gauge,
-  Link2, AlertTriangle, Clock, ArrowRight, Loader2, Film, PieChart,
+  Link2, AlertTriangle, Clock, ArrowRight, Loader2, Film, PieChart, Trophy,
 } from 'lucide-react';
 import Inspiration from '../../components/studio/Inspiration';
 import WeekWheel from '../../components/creative-team/WeekWheel';
+import MyMonth from '../../components/creative-team/MyMonth';
 import CreativeShell, { MyTasksProvider, useMyTasks, FreshBadge } from '../../components/creative-team/CreativeShell';
 import { useStudio, fmtDay, firstName } from '../../components/studio/writes';
 import { smartSort, urgency, dueWords, nextStatus } from '../../components/studio/kanban';
@@ -24,6 +25,7 @@ const WIDGETS = {
   line: { label: 'Line of the day', icon: Film, full: true, bare: true },
   focus: { label: 'Today', icon: AlertTriangle, wide: true },
   wheel: { label: 'My week', icon: PieChart, wide: true },
+  month: { label: 'My month', icon: Trophy },
   links: { label: 'Waiting for your link', icon: Link2 },
   news: { label: 'For you', icon: Bell },
   onair: { label: 'Your ads on air', icon: Radio },
@@ -31,7 +33,7 @@ const WIDGETS = {
   weekly: { label: 'Team Weekly', icon: Presentation },
   afterlife: { label: 'My AfterLife', icon: Gauge },
 };
-const DEFAULT_LAYOUT = { order: ['line', 'focus', 'links', 'wheel', 'news', 'onair', 'week', 'weekly', 'afterlife'], hidden: [] };
+const DEFAULT_LAYOUT = { order: ['line', 'focus', 'links', 'wheel', 'month', 'news', 'onair', 'week', 'weekly', 'afterlife'], hidden: [] };
 /** A saved layout + cards added since: each new card goes where it sits in the default order (not at the end). */
 function mergeOrder(saved) {
   const order = saved.filter(k => WIDGETS[k]);
@@ -126,6 +128,7 @@ function HomeBody() {
   const body = {
     line: edit ? <div className="text-[13px] text-gray-500">Today’s movie line — the same one the studio sees.</div> : <Inspiration />,
     wheel: <WeekWheel items={items} people={data?.people || {}} today={today} onOpen={open} Row={TaskRow} />,
+    month: <MyMonth ads={myAds} />,
     focus: (
       <>
         <div className="grid grid-cols-3 gap-2 mb-3">

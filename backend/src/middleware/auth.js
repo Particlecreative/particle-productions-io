@@ -91,6 +91,9 @@ const CREATIVE_ALLOW = [
   [/^GET$/, /^\/api\/creative-reports\/?$/],
   [/^GET$/, /^\/api\/creative-reports\/[0-9a-f-]{36}(\/picks)?$/],
   [/^GET$/, /^\/api\/timetrack\/task\/(video|design)\/\d+$/],   // their own task's time (timetrack.js checks it's theirs)
+  [/^GET$/, /^\/api\/timetrack\/me$/],                                   // My month on Home
+  [/^GET$/, /^\/api\/studio\/(my-checklists|my-frame|now-working)$/],    // the bench: checklists, Frame.io versions, now working
+  [/^(GET|PUT)$/, /^\/api\/studio\/items\/\d+\/checklist$/],          // their own task's delivery checklist (studio.js)
   // Studio passwords — the Access Passwords boards: read, reveal / copy (logged), edit, add (passwords.js)
   [/^GET$/, /^\/api\/passwords\/?$/],
   [/^POST$/, /^\/api\/passwords\/(particle|blurr)\/\d+\/reveal$/],

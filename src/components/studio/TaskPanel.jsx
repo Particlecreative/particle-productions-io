@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { DeliveryChecklist, FrameBadge, useFrameStatus } from './Bench';
 import TaskTime from '../timetrack/TaskTime';
 import { createPortal } from 'react-dom';
 import { X, ExternalLink, Plane, Loader2, Film, Folder, PenTool, Link2, Archive, ChevronDown, ArrowRight, Flag } from 'lucide-react';
@@ -294,6 +295,7 @@ export function DeliveryLinks({ it, statuses, writes, can, focus }) {
   const [busy, setBusy] = useState(null);
   const [err, setErr] = useState(null);
   const [ask, setAsk] = useState(null);   // { status } after the main link is saved
+  const frame = useFrameStatus(it.board === 'video' ? it : null);
   if (!rows.length) return null;
   const nxt = nextStatus(it, statuses);
 
@@ -355,6 +357,8 @@ export function DeliveryLinks({ it, statuses, writes, can, focus }) {
           </div>
         );
       })}
+      {/* the newest file in the Frame.io folder and its comments (25 Nov 2026) */}
+      {frame && <FrameBadge status={frame} />}
       {/* Dropbox — the ticket creator makes the folder; here to open or copy, not to paste */}
       {it.links?.dropbox ? (
         <div className="flex items-center gap-2 min-w-0">
@@ -364,10 +368,12 @@ export function DeliveryLinks({ it, statuses, writes, can, focus }) {
           <button type="button" onClick={() => copy(it.links.dropbox, 'Dropbox')} className="text-[11.5px] font-semibold px-2 py-1.5 rounded-lg text-gray-500 hover:bg-white hover:text-[#030b2e]">Copy</button>
         </div>
       ) : <div className="text-[11.5px] text-gray-400">Dropbox folder: made with the ticket — not there yet</div>}
+      {/* "Sizes needed" (× versions) as a checklist; all ticked → offer the next status */}
+      <DeliveryChecklist it={it} can={can} onAllDone={() => { if (nxt && can.status) setAsk({ status: nxt, why: 'checklist' }); }} />
       {err && <div className="text-[12px] text-red-600">{err}</div>}
       {ask && (
         <div className="rounded-lg bg-white border border-gray-200 p-3 flex flex-wrap items-center gap-2">
-          <span className="text-[13px] text-[#030b2e] flex-1 min-w-[160px]">✓ Saved on Monday. Ready to send it to <b style={{ color: ask.status.color }}>{ask.status.label}</b>?</span>
+          <span className="text-[13px] text-[#030b2e] flex-1 min-w-[160px]">{ask.why === 'checklist' ? '✓ Every size is done.' : '✓ Saved on Monday.'} Ready to send it to <b style={{ color: ask.status.color }}>{ask.status.label}</b>?</span>
           <button type="button" onClick={() => { writes.save(it, { status: ask.status }); setAsk(null); }} className="flex items-center gap-1.5 text-[12.5px] font-semibold px-3 py-1.5 rounded-lg text-white" style={{ background: ask.status.color || '#0808f8' }}>
             <ArrowRight size={13} /> Move to {ask.status.label}
           </button>

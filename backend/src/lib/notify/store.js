@@ -56,6 +56,13 @@ function clean(input) {
   const out = { types };
   if (typeof v.toast === 'boolean') out.toast = v.toast;
   if (typeof v.desktop === 'boolean') out.desktop = v.desktop;
+  // Quiet hours (25 Nov 2026): no pop-ups or desktop notifications in these hours (Israel time) — the bell still collects them
+  if (v.quiet_hours === null) out.quiet_hours = null;
+  else if (v.quiet_hours && typeof v.quiet_hours === 'object') {
+    const hm = (x) => (/^([01]\d|2[0-3]):[0-5]\d$/.test(String(x || '')) ? String(x) : null);
+    const q = { on: !!v.quiet_hours.on, from: hm(v.quiet_hours.from) || '20:00', to: hm(v.quiet_hours.to) || '08:00', weekend: !!v.quiet_hours.weekend };
+    out.quiet_hours = q;
+  }
   return out;
 }
 

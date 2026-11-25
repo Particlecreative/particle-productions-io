@@ -80,6 +80,8 @@ function collapse(notifs) {
 
 const TABS = [['all', 'All'], ['unread', 'Unread'], ['mentions', 'Tagged'], ['tasks', 'My tasks'], ['ads', 'Ads'], ['team', 'Team moves']];
 
+const quietHint = (q) => (q?.on ? `No pop-ups or desktop notifications ${q.from || '20:00'}–${q.to || '08:00'}${q.weekend ? ' and all weekend' : ''} (Israel time). They still wait in the 🔔.` : 'Mute pop-ups at night — or all weekend.');
+
 function SettingsView({ onBack }) {
   const { settings, saveSettings, types } = useNotifications();
   const [perm, setPerm] = useState(typeof Notification !== 'undefined' ? Notification.permission : 'unsupported');
@@ -110,7 +112,16 @@ function SettingsView({ onBack }) {
       <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mt-5">How</div>
       <Toggle label="Pop-up in the corner" hint="A quiet card bottom-right when something new arrives — gone after a few seconds." on={settings?.toast !== false} onChange={(v) => saveSettings({ toast: v })} />
       <Toggle label="Desktop notifications" hint={perm === 'denied' ? 'Your browser blocks them for CP — allow notifications in the browser’s site settings.' : 'When CP is open in another tab or behind other windows.'} on={!!settings?.desktop && perm === 'granted'} onChange={desktop} />
-      <p className="text-[11.5px] text-gray-400 mt-4">Saved for you. CP checks for new ones every minute while it’s open.</p>
+      <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mt-5">Quiet hours</div>
+      <Toggle label="Quiet hours" hint={quietHint(settings?.quiet_hours)} on={!!settings?.quiet_hours?.on} onChange={(v) => saveSettings({ quiet_hours: { ...(settings?.quiet_hours || {}), from: settings?.quiet_hours?.from || '20:00', to: settings?.quiet_hours?.to || '08:00', on: v } })} />
+      {settings?.quiet_hours?.on && (
+        <div className="py-3 border-b border-gray-100 flex flex-wrap items-center gap-2 text-[13px] text-gray-700">
+          From <input type="time" value={settings.quiet_hours.from || '20:00'} onChange={(e) => saveSettings({ quiet_hours: { ...settings.quiet_hours, from: e.target.value } })} className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-[13px]" />
+          to <input type="time" value={settings.quiet_hours.to || '08:00'} onChange={(e) => saveSettings({ quiet_hours: { ...settings.quiet_hours, to: e.target.value } })} className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-[13px]" />
+          <label className="flex items-center gap-1.5 ml-auto cursor-pointer"><input type="checkbox" checked={!!settings.quiet_hours.weekend} onChange={(e) => saveSettings({ quiet_hours: { ...settings.quiet_hours, weekend: e.target.checked } })} className="w-4 h-4 accent-[#0808f8]" /> All Fri–Sat</label>
+        </div>
+      )}
+      <p className="text-[11.5px] text-gray-400 mt-4">Saved for you. CP checks for new ones every 30 seconds while it’s open. In quiet hours nothing pops up — they wait in the 🔔.</p>
     </div>
   );
 }

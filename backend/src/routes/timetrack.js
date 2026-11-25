@@ -55,6 +55,29 @@ function manageOnly(req, res, next) {
   next();
 }
 
+// My month (25 Nov 2026) — the person's own numbers for a month: delivered, worked per task, review rounds, on time
+router.get('/me', async (req, res) => {
+  try {
+    const { mondayIdOf } = require('../lib/studio/myRequests');
+    const me = await mondayIdOf(req.user);
+    if (!me?.id) return res.json({ connected: false });
+    const today = E.localYmd(Date.now());
+    const month = /^\d{4}-\d{2}$/.test(String(req.query.month || '')) ? req.query.month : today.slice(0, 7);
+    const last = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).toISOString().slice(0, 10);
+    const to = last < today ? last : today;
+    if (`${month}-01` > today) return res.json({ connected: true, month, kpis: null, tasks: [] });
+    const data = await TT.load({ from: `${month}-01`, to }, { brandId: req.brandId });
+    const o = TT.overview(data, { person: String(me.id) });
+    const done = o.tasks.filter(t => t.delivered_in_range);
+    res.json({
+      connected: true, month, from: `${month}-01`, to,
+      kpis: { delivered: o.kpis.delivered, open: o.kpis.open, median_worked_ms: o.kpis.median_worked_ms, median_lead_ms: o.kpis.median_lead_ms,
+        avg_review_rounds: o.kpis.avg_review_rounds, on_time_pct: o.kpis.on_time_pct, busy_ms: o.kpis.busy_ms, clocked_ms: o.kpis.clocked_ms, estimated: o.kpis.estimated },
+      tasks: done.slice(0, 8).map(t => ({ id: t.id, board: t.board, name: t.name, worked_ms: t.worked_ms, review_rounds: t.review_rounds, delivered_at: t.delivered_at, estimated: t.estimated })),
+    });
+  } catch (err) { errorJson(res, err); }
+});
+
 router.get('/overview', manageOnly, async (req, res) => {
   try {
     const data = await TT.load(rangeOf(req.query), { brandId: req.brandId, board: boardOf(req.query), force: req.query.force === '1' });

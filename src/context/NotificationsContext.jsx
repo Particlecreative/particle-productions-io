@@ -18,6 +18,16 @@ import { routeOf, NOTIFY_LOOK } from '../lib/notifyRoute';
 const NotificationsContext = createContext(null);
 const DEV = import.meta.env.DEV;
 const POLL_MS = 30 * 1000;
+
+/** Quiet hours (25 Nov 2026): { on, from 'HH:MM', to 'HH:MM', weekend } in Israel time — no pop-ups / desktop ones then. */
+export function inQuietHours(q, now = new Date()) {
+  if (!q?.on) return false;
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jerusalem', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(now).map(x => [x.type, x.value]));
+  if (q.weekend && (p.weekday === 'Fri' || p.weekday === 'Sat')) return true;
+  const t = `${p.hour === '24' ? '00' : p.hour}:${p.minute}`;
+  const a = q.from || '20:00', b = q.to || '08:00';
+  return a <= b ? t >= a && t < b : t >= a || t < b;   // over midnight when from > to
+}
 const DEFAULT_SETTINGS = { types: {}, toast: true, desktop: false };
 
 /**
@@ -47,7 +57,7 @@ export function NotificationsProvider({ children }) {
     if (known.current) {
       // the team's moves are quiet — the bell counts them, they don't pop up
       const fresh = rows.filter(n => !known.current.has(n.id) && !n.read && n.type !== 'team' && (n.link || NOTIFY_LOOK[n.type]));
-      if (fresh.length) {
+      if (fresh.length && !inQuietHours(settingsRef.current?.quiet_hours)) {
         const s = settingsRef.current;
         if (s.toast !== false) setToasts(t => [...fresh.slice(0, 3).map(n => ({ ...n, toastAt: Date.now() })), ...t].slice(0, 4));
         if (s.desktop && typeof document !== 'undefined' && document.hidden && typeof Notification !== 'undefined' && Notification.permission === 'granted') {

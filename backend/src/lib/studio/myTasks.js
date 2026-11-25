@@ -41,8 +41,12 @@ async function buildMyTasks({ brandId = 'particle', user, now = Date.now() }) {
       const it = normalizeItem(raw, ctx);
       if (!it.people.includes(me.id)) continue;
       it.open = statusCategory(it.status.label) !== 'delivered';
-      // finished ones stay 45 days (by creation — Monday's item list has no "done on" date), so Done isn't empty
-      if (!it.open && now - (Date.parse(it.created_at || 0) || 0) > 45 * DAY) continue;
+      // finished ones stay 120 days (by creation — Monday's item list has no "done on" date): Done isn't empty and the
+      // Week view / My week wheel can go back and show what was delivered (25 Nov 2026)
+      if (!it.open && now - (Date.parse(it.created_at || 0) || 0) > 120 * DAY) continue;
+      // "Sizes needed" → the delivery checklist
+      const sz = c.sizes ? (raw.column_values || []).find(v => v.id === c.sizes)?.text : '';
+      it.sizes = String(sz || '').split(',').map(s => s.trim()).filter(Boolean);
       for (const k of ['_iv', 'tracked_s_week', 'tracked_days', 'assets', 'media_refs']) delete it[k];
       items.push(it);
     }
